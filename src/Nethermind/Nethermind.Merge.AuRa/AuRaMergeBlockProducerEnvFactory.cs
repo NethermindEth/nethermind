@@ -7,12 +7,12 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -81,8 +81,8 @@ namespace Nethermind.Merge.AuRa
                 receiptStorage,
                 logManager,
                 _blockTree,
-                new BlockProductionWithdrawalProcessor(
-                    new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager))
+                new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
+                    new WithdrawalProcessor(_auraApi.ChainSpec!.AuRa, logManager))
                 );
         }
 
