@@ -277,7 +277,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 requestQueue,
                 msg,
                 TransferSpeedType.SnapRanges,
-                static (_) => $"{nameof(TIn)}",
+                static (request) => request.ToString(),
                 token);
         }
 
