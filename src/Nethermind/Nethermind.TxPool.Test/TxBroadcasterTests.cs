@@ -3,10 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -16,7 +16,18 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V67;
+using Nethermind.Network.P2P.Subprotocols.Eth.V68;
+using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Specs;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -269,5 +280,98 @@ public class TxBroadcasterTests
 
         List<Transaction> expectedTxs = new() { transactions[0] };
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
+    }
+
+    [Test]
+    public void should_broadcast_local_tx_immediately_after_receiving_it()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+        peer.Id.Returns(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+
+        Transaction localTx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        _broadcaster.Broadcast(localTx, true);
+
+        peer.Received().SendNewTransaction(localTx);
+    }
+
+    [Test]
+    public void should_broadcast_full_local_tx_immediately_after_receiving_it()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _headInfo.CurrentBaseFee.Returns(0.GWei());
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
+        ITxPoolPeer eth68Handler = new Eth68ProtocolHandler(session,
+            Substitute.For<IMessageSerializationService>(),
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<ISyncServer>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IPooledTxsRequestor>(),
+            Substitute.For<IGossipPolicy>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<ILogManager>());
+        _broadcaster.AddPeer(eth68Handler);
+
+        Transaction localTx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        _broadcaster.Broadcast(localTx, true);
+
+        session.Received(1).DeliverMessage(Arg.Any<TransactionsMessage>());
+    }
+
+    [Test]
+    public void should_broadcast_hash_of_blob_local_tx_to_eth68_peers_immediately_after_receiving_it()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        ISession session67 = Substitute.For<ISession>();
+        session67.Node.Returns(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
+        ITxPoolPeer eth67Handler = new Eth67ProtocolHandler(session67,
+            Substitute.For<IMessageSerializationService>(),
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<ISyncServer>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IPooledTxsRequestor>(),
+            Substitute.For<IGossipPolicy>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<ILogManager>());
+
+        ISession session68 = Substitute.For<ISession>();
+        session68.Node.Returns(new Node(TestItem.PublicKeyB, TestItem.IPEndPointB));
+        ITxPoolPeer eth68Handler = new Eth68ProtocolHandler(session68,
+            Substitute.For<IMessageSerializationService>(),
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<ISyncServer>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IPooledTxsRequestor>(),
+            Substitute.For<IGossipPolicy>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<ILogManager>());
+
+        Transaction localTx = Build.A.Transaction
+            .WithType(TxType.Blob)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        _broadcaster.AddPeer(eth67Handler);
+        _broadcaster.AddPeer(eth68Handler);
+
+        _broadcaster.Broadcast(localTx, true);
+
+        session67.DidNotReceive().DeliverMessage(Arg.Any<TransactionsMessage>());
+        session67.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage>());
+        session67.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
+
+        session68.DidNotReceive().DeliverMessage(Arg.Any<TransactionsMessage>());
+        session68.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage>());
+        session68.Received(1).DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
     }
 }
