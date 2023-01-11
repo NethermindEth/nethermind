@@ -302,7 +302,7 @@ internal static class EvmObjectFormat
                 }
             }
 
-            if (pos >= code.Length)
+            if (pos > code.Length)
             {
                 if (Logger.IsTrace)
                 {
