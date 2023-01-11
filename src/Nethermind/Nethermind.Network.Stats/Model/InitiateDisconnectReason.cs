@@ -15,7 +15,6 @@ public enum InitiateDisconnectReason : byte
 
     SnapServerNotImplemented,
     IncompatibleP2PVersion,
-    InvalidCapability,
     InvalidChainId,
     InvalidGenesis,
     ProtocolInitTimeout,
@@ -62,8 +61,6 @@ public static class InitiateDisconnectReasonExtension
                 return DisconnectReason.UselessPeer;
             case InitiateDisconnectReason.IncompatibleP2PVersion:
                 return DisconnectReason.IncompatibleP2PVersion;
-            case InitiateDisconnectReason.InvalidCapability:
-                return DisconnectReason.UselessPeer;
             case InitiateDisconnectReason.InvalidChainId:
                 return DisconnectReason.UselessPeer;
             case InitiateDisconnectReason.InvalidGenesis:
