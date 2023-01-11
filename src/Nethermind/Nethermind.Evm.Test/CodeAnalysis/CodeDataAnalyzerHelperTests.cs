@@ -1,9 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -23,7 +22,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code);
+            var bitmap = BitmapHelper.CreateCodeBitmap(code);
             bitmap[0].Should().Be(127);
             bitmap[1].Should().Be(224);
         }
@@ -39,7 +38,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code);
+            var bitmap = BitmapHelper.CreateCodeBitmap(code);
             bitmap[0].Should().Be(127);
             bitmap[1].Should().Be(255);
             bitmap[2].Should().Be(255);

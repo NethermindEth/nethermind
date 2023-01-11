@@ -3,6 +3,7 @@
 
 using System;
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -255,7 +256,8 @@ namespace Nethermind.Evm.Test.Tracing
                 _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
 
                 tracer = new();
-                estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+                BlocksConfig blocksConfig = new();
+                estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
             }
         }
     }

@@ -29,6 +29,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Config;
 
 namespace Nethermind.Facade.Test
 {
@@ -79,6 +80,7 @@ namespace Nethermind.Facade.Test
                 _timestamper,
                 Substitute.For<ILogFinder>(),
                 _specProvider,
+                new BlocksConfig(),
                 false);
         }
 
@@ -225,6 +227,7 @@ namespace Nethermind.Facade.Test
                 _timestamper,
                 Substitute.For<ILogFinder>(),
                 _specProvider,
+                new BlocksConfig(),
                 false);
 
             _blockchainBridge.HeadBlock.Should().Be(head);

@@ -24,6 +24,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
+using Nethermind.Core.Extensions;
+using Nethermind.Config;
 
 namespace Nethermind.Facade
 {
@@ -44,6 +46,7 @@ namespace Nethermind.Facade
         private readonly IReceiptFinder _receiptFinder;
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
+        private readonly IBlocksConfig _blocksConfig;
 
         public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
             ITxPool? txPool,
@@ -54,6 +57,7 @@ namespace Nethermind.Facade
             ITimestamper? timestamper,
             ILogFinder? logFinder,
             ISpecProvider specProvider,
+            IBlocksConfig blocksConfig,
             bool isMining)
         {
             _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
@@ -65,6 +69,7 @@ namespace Nethermind.Facade
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _blocksConfig = blocksConfig;
             IsMining = isMining;
         }
 
@@ -90,7 +95,7 @@ namespace Nethermind.Facade
                     TxReceipt txReceipt = txReceipts.ForTransaction(txHash);
                     int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
                     Transaction tx = block.Transactions[txReceipt.Index];
-                    bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
+                    bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
                     UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
                     return (txReceipt, effectiveGasPrice, logIndexStart);
                 }
@@ -173,7 +178,8 @@ namespace Nethermind.Facade
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider, _specProvider);
+            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider,
+                _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
 
             return new CallOutput
@@ -252,7 +258,7 @@ namespace Nethermind.Facade
                     Math.Max(blockHeader.Timestamp + 1, _timestamper.UnixTime.Seconds),
                     Array.Empty<byte>())
                 {
-                    BaseFeePerGas = BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(blockHeader.Number + 1)),
+                    BaseFeePerGas = BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpecFor1559(blockHeader.Number + 1)),
                 }
                 : new(
                     blockHeader.ParentHash!,

@@ -12,9 +12,9 @@ namespace Ethereum.Difficulty.Test
         public DifficultyTests(
             string fileName,
             string name,
-            UInt256 parentTimestamp,
+            ulong parentTimestamp,
             UInt256 parentDifficulty,
-            UInt256 currentTimestamp,
+            ulong currentTimestamp,
             long currentBlockNumber,
             UInt256 currentDifficulty,
             bool parentHasUncles)
@@ -29,9 +29,9 @@ namespace Ethereum.Difficulty.Test
             ParentHasUncles = parentHasUncles;
         }
 
-        public UInt256 ParentTimestamp { get; set; }
+        public ulong ParentTimestamp { get; set; }
         public UInt256 ParentDifficulty { get; set; }
-        public UInt256 CurrentTimestamp { get; set; }
+        public ulong CurrentTimestamp { get; set; }
         public long CurrentBlockNumber { get; set; }
         public bool ParentHasUncles { get; set; }
         public UInt256 CurrentDifficulty { get; set; }

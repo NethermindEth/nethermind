@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -59,7 +59,7 @@ namespace Nethermind.Mev.Execution
                 TotalDifficulty = parent.TotalDifficulty + parent.Difficulty
             };
 
-            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header));
             header.Hash = header.CalculateHash();
 
             return new Block(header, bundle.Transactions, Array.Empty<BlockHeader>());

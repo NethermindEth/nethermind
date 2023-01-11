@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -9,6 +9,7 @@ using System.Threading;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -38,6 +39,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
         private readonly ITimestamper _timestamper;
+        private readonly IBlocksConfig _blocksConfig;
         private readonly IAbiEncoder _abiEncoder;
         private readonly ILogger _logger;
 
@@ -50,7 +52,8 @@ namespace Nethermind.AccountAbstraction.Executor
             Address[] whitelistedPaymasters,
             ISpecProvider specProvider,
             ITimestamper timestamper,
-            ILogManager logManager)
+            ILogManager logManager,
+            IBlocksConfig blocksConfig)
         {
             _userOperationTxBuilder = userOperationTxBuilder;
             _stateProvider = stateProvider;
@@ -60,6 +63,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _whitelistedPaymasters = whitelistedPaymasters;
             _specProvider = specProvider;
             _timestamper = timestamper;
+            _blocksConfig = blocksConfig;
             _logger = logManager.GetClassLogger<UserOperationSimulator>();
 
             _abiEncoder = new AbiEncoder();
@@ -84,13 +88,13 @@ namespace Nethermind.AccountAbstraction.Executor
                 }
             }
 
-            IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
+            IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
 
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction =
-                BuildSimulateValidationTransaction(userOperation, parent, currentSpec);
+                BuildSimulateValidationTransaction(userOperation, parent, specFor1559);
 
             UserOperationSimulationResult simulationResult = SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
@@ -164,7 +168,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private Transaction BuildSimulateValidationTransaction(
             UserOperation userOperation,
             BlockHeader parent,
-            IReleaseSpec spec)
+            IEip1559Spec specfor1559)
         {
             AbiSignature abiSignature = _entryPointContractAbi.Functions["simulateValidation"].GetCallInfo().Signature;
             UserOperationAbi userOperationAbi = userOperation.Abi;
@@ -178,7 +182,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 computedCallData,
                 Address.Zero,
                 parent,
-                spec,
+                specfor1559,
                 _stateProvider.GetNonce(Address.Zero),
                 true);
 
@@ -200,7 +204,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider);
+            GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
 
             return new BlockchainBridge.CallOutput
@@ -259,7 +263,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 Array.Empty<byte>());
 
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
-                ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader.Number))
+                ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader))
                 : blockHeader.BaseFeePerGas;
 
             transaction.Hash = transaction.CalculateHash();

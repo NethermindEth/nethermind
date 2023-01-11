@@ -1,59 +1,75 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using Force.Crc32;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 
 namespace Nethermind.Network
 {
-    public static class ForkInfo
+    public class ForkInfo
     {
-        private const long ImpossibleBlockNumberWithSpaceForImpossibleForks = long.MaxValue - 100;
+        private (ForkActivation Activation, ForkId Id)[] Forks { get; }
 
-        public static byte[] CalculateForkHash(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
+        public ForkInfo(ISpecProvider specProvider, Keccak genesisHash)
         {
-            uint crc = 0;
-            ForkActivation[] transitionBlocks = specProvider.TransitionBlocks;
+            ForkActivation[] transitionActivations = specProvider.TransitionActivations;
+            Forks = new (ForkActivation Activation, ForkId Id)[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
-            crc = Crc32Algorithm.Append(crc, genesisHash.Bytes);
-            for (int i = 0; i < transitionBlocks.Length; i++)
+            uint crc = 0;
+            byte[] hash = CalculateHash(ref crc, genesisHash.Bytes);
+            // genesis fork activation
+            Forks[0] = ((0, null), new ForkId(hash, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0));
+            for (int index = 0; index < transitionActivations.Length; index++)
             {
-                if (transitionBlocks[i] > headNumber)
-                {
-                    break;
-                }
-
-                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, (ulong)transitionBlocks[i].BlockNumber);
-                crc = Crc32Algorithm.Append(crc, blockNumberBytes);
+                ForkActivation forkActivation = transitionActivations[index];
+                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, forkActivation.Activation);
+                hash = CalculateHash(ref crc, blockNumberBytes);
+                Forks[index + 1] = (forkActivation, new ForkId(hash, GetNextActivation(index, transitionActivations)));
             }
+        }
 
+        private static byte[] CalculateHash(ref uint crc, byte[] bytes)
+        {
+            crc = Crc32Algorithm.Append(crc, bytes);
             byte[] forkHash = new byte[4];
             BinaryPrimitives.TryWriteUInt32BigEndian(forkHash, crc);
             return forkHash;
         }
 
-        public static ForkId CalculateForkId(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
+        private static ulong GetNextActivation(int index, ForkActivation[] transitionActivations)
         {
-            byte[] forkHash = CalculateForkHash(specProvider, headNumber, genesisHash);
-            long next = 0;
-            for (int i = 0; i < specProvider.TransitionBlocks.Length; i++)
+            ulong nextActivation;
+            int nextIndex = index + 1;
+            if (nextIndex < transitionActivations.Length)
             {
-                if (specProvider.TransitionBlocks[i] >= ImpossibleBlockNumberWithSpaceForImpossibleForks)
-                {
-                    continue;
-                }
-
-                long transition = specProvider.TransitionBlocks[i].BlockNumber;
-                if (transition > headNumber)
-                {
-                    next = transition;
-                    break;
-                }
+                ForkActivation nextForkActivation = transitionActivations[nextIndex];
+                nextActivation = nextForkActivation.Timestamp ?? (ulong)nextForkActivation.BlockNumber;
+            }
+            else
+            {
+                nextActivation = 0;
             }
 
-            return new ForkId(forkHash, next);
+            return nextActivation;
         }
+
+        public ForkId GetForkId(long headNumber, ulong headTimestamp)
+        {
+            return Forks.TryGetSearchedItem(
+                new ForkActivation(headNumber, headTimestamp),
+                CompareTransitionOnActivation, out (ForkActivation Activation, ForkId Id) fork)
+                ? fork.Id
+                : throw new InvalidOperationException("Fork not found");
+        }
+
+        private static int CompareTransitionOnActivation(ForkActivation activation, (ForkActivation Activation, ForkId _) transition) =>
+            activation.CompareTo(transition.Activation);
     }
 }

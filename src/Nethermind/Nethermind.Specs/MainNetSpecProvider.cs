@@ -15,7 +15,7 @@ namespace Nethermind.Specs
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber;
             if (terminalTotalDifficulty is not null)
                 _terminalTotalDifficulty = terminalTotalDifficulty;
         }
@@ -40,7 +40,8 @@ namespace Nethermind.Specs
                 { BlockNumber: < ArrowGlacierBlockNumber } => London.Instance,
                 { BlockNumber: < GrayGlacierBlockNumber } => ArrowGlacier.Instance,
                 { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => GrayGlacier.Instance,
-                _ => Shanghai.Instance
+                { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
+                _ => Cancun.Instance
             };
 
         public const long HomesteadBlockNumber = 1_150_000;
@@ -67,16 +68,14 @@ namespace Nethermind.Specs
 
         public ulong ChainId => Core.ChainId.Mainnet;
 
-        public ForkActivation[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionActivations { get; } =
         {
-            HomesteadBlockNumber, DaoBlockNumberConst, TangerineWhistleBlockNumber, SpuriousDragonBlockNumber,
-            ByzantiumBlockNumber, ConstantinopleFixBlockNumber, IstanbulBlockNumber, MuirGlacierBlockNumber,
-            BerlinBlockNumber, LondonBlockNumber, ArrowGlacierBlockNumber, GrayGlacierBlockNumber,
+            (ForkActivation)HomesteadBlockNumber, (ForkActivation)DaoBlockNumberConst, (ForkActivation)TangerineWhistleBlockNumber, (ForkActivation)SpuriousDragonBlockNumber,
+            (ForkActivation)ByzantiumBlockNumber, (ForkActivation)ConstantinopleFixBlockNumber, (ForkActivation)IstanbulBlockNumber, (ForkActivation)MuirGlacierBlockNumber,
+            (ForkActivation)BerlinBlockNumber, (ForkActivation)LondonBlockNumber, (ForkActivation)ArrowGlacierBlockNumber, (ForkActivation)GrayGlacierBlockNumber,
             //(GrayGlacierBlockNumber, ShanghaiBlockTimestamp), (GrayGlacierBlockNumber, CancunBlockTimestamp),
             //(GrayGlacierBlockNumber, PragueBlockTimestamp), (GrayGlacierBlockNumber, OsakaBlockTimestamp)
         };
-
-        public MainnetSpecProvider() { }
 
         public static readonly MainnetSpecProvider Instance = new();
     }

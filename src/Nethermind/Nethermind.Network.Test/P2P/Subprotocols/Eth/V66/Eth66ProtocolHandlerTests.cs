@@ -82,7 +82,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _transactionPool,
                 _pooledTxsRequestor,
                 _gossipPolicy,
-                _specProvider,
+                new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
                 LimboLogs.Instance);
             _handler.Init();
         }

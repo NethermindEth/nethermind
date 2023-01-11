@@ -1,33 +1,16 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
-using NUnit.Framework;
 using Nethermind.Specs.Forks;
-using Nethermind.Evm.CodeAnalysis;
-using System;
-using System.Collections.Generic;
-using Nethermind.Int256;
 using Nethermind.Specs.Test;
-using System.Text.Json;
-using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
-using Nethermind.Evm.EOF;
+using NUnit.Framework;
 using static Nethermind.Evm.Test.EofTestsBase;
+using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 
 namespace Nethermind.Evm.Test
 {
@@ -37,6 +20,7 @@ namespace Nethermind.Evm.Test
     public class EOF3540Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
+        private IReleaseSpec ShanghaiSpec = new OverridableReleaseSpec(Shanghai.Instance) { IsEip3670Enabled = false };
 
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
         {
@@ -50,8 +34,8 @@ namespace Nethermind.Evm.Test
         {
             get
             {
-                var basecase = new ScenarioCase(
-                    Functions: new FunctionCase[] {
+                ScenarioCase baseCase = new(
+                    Functions: new[] {
                         new FunctionCase(
                             InputCount : 0,
                             OutputCount : 0,
@@ -70,11 +54,10 @@ namespace Nethermind.Evm.Test
                     Data: new byte[] { 0xbb, 0xee, 0xee, 0xff }
                 );
 
-                var scenarios = Enum.GetValues<FormatScenario>();
-                foreach (var scenario in scenarios)
+                FormatScenario[] scenarios = Enum.GetValues<FormatScenario>();
+                foreach (FormatScenario scenario in scenarios)
                 {
-
-                    yield return basecase.GenerateFormatScenarios(scenario);
+                    yield return baseCase.GenerateFormatScenarios(scenario);
                 }
             }
         }
@@ -83,8 +66,8 @@ namespace Nethermind.Evm.Test
         {
             get
             {
-                var basecase = new ScenarioCase(
-                    Functions: new FunctionCase[] {
+                ScenarioCase baseCase = new(
+                    Functions: new[] {
                         new FunctionCase(
                             InputCount : 0,
                             OutputCount : 0,
@@ -98,14 +81,14 @@ namespace Nethermind.Evm.Test
                 );
 
 
-                var scenarios = Enum.GetValues<DeploymentScenario>();
-                var contexts = Enum.GetValues<DeploymentContext>();
-                foreach (var context in contexts)
+                DeploymentScenario[] scenarios = Enum.GetValues<DeploymentScenario>();
+                DeploymentContext[] contexts = Enum.GetValues<DeploymentContext>();
+                foreach (DeploymentContext context in contexts)
                 {
                     for (int i = 2; i < 1 << (scenarios.Length + 1); i++)
                     {
                         DeploymentScenario scenario = (DeploymentScenario)i;
-                        yield return basecase.GenerateDeploymentScenarios(scenario, context);
+                        yield return baseCase.GenerateDeploymentScenarios(scenario, context);
                     }
                 }
             }
@@ -115,7 +98,6 @@ namespace Nethermind.Evm.Test
         public void EOF_execution_tests([ValueSource(nameof(Eip3540FmtTestCases))] TestCase testcase)
         {
             TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(testcase.Bytecode);
-
             receipts.StatusCode.Should().Be(testcase.Result.Status, $"{testcase.Result.Msg}");
         }
 

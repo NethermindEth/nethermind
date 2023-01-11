@@ -371,10 +371,12 @@ namespace Nethermind.Core.Extensions
         {
             return ReadEthInt32((ReadOnlySpan<byte>)bytes);
         }
+
         public static short ReadEthInt16(this Span<byte> bytes)
         {
             return ReadEthInt16((ReadOnlySpan<byte>)bytes);
         }
+
         public static short ReadEthInt16(this ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length > 2)
@@ -382,20 +384,19 @@ namespace Nethermind.Core.Extensions
                 bytes = bytes.Slice(bytes.Length - 2, 2);
             }
 
-            if (bytes.Length == 2)
+            return bytes.Length switch
             {
-                return BinaryPrimitives.ReadInt16BigEndian(bytes);
-            }
-
-            Span<byte> fourBytes = stackalloc byte[2];
-            bytes.CopyTo(fourBytes.Slice(2 - bytes.Length));
-            return BinaryPrimitives.ReadInt16BigEndian(fourBytes);
+                2 => BinaryPrimitives.ReadInt16BigEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
         }
 
         public static ushort ReadEthUInt16(this Span<byte> bytes)
         {
             return ReadEthUInt16((ReadOnlySpan<byte>)bytes);
         }
+
         public static ushort ReadEthUInt16(this ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length > 2)
@@ -403,14 +404,12 @@ namespace Nethermind.Core.Extensions
                 bytes = bytes.Slice(bytes.Length - 2, 2);
             }
 
-            if (bytes.Length == 2)
+            return bytes.Length switch
             {
-                return BinaryPrimitives.ReadUInt16BigEndian(bytes);
-            }
-
-            Span<byte> fourBytes = stackalloc byte[2];
-            bytes.CopyTo(fourBytes.Slice(2 - bytes.Length));
-            return BinaryPrimitives.ReadUInt16BigEndian(fourBytes);
+                2 => BinaryPrimitives.ReadUInt16BigEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
         }
         public static int ReadEthInt32(this ReadOnlySpan<byte> bytes)
         {

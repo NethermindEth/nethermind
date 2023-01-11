@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
 using Nethermind.Core;
@@ -49,6 +49,7 @@ namespace Nethermind.Blockchain.Test
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Berlin.Instance);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();

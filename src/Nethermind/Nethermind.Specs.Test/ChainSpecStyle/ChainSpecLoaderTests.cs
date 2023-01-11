@@ -284,6 +284,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.LondonBlockNumber.Should().Be(MainnetSpecProvider.LondonBlockNumber);
             chainSpec.ArrowGlacierBlockNumber.Should().Be(MainnetSpecProvider.ArrowGlacierBlockNumber);
             chainSpec.GrayGlacierBlockNumber.Should().Be(MainnetSpecProvider.GrayGlacierBlockNumber);
+            //should be added one the timestamp for Shanghai is know and included in the chainspec for mainent.
+            //chainSpec.ShanghaiTimestamp.Should().Be(MainnetSpecProvider.ShanghaiBlockTimestamp);
         }
 
         [Test]
@@ -355,25 +357,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.LondonBlockNumber.Should().Be(0L);
             chainSpec.ArrowGlacierBlockNumber.Should().Be(null);
             chainSpec.GrayGlacierBlockNumber.Should().Be(null);
-        }
-
-        [Test]
-        public void Can_load_catalyst()
-        {
-            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/catalyst.json");
-            ChainSpec chainSpec = LoadChainSpec(path);
-
-            chainSpec.HomesteadBlockNumber.Should().Be(0L);
-            chainSpec.DaoForkBlockNumber.Should().Be(null);
-            chainSpec.TangerineWhistleBlockNumber.Should().Be(0L);
-            chainSpec.SpuriousDragonBlockNumber.Should().Be(0L);
-            chainSpec.ByzantiumBlockNumber.Should().Be(0L);
-            chainSpec.ConstantinopleBlockNumber.Should().Be(0L);
-            chainSpec.ConstantinopleFixBlockNumber.Should().Be(0L);
-            chainSpec.IstanbulBlockNumber.Should().Be(0L);
-            chainSpec.MuirGlacierNumber.Should().Be(null);
-            chainSpec.BerlinBlockNumber.Should().Be(0L);
-            chainSpec.SealEngineType.Should().Be("Eth2Merge");
         }
 
         [Test]
