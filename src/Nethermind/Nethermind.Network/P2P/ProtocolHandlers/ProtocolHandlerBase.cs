@@ -59,7 +59,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             try
             {
-                return _serializer.Deserialize<T>(data);
+                int originalReaderIndex = data.ReaderIndex;
+                T result = _serializer.Deserialize<T>(data);
+                if (data.IsReadable())
+                {
+                    throw new IncompleteDeserializationException(
+                        $"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
+                }
+                return result;
             }
             catch (RlpException e)
             {
@@ -137,5 +144,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public abstract event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
 
         public abstract event EventHandler<ProtocolEventArgs> SubprotocolRequested;
+    }
+
+    public class IncompleteDeserializationException : Exception
+    {
+        public IncompleteDeserializationException(string msg) : base(msg)
+        {
+        }
     }
 }

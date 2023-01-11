@@ -70,6 +70,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in receipts sync");
 
+            ResetSyncStatusList();
+        }
+
+        private void ResetSyncStatusList()
+        {
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
@@ -96,6 +101,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (ShouldFinish)
                 {
+                    ResetSyncStatusList();
                     Finish();
                     PostFinishCleanUp();
                 }

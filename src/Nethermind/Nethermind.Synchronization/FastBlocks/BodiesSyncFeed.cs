@@ -60,6 +60,11 @@ namespace Nethermind.Synchronization.FastBlocks
             _barrier = _barrier = _syncConfig.AncientBodiesBarrierCalc;
             if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
 
+            ResetSyncStatusList();
+        }
+
+        private void ResetSyncStatusList()
+        {
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
@@ -79,6 +84,7 @@ namespace Nethermind.Synchronization.FastBlocks
             bool shouldFinish = !shouldDownloadBodies || allBodiesDownloaded;
             if (shouldFinish)
             {
+                ResetSyncStatusList();
                 Finish();
                 PostFinishCleanUp();
 
