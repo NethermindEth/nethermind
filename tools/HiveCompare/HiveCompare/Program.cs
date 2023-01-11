@@ -90,8 +90,8 @@ internal class Program
                 code = 3;
                 return false;
             }
-            testCases1 = hiveTest1.TestCases.Values.DistinctBy(v => v.Name + v.Description).ToDictionary(v => v.Name + v.Description);
-            testCases2 = hiveTest2.TestCases.Values.DistinctBy(v => v.Name + v.Description).ToDictionary(v => v.Name + v.Description);
+            testCases1 = hiveTest1.TestCases.Values.DistinctBy(v => v.Key).ToDictionary(v => v.Key);
+            testCases2 = hiveTest2.TestCases.Values.DistinctBy(v => v.Key).ToDictionary(v => v.Key);
         }
         catch (Exception ex)
         {

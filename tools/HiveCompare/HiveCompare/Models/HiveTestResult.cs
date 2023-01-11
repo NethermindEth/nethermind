@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -18,6 +18,7 @@ namespace HiveCompare.Models
     public class TestCase
     {
 
+        public string Key => Name + Description;
         public string Name { get; set; } = default!;
         public string Description { get; set; } = default!;
         public CaseResult SummaryResult { get; set; } = default!;
