@@ -87,6 +87,18 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
                          $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
     }
 
+    public override void SendNewTransaction(Transaction tx)
+    {
+        if (tx.Type != TxType.Blob)
+        {
+            base.SendNewTransaction(tx);
+        }
+        else
+        {
+            SendMessage(new byte[] {(byte)tx.Type}, new int[] {tx.GetLength(_txDecoder)}, new Keccak[] {tx.Hash});
+        }
+    }
+
     public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
     {
         if (sendFullTx)

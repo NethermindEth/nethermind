@@ -177,9 +177,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
-        public void SendNewTransaction(Transaction tx)
+        public virtual void SendNewTransaction(Transaction tx)
         {
-            SendMessage(new[] { tx });
+            if (tx.Type != TxType.Blob) //protect from sending full blob-type txs
+            {
+                SendMessage(new[] { tx });
+            }
         }
 
         public virtual void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false)
