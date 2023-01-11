@@ -6,8 +6,10 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Numerics;
+using System.Text;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -248,6 +250,24 @@ namespace Nethermind.JsonRpc.Test
             result[0].Responses.Should().BeNull();
             result[1].Response.Should().BeSameAs(_errorResponse);
             result[1].Responses.Should().BeNull();
+        }
+
+        [Test]
+        public async Task Will_return_error_when_batch_request_is_too_large()
+        {
+            StringBuilder request = new();
+            request.Append("[");
+            for (int i = 0; i < 101; i++)
+            {
+                if (i != 0) request.Append(",");
+                request.Append(
+                    "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+            }
+            request.Append("]");
+
+            IList<JsonRpcResult> result = await ProcessAsync(request.ToString());
+            result.Should().HaveCount(1);
+            result[0].Response.Should().BeAssignableTo<JsonRpcErrorResponse>();
         }
 
         [Test]
