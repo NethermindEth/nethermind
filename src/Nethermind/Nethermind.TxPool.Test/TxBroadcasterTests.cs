@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -85,6 +85,59 @@ public class TxBroadcasterTests
         for (int i = 1; i <= expectedCount; i++)
         {
             expectedTxs.Add(transactions[addedTxsCount - i]);
+        }
+
+        expectedTxs.Should().BeEquivalentTo(pickedTxs);
+    }
+
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(25)]
+    [TestCase(50)]
+    [TestCase(99)]
+    [TestCase(100)]
+    [TestCase(101)]
+    [TestCase(1000)]
+    public void should_skip_blob_txs_when_picking_best_persistent_txs_to_broadcast(int threshold)
+    {
+        _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _headInfo.CurrentBaseFee.Returns(0.GWei());
+
+        int addedTxsCount = TestItem.PrivateKeys.Length;
+        Transaction[] transactions = new Transaction[addedTxsCount];
+
+        for (int i = 0; i < addedTxsCount; i++)
+        {
+            transactions[i] = Build.A.Transaction
+                .WithGasPrice(i.GWei())
+                .WithType(i%10 == 0 ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
+                .TestObject;
+
+            _broadcaster.Broadcast(transactions[i], true);
+        }
+
+        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+
+        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
+
+        int addedNotBlobTxsCount = addedTxsCount - (addedTxsCount / 10 + 1);
+        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedNotBlobTxsCount);
+        pickedTxs.Count.Should().Be(expectedCount);
+
+        List<Transaction> expectedTxs = new();
+
+        int j = 0;
+        for (int i = 1; i <= expectedCount; i++)
+        {
+            Transaction tx = transactions[addedTxsCount - i - j];
+
+            while (tx.Type == TxType.Blob)
+            {
+                tx = transactions[addedTxsCount - i - ++j];
+            }
+            expectedTxs.Add(tx);
         }
 
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
