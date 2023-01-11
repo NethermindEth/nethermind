@@ -122,7 +122,7 @@ public class TxBroadcasterTests
         {
             transactions[i] = Build.A.Transaction
                 .WithGasPrice(i.GWei())
-                .WithType(i%10 == 0 ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
+                .WithType(i % 10 == 0 ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
