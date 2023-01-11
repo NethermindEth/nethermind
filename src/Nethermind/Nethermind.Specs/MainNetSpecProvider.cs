@@ -73,8 +73,8 @@ namespace Nethermind.Specs
             (ForkActivation)HomesteadBlockNumber, (ForkActivation)DaoBlockNumberConst, (ForkActivation)TangerineWhistleBlockNumber, (ForkActivation)SpuriousDragonBlockNumber,
             (ForkActivation)ByzantiumBlockNumber, (ForkActivation)ConstantinopleFixBlockNumber, (ForkActivation)IstanbulBlockNumber, (ForkActivation)MuirGlacierBlockNumber,
             (ForkActivation)BerlinBlockNumber, (ForkActivation)LondonBlockNumber, (ForkActivation)ArrowGlacierBlockNumber, (ForkActivation)GrayGlacierBlockNumber,
-            //(GrayGlacierBlockNumber, ShanghaiBlockTimestamp), (GrayGlacierBlockNumber, CancunBlockTimestamp),
-            //(GrayGlacierBlockNumber, PragueBlockTimestamp), (GrayGlacierBlockNumber, OsakaBlockTimestamp)
+            ShanghaiActivation //, CancunActivation,
+            //PragueActivation, OsakaActivation
         };
 
         public static readonly MainnetSpecProvider Instance = new();
