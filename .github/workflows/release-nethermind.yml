@@ -25,11 +25,11 @@ jobs:
       BUILD_TIMESTAMP: ${{ steps.build-runner.outputs.BUILD_TIMESTAMP }}
       COMMIT_HASH: ${{ steps.build-runner.outputs.COMMIT_HASH }}
       PACKAGE_PREFIX: ${{ steps.archive.outputs.PACKAGE_PREFIX }}
+      PRERELEASE: ${{ steps.build-runner.outputs.PRERELEASE }}
     steps:
     - name: Check out Nethermind repository
       uses: actions/checkout@v3
       with:
-        submodules: recursive
         path: nethermind
         ref: ${{ github.event.inputs.tag }}
     - name: Check out Nethermind Launcher repository
@@ -60,14 +60,15 @@ jobs:
         echo "BUILD_TIMESTAMP=$build_timestamp" >> $GITHUB_OUTPUT
         echo "COMMIT_HASH=$commit_hash" >> $GITHUB_OUTPUT
         echo "COMMIT_HASH_SHORT=$(echo $commit_hash | awk '{print substr($0,0,8);}')" >> $GITHUB_OUTPUT
+        echo "PRERELEASE=${{ contains(github.event.inputs.tag, '-') }}" >> $GITHUB_OUTPUT
         $SCRIPTS_PATH/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
     - name: Build Nethermind.Cli
       run: $SCRIPTS_PATH/build-cli.sh ${{ github.event.inputs.tag }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP }}
     - name: Build Nethermind.Launcher
       run: $SCRIPTS_PATH/build-launcher.sh
     - name: Build Nethermind.Launcher for Linux arm64
+      working-directory: nethermind
       run: |
-        cd nethermind
         docker buildx build --platform=linux/arm64 -t tmp-launcher -f Dockerfile.launcher . --load
         docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
         mv Nethermind.Launcher $GITHUB_WORKSPACE/$PUB_DIR/linux-arm64/Nethermind.Launcher
@@ -85,11 +86,23 @@ jobs:
           ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/
           ${{ env.SCRIPTS_PATH }}/
         key: packages-${{ steps.build-runner.outputs.COMMIT_HASH }}
-
-  update-homebrew:
-    name: Update Homebrew to the latest version
+        
+  approval:
+    name: Approve
     runs-on: ubuntu-latest
     needs: build
+    environment:
+      name: Releases
+      url: https://github.com/NethermindEth/nethermind/releases/tag/${{ github.event.inputs.tag }}
+    steps:
+    - name: Wait for approval
+      run: echo "Waiting for approval..."
+
+  update-homebrew:
+    name: Update Homebrew formula
+    runs-on: ubuntu-latest
+    needs: [approval, build]
+    if: needs.build.outputs.PRERELEASE == 'false'
     steps:
     - name: Restore packages from cache
       uses: actions/cache@v3
@@ -103,7 +116,7 @@ jobs:
       with:
         repository: NethermindEth/homebrew-nethermind
         path: homebrew-nethermind
-    - name: Update Homebrew file
+    - name: Update formula file
       env:
         PACKAGE_PREFIX: ${{ needs.build.outputs.PACKAGE_PREFIX }}
         VERSION: ${{ github.event.inputs.tag }}
@@ -121,7 +134,7 @@ jobs:
       uses: peter-evans/create-pull-request@v4
       with:
         token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-        commit-message: Update Homebrew to latest release
+        commit-message: Update Homebrew formula
         title: '[Release] Update Homebrew'
         reviewers: falcoxyz, AntiD2ta, matilote
         draft: false
@@ -129,20 +142,10 @@ jobs:
         add-paths: |
           nethermind.rb
 
-  trigger-publish:
-    name: Trigger publish event to different sources
-    runs-on: ubuntu-latest
-    needs: update-homebrew
-    environment:
-      name: Releases
-      url: https://github.com/NethermindEth/nethermind/releases/tag/${{ github.event.inputs.tag }}
-    steps:
-    - run: echo "Just a middle-man job"
-
   publish-github:
-    name: Publish packages to GitHub Releases
+    name: Publish to GitHub
     runs-on: ubuntu-latest
-    needs: trigger-publish
+    needs: [approval, build]
     steps:
     - name: Restore packages from cache
       uses: actions/cache@v3
@@ -157,12 +160,14 @@ jobs:
         GIT_TAG: ${{ github.event.inputs.tag }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         PACKAGE_PREFIX: ${{ needs.build.outputs.PACKAGE_PREFIX }}
+        PRERELEASE: ${{ needs.build.outputs.PRERELEASE }}
       run: $SCRIPTS_PATH/publish-github.sh
 
   publish-downloads:
-    name: Publish packages to Downloads page
+    name: Publish to Downloads page
     runs-on: ubuntu-latest
-    needs: trigger-publish
+    needs: [approval, build]
+    if: needs.build.outputs.PRERELEASE == 'false'
     steps:
     - name: Restore packages from cache
       uses: actions/cache@v3
@@ -184,9 +189,9 @@ jobs:
       run: $SCRIPTS_PATH/publish-downloads.sh
 
   publish-dockers:
-    name: Publish Docker images to Docker Hub
+    name: Publish to Docker Hub
     runs-on: ubuntu-latest
-    needs: trigger-publish
+    needs: [approval, build]
     env:
       DOCKER_IMAGE: nethermind/nethermind
     steps:
@@ -194,7 +199,6 @@ jobs:
       uses: actions/checkout@v3
       with:
         ref: ${{ github.event.inputs.tag }}
-        fetch-depth: 0
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
     - name: Set up Docker Buildx
@@ -204,24 +208,25 @@ jobs:
       if: success()
       run: |
         echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-    - name: Build and push image to Docker registry (major) / trigger DAppNode build
-      if: ${{ !contains(github.event.inputs.tag, '-') }}
+    - name: Build and push image to Docker Hub / Trigger DAppNode build
+      if: needs.build.outputs.PRERELEASE == 'false'
       run: |
         docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:latest" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
         curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches
-    - name: Build and push image to Docker registry  (patch)
-      if: ${{ contains(github.event.inputs.tag, '-') }}
+    - name: Build and push image to Docker Hub
+      if: needs.build.outputs.PRERELEASE == 'true'
       run: |
-        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
+        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:unstable" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
     - name: Clear Docker cache
       if: always()
       run: |
         rm -f $HOME/.docker/config.json
 
   publish-ppa:
-    name: Publish Nethermind to PPA repository
+    name: Publish to PPA
     runs-on: ubuntu-latest
-    needs: trigger-publish
+    needs: [approval, build]
+    if: needs.build.outputs.PRERELEASE == 'false'
     env:
       PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
       VERSION: ${{ github.event.inputs.tag }}
@@ -244,6 +249,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         path: nethermind
+        ref: ${{ github.event.inputs.tag }}
     - name: Publish to PPA
       run: | 
         chmod +x $SCRIPTS_PATH/publish-ppa.sh

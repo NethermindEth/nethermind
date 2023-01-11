@@ -149,14 +149,14 @@ namespace Nethermind.Core
             return false;
         }
 
-        private bool Get(int index)
+        public bool Get(int index)
         {
             int bytePosition = index / 8;
             int shift = index % 8;
             return Bytes[bytePosition].GetBit(shift);
         }
 
-        internal void Set(int index)
+        public void Set(int index)
         {
             int bytePosition = index / 8;
             int shift = index % 8;

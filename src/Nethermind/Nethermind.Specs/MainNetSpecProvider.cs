@@ -78,8 +78,6 @@ namespace Nethermind.Specs
             //(GrayGlacierBlockNumber, PragueBlockTimestamp), (GrayGlacierBlockNumber, OsakaBlockTimestamp)
         };
 
-        public MainnetSpecProvider() { }
-
         public static readonly MainnetSpecProvider Instance = new();
     }
 }

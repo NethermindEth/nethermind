@@ -193,7 +193,6 @@ namespace Nethermind.AccountAbstraction.Test
                     Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
-                    new ValidationWithdrawalProcessor(State, LogManager),
                     LogManager);
 
                 var parser = new AbiDefinitionParser();

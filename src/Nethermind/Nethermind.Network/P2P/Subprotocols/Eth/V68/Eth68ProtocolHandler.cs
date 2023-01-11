@@ -36,10 +36,10 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         ITxPool txPool,
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
-        ISpecProvider specProvider,
+        ForkInfo forkInfo,
         ILogManager logManager)
         : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy,
-            specProvider, logManager)
+            forkInfo, logManager)
     {
         _pooledTxsRequestor = pooledTxsRequestor;
     }

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
@@ -81,7 +81,6 @@ namespace Nethermind.Consensus.Ethash
                 producerEnv.StorageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                new BlockProductionWithdrawalProcessor(new ValidationWithdrawalProcessor(getFromApi!.StateProvider!, getFromApi.LogManager)),
                 getFromApi.LogManager);
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(

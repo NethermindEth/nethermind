@@ -19,12 +19,16 @@ namespace Nethermind.GitBook
                     return null;
                 }
 
-                if (Directory.GetDirectories(currentDir).Contains(Path.Combine(currentDir, "gitbook")))
+                var dir = Directory
+                    .EnumerateDirectories(currentDir, "docs", SearchOption.TopDirectoryOnly)
+                    .SingleOrDefault();
+
+                if (dir != null)
                 {
-                    return Path.Combine(currentDir, "gitbook/docs");
+                    return dir;
                 }
 
-                currentDir = new DirectoryInfo(currentDir).Parent?.FullName;
+                currentDir = Directory.GetParent(currentDir)?.FullName;
             } while (true);
         }
 

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
@@ -110,8 +110,8 @@ namespace Nethermind.Consensus.Clique
                 producerEnv.StorageProvider, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                new BlockProductionWithdrawalProcessor(new ValidationWithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)),
-                getFromApi.LogManager);
+                getFromApi.LogManager,
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)));
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
                 readOnlyBlockTree,

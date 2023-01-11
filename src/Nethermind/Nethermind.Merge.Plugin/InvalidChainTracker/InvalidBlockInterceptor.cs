@@ -101,7 +101,7 @@ public class InvalidBlockInterceptor : IBlockValidator
 
     public bool ValidateWithdrawals(Block block, out string? error)
     {
-        var result = _baseValidator.ValidateWithdrawals(block, out error);
+        bool result = _baseValidator.ValidateWithdrawals(block, out error);
 
         if (!result)
         {
@@ -131,6 +131,9 @@ public class InvalidBlockInterceptor : IBlockValidator
         if (!BlockValidator.ValidateTxRootMatchesTxs(block, out Keccak _))
             return true;
 
-        return !BlockValidator.ValidateUnclesHashMatches(block, out Keccak _);
+        if (!BlockValidator.ValidateUnclesHashMatches(block, out Keccak _))
+            return true;
+
+        return !BlockValidator.ValidateWithdrawalsHashMatches(block, out Keccak _);
     }
 }

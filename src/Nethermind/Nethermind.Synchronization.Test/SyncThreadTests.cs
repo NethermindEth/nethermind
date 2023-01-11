@@ -305,7 +305,6 @@ namespace Nethermind.Synchronization.Test
                 storageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                new ValidationWithdrawalProcessor(stateProvider, logManager),
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
@@ -330,7 +329,6 @@ namespace Nethermind.Synchronization.Test
                 devStorage,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                new ValidationWithdrawalProcessor(stateProvider, logManager),
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,

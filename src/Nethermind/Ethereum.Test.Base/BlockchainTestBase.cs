@@ -149,7 +149,6 @@ namespace Ethereum.Test.Base
                 storageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                new ValidationWithdrawalProcessor(stateProvider, _logManager),
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(

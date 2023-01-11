@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -161,7 +161,7 @@ namespace Nethermind.AuRa.Test
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
-                new ValidationWithdrawalProcessor(stateProvider, LimboLogs.Instance),
+                new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 txFilter,
                 contractRewriter: contractRewriter);
 

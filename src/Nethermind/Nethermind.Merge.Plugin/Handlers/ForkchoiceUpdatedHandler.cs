@@ -24,7 +24,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <summary>
 /// Propagates the change in the fork choice to the execution client. May initiate creating new payload.
-/// <seealso cref="http://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_forkchoiceupdatedv1"/>.
+/// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_forkchoiceupdatedv2">engine_forkchoiceupdatedv2</see>.
 /// </summary>
 public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 {

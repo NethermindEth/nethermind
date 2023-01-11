@@ -28,6 +28,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// <summary>
 /// Defines a class that handles the execution payload according to the
 /// <see href="https://eips.ethereum.org/EIPS/eip-3675">EIP-3675</see>.
+/// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">engine_newpayloadv2</see>.
 /// </summary>
 public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>
 {

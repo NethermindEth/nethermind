@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using FluentAssertions;
@@ -79,7 +79,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 storageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                new ValidationWithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(
                 blockTree,

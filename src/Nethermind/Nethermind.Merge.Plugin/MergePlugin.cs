@@ -38,7 +38,7 @@ namespace Nethermind.Merge.Plugin
         private ILogger _logger = null!;
         protected IMergeConfig _mergeConfig = null!;
         private ISyncConfig _syncConfig = null!;
-        private IBlocksConfig _blocksConfig = null!;
+        protected IBlocksConfig _blocksConfig = null!;
         protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;

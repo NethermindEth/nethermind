@@ -12,6 +12,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public override int PacketType { get; } = Eth63MessageCode.Receipts;
         public override string Protocol { get; } = "eth";
 
+        private static ReceiptsMessage? _empty;
+        public static ReceiptsMessage Empty => _empty ??= new ReceiptsMessage(null);
+
         public ReceiptsMessage(TxReceipt[][] txReceipts)
         {
             TxReceipts = txReceipts ?? new TxReceipt[0][];
