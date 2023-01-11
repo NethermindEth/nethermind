@@ -156,12 +156,9 @@ public class BlockValidator : IBlockValidator
 
     private bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error)
     {
-        if (spec.WithdrawalsEnabled && block.Withdrawals is null)
+        static bool Fail(ILogger logger, string error)
         {
-            error = $"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.";
-
-            if (_logger.IsWarn) _logger.Warn(error);
-
+            if (logger.IsWarn) logger.Warn(error);
             return false;
         }
 
