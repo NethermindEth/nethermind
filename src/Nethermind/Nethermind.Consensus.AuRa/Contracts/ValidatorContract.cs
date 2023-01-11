@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public sealed partial class ValidatorContract : CallableContract, IValidatorContract
     {
-        private readonly IStateProvider _stateProvider;
+        private readonly IWorldState _stateProvider;
         private readonly ISigner _signer;
 
         private IConstantContract Constant { get; }
@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IStateProvider stateProvider,
+            IWorldState stateProvider,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             ISigner signer)
             : base(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))

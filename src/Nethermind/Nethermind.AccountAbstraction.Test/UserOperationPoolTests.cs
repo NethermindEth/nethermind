@@ -44,7 +44,7 @@ namespace Nethermind.AccountAbstraction.Test
         private IBlockTree _blockTree = Substitute.For<IBlockTree>();
         private IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
         private ILogFinder _logFinder = Substitute.For<ILogFinder>();
-        private IStateProvider _stateProvider = Substitute.For<IStateProvider>();
+        private IWorldState _stateProvider = Substitute.For<IWorldState>();
         private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
         private readonly Keccak _userOperationEventTopic = new("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");

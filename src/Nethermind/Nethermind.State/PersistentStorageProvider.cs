@@ -19,7 +19,7 @@ namespace Nethermind.State
     /// </summary>
     public class PersistentStorageProvider : PartialStorageProviderBase
     {
-        private readonly ITrieStore _trieStore;
+        private readonly StateStore _trieStore;
         private readonly IStateProvider _stateProvider;
         private readonly ILogManager? _logManager;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
@@ -29,7 +29,7 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
-        public PersistentStorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
+        public PersistentStorageProvider(StateStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
             : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
@@ -219,8 +219,7 @@ namespace Nethermind.State
         {
             if (!_storages.ContainsKey(address))
             {
-                StorageTree storageTree = new(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
-                return _storages[address] = storageTree;
+                _storages[address] = _trieStore.GetOrCreateStorage(address);
             }
 
             return _storages[address];
@@ -278,7 +277,7 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
-            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+            _storages[address] = _trieStore.ClearStorage(address);
         }
     }
 }

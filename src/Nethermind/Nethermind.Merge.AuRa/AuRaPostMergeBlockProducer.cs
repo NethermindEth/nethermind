@@ -22,7 +22,7 @@ namespace Nethermind.Merge.AuRa
             IBlockchainProcessor processor,
             IBlockTree blockTree,
             IBlockProductionTrigger blockProductionTrigger,
-            IStateProvider stateProvider,
+            IWorldState stateProvider,
             IGasLimitCalculator gasLimitCalculator,
             ISealEngine sealEngine,
             ITimestamper timestamper,

@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.StateProvider));
+            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
             if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -96,7 +96,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
-                new WithdrawalProcessor(_api.StateProvider, _api.LogManager),
+                new WithdrawalProcessor(_api.WorldState, _api.LogManager),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter

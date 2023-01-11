@@ -42,7 +42,7 @@ namespace Nethermind.TxPool.Test
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
         private TxPool _txPool;
-        private IStateProvider _stateProvider;
+        private IWorldState _stateProvider;
         private IBlockTree _blockTree;
 
         private int _txGasLimit = 1_000_000;
@@ -55,7 +55,7 @@ namespace Nethermind.TxPool.Test
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
             var trieStore = new TrieStore(new MemDb(), _logManager);
             var codeDb = new MemDb();
-            _stateProvider = new StateProvider(trieStore, codeDb, _logManager);
+            _stateProvider = new WorldState(trieStore, codeDb, _logManager);
             _blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(0).TestObject;
             _blockTree.Head.Returns(block);

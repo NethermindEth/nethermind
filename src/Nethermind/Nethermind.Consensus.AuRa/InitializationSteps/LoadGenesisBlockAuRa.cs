@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(a => a.Constructor is not null);
             if (hasConstructorAllocation)
             {
-                if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.StateProvider));
+                if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
 
                 _api.WorldState.CreateAccount(Address.Zero, UInt256.Zero);
                 _api.WorldState.Commit(Homestead.Instance);

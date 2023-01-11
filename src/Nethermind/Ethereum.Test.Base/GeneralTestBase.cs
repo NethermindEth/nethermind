@@ -141,7 +141,7 @@ namespace Ethereum.Test.Base
             stateProvider.Reset();
         }
 
-        private List<string> RunAssertions(GeneralStateTest test, IStateProvider stateProvider)
+        private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
         {
             List<string> differences = new();
             if (test.PostHash != stateProvider.StateRoot)

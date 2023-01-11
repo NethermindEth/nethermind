@@ -32,7 +32,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.ReceiptStorage!,
                 _api.LogManager,
                 _api.BlockTree!,
-                new WithdrawalProcessor(_api.StateProvider!, _api.LogManager),
+                new WithdrawalProcessor(_api.WorldState!, _api.LogManager),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter

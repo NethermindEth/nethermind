@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization.Test
             public IBlockchainProcessor? BlockchainProcessor { get; set; }
             public ISynchronizer? Synchronizer { get; set; }
             public IBlockTree Tree { get; set; } = null!;
-            public IStateProvider StateProvider { get; set; } = null!;
+            public IWorldState StateProvider { get; set; } = null!;
 
             public DevBlockProducer? BlockProducer { get; set; }
             public ConsoleAsyncLogger? Logger { get; set; }

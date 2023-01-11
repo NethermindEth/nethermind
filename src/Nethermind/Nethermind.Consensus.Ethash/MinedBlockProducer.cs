@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Ethash
             ISealer sealer,
             IBlockTree blockTree,
             IBlockProductionTrigger blockProductionTrigger,
-            IStateProvider stateProvider,
+            IWorldState stateProvider,
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ISpecProvider specProvider,

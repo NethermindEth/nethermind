@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Producers
         public event EventHandler<BlockEventArgs>? BlockProduced;
 
         private ISealer Sealer { get; }
-        private IStateProvider StateProvider { get; }
+        private IWorldState StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ISpecProvider _specProvider;
@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Producers
             ISealer? sealer,
             IBlockTree? blockTree,
             IBlockProductionTrigger? trigger,
-            IStateProvider? stateProvider,
+            IWorldState? stateProvider,
             IGasLimitCalculator? gasLimitCalculator,
             ITimestamper? timestamper,
             ISpecProvider? specProvider,

@@ -46,7 +46,6 @@ namespace Nethermind.Blockchain.Test
             TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
             StateProvider stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             WorldState worldState = new WorldState(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             ChainLevelInfoRepository chainLevelInfoRepository = new(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;

@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Clique;
 public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 {
     private readonly IBlockTree _blockTree;
-    private readonly IStateProvider _stateProvider;
+    private readonly IWorldState _stateProvider;
     private readonly ITimestamper _timestamper;
     private readonly ILogger _logger;
     private readonly ICryptoRandom _cryptoRandom;
@@ -52,7 +52,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     public CliqueBlockProducer(
         ITxSource txSource,
         IBlockchainProcessor blockchainProcessor,
-        IStateProvider stateProvider,
+        IWorldState stateProvider,
         IBlockTree blockTree,
         ITimestamper timestamper,
         ICryptoRandom cryptoRandom,
