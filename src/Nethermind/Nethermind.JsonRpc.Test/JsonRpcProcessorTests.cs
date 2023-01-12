@@ -138,14 +138,14 @@ namespace Nethermind.JsonRpc.Test
         {
             IList<JsonRpcResult> result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]}]");
             result.Should().HaveCount(1);
-            result[0].Responses.Should().NotBeNull();
+            result[0].BatchedResponses.Should().NotBeNull();
             if (_returnErrors)
             {
-                result[0].Responses.Should().AllBeOfType<JsonRpcErrorResponse>();
+                result[0].BatchedResponses.Should().AllBeOfType<JsonRpcErrorResponse>();
             }
             else
             {
-                result[0].Responses.Should().AllBeOfType<JsonRpcSuccessResponse>();
+                result[0].BatchedResponses.Should().AllBeOfType<JsonRpcSuccessResponse>();
             }
         }
 
@@ -154,14 +154,14 @@ namespace Nethermind.JsonRpc.Test
         {
             IList<JsonRpcResult> result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}]]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[[{\"a\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"b\":\"0x668c24\"}, 1]]}]");
             result.Should().HaveCount(1);
-            result[0].Responses.Should().NotBeNull();
+            result[0].BatchedResponses.Should().NotBeNull();
             if (_returnErrors)
             {
-                result[0].Responses.Should().AllBeOfType<JsonRpcErrorResponse>();
+                result[0].BatchedResponses.Should().AllBeOfType<JsonRpcErrorResponse>();
             }
             else
             {
-                result[0].Responses.Should().AllBeOfType<JsonRpcSuccessResponse>();
+                result[0].BatchedResponses.Should().AllBeOfType<JsonRpcSuccessResponse>();
             }
         }
 
@@ -188,7 +188,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IList<JsonRpcResult> result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]");
             result.Should().HaveCount(1);
-            result[0].Responses.Should().NotBeNull();
+            result[0].BatchedResponses.Should().NotBeNull();
             result[0].Response.Should().BeNull();
         }
 
@@ -197,7 +197,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IList<JsonRpcResult> result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\"}]");
             result.Should().HaveCount(1);
-            result[0].Responses.Should().NotBeNull();
+            result[0].BatchedResponses.Should().NotBeNull();
             result[0].Response.Should().BeNull();
         }
 
@@ -207,10 +207,10 @@ namespace Nethermind.JsonRpc.Test
             IList<JsonRpcResult> result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
             result.Should().HaveCount(2);
             result[0].Response.Should().NotBeNull();
-            result[0].Responses.Should().BeNull();
+            result[0].BatchedResponses.Should().BeNull();
             result[0].Response.Should().NotBeSameAs(_errorResponse);
             result[1].Response.Should().NotBeNull();
-            result[1].Responses.Should().BeNull();
+            result[1].BatchedResponses.Should().BeNull();
             result[1].Response.Should().NotBeSameAs(_errorResponse);
         }
 
@@ -221,11 +221,11 @@ namespace Nethermind.JsonRpc.Test
             result.Should().HaveCount(2);
             result[0].Response.Should().NotBeNull();
             result[0].Response.Should().NotBeSameAs(_errorResponse);
-            result[0].Responses.Should().BeNull();
+            result[0].BatchedResponses.Should().BeNull();
             result[1].Response.Should().BeNull();
-            result[1].Responses.Should().NotBeNull();
-            result[1].Responses.Should().HaveCount(2);
-            Assert.IsTrue(result[1].Responses.All(r => r != _errorResponse));
+            result[1].BatchedResponses.Should().NotBeNull();
+            result[1].BatchedResponses.Should().HaveCount(2);
+            Assert.IsTrue(result[1].BatchedResponses.All(r => r.Response != _errorResponse));
         }
 
         [Test]
@@ -234,10 +234,10 @@ namespace Nethermind.JsonRpc.Test
             IList<JsonRpcResult> result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]");
             result.Should().HaveCount(2);
             result[0].Response.Should().NotBeNull();
-            result[0].Responses.Should().BeNull();
+            result[0].BatchedResponses.Should().BeNull();
             result[0].Response.Should().NotBeSameAs(_errorResponse);
             result[1].Response.Should().NotBeNull();
-            result[1].Responses.Should().BeNull();
+            result[1].BatchedResponses.Should().BeNull();
             result[1].Response.Should().BeSameAs(_errorResponse);
         }
 
@@ -247,9 +247,9 @@ namespace Nethermind.JsonRpc.Test
             IList<JsonRpcResult> result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}{aaa}");
             result.Should().HaveCount(2);
             result[0].Response.Should().NotBeNull();
-            result[0].Responses.Should().BeNull();
+            result[0].BatchedResponses.Should().BeNull();
             result[1].Response.Should().BeSameAs(_errorResponse);
-            result[1].Responses.Should().BeNull();
+            result[1].BatchedResponses.Should().BeNull();
         }
 
         [Test]
@@ -284,8 +284,8 @@ namespace Nethermind.JsonRpc.Test
             IList<JsonRpcResult> result = await ProcessAsync("[]");
             result.Should().HaveCount(1);
             result[0].Response.Should().BeNull();
-            result[0].Responses.Should().NotBeNull();
-            Assert.IsTrue(result[0].Responses.All(r => r != _errorResponse));
+            result[0].BatchedResponses.Should().NotBeNull();
+            Assert.IsTrue(result[0].BatchedResponses.All(r => r.Response != _errorResponse));
         }
 
         [Test]
@@ -294,7 +294,7 @@ namespace Nethermind.JsonRpc.Test
             IList<JsonRpcResult> result = await ProcessAsync("{}");
             result.Should().HaveCount(1);
             result[0].Response.Should().NotBeNull();
-            result[0].Responses.Should().BeNull();
+            result[0].BatchedResponses.Should().BeNull();
             result[0].Response.Should().NotBeSameAs(_errorResponse);
         }
 
@@ -304,9 +304,9 @@ namespace Nethermind.JsonRpc.Test
             IList<JsonRpcResult> result = await ProcessAsync("[{},{},{}]");
             result.Should().HaveCount(1);
             result[0].Response.Should().BeNull();
-            result[0].Responses.Should().NotBeNull();
-            result[0].Responses.Should().HaveCount(3);
-            Assert.IsTrue(result[0].Responses.All(r => r != _errorResponse));
+            result[0].BatchedResponses.Should().NotBeNull();
+            result[0].BatchedResponses.Should().HaveCount(3);
+            Assert.IsTrue(result[0].BatchedResponses.All(r => r.Response != _errorResponse));
         }
 
         [Test]
@@ -315,7 +315,7 @@ namespace Nethermind.JsonRpc.Test
             IList<JsonRpcResult> result = await ProcessAsync("\"aaa\"");
             result.Should().HaveCount(1);
             result[0].Response.Should().NotBeNull();
-            result[0].Responses.Should().BeNull();
+            result[0].BatchedResponses.Should().BeNull();
             result[0].Response.Should().BeSameAs(_errorResponse);
         }
 
@@ -325,7 +325,7 @@ namespace Nethermind.JsonRpc.Test
             IList<JsonRpcResult> result = await ProcessAsync("null");
             result.Should().HaveCount(1);
             result[0].Response.Should().NotBeNull();
-            result[0].Responses.Should().BeNull();
+            result[0].BatchedResponses.Should().BeNull();
             result[0].Response.Should().BeSameAs(_errorResponse);
         }
 

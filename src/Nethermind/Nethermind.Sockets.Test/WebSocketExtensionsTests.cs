@@ -120,7 +120,7 @@ namespace Nethermind.Sockets.Test
                 return new List<JsonRpcResult>()
                 {
                     new(),
-                    JsonRpcResult.Collection(new List<JsonRpcResponse>(){new(), new(), new()}, new List<RpcReport>{new(), new(), new()})
+                    JsonRpcResult.Collection(new List<JsonRpcResult>(){new(), new(), new()})
                 }.ToAsyncEnumerable();
             });
 
@@ -141,7 +141,7 @@ namespace Nethermind.Sockets.Test
             webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs((x) =>
             {
                 var par = x.Arg<JsonRpcResult>();
-                return Task.FromResult(par.IsCollection ? par.Responses.Count * 100 : 100);
+                return Task.FromResult(par.IsCollection ? par.BatchedResponses.Count * 100 : 100);
             });
 
             await webSocketsClient.ReceiveAsync();
@@ -150,7 +150,6 @@ namespace Nethermind.Sockets.Test
             Assert.AreEqual(400, Metrics.JsonRpcBytesSentWebSockets);
             localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 100);
             localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 300);
-            localStats.Received(1).ReportCalls(Arg.Is<List<RpcReport>>(l => l.Count == 3));
         }
 
         [Test]
