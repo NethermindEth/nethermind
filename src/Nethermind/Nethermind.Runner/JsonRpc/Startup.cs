@@ -176,7 +176,7 @@ namespace Nethermind.Runner.JsonRpc
                                 {
                                     resultStream.WriteByte(_jsonOpeningBracket);
                                     bool first = true;
-                                    await foreach (JsonRpcResult.Entry entry in result.BatchedResponses!)
+                                    await foreach (JsonRpcResult.Entry entry in result.BatchedResponses)
                                     {
                                         using (entry)
                                         {
@@ -220,14 +220,9 @@ namespace Nethermind.Runner.JsonRpc
                             }
 
                             long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                            if (result.IsCollection)
-                            {
-                                jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, responseSize);
-                            }
-                            else
-                            {
-                                jsonRpcLocalStats.ReportCall(result.Response.Value.Report, handlingTimeMicroseconds, responseSize);
-                            }
+                            jsonRpcLocalStats.ReportCall(result.IsCollection
+                                ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
+                                : result.Response.Value.Report, handlingTimeMicroseconds, responseSize);
 
                             Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, responseSize);
 

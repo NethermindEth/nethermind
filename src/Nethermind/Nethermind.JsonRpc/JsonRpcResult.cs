@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc
         public static JsonRpcResult Collection(IAsyncEnumerable<Entry> responses)
             => new(responses);
 
-        public struct Entry : IDisposable
+        public readonly struct Entry : IDisposable
         {
             public JsonRpcResponse Response { get; }
             public RpcReport Report { get; }
