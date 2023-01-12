@@ -183,24 +183,8 @@ namespace Nethermind.JsonRpc
                             continue;
                         }
 
-                        var responses = new List<JsonRpcResult>(rpcRequest.Collection.Count);
-                        int requestIndex = 0;
-                        for (var index = 0; index < rpcRequest.Collection.Count; index++)
-                        {
-                            JsonRpcRequest jsonRpcRequest = rpcRequest.Collection[index];
-
-                            (JsonRpcResponse response, RpcReport report) = await HandleSingleRequest(jsonRpcRequest, context);
-
-                            if (_logger.IsDebug) _logger.Debug($"  {++requestIndex}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest} handled after {report.HandlingTimeMicroseconds}");
-
-                            TraceResult(response);
-
-                            responses.Add(JsonRpcResult.Single(response, report));
-                        }
-
                         stopwatch.Stop();
-                        if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Collection.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-                        yield return RecordResponse(JsonRpcResult.Collection(responses));
+                        yield return RecordResponse(JsonRpcResult.Collection(IterateRequest(rpcRequest.Collection, context)));
                     }
 
                     if (rpcRequest.Model is null && rpcRequest.Collection is null)
@@ -214,6 +198,27 @@ namespace Nethermind.JsonRpc
                     }
                 }
             } while (moveNext);
+        }
+
+        private async IAsyncEnumerable<JsonRpcResult> IterateRequest(List<JsonRpcRequest> requests, JsonRpcContext context)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            int requestIndex = 0;
+            for (var index = 0; index < requests.Count; index++)
+            {
+                JsonRpcRequest jsonRpcRequest = requests[index];
+
+                (JsonRpcResponse response, RpcReport report) = await HandleSingleRequest(jsonRpcRequest, context);
+
+                if (_logger.IsDebug) _logger.Debug($"  {++requestIndex}/{requests.Count} JSON RPC request - {jsonRpcRequest} handled after {report.HandlingTimeMicroseconds}");
+
+                TraceResult(response);
+
+                yield return JsonRpcResult.Single(response, report);
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"  {requests.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private async Task<(JsonRpcResponse, RpcReport)> HandleSingleRequest(JsonRpcRequest request,JsonRpcContext context)

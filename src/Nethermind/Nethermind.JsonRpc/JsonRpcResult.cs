@@ -10,12 +10,12 @@ namespace Nethermind.JsonRpc
     {
         public bool IsCollection { get; }
 
-        public IReadOnlyList<JsonRpcResult>? BatchedResponses { get; }
+        public IAsyncEnumerable<JsonRpcResult>? BatchedResponses { get; }
 
         public JsonRpcResponse Response { get; }
         public RpcReport Report { get; }
 
-        private JsonRpcResult(IReadOnlyList<JsonRpcResult> batchedResponses)
+        private JsonRpcResult(IAsyncEnumerable<JsonRpcResult> batchedResponses)
         {
             IsCollection = true;
             BatchedResponses = batchedResponses;
@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc
         public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
             => new(response, report);
 
-        public static JsonRpcResult Collection(IReadOnlyList<JsonRpcResult> responses)
+        public static JsonRpcResult Collection(IAsyncEnumerable<JsonRpcResult> responses)
             => new(responses);
 
         public void Dispose()

@@ -29,6 +29,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
+using Newtonsoft.Json;
 
 namespace Nethermind.Runner.JsonRpc
 {
@@ -163,21 +164,48 @@ namespace Nethermind.Runner.JsonRpc
                             {
                                 Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
 
-                                long responseSize;
+                                long responseSize = 0;
                                 try
                                 {
                                     ctx.Response.ContentType = "application/json";
                                     ctx.Response.StatusCode = GetStatusCode(result);
 
-                                    responseSize = result.IsCollection
-                                        ? jsonSerializer.Serialize(resultStream, result.Responses)
-                                        : jsonSerializer.Serialize(resultStream, result.Response);
-
                                     if (jsonRpcConfig.BufferResponses)
                                     {
-                                        ctx.Response.ContentLength = responseSize = resultStream.Length;
+                                        if (result.IsCollection)
+                                        {
+                                            jsonSerializer.Serialize(resultStream,
+                                                (await result.BatchedResponses.ToListAsync()).Select((request) =>
+                                                    request.Response));
+                                        }
+                                        else
+                                        {
+                                            jsonSerializer.Serialize(resultStream, result.Response);
+                                        }
+
+                                        // ctx.Response.ContentLength = responseSize = resultStream.Length;
                                         resultStream.Seek(0, SeekOrigin.Begin);
                                         await resultStream.CopyToAsync(ctx.Response.Body);
+                                    }
+                                    else
+                                    {
+                                        if (result.IsCollection)
+                                        {
+                                            resultStream.WriteByte(Convert.ToByte("{"));
+                                            bool first = true;
+                                            await foreach (JsonRpcResult resultBatchedResponse in result.BatchedResponses)
+                                            {
+                                                if (!first) resultStream.WriteByte(Convert.ToByte(","));
+                                                first = false;
+
+                                                jsonSerializer.Serialize(resultBatchedResponse.Response);
+                                            }
+                                            resultStream.WriteByte(Convert.ToByte("}"));
+                                        }
+                                        else
+                                        {
+                                            jsonSerializer.Serialize(resultStream, result.Response);
+                                        }
                                     }
                                 }
                                 catch (Exception e) when (e.InnerException is OperationCanceledException)
@@ -198,16 +226,21 @@ namespace Nethermind.Runner.JsonRpc
                                     }
                                 }
 
+                                /*
                                 long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
                                 if (result.IsCollection)
                                 {
-                                    jsonRpcLocalStats.ReportCalls(result.Reports);
+                                    foreach (JsonRpcResult innerResult in result.BatchedResponses)
+                                    {
+                                        jsonRpcLocalStats.ReportCall(innerResult.Report);
+                                    }
                                     jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, responseSize);
                                 }
                                 else
                                 {
                                     jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, responseSize);
                                 }
+                                */
 
                                 Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, responseSize);
                             }
@@ -240,13 +273,7 @@ namespace Nethermind.Runner.JsonRpc
 
             if (result.IsCollection)
             {
-                for (var i = 0; i < result.Responses.Count; i++)
-                {
-                    if (ModuleTimeoutError(result.Responses[i]))
-                    {
-                        return true;
-                    }
-                }
+                // Well, we can't know if it timeout without running it yet
             }
             else if (ModuleTimeoutError(result.Response))
             {

@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.WebSockets
                     allResponsesSize += singleResponseSize;
                     if (result.IsCollection)
                     {
-                        foreach (JsonRpcResult innerResult in result.BatchedResponses!)
+                        await foreach (JsonRpcResult innerResult in result.BatchedResponses!)
                         {
                             _jsonRpcLocalStats.ReportCall(innerResult.Report);
                         }
@@ -129,7 +129,7 @@ namespace Nethermind.JsonRpc.WebSockets
                 if (result.IsCollection)
                 {
                     // TODO: Stream this
-                    _jsonSerializer.Serialize(resultData, result.BatchedResponses.Select((request) => request.Response));
+                    _jsonSerializer.Serialize(resultData, result.BatchedResponses.ToListAsync().Result.Select((request) => request.Response));
                 }
                 else
                 {
