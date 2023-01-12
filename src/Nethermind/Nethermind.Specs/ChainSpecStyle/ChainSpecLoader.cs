@@ -19,7 +19,7 @@ using Newtonsoft.Json.Linq;
 namespace Nethermind.Specs.ChainSpecStyle
 {
     /// <summary>
-    /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it. 
+    /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it.
     /// </summary>
     public class ChainSpecLoader : IChainSpecLoader
     {
@@ -202,18 +202,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.ConstantinopleFixBlockNumber =
                 chainSpec.Parameters.Eip1283DisableTransition ?? chainSpec.Parameters.Eip145Transition;
             chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
-            chainSpec.MuirGlacierNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 2 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[2]
-                : null;
+            chainSpec.MuirGlacierNumber = chainSpec.Ethash?.DifficultyBombDelays.Keys.Skip(2).FirstOrDefault();
             chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition;
             chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
-            chainSpec.ArrowGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 4 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[4]
-                : null;
-            chainSpec.GrayGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 5 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[5]
-                : null;
-            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp ?? (ulong.MaxValue - 1);
+            chainSpec.ArrowGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Keys.Skip(4).FirstOrDefault();
+            chainSpec.GrayGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Keys.Skip(5).FirstOrDefault();
+            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
 
             // TheMerge parameters
             chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
