@@ -7,7 +7,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
     {
         private readonly string _protocol;
 
-        public SatelliteProtocolPeerAllocationStrategy(IPeerAllocationStrategy strategy, string protocol): base(strategy)
+        public SatelliteProtocolPeerAllocationStrategy(IPeerAllocationStrategy strategy, string protocol) : base(strategy)
         {
             _protocol = protocol;
         }
