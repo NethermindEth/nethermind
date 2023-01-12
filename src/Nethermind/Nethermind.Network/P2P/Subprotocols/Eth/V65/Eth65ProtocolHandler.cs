@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -9,8 +8,8 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Rlpx;
@@ -97,20 +96,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                              $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
-        protected PooledTransactionsMessage FulfillPooledTransactionsRequest(
+        internal PooledTransactionsMessage FulfillPooledTransactionsRequest(
             GetPooledTransactionsMessage msg)
         {
-            List<Transaction> txs = new();
-            int responseSize = Math.Min(256, msg.Hashes.Count);
-            for (int i = 0; i < responseSize; i++)
+            int packetSizeLeft = TransactionsMessage.MaxPacketSize;
+            using ArrayPoolList<Transaction> txsToSend = new(1024);
+            for (int i = 0; i < msg.Hashes.Count; i++)
             {
                 if (_txPool.TryGetPendingTransaction(msg.Hashes[i], out Transaction tx))
                 {
-                    txs.Add(tx);
+                    int txSize = tx.GetLength(_txDecoder);
+
+                    if (txSize > packetSizeLeft && txsToSend.Count > 0)
+                    {
+                        break;
+                    }
+
+                    txsToSend.Add(tx);
+                    packetSizeLeft -= txSize;
                 }
             }
 
-            return new PooledTransactionsMessage(txs);
+            return new PooledTransactionsMessage(txsToSend);
         }
 
         public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
