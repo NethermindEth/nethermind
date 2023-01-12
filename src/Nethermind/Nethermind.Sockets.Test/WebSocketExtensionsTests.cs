@@ -119,8 +119,8 @@ namespace Nethermind.Sockets.Test
             {
                 return new List<JsonRpcResult>()
                 {
-                    new(),
-                    JsonRpcResult.Collection(new List<JsonRpcResult>(){new(), new(), new()}.ToAsyncEnumerable())
+                    JsonRpcResult.Single(new JsonRpcResult.Entry()),
+                    JsonRpcResult.Collection(new List<JsonRpcResult.Entry>(){new(), new(), new()}.ToAsyncEnumerable())
                 }.ToAsyncEnumerable();
             });
 

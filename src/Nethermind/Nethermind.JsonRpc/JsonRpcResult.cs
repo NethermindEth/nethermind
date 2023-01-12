@@ -6,37 +6,49 @@ using System.Collections.Generic;
 
 namespace Nethermind.JsonRpc
 {
-    public readonly struct JsonRpcResult : IDisposable
+    public readonly struct JsonRpcResult
     {
         public bool IsCollection { get; }
 
-        public IAsyncEnumerable<JsonRpcResult>? BatchedResponses { get; }
+        public IAsyncEnumerable<Entry>? BatchedResponses { get; }
+        public Entry? Response { get; }
 
-        public JsonRpcResponse Response { get; }
-        public RpcReport Report { get; }
-
-        private JsonRpcResult(IAsyncEnumerable<JsonRpcResult> batchedResponses)
+        private JsonRpcResult(IAsyncEnumerable<Entry> batchedResponses)
         {
             IsCollection = true;
             BatchedResponses = batchedResponses;
         }
 
-        private JsonRpcResult(JsonRpcResponse response, RpcReport report)
+        private JsonRpcResult(Entry singleResult)
         {
             IsCollection = false;
-            Response = response;
-            Report = report;
+            Response = singleResult;
         }
 
         public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
-            => new(response, report);
+            => new(new Entry(response, report));
 
-        public static JsonRpcResult Collection(IAsyncEnumerable<JsonRpcResult> responses)
+        public static JsonRpcResult Single(Entry entry)
+            => new(entry);
+
+        public static JsonRpcResult Collection(IAsyncEnumerable<Entry> responses)
             => new(responses);
 
-        public void Dispose()
+        public struct Entry : IDisposable
         {
-            Response?.Dispose();
+            public JsonRpcResponse Response { get; }
+            public RpcReport Report { get; }
+
+            public Entry(JsonRpcResponse response, RpcReport report)
+            {
+                Response = response;
+                Report = report;
+            }
+
+            public void Dispose()
+            {
+                Response?.Dispose();
+            }
         }
     }
 }

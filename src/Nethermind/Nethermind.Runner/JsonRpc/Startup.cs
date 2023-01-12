@@ -163,75 +163,72 @@ namespace Nethermind.Runner.JsonRpc
                     {
                         await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http(jsonRpcUrl)))
                         {
-                            using (result)
+                            Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
+
+                            long responseSize = 0;
+                            try
                             {
-                                Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
+                                ctx.Response.ContentType = "application/json";
+                                ctx.Response.StatusCode = GetStatusCode(result);
 
-                                long responseSize = 0;
-                                try
-                                {
-                                    ctx.Response.ContentType = "application/json";
-                                    ctx.Response.StatusCode = GetStatusCode(result);
-
-                                    if (result.IsCollection)
-                                    {
-                                        resultStream.WriteByte(_jsonOpeningBracket);
-                                        bool first = true;
-                                        await foreach (JsonRpcResult resultBatchedResponse in result.BatchedResponses!)
-                                        {
-                                            using (resultBatchedResponse)
-                                            {
-                                                if (!first) resultStream.WriteByte(_jsonComma);
-                                                first = false;
-
-                                                jsonSerializer.Serialize(resultBatchedResponse.Response);
-                                                jsonRpcLocalStats.ReportCall(resultBatchedResponse.Report);
-                                            }
-                                        }
-                                        resultStream.WriteByte(_jsonClosingBracket);
-                                    }
-                                    else
-                                    {
-                                        jsonSerializer.Serialize(resultStream, result.Response);
-                                    }
-
-                                    if (jsonRpcConfig.BufferResponses)
-                                    {
-                                        ctx.Response.ContentLength = responseSize = resultStream.Length;
-                                        resultStream.Seek(0, SeekOrigin.Begin);
-                                        await resultStream.CopyToAsync(ctx.Response.Body);
-                                    }
-                                }
-                                catch (Exception e) when (e.InnerException is OperationCanceledException)
-                                {
-                                    responseSize = SerializeTimeoutException(jsonRpcService, resultStream);
-                                }
-                                catch (OperationCanceledException)
-                                {
-                                    responseSize = SerializeTimeoutException(jsonRpcService, resultStream);
-                                }
-                                finally
-                                {
-                                    await ctx.Response.CompleteAsync();
-
-                                    if (jsonRpcConfig.BufferResponses)
-                                    {
-                                        await resultStream.DisposeAsync();
-                                    }
-                                }
-
-                                long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
                                 if (result.IsCollection)
                                 {
-                                    jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, responseSize);
+                                    resultStream.WriteByte(_jsonOpeningBracket);
+                                    bool first = true;
+                                    await foreach (JsonRpcResult.Entry entry in result.BatchedResponses!)
+                                    {
+                                        using (entry)
+                                        {
+                                            if (!first) resultStream.WriteByte(_jsonComma);
+                                            first = false;
+
+                                            jsonSerializer.Serialize(entry.Response);
+                                            jsonRpcLocalStats.ReportCall(entry.Report);
+                                        }
+                                    }
+                                    resultStream.WriteByte(_jsonClosingBracket);
                                 }
                                 else
                                 {
-                                    jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, responseSize);
+                                    jsonSerializer.Serialize(resultStream, result.Response);
                                 }
 
-                                Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, responseSize);
+                                if (jsonRpcConfig.BufferResponses)
+                                {
+                                    ctx.Response.ContentLength = responseSize = resultStream.Length;
+                                    resultStream.Seek(0, SeekOrigin.Begin);
+                                    await resultStream.CopyToAsync(ctx.Response.Body);
+                                }
                             }
+                            catch (Exception e) when (e.InnerException is OperationCanceledException)
+                            {
+                                responseSize = SerializeTimeoutException(jsonRpcService, resultStream);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                responseSize = SerializeTimeoutException(jsonRpcService, resultStream);
+                            }
+                            finally
+                            {
+                                await ctx.Response.CompleteAsync();
+
+                                if (jsonRpcConfig.BufferResponses)
+                                {
+                                    await resultStream.DisposeAsync();
+                                }
+                            }
+
+                            long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                            if (result.IsCollection)
+                            {
+                                jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, responseSize);
+                            }
+                            else
+                            {
+                                jsonRpcLocalStats.ReportCall(result.Response.Value.Report, handlingTimeMicroseconds, responseSize);
+                            }
+
+                            Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, responseSize);
 
                             // There should be only one response because we don't expect multiple JSON tokens in the request
                             break;
@@ -249,21 +246,26 @@ namespace Nethermind.Runner.JsonRpc
             });
         }
 
-        private static int GetStatusCode(JsonRpcResult result) =>
-            ModuleTimeout(result)
-                ? StatusCodes.Status503ServiceUnavailable
-                : StatusCodes.Status200OK;
+        private static int GetStatusCode(JsonRpcResult result)
+        {
+            if (result.IsCollection)
+            {
+                return StatusCodes.Status200OK;
+            }
+            else
+            {
+                return ModuleTimeout(result.Response.Value)
+                    ? StatusCodes.Status503ServiceUnavailable
+                    : StatusCodes.Status200OK;
+            }
+        }
 
-        private static bool ModuleTimeout(JsonRpcResult result)
+        private static bool ModuleTimeout(JsonRpcResult.Entry result)
         {
             static bool ModuleTimeoutError(JsonRpcResponse response) =>
                 response is JsonRpcErrorResponse errorResponse && errorResponse.Error?.Code == ErrorCodes.ModuleTimeout;
 
-            if (result.IsCollection)
-            {
-                // Well, we can't know if it timeout without running it yet
-            }
-            else if (ModuleTimeoutError(result.Response))
+            if (ModuleTimeoutError(result.Response))
             {
                 return true;
             }
