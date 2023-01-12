@@ -192,6 +192,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                 chainSpec.HomesteadBlockNumber = 0;
             }
 
+            IEnumerable<long?> difficultyBombDelaysBlockNumbers = chainSpec.Ethash?.DifficultyBombDelays
+                .Keys
+                .Cast<long?>()
+                .ToArray();
+
             chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
             chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
             chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
@@ -202,11 +207,11 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.ConstantinopleFixBlockNumber =
                 chainSpec.Parameters.Eip1283DisableTransition ?? chainSpec.Parameters.Eip145Transition;
             chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
-            chainSpec.MuirGlacierNumber = chainSpec.Ethash?.DifficultyBombDelays.Keys.Skip(2).FirstOrDefault();
+            chainSpec.MuirGlacierNumber = difficultyBombDelaysBlockNumbers?.Skip(2).FirstOrDefault();
             chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition;
             chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
-            chainSpec.ArrowGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Keys.Skip(4).FirstOrDefault();
-            chainSpec.GrayGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Keys.Skip(5).FirstOrDefault();
+            chainSpec.ArrowGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(4).FirstOrDefault();
+            chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
             chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
 
             // TheMerge parameters
