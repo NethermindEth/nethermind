@@ -80,7 +80,14 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
             for (int i = 0; i < _defaultPeerCount; i++)
             {
-                Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true) { EthDetails = "eth66" };
+                Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
+                {
+                    EthDetails = "eth66",
+                    AgreedCapability =
+                    {
+                        { "eth", 66 }
+                    }
+                };
                 SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, node: node, maxRandomizedLatencyMs: _defaultPeerMaxRandomLatency);
                 mockMutator?.Invoke(mock);
                 syncPeers[i] = mock;
@@ -352,7 +359,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
             {
-                throw new NotImplementedException();
+                protocolHandler = null;
+                return false;
             }
         }
     }

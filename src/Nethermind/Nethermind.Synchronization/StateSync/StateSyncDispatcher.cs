@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.StateSync
             Task<byte[][]> task = null;
 
             // Use GETNODEDATA if possible
-            if (peer.Node.EthDetails.Equals("eth66"))
+            if (peerInfo.CanGetNodeData())
             {
                 task = peer.GetNodeData(a, cancellationToken);
             }

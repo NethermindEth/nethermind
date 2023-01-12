@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
         public async Task Eth66Peer_RunGetNodeData()
         {
             ISyncPeer peer = Substitute.For<ISyncPeer>();
-            peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)) { EthDetails = "eth66" });
+            peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)) { AgreedCapability = { { "eth", 66 } } });
             peer.IsInitialized.Returns(true);
             peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
             _pool.AddPeer(peer);
@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
         public async Task GroupMultipleStorageSlotsByAccount()
         {
             ISyncPeer peer = Substitute.For<ISyncPeer>();
-            peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)) { EthDetails = "eth67" });
+            peer.Node.Returns(new Stats.Model.Node(_publicKey, new IPEndPoint(IPAddress.Broadcast, 30303)) { AgreedCapability = { { "eth", 67 } } });
             peer.IsInitialized.Returns(true);
             peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
             ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -69,6 +70,7 @@ namespace Nethermind.Stats.Model
 
         public string EthDetails { get; set; }
         public long CurrentReputation { get; set; }
+        public Dictionary<string, int> AgreedCapability { get; set; } = new();
 
         public Node(PublicKey id, IPEndPoint address)
         {
