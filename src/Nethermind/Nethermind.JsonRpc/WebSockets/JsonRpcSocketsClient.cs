@@ -52,6 +52,10 @@ namespace Nethermind.JsonRpc.WebSockets
             Closed?.Invoke(this, EventArgs.Empty);
         }
 
+        private static readonly byte[] _jsonOpeningBracket = {Convert.ToByte('{')};
+        private static readonly byte[] _jsonComma = {Convert.ToByte(',')};
+        private static readonly byte[] _jsonClosingBracket = { Convert.ToByte('}') };
+
         public override async Task ProcessAsync(ArraySegment<byte> data)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -63,21 +67,34 @@ namespace Nethermind.JsonRpc.WebSockets
             {
                 using (result)
                 {
-                    int singleResponseSize = await SendJsonRpcResult(result);
-                    allResponsesSize += singleResponseSize;
+                    stopwatch.Restart();
                     if (result.IsCollection)
                     {
+                        int singleResponseSize = 0;
+                        bool isFirst = true;
+                        await _handler.SendRawAsync(_jsonOpeningBracket);
                         await foreach (JsonRpcResult innerResult in result.BatchedResponses!)
                         {
-                            _jsonRpcLocalStats.ReportCall(innerResult.Report);
-                        }
+                            if (!isFirst) await _handler.SendRawAsync(_jsonComma);
+                            isFirst = false;
 
+                            using (innerResult)
+                            {
+                                singleResponseSize += await SendJsonRpcResult(innerResult);
+                                _jsonRpcLocalStats.ReportCall(innerResult.Report);
+                            }
+                        }
+                        await _handler.SendRawAsync(_jsonClosingBracket);
+
+                        allResponsesSize += singleResponseSize;
                         long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
                         _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
                         stopwatch.Restart();
                     }
                     else
                     {
+                        int singleResponseSize = await SendJsonRpcResult(result);
+                        allResponsesSize += singleResponseSize;
                         long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
                         _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, singleResponseSize);
                         stopwatch.Restart();
@@ -128,13 +145,10 @@ namespace Nethermind.JsonRpc.WebSockets
             {
                 if (result.IsCollection)
                 {
-                    // TODO: Stream this
-                    _jsonSerializer.Serialize(resultData, result.BatchedResponses.ToListAsync().Result.Select((request) => request.Response));
+                    throw new InvalidOperationException("cannot handle collection result here");
                 }
-                else
-                {
-                    _jsonSerializer.Serialize(resultData, result.Response);
-                }
+
+                _jsonSerializer.Serialize(resultData, result.Response);
             }
             catch (Exception e) when (e.InnerException is OperationCanceledException)
             {

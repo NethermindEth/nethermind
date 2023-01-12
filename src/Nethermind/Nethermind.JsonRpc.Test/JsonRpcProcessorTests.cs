@@ -141,11 +141,11 @@ namespace Nethermind.JsonRpc.Test
             result[0].BatchedResponses.Should().NotBeNull();
             if (_returnErrors)
             {
-                result[0].BatchedResponses.Should().AllBeOfType<JsonRpcErrorResponse>();
+                (await result[0].BatchedResponses.ToListAsync()).Should().AllBeOfType<JsonRpcErrorResponse>();
             }
             else
             {
-                result[0].BatchedResponses.Should().AllBeOfType<JsonRpcSuccessResponse>();
+                (await result[0].BatchedResponses.ToListAsync()).Should().AllBeOfType<JsonRpcSuccessResponse>();
             }
         }
 
@@ -157,11 +157,11 @@ namespace Nethermind.JsonRpc.Test
             result[0].BatchedResponses.Should().NotBeNull();
             if (_returnErrors)
             {
-                result[0].BatchedResponses.Should().AllBeOfType<JsonRpcErrorResponse>();
+                (await result[0].BatchedResponses.ToListAsync()).Should().AllBeOfType<JsonRpcErrorResponse>();
             }
             else
             {
-                result[0].BatchedResponses.Should().AllBeOfType<JsonRpcSuccessResponse>();
+                (await result[0].BatchedResponses.ToListAsync()).Should().AllBeOfType<JsonRpcSuccessResponse>();
             }
         }
 
@@ -224,8 +224,9 @@ namespace Nethermind.JsonRpc.Test
             result[0].BatchedResponses.Should().BeNull();
             result[1].Response.Should().BeNull();
             result[1].BatchedResponses.Should().NotBeNull();
-            result[1].BatchedResponses.Should().HaveCount(2);
-            Assert.IsTrue(result[1].BatchedResponses.All(r => r.Response != _errorResponse));
+            List<JsonRpcResult> resultList = await result[1].BatchedResponses.ToListAsync();
+            resultList.Should().HaveCount(2);
+            Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
         }
 
         [Test]
@@ -285,7 +286,7 @@ namespace Nethermind.JsonRpc.Test
             result.Should().HaveCount(1);
             result[0].Response.Should().BeNull();
             result[0].BatchedResponses.Should().NotBeNull();
-            Assert.IsTrue(result[0].BatchedResponses.All(r => r.Response != _errorResponse));
+            Assert.IsTrue((await result[0].BatchedResponses.ToListAsync()).All(r => r.Response != _errorResponse));
         }
 
         [Test]
@@ -305,8 +306,9 @@ namespace Nethermind.JsonRpc.Test
             result.Should().HaveCount(1);
             result[0].Response.Should().BeNull();
             result[0].BatchedResponses.Should().NotBeNull();
-            result[0].BatchedResponses.Should().HaveCount(3);
-            Assert.IsTrue(result[0].BatchedResponses.All(r => r.Response != _errorResponse));
+            IList<JsonRpcResult> resultList = (await result[0].BatchedResponses.ToListAsync());
+            resultList.Should().HaveCount(3);
+            Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
         }
 
         [Test]

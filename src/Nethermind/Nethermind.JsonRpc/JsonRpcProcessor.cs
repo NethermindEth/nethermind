@@ -184,7 +184,7 @@ namespace Nethermind.JsonRpc
                         }
 
                         stopwatch.Stop();
-                        yield return RecordResponse(JsonRpcResult.Collection(IterateRequest(rpcRequest.Collection, context)));
+                        yield return JsonRpcResult.Collection(IterateRequest(rpcRequest.Collection, context));
                     }
 
                     if (rpcRequest.Model is null && rpcRequest.Collection is null)
@@ -215,13 +215,13 @@ namespace Nethermind.JsonRpc
 
                 TraceResult(response);
 
-                yield return JsonRpcResult.Single(response, report);
+                yield return RecordResponse(JsonRpcResult.Single(response, report));
             }
 
             if (_logger.IsDebug) _logger.Debug($"  {requests.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
-        private async Task<(JsonRpcResponse, RpcReport)> HandleSingleRequest(JsonRpcRequest request,JsonRpcContext context)
+        private async Task<(JsonRpcResponse, RpcReport)> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
         {
             Metrics.JsonRpcRequests++;
             Stopwatch stopwatch = Stopwatch.StartNew();

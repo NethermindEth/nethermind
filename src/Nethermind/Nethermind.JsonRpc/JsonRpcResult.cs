@@ -37,10 +37,6 @@ namespace Nethermind.JsonRpc
         public void Dispose()
         {
             Response?.Dispose();
-            if (BatchedResponses is not null)
-            {
-                // Noop.
-            }
         }
     }
 }

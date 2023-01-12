@@ -68,6 +68,9 @@ namespace Nethermind.Runner.JsonRpc
         }
 
         private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
+        private static readonly byte _jsonOpeningBracket = Convert.ToByte('{');
+        private static readonly byte _jsonComma = Convert.ToByte(',');
+        private static readonly byte _jsonClosingBracket = Convert.ToByte('}');
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
         {
@@ -170,42 +173,33 @@ namespace Nethermind.Runner.JsonRpc
                                     ctx.Response.ContentType = "application/json";
                                     ctx.Response.StatusCode = GetStatusCode(result);
 
-                                    if (jsonRpcConfig.BufferResponses)
+                                    if (result.IsCollection)
                                     {
-                                        if (result.IsCollection)
+                                        resultStream.WriteByte(_jsonOpeningBracket);
+                                        bool first = true;
+                                        await foreach (JsonRpcResult resultBatchedResponse in result.BatchedResponses!)
                                         {
-                                            jsonSerializer.Serialize(resultStream,
-                                                (await result.BatchedResponses.ToListAsync()).Select((request) =>
-                                                    request.Response));
-                                        }
-                                        else
-                                        {
-                                            jsonSerializer.Serialize(resultStream, result.Response);
-                                        }
-
-                                        // ctx.Response.ContentLength = responseSize = resultStream.Length;
-                                        resultStream.Seek(0, SeekOrigin.Begin);
-                                        await resultStream.CopyToAsync(ctx.Response.Body);
-                                    }
-                                    else
-                                    {
-                                        if (result.IsCollection)
-                                        {
-                                            resultStream.WriteByte(Convert.ToByte("{"));
-                                            bool first = true;
-                                            await foreach (JsonRpcResult resultBatchedResponse in result.BatchedResponses)
+                                            using (resultBatchedResponse)
                                             {
-                                                if (!first) resultStream.WriteByte(Convert.ToByte(","));
+                                                if (!first) resultStream.WriteByte(_jsonComma);
                                                 first = false;
 
                                                 jsonSerializer.Serialize(resultBatchedResponse.Response);
+                                                jsonRpcLocalStats.ReportCall(resultBatchedResponse.Report);
                                             }
-                                            resultStream.WriteByte(Convert.ToByte("}"));
                                         }
-                                        else
-                                        {
-                                            jsonSerializer.Serialize(resultStream, result.Response);
-                                        }
+                                        resultStream.WriteByte(_jsonClosingBracket);
+                                    }
+                                    else
+                                    {
+                                        jsonSerializer.Serialize(resultStream, result.Response);
+                                    }
+
+                                    if (jsonRpcConfig.BufferResponses)
+                                    {
+                                        ctx.Response.ContentLength = responseSize = resultStream.Length;
+                                        resultStream.Seek(0, SeekOrigin.Begin);
+                                        await resultStream.CopyToAsync(ctx.Response.Body);
                                     }
                                 }
                                 catch (Exception e) when (e.InnerException is OperationCanceledException)
@@ -226,21 +220,15 @@ namespace Nethermind.Runner.JsonRpc
                                     }
                                 }
 
-                                /*
                                 long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
                                 if (result.IsCollection)
                                 {
-                                    foreach (JsonRpcResult innerResult in result.BatchedResponses)
-                                    {
-                                        jsonRpcLocalStats.ReportCall(innerResult.Report);
-                                    }
                                     jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, responseSize);
                                 }
                                 else
                                 {
                                     jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, responseSize);
                                 }
-                                */
 
                                 Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, responseSize);
                             }
