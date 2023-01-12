@@ -195,7 +195,7 @@ namespace Nethermind.AccountAbstraction.Test
             JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out var subscriptionId, true);
 
             jsonRpcResult.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response!.Value.Response);
             string expectedResult = Expected_text_response_to_UserOperation_event_with_full_ops(userOperation, subscriptionId);
             serialized.Should().Be(expectedResult);
         }
@@ -210,7 +210,7 @@ namespace Nethermind.AccountAbstraction.Test
             JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out var subscriptionId, false);
 
             jsonRpcResult.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response!.Value.Response);
             string expectedResult = Expected_text_response_to_UserOperation_event_without_full_ops(userOperation, subscriptionId);
             serialized.Should().Be(expectedResult);
         }
@@ -256,7 +256,7 @@ namespace Nethermind.AccountAbstraction.Test
             JsonRpcResult jsonRpcResult = GetNewReceivedUserOpsResult(userOperationEventArgs, out var subscriptionId, true);
 
             jsonRpcResult.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response!.Value.Response);
             string expectedResult = Expected_text_response_to_UserOperation_event_with_full_ops(userOperation, subscriptionId);
             expectedResult.Should().Be(serialized);
         }
@@ -271,7 +271,7 @@ namespace Nethermind.AccountAbstraction.Test
             JsonRpcResult jsonRpcResult = GetNewReceivedUserOpsResult(userOperationEventArgs, out var subscriptionId, false);
 
             jsonRpcResult.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response!.Value.Response);
             string expectedResult = Expected_text_response_to_UserOperation_event_without_full_ops(userOperation, subscriptionId);
             expectedResult.Should().Be(serialized);
         }
