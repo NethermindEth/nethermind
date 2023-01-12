@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,7 +9,7 @@ namespace Nethermind.JsonRpc;
 
 public class JsonRpcBatchResult : IJsonRpcBatchResult
 {
-    private readonly Func<JsonRpcBatchResultAsyncEnumerator,CancellationToken,IAsyncEnumerator<JsonRpcResult.Entry>> _innerEnumeratorFactory;
+    private readonly Func<JsonRpcBatchResultAsyncEnumerator, CancellationToken, IAsyncEnumerator<JsonRpcResult.Entry>> _innerEnumeratorFactory;
 
     public JsonRpcBatchResult(Func<JsonRpcBatchResultAsyncEnumerator, CancellationToken, IAsyncEnumerator<JsonRpcResult.Entry>> innerEnumeratorFactory)
     {
