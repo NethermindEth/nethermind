@@ -183,7 +183,7 @@ namespace Nethermind.Runner.JsonRpc
                                             if (!first) resultStream.WriteByte(_jsonComma);
                                             first = false;
 
-                                            jsonSerializer.Serialize(entry.Response);
+                                            jsonSerializer.Serialize(resultStream, entry.Response);
                                             jsonRpcLocalStats.ReportCall(entry.Report);
                                         }
                                     }
