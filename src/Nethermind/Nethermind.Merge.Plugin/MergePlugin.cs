@@ -98,6 +98,7 @@ namespace Nethermind.Merge.Plugin
                     _api.BlockTree,
                     _blockCacheService,
                     _api.LogManager);
+                _api.PoSSwitcher = _poSSwitcher;
                 _api.DisposeStack.Push(_invalidChainTracker);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
