@@ -112,16 +112,16 @@ namespace Nethermind.JsonRpc.WebSockets
             {
                 int singleResponseSize = 0;
                 bool isFirst = true;
-                await _handler.SendRawAsync(_jsonOpeningBracket);
+                await _handler.SendRawAsync(_jsonOpeningBracket, false);
                 await foreach (JsonRpcResult.Entry innerResult in result.BatchedResponses!)
                 {
-                    if (!isFirst) await _handler.SendRawAsync(_jsonComma);
+                    if (!isFirst) await _handler.SendRawAsync(_jsonComma, false);
                     isFirst = false;
 
-                    singleResponseSize += await SendJsonRpcResultEntry(innerResult);
+                    singleResponseSize += await SendJsonRpcResultEntry(innerResult, false);
                     _jsonRpcLocalStats.ReportCall(innerResult.Report);
                 }
-                await _handler.SendRawAsync(_jsonClosingBracket);
+                await _handler.SendRawAsync(_jsonClosingBracket, true);
 
                 return singleResponseSize;
             }
@@ -132,7 +132,7 @@ namespace Nethermind.JsonRpc.WebSockets
             }
         }
 
-        private async Task<int> SendJsonRpcResultEntry(JsonRpcResult.Entry result)
+        private async Task<int> SendJsonRpcResultEntry(JsonRpcResult.Entry result, bool endOfMessage = true)
         {
             void SerializeTimeoutException(MemoryStream stream)
             {
@@ -159,7 +159,7 @@ namespace Nethermind.JsonRpc.WebSockets
 
                 if (resultData.TryGetBuffer(out ArraySegment<byte> data))
                 {
-                    await _handler.SendRawAsync(data);
+                    await _handler.SendRawAsync(data, endOfMessage);
                     return data.Count;
                 }
 
