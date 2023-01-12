@@ -29,6 +29,7 @@
     <PackageReference Include="NLog" Version="5.1.0" />
     <PackageReference Include="Seq.Api" Version="2022.1.0" />
     <PackageReference Include="System.IO.Abstractions" Version="19.1.1" />
+    <PackageReference Include="System.Linq.Async" Version="6.0.1" />
     <PackageReference Include="YamlDotNet" Version="12.2.0" />
   </ItemGroup>
   <ItemGroup>

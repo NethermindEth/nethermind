@@ -11,6 +11,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
     <PackageReference Include="System.IO.Abstractions" Version="19.1.1" />
     <PackageReference Include="Jint" Version="2.11.58" />
+    <PackageReference Include="System.Linq.Async" Version="6.0.1" />
 
   </ItemGroup>
   <ItemGroup>

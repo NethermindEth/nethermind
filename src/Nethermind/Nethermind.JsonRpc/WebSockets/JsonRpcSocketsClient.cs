@@ -2,19 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 
@@ -22,7 +16,7 @@ namespace Nethermind.JsonRpc.WebSockets
 {
     public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
     {
-        public event EventHandler Closed;
+        public event EventHandler? Closed;
 
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonRpcService _jsonRpcService;
@@ -52,33 +46,35 @@ namespace Nethermind.JsonRpc.WebSockets
             Closed?.Invoke(this, EventArgs.Empty);
         }
 
+        private static readonly byte[] _jsonOpeningBracket = { Convert.ToByte('{') };
+        private static readonly byte[] _jsonComma = { Convert.ToByte(',') };
+        private static readonly byte[] _jsonClosingBracket = { Convert.ToByte('}') };
+
         public override async Task ProcessAsync(ArraySegment<byte> data)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             IncrementBytesReceivedMetric(data.Count);
             using TextReader request = new StreamReader(new MemoryStream(data.Array!, data.Offset, data.Count), Encoding.UTF8);
             int allResponsesSize = 0;
+
             await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
             {
-                using (result)
-                {
-                    int singleResponseSize = await SendJsonRpcResult(result);
-                    allResponsesSize += singleResponseSize;
-                    if (result.IsCollection)
-                    {
-                        _jsonRpcLocalStats.ReportCalls(result.Reports);
+                stopwatch.Restart();
 
-                        long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                        _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
-                        stopwatch.Restart();
-                    }
-                    else
-                    {
-                        long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                        _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, singleResponseSize);
-                        stopwatch.Restart();
-                    }
+                int singleResponseSize = await SendJsonRpcResult(result);
+                allResponsesSize += singleResponseSize;
+
+                if (result.IsCollection)
+                {
+                    long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                    _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
                 }
+                else
+                {
+                    long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                    _jsonRpcLocalStats.ReportCall(result.Response!.Value.Report, handlingTimeMicroseconds, singleResponseSize);
+                }
+                stopwatch.Restart();
             }
 
             IncrementBytesSentMetric(allResponsesSize);
@@ -112,41 +108,63 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result)
         {
+            if (result.IsCollection)
+            {
+                int singleResponseSize = 0;
+                bool isFirst = true;
+                await _handler.SendRawAsync(_jsonOpeningBracket, false);
+                await foreach (JsonRpcResult.Entry innerResult in result.BatchedResponses!)
+                {
+                    if (!isFirst) await _handler.SendRawAsync(_jsonComma, false);
+                    isFirst = false;
+
+                    singleResponseSize += await SendJsonRpcResultEntry(innerResult, false);
+                    _jsonRpcLocalStats.ReportCall(innerResult.Report);
+                }
+                await _handler.SendRawAsync(_jsonClosingBracket, true);
+
+                return singleResponseSize;
+            }
+            else
+            {
+                int singleResponseSize = await SendJsonRpcResultEntry(result.Response!.Value);
+                return singleResponseSize;
+            }
+        }
+
+        private async Task<int> SendJsonRpcResultEntry(JsonRpcResult.Entry result, bool endOfMessage = true)
+        {
             void SerializeTimeoutException(MemoryStream stream)
             {
                 JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
                 _jsonSerializer.Serialize(stream, error);
             }
 
-            await using MemoryStream resultData = new();
-
-            try
+            using (result)
             {
-                if (result.IsCollection)
-                {
-                    _jsonSerializer.Serialize(resultData, result.Responses);
-                }
-                else
+                await using MemoryStream resultData = new();
+
+                try
                 {
                     _jsonSerializer.Serialize(resultData, result.Response);
                 }
-            }
-            catch (Exception e) when (e.InnerException is OperationCanceledException)
-            {
-                SerializeTimeoutException(resultData);
-            }
-            catch (OperationCanceledException)
-            {
-                SerializeTimeoutException(resultData);
-            }
+                catch (Exception e) when (e.InnerException is OperationCanceledException)
+                {
+                    SerializeTimeoutException(resultData);
+                }
+                catch (OperationCanceledException)
+                {
+                    SerializeTimeoutException(resultData);
+                }
 
-            if (resultData.TryGetBuffer(out ArraySegment<byte> data))
-            {
-                await _handler.SendRawAsync(data);
-                return data.Count;
-            }
+                if (resultData.TryGetBuffer(out ArraySegment<byte> data))
+                {
+                    await _handler.SendRawAsync(data, endOfMessage);
+                    return data.Count;
+                }
 
-            return (int)resultData.Length;
+                return (int)resultData.Length;
+            }
         }
     }
 }
