@@ -97,6 +97,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Discover
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Enr", "Nethermind.Network.Enr\Nethermind.Network.Enr.csproj", "{333B909F-DD34-42BE-A924-9C17D2D5CA31}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Benchmark.Bytecode", "Nethermind.Benchmark.Bytecode\Nethermind.Benchmark.Bytecode.csproj", "{852932E3-520C-4A21-A167-FFFF1416F477}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -287,6 +289,10 @@ Global
 		{333B909F-DD34-42BE-A924-9C17D2D5CA31}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{333B909F-DD34-42BE-A924-9C17D2D5CA31}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{333B909F-DD34-42BE-A924-9C17D2D5CA31}.Release|Any CPU.Build.0 = Release|Any CPU
+		{852932E3-520C-4A21-A167-FFFF1416F477}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{852932E3-520C-4A21-A167-FFFF1416F477}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{852932E3-520C-4A21-A167-FFFF1416F477}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{852932E3-520C-4A21-A167-FFFF1416F477}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
