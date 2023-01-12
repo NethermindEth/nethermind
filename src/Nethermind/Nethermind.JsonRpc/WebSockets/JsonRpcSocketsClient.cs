@@ -58,6 +58,7 @@ namespace Nethermind.JsonRpc.WebSockets
             IncrementBytesReceivedMetric(data.Count);
             using TextReader request = new StreamReader(new MemoryStream(data.Array!, data.Offset, data.Count), Encoding.UTF8);
             int allResponsesSize = 0;
+
             await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
             {
                 using (result)
@@ -66,9 +67,9 @@ namespace Nethermind.JsonRpc.WebSockets
                     allResponsesSize += singleResponseSize;
                     if (result.IsCollection)
                     {
-                        foreach ((JsonRpcResponse, RpcReport) resultBatchedResponse in result.BatchedResponses!)
+                        foreach (JsonRpcResult innerResult in result.BatchedResponses!)
                         {
-                            _jsonRpcLocalStats.ReportCall(resultBatchedResponse.Item2);
+                            _jsonRpcLocalStats.ReportCall(innerResult.Report);
                         }
 
                         long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
@@ -128,7 +129,7 @@ namespace Nethermind.JsonRpc.WebSockets
                 if (result.IsCollection)
                 {
                     // TODO: Stream this
-                    _jsonSerializer.Serialize(resultData, result.BatchedResponses.Select((request) => request.Item1));
+                    _jsonSerializer.Serialize(resultData, result.BatchedResponses.Select((request) => request.Response));
                 }
                 else
                 {

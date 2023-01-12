@@ -10,12 +10,12 @@ namespace Nethermind.JsonRpc
     {
         public bool IsCollection { get; }
 
-        public IReadOnlyList<(JsonRpcResponse, RpcReport)>? BatchedResponses { get; }
+        public IReadOnlyList<JsonRpcResult>? BatchedResponses { get; }
 
         public JsonRpcResponse Response { get; }
         public RpcReport Report { get; }
 
-        private JsonRpcResult(IReadOnlyList<(JsonRpcResponse, RpcReport)> batchedResponses)
+        private JsonRpcResult(IReadOnlyList<JsonRpcResult> batchedResponses)
         {
             IsCollection = true;
             BatchedResponses = batchedResponses;
@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc
         public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
             => new(response, report);
 
-        public static JsonRpcResult Collection(IReadOnlyList<(JsonRpcResponse, RpcReport)> responses)
+        public static JsonRpcResult Collection(IReadOnlyList<JsonRpcResult> responses)
             => new(responses);
 
         public void Dispose()
@@ -39,12 +39,7 @@ namespace Nethermind.JsonRpc
             Response?.Dispose();
             if (BatchedResponses is not null)
             {
-                /* Ah great...
-                for (var i = 0; i < Responses.Count; i++)
-                {
-                    Responses[i]?.Dispose();
-                }
-                */
+                // Noop.
             }
         }
     }

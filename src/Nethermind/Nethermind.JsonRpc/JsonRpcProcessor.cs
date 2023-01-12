@@ -183,7 +183,7 @@ namespace Nethermind.JsonRpc
                             continue;
                         }
 
-                        var responses = new List<(JsonRpcResponse, RpcReport)>(rpcRequest.Collection.Count);
+                        var responses = new List<JsonRpcResult>(rpcRequest.Collection.Count);
                         int requestIndex = 0;
                         for (var index = 0; index < rpcRequest.Collection.Count; index++)
                         {
@@ -195,7 +195,7 @@ namespace Nethermind.JsonRpc
 
                             TraceResult(response);
 
-                            responses.Add((response, report));
+                            responses.Add(JsonRpcResult.Single(response, report));
                         }
 
                         stopwatch.Stop();
