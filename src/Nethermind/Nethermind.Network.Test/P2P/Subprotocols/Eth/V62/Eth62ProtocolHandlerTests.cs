@@ -467,7 +467,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             if (shouldBeSentInJustOneMessage)
             {
                 _session.Received(1).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == txCount));
-
             }
             else
             {
@@ -513,7 +512,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             int sizeOfOneTx = tx.GetLength(new TxDecoder());
             int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
             int nonFullMsgTxsCount = txCount % numberOfTxsInOneMsg;
-            int messagesCount = Math.Min(txCount / numberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0), txCount);
+            int messagesCount = txCount / numberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);
 
             Transaction[] txs = new Transaction[txCount];
 

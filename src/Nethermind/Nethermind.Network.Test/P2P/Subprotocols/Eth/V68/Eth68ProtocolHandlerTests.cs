@@ -168,13 +168,14 @@ public class Eth68ProtocolHandlerTests
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m => m.Hashes.Count == txCount));
     }
 
-    [TestCase(3201)]
+    [TestCase(NewPooledTransactionHashesMessage68.MaxCount - 1)]
+    [TestCase(NewPooledTransactionHashesMessage68.MaxCount)]
     [TestCase(10000)]
     [TestCase(20000)]
     public void should_send_more_than_MaxCount_hashes_in_more_than_one_NewPooledTransactionHashesMessage68(int txCount)
     {
-        int messagesCount = txCount / NewPooledTransactionHashesMessage68.MaxCount + 1;
         int nonFullMsgTxsCount = txCount % NewPooledTransactionHashesMessage68.MaxCount;
+        int messagesCount = txCount / NewPooledTransactionHashesMessage68.MaxCount + (nonFullMsgTxsCount > 0 ? 1 : 0);
         Transaction[] txs = new Transaction[txCount];
 
         for (int i = 0; i < txCount; i++)
