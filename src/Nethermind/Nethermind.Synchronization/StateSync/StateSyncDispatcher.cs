@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.StateSync
 
             if (task is null)
             {
-                return;
+                throw new InvalidOperationException("State sync dispatch was scheduled to a peer unable to serve state sync.");
             }
 
             try
