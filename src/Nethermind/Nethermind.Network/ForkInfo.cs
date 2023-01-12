@@ -46,13 +46,16 @@ namespace Nethermind.Network
 
         private static ulong GetNextActivation(int index, ForkActivation[] transitionActivations)
         {
-            static T? GetActivation<T>(T? activation, T delta) where T : struct, INumber<T>, IMinMaxValue<T> =>
+            static T? GetActivationPrimitive<T>(T? activation, T delta) where T : struct, INumber<T>, IMinMaxValue<T> =>
                 activation is null ? default : activation < T.MaxValue - delta ? activation : T.Zero;
+
+            static ulong GetActivation(ForkActivation forkActivation) =>
+                GetActivationPrimitive(forkActivation.Timestamp, 4UL)
+                ?? (ulong)GetActivationPrimitive(forkActivation.BlockNumber, 4L);
 
             index += 1;
             return index < transitionActivations.Length
-                ? GetActivation(transitionActivations[index].Timestamp, 4UL)
-                  ?? (ulong)GetActivation(transitionActivations[index].BlockNumber, 4L)
+                ? GetActivation(transitionActivations[index])
                 : 0;
         }
 
