@@ -127,7 +127,7 @@ namespace Nethermind.JsonRpc.WebSockets
             }
             else
             {
-                int singleResponseSize = await SendJsonRpcResultEntry(result.Response.Value);
+                int singleResponseSize = await SendJsonRpcResultEntry(result.Response!.Value);
                 return singleResponseSize;
             }
         }

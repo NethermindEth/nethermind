@@ -208,7 +208,7 @@ namespace Nethermind.JsonRpc
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             int requestIndex = 0;
-            for (var index = 0; index < requests.Count; index++)
+            for (int index = 0; index < requests.Count; index++)
             {
                 JsonRpcRequest jsonRpcRequest = requests[index];
 
