@@ -9,25 +9,21 @@ namespace Nethermind.JsonRpc
     public readonly struct JsonRpcResult : IDisposable
     {
         public bool IsCollection { get; }
-        public IReadOnlyList<JsonRpcResponse> Responses { get; }
-        public IReadOnlyList<RpcReport> Reports { get; }
+
+        public IReadOnlyList<(JsonRpcResponse, RpcReport)>? BatchedResponses { get; }
+
         public JsonRpcResponse Response { get; }
         public RpcReport Report { get; }
 
-        private JsonRpcResult(IReadOnlyList<JsonRpcResponse> responses, IReadOnlyList<RpcReport> reports)
+        private JsonRpcResult(IReadOnlyList<(JsonRpcResponse, RpcReport)> batchedResponses)
         {
             IsCollection = true;
-            Responses = responses;
-            Reports = reports;
-            Response = null;
-            Report = default;
+            BatchedResponses = batchedResponses;
         }
 
         private JsonRpcResult(JsonRpcResponse response, RpcReport report)
         {
             IsCollection = false;
-            Responses = null;
-            Reports = null;
             Response = response;
             Report = report;
         }
@@ -35,18 +31,20 @@ namespace Nethermind.JsonRpc
         public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
             => new(response, report);
 
-        public static JsonRpcResult Collection(IReadOnlyList<JsonRpcResponse> responses, IReadOnlyList<RpcReport> reports)
-            => new(responses, reports);
+        public static JsonRpcResult Collection(IReadOnlyList<(JsonRpcResponse, RpcReport)> responses)
+            => new(responses);
 
         public void Dispose()
         {
             Response?.Dispose();
-            if (Responses is not null)
+            if (BatchedResponses is not null)
             {
+                /* Ah great...
                 for (var i = 0; i < Responses.Count; i++)
                 {
                     Responses[i]?.Dispose();
                 }
+                */
             }
         }
     }

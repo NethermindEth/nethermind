@@ -66,7 +66,10 @@ namespace Nethermind.JsonRpc.WebSockets
                     allResponsesSize += singleResponseSize;
                     if (result.IsCollection)
                     {
-                        _jsonRpcLocalStats.ReportCalls(result.Reports);
+                        foreach ((JsonRpcResponse, RpcReport) resultBatchedResponse in result.BatchedResponses!)
+                        {
+                            _jsonRpcLocalStats.ReportCall(resultBatchedResponse.Item2);
+                        }
 
                         long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
                         _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
@@ -124,7 +127,8 @@ namespace Nethermind.JsonRpc.WebSockets
             {
                 if (result.IsCollection)
                 {
-                    _jsonSerializer.Serialize(resultData, result.Responses);
+                    // TODO: Stream this
+                    _jsonSerializer.Serialize(resultData, result.BatchedResponses.Select((request) => request.Item1));
                 }
                 else
                 {
