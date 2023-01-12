@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 
 namespace Nethermind.JsonRpc
 {
@@ -12,11 +12,10 @@ namespace Nethermind.JsonRpc
         [MemberNotNullWhen(true, nameof(BatchedResponses))]
         [MemberNotNullWhen(false, nameof(Response))]
         public bool IsCollection { get; }
-
-        public IAsyncEnumerable<Entry>? BatchedResponses { get; }
+        public IJsonRpcBatchResult? BatchedResponses { get; }
         public Entry? Response { get; }
 
-        private JsonRpcResult(IAsyncEnumerable<Entry> batchedResponses)
+        private JsonRpcResult(IJsonRpcBatchResult batchedResponses)
         {
             IsCollection = true;
             BatchedResponses = batchedResponses;
@@ -34,7 +33,7 @@ namespace Nethermind.JsonRpc
         public static JsonRpcResult Single(Entry entry)
             => new(entry);
 
-        public static JsonRpcResult Collection(IAsyncEnumerable<Entry> responses)
+        public static JsonRpcResult Collection(IJsonRpcBatchResult responses)
             => new(responses);
 
         public readonly struct Entry : IDisposable
