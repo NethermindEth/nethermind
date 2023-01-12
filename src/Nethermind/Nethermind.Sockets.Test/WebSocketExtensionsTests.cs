@@ -120,7 +120,7 @@ namespace Nethermind.Sockets.Test
                 return new List<JsonRpcResult>()
                 {
                     new(),
-                    JsonRpcResult.Collection(new List<JsonRpcResult>(){new(), new(), new()})
+                    JsonRpcResult.Collection(new List<JsonRpcResult>(){new(), new(), new()}.ToAsyncEnumerable())
                 }.ToAsyncEnumerable();
             });
 
@@ -138,10 +138,10 @@ namespace Nethermind.Sockets.Test
                 Substitute.For<IJsonSerializer>(),
                 null);
 
-            webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs((x) =>
+            webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs<Task<int>>(async x =>
             {
                 var par = x.Arg<JsonRpcResult>();
-                return Task.FromResult(par.IsCollection ? par.BatchedResponses.Count * 100 : 100);
+                return par.IsCollection ? await par.BatchedResponses.CountAsync() * 100 : 100;
             });
 
             await webSocketsClient.ReceiveAsync();

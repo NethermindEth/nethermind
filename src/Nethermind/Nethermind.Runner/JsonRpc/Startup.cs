@@ -35,6 +35,10 @@ namespace Nethermind.Runner.JsonRpc
 {
     public class Startup
     {
+        private static readonly byte _jsonCollectionStart = Convert.ToByte("{");
+        private static readonly byte _jsonCollectionSeparator = Convert.ToByte(",");
+        private static readonly byte _jsonCollectionEnd = Convert.ToByte("}");
+
         public void ConfigureServices(IServiceCollection services)
         {
             ServiceProvider sp = Build(services);
@@ -174,9 +178,7 @@ namespace Nethermind.Runner.JsonRpc
                                     {
                                         if (result.IsCollection)
                                         {
-                                            jsonSerializer.Serialize(resultStream,
-                                                (await result.BatchedResponses.ToListAsync()).Select((request) =>
-                                                    request.Response));
+                                            jsonSerializer.Serialize(resultStream, await result.BatchedResponses.Select(r => r.Response).ToListAsync());
                                         }
                                         else
                                         {
@@ -191,16 +193,16 @@ namespace Nethermind.Runner.JsonRpc
                                     {
                                         if (result.IsCollection)
                                         {
-                                            resultStream.WriteByte(Convert.ToByte("{"));
+                                            resultStream.WriteByte(_jsonCollectionStart);
                                             bool first = true;
                                             await foreach (JsonRpcResult resultBatchedResponse in result.BatchedResponses)
                                             {
-                                                if (!first) resultStream.WriteByte(Convert.ToByte(","));
+                                                if (!first) resultStream.WriteByte(_jsonCollectionSeparator);
                                                 first = false;
 
                                                 jsonSerializer.Serialize(resultBatchedResponse.Response);
                                             }
-                                            resultStream.WriteByte(Convert.ToByte("}"));
+                                            resultStream.WriteByte(_jsonCollectionEnd);
                                         }
                                         else
                                         {

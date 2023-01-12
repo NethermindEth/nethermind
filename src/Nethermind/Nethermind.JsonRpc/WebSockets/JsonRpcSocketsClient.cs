@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.WebSockets
 {
     public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
     {
-        public event EventHandler Closed;
+        public event EventHandler? Closed;
 
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonRpcService _jsonRpcService;
@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.WebSockets
                     {
                         await foreach (JsonRpcResult innerResult in result.BatchedResponses!)
                         {
-                            _jsonRpcLocalStats.ReportCall(innerResult.Report);
+                            _jsonRpcLocalStats.ReportCall(innerResult.Report!.Value);
                         }
 
                         long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.WebSockets
                     else
                     {
                         long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                        _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, singleResponseSize);
+                        _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
                         stopwatch.Restart();
                     }
                 }
@@ -129,7 +129,7 @@ namespace Nethermind.JsonRpc.WebSockets
                 if (result.IsCollection)
                 {
                     // TODO: Stream this
-                    _jsonSerializer.Serialize(resultData, result.BatchedResponses.ToListAsync().Result.Select((request) => request.Response));
+                    _jsonSerializer.Serialize(resultData, await result.BatchedResponses.Select(request => request.Response).ToListAsync());
                 }
                 else
                 {

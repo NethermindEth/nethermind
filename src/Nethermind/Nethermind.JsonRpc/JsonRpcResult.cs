@@ -3,17 +3,21 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.JsonRpc
 {
     public readonly struct JsonRpcResult : IDisposable
     {
+        [MemberNotNullWhen(true, nameof(BatchedResponses))]
+        [MemberNotNullWhen(false, nameof(Response))]
+        [MemberNotNullWhen(false, nameof(Report))]
         public bool IsCollection { get; }
 
         public IAsyncEnumerable<JsonRpcResult>? BatchedResponses { get; }
 
-        public JsonRpcResponse Response { get; }
-        public RpcReport Report { get; }
+        public JsonRpcResponse? Response { get; }
+        public RpcReport? Report { get; }
 
         private JsonRpcResult(IAsyncEnumerable<JsonRpcResult> batchedResponses)
         {
