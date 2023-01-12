@@ -3,11 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.JsonRpc
 {
     public readonly struct JsonRpcResult
     {
+        [MemberNotNullWhen(true, nameof(BatchedResponses))]
+        [MemberNotNullWhen(false, nameof(Response))]
         public bool IsCollection { get; }
 
         public IAsyncEnumerable<Entry>? BatchedResponses { get; }

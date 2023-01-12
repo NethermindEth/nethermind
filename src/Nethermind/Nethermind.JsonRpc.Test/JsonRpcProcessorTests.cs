@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Test
             Assert.AreEqual("840b55c4-18b0-431c-be1d-6d22198b53f2", result[0].Response.Value.Response.Id);
         }
 
-        private Task<List<JsonRpcResult>> ProcessAsync(string request) => _jsonRpcProcessor.ProcessAsync(request, _context).ToListAsync();
+        private ValueTask<List<JsonRpcResult>> ProcessAsync(string request) => _jsonRpcProcessor.ProcessAsync(request, _context).ToListAsync();
 
         [Test]
         public async Task Can_process_non_hex_ids()
@@ -141,11 +141,11 @@ namespace Nethermind.JsonRpc.Test
             result[0].BatchedResponses.Should().NotBeNull();
             if (_returnErrors)
             {
-                (await result[0].BatchedResponses.ToListAsync()).Select(it => it.Response).Should().AllBeOfType<JsonRpcErrorResponse>();
+                (await result[0].BatchedResponses!.Select(r => r.Response).ToListAsync()).Should().AllBeOfType<JsonRpcErrorResponse>();
             }
             else
             {
-                (await result[0].BatchedResponses.ToListAsync()).Select(it => it.Response).Should().AllBeOfType<JsonRpcSuccessResponse>();
+                (await result[0].BatchedResponses!.Select(r => r.Response).ToListAsync()).Should().AllBeOfType<JsonRpcSuccessResponse>();
             }
         }
 
@@ -157,11 +157,11 @@ namespace Nethermind.JsonRpc.Test
             result[0].BatchedResponses.Should().NotBeNull();
             if (_returnErrors)
             {
-                (await result[0].BatchedResponses.ToListAsync()).Select(it => it.Response).Should().AllBeOfType<JsonRpcErrorResponse>();
+                (await result[0].BatchedResponses!.Select(r => r.Response).ToListAsync()).Should().AllBeOfType<JsonRpcErrorResponse>();
             }
             else
             {
-                (await result[0].BatchedResponses.ToListAsync()).Select(it => it.Response).Should().AllBeOfType<JsonRpcSuccessResponse>();
+                (await result[0].BatchedResponses!.Select(r => r.Response).ToListAsync()).Should().AllBeOfType<JsonRpcSuccessResponse>();
             }
         }
 
@@ -286,7 +286,7 @@ namespace Nethermind.JsonRpc.Test
             result.Should().HaveCount(1);
             result[0].Response.Should().BeNull();
             result[0].BatchedResponses.Should().NotBeNull();
-            Assert.IsTrue((await result[0].BatchedResponses.ToListAsync()).All(r => r.Response != _errorResponse));
+            Assert.IsTrue((await result[0].BatchedResponses!.ToListAsync()).All(r => r.Response != _errorResponse));
         }
 
         [Test]

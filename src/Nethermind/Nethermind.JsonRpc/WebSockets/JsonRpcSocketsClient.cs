@@ -16,7 +16,7 @@ namespace Nethermind.JsonRpc.WebSockets
 {
     public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
     {
-        public event EventHandler Closed;
+        public event EventHandler? Closed;
 
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonRpcService _jsonRpcService;

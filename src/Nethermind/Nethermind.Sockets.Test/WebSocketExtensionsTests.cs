@@ -115,14 +115,16 @@ namespace Nethermind.Sockets.Test
             WebSocketMock mock = new(receiveResult);
 
             var processor = Substitute.For<IJsonRpcProcessor>();
-            processor.ProcessAsync(default, default).ReturnsForAnyArgs((x) =>
+            processor.ProcessAsync(default, default).ReturnsForAnyArgs((x) => new List<JsonRpcResult>()
             {
-                return new List<JsonRpcResult>()
+                JsonRpcResult.Single(new JsonRpcResponse(), new RpcReport()),
+                JsonRpcResult.Collection(new List<JsonRpcResult.Entry>()
                 {
-                    JsonRpcResult.Single(new JsonRpcResult.Entry()),
-                    JsonRpcResult.Collection(new List<JsonRpcResult.Entry>(){new(), new(), new()}.ToAsyncEnumerable())
-                }.ToAsyncEnumerable();
-            });
+                    new(new JsonRpcResponse(), new RpcReport()),
+                    new(new JsonRpcResponse(), new RpcReport()),
+                    new(new JsonRpcResponse(), new RpcReport())
+                }.ToAsyncEnumerable())
+            }.ToAsyncEnumerable());
 
             var service = Substitute.For<IJsonRpcService>();
 
@@ -138,10 +140,10 @@ namespace Nethermind.Sockets.Test
                 Substitute.For<IJsonSerializer>(),
                 null);
 
-            webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs((x) =>
+            webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(async x =>
             {
                 var par = x.Arg<JsonRpcResult>();
-                return Task.FromResult(par.IsCollection ? par.BatchedResponses.ToListAsync().Result.Count * 100 : 100);
+                return await Task.FromResult(par.IsCollection ? par.BatchedResponses.ToListAsync().Result.Count * 100 : 100);
             });
 
             await webSocketsClient.ReceiveAsync();

@@ -35,6 +35,10 @@ namespace Nethermind.Runner.JsonRpc
 {
     public class Startup
     {
+        private static readonly byte _jsonOpeningBracket = Convert.ToByte('{');
+        private static readonly byte _jsonComma = Convert.ToByte(',');
+        private static readonly byte _jsonClosingBracket = Convert.ToByte('}');
+
         public void ConfigureServices(IServiceCollection services)
         {
             ServiceProvider sp = Build(services);
@@ -68,9 +72,6 @@ namespace Nethermind.Runner.JsonRpc
         }
 
         private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
-        private static readonly byte _jsonOpeningBracket = Convert.ToByte('{');
-        private static readonly byte _jsonComma = Convert.ToByte(',');
-        private static readonly byte _jsonClosingBracket = Convert.ToByte('}');
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
         {
