@@ -28,7 +28,7 @@ namespace Nethermind.Core
             GC.SuppressFinalize(this);
         }
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get => _storePretendingToSupportBatches[key];
             set => _storePretendingToSupportBatches[key] = value;

@@ -27,7 +27,7 @@ public class ColumnDb : IDbWithSpan
 
     public string Name { get; }
 
-    public byte[]? this[byte[] key]
+    public byte[]? this[ReadOnlySpan<byte> key]
     {
         get
         {
@@ -84,7 +84,7 @@ public class ColumnDb : IDbWithSpan
             _underlyingBatch.Dispose();
         }
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get => _underlyingBatch[key];
             set
@@ -101,13 +101,13 @@ public class ColumnDb : IDbWithSpan
         }
     }
 
-    public void Remove(byte[] key)
+    public void Remove(ReadOnlySpan<byte> key)
     {
         // TODO: this does not participate in batching?
         _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
     }
 
-    public bool KeyExists(byte[] key) => _rocksDb.Get(key, _columnFamily) is not null;
+    public bool KeyExists(ReadOnlySpan<byte> key) => _rocksDb.Get(key, _columnFamily) is not null;
 
     public void Flush()
     {

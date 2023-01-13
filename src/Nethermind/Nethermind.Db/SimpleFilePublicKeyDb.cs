@@ -45,33 +45,33 @@ namespace Nethermind.Db
             LoadData();
         }
 
-        public byte[] this[byte[] key]
+        public byte[] this[ReadOnlySpan<byte> key]
         {
-            get => _cache[key];
+            get => _cache[key.ToArray()];
             set
             {
                 if (value is null)
                 {
-                    _cache.TryRemove(key, out _);
+                    _cache.TryRemove(key.ToArray(), out _);
                 }
                 else
                 {
-                    _cache.AddOrUpdate(key, newValue => Add(value), (x, oldValue) => Update(oldValue, value));
+                    _cache.AddOrUpdate(key.ToArray(), newValue => Add(value), (x, oldValue) => Update(oldValue, value));
                 }
             }
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
 
-        public void Remove(byte[] key)
+        public void Remove(ReadOnlySpan<byte> key)
         {
             _hasPendingChanges = true;
-            _cache.TryRemove(key, out _);
+            _cache.TryRemove(key.ToArray(), out _);
         }
 
-        public bool KeyExists(byte[] key)
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
-            return _cache.ContainsKey(key);
+            return _cache.ContainsKey(key.ToArray());
         }
 
         public IDb Innermost => this;

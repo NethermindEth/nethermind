@@ -291,7 +291,7 @@ namespace Nethermind.Blockchain.Test
             IDb blocksInfosDb = Substitute.For<IDb>();
 
             Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
-            blocksInfosDb[BlockTree.DeletePointerAddressInDb.Bytes].Returns((byte[])null);
+            blocksInfosDb[BlockTree.DeletePointerAddressInDb.Bytes.AsSpan()].Returns((byte[])null);
             blocksInfosDb[Arg.Is<byte[]>(b => !Bytes.AreEqual(b, BlockTree.DeletePointerAddressInDb.Bytes))].Returns(chainLevel.Bytes);
 
             BlockTree blockTree = new(_blocksDb, _headersDb, blocksInfosDb, new ChainLevelInfoRepository(blocksInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);

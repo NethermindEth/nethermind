@@ -27,7 +27,7 @@ namespace Nethermind.Db
 
         public string Name { get; } = "ReadOnlyDb";
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get => _memDb[key] ?? _wrappedDb[key];
             set
@@ -69,9 +69,9 @@ namespace Nethermind.Db
             return this.LikeABatch();
         }
 
-        public void Remove(byte[] key) { }
+        public void Remove(ReadOnlySpan<byte> key) { }
 
-        public bool KeyExists(byte[] key)
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
             return _memDb.KeyExists(key) || _wrappedDb.KeyExists(key);
         }

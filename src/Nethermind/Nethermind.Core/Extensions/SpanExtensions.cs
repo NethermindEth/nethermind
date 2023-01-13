@@ -13,14 +13,29 @@ namespace Nethermind.Core.Extensions
 {
     public static class SpanExtensions
     {
+        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
+        {
+            return ToHexString(span, withZeroX, false, false);
+        }
+
         public static string ToHexString(this in Span<byte> span, bool withZeroX)
         {
             return ToHexString(span, withZeroX, false, false);
         }
 
+        public static string ToHexString(this in ReadOnlySpan<byte> span)
+        {
+            return ToHexString(span, false, false, false);
+        }
+
         public static string ToHexString(this in Span<byte> span)
         {
             return ToHexString(span, false, false, false);
+        }
+
+        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
+        {
+            return ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
         }
 
         public static string ToHexString(this in Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
@@ -29,7 +44,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        private static string ToHexViaLookup(Span<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
+        private static string ToHexViaLookup(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
             if (withEip55Checksum)
             {
@@ -50,7 +65,7 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        private static string ToHexStringWithEip55Checksum(Span<byte> bytes, bool withZeroX, bool skipLeadingZeros)
+        private static string ToHexStringWithEip55Checksum(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros)
         {
             string hashHex = Keccak.Compute(bytes.ToHexString(false)).ToString(false);
 

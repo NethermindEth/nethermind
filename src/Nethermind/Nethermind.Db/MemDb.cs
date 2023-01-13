@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -18,6 +19,7 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
+        [Todo("Figureout a way to index this with a span")]
         private readonly ConcurrentDictionary<byte[], byte[]?> _db;
 
         public MemDb(string name)
@@ -39,7 +41,7 @@ namespace Nethermind.Db
 
         public string Name { get; }
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get
             {
@@ -49,7 +51,8 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount++;
-                return _db.ContainsKey(key) ? _db[key] : null;
+                byte[] keyAsArray = key.ToArray();
+                return _db.ContainsKey(keyAsArray) ? _db[keyAsArray] : null;
             }
             set
             {
@@ -59,7 +62,7 @@ namespace Nethermind.Db
                 }
 
                 WritesCount++;
-                _db[key] = value;
+                _db[key.ToArray()] = value;
             }
         }
 
@@ -77,14 +80,14 @@ namespace Nethermind.Db
             }
         }
 
-        public void Remove(byte[] key)
+        public void Remove(ReadOnlySpan<byte> key)
         {
-            _db.TryRemove(key, out _);
+            _db.TryRemove(key.ToArray(), out _);
         }
 
-        public bool KeyExists(byte[] key)
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
-            return _db.ContainsKey(key);
+            return _db.ContainsKey(key.ToArray());
         }
 
         public IDb Innermost => this;

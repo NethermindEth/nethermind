@@ -10,6 +10,7 @@ using System.Reflection;
 using System.Threading;
 using ConcurrentCollections;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
@@ -313,7 +314,7 @@ public class DbOnTheRocks : IDbWithSpan
     }
 
 
-    public byte[]? this[byte[] key]
+    public byte[]? this[ReadOnlySpan<byte> key]
     {
         get
         {
@@ -378,6 +379,7 @@ public class DbOnTheRocks : IDbWithSpan
         }
     }
 
+    [Todo("Make this use span. Extension does not use span for some reason.")]
     public Span<byte> GetSpan(byte[] key)
     {
         if (_isDisposing)
@@ -408,7 +410,7 @@ public class DbOnTheRocks : IDbWithSpan
         _db.DangerousReleaseMemory(span);
     }
 
-    public void Remove(byte[] key)
+    public void Remove(ReadOnlySpan<byte> key)
     {
         if (_isDisposing)
         {
@@ -544,7 +546,7 @@ public class DbOnTheRocks : IDbWithSpan
         }
     }
 
-    public bool KeyExists(byte[] key)
+    public bool KeyExists(ReadOnlySpan<byte> key)
     {
         if (_isDisposing)
         {
@@ -616,7 +618,7 @@ public class DbOnTheRocks : IDbWithSpan
             }
         }
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get
             {

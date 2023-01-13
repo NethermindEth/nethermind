@@ -29,14 +29,15 @@ namespace Nethermind.Trie
 
         private readonly LruCache<byte[], byte[]> _cache;
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get
             {
-                if (!_cache.TryGet(key, out byte[] value))
+                byte[] keyAsArray = key.ToArray(); // TODO: make this more efficient
+                if (!_cache.TryGet(keyAsArray, out byte[] value))
                 {
                     value = _wrappedStore[key];
-                    _cache.Set(key, value);
+                    _cache.Set(keyAsArray, value);
                 }
                 else
                 {
@@ -48,7 +49,7 @@ namespace Nethermind.Trie
             }
             set
             {
-                _cache.Set(key, value);
+                _cache.Set(key.ToArray(), value);
                 _wrappedStore[key] = value;
             }
         }

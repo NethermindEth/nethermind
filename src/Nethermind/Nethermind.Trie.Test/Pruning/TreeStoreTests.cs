@@ -382,10 +382,10 @@ namespace Nethermind.Trie.Test.Pruning
         {
             private Dictionary<byte[], byte[]> _db = new();
 
-            public byte[]? this[byte[] key]
+            public byte[]? this[ReadOnlySpan<byte> key]
             {
-                get => _db[key];
-                set => _db[key] = value;
+                get => _db[key.ToArray()];
+                set => _db[key.ToArray()] = value;
             }
 
             public IBatch StartBatch()
@@ -401,10 +401,10 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                 }
 
-                public byte[]? this[byte[] key]
+                public byte[]? this[ReadOnlySpan<byte> key]
                 {
-                    get => _inBatched[key];
-                    set => _inBatched[key] = value;
+                    get => _inBatched[key.ToArray()];
+                    set => _inBatched[key.ToArray()] = value;
                 }
             }
         }
