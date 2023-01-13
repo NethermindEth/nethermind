@@ -10,10 +10,14 @@ namespace Nethermind.JsonRpc
     public readonly struct JsonRpcResult
     {
         [MemberNotNullWhen(true, nameof(BatchedResponses))]
+        [MemberNotNullWhen(false, nameof(SingleResponse))]
         [MemberNotNullWhen(false, nameof(Response))]
+        [MemberNotNullWhen(false, nameof(Report))]
         public bool IsCollection { get; }
         public IJsonRpcBatchResult? BatchedResponses { get; }
-        public Entry? Response { get; }
+        public Entry? SingleResponse { get; }
+        public JsonRpcResponse? Response => SingleResponse?.Response;
+        public RpcReport? Report => SingleResponse?.Report;
 
         private JsonRpcResult(IJsonRpcBatchResult batchedResponses)
         {
@@ -24,7 +28,7 @@ namespace Nethermind.JsonRpc
         private JsonRpcResult(Entry singleResult)
         {
             IsCollection = false;
-            Response = singleResult;
+            SingleResponse = singleResult;
         }
 
         public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
