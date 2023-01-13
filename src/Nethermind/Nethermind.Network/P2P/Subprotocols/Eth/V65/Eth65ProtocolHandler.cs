@@ -100,7 +100,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             GetPooledTransactionsMessage msg)
         {
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-            using ArrayPoolList<Transaction> txsToSend = new(1024);
+            List<Transaction> txsToSend = new();
             for (int i = 0; i < msg.Hashes.Count; i++)
             {
                 if (_txPool.TryGetPendingTransaction(msg.Hashes[i], out Transaction tx))
