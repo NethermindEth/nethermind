@@ -10,6 +10,7 @@ namespace Nethermind.JsonRpc
     public readonly struct JsonRpcResult
     {
         [MemberNotNullWhen(true, nameof(BatchedResponses))]
+        [MemberNotNullWhen(false, nameof(SingleResponse))]
         [MemberNotNullWhen(false, nameof(Response))]
         [MemberNotNullWhen(false, nameof(Report))]
         public bool IsCollection { get; }
