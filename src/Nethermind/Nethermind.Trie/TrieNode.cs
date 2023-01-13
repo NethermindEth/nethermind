@@ -3,6 +3,7 @@
 
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -183,9 +184,9 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieNode(NodeType nodeType, byte[] path)
+        public TrieNode(NodeType nodeType, Span<byte> path)
         {
-            FullPath = path ?? throw new ArgumentNullException(nameof(path));
+            FullPath = path.ToArray();
             NodeType = nodeType;
             if (nodeType == NodeType.Unknown)
             {
@@ -248,27 +249,18 @@ namespace Nethermind.Trie
 
         public void ResolveNode(ITrieNodeResolver tree)
         {
-            ResolveNode(tree, Array.Empty<byte>());
-        }
-
-        /// <summary>
-        /// Highly optimized
-        /// </summary>
-        public void ResolveNode(ITrieNodeResolver tree, Span<byte> path)
-        {
             try
             {
                 if (NodeType == NodeType.Unknown)
                 {
                     if (FullRlp is null)
                     {
-                        //if (Keccak is null)
-                        //{
-                        //    throw new TrieException("Unable to resolve node without Keccak");
-                        //}
+                        if (Keccak is null)
+                        {
+                            throw new TrieException("Unable to resolve node without Keccak");
+                        }
 
-                        //FullRlp = tree.LoadRlp(Keccak);
-                        FullRlp = tree.LoadRlp(path.IsEmpty ? new byte[33] : path);
+                        FullRlp = tree.LoadRlp(Keccak);
                         IsPersisted = true;
 
                         if (FullRlp is null)
@@ -281,55 +273,95 @@ namespace Nethermind.Trie
                 {
                     return;
                 }
-
-                _rlpStream = FullRlp.AsRlpStream();
-                if (_rlpStream is null)
-                {
-                    throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
-                }
-
-                Metrics.TreeNodeRlpDecodings++;
-                _rlpStream.ReadSequenceLength();
-
-                // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-                int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining(null, 3);
-
-                if (numberOfItems > 2)
-                {
-                    NodeType = NodeType.Branch;
-                }
-                else if (numberOfItems == 2)
-                {
-                    HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
-                    bool isExtension = key.IsExtension;
-
-                    // a hack to set internally and still verify attempts from the outside
-                    // after the code is ready we should just add proper access control for methods from the outside and inside
-                    bool isDirtyActual = IsDirty;
-                    IsDirty = true;
-
-                    if (isExtension)
-                    {
-                        NodeType = NodeType.Extension;
-                        Key = key;
-                    }
-                    else
-                    {
-                        NodeType = NodeType.Leaf;
-                        Key = key;
-                        Value = _rlpStream.DecodeByteArray();
-                    }
-
-                    IsDirty = isDirtyActual;
-                }
-                else
-                {
-                    throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp?.ToHexString()})");
-                }
+                ResolveNodeProcessStream();
+              
             }
             catch (RlpException rlpException)
             {
                 throw new TrieException($"Error when decoding node {Keccak}", rlpException);
+            }
+        }
+
+        /// <summary>
+        /// Highly optimized
+        /// </summary>
+        public void ResolveNode(ITrieNodeResolver tree, Span<byte> path)
+        {
+            try
+            {
+                if (NodeType == NodeType.Unknown)
+                {
+                    FullRlp = tree.LoadRlp(path);
+                    IsPersisted = true;
+
+                    if (FullRlp is null)
+                    {
+                        throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
+                    }
+                }
+                else
+                {
+                    if (FullPath is null)
+                        FullPath = path.ToArray();
+                    return;
+                }
+
+                ResolveNodeProcessStream();
+            }
+            catch (RlpException rlpException)
+            {
+                throw new TrieException($"Error when decoding node {Keccak}", rlpException);
+            }
+        }
+
+        public void ResolveNodeProcessStream()
+        {
+            if (FullRlp is null)
+                throw new ArgumentNullException(nameof(FullRlp));
+
+            _rlpStream = FullRlp.AsRlpStream();
+            if (_rlpStream is null)
+            {
+                throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
+            }
+
+            Metrics.TreeNodeRlpDecodings++;
+            _rlpStream.ReadSequenceLength();
+
+            // micro optimization to prevent searches beyond 3 items for branches (search up to three)
+            int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining(null, 3);
+
+            if (numberOfItems > 2)
+            {
+                NodeType = NodeType.Branch;
+            }
+            else if (numberOfItems == 2)
+            {
+                HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
+                bool isExtension = key.IsExtension;
+
+                // a hack to set internally and still verify attempts from the outside
+                // after the code is ready we should just add proper access control for methods from the outside and inside
+                bool isDirtyActual = IsDirty;
+                IsDirty = true;
+
+                if (isExtension)
+                {
+                    NodeType = NodeType.Extension;
+                    Key = key;
+                }
+                else
+                {
+                    NodeType = NodeType.Leaf;
+                    Key = key;
+                    Value = _rlpStream.DecodeByteArray();
+                }
+
+                IsDirty = isDirtyActual;
+            }
+            else
+            {
+                throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp?.ToHexString()})");
             }
         }
 
@@ -503,10 +535,41 @@ namespace Nethermind.Trie
             return child;
         }
 
-        public TrieNode? GetChild(ITrieNodeResolver tree, Span<byte> childPath)
+        public TrieNode? GetChild(ITrieNodeResolver tree, Span<byte> childPath, int childIndex)
         {
+            /* extensions store value before the child while branches store children before the value
+                         * so just to treat them in the same way we update index on extensions
+                         */
+            childIndex = IsExtension ? childIndex + 1 : childIndex;
+            object childOrRef = ResolveChild(tree, childPath, childIndex);
+
             TrieNode? child;
-            child = tree.FindCachedOrUnknown(childPath);
+            if (ReferenceEquals(childOrRef, _nullNode) || ReferenceEquals(childOrRef, null))
+            {
+                child = null;
+            }
+            else if (childOrRef is TrieNode childNode)
+            {
+                child = childNode;
+            }
+            else if (childOrRef is Keccak reference)
+            {
+                child = tree.FindCachedOrUnknown(reference);
+            }
+            else
+            {
+                // we expect this to happen as a Trie traversal error (please see the stack trace above)
+                // we need to investigate this case when it happens again
+                bool isKeccakCalculated = Keccak is not null && FullRlp is not null;
+                bool isKeccakCorrect = isKeccakCalculated && Keccak == Keccak.Compute(FullRlp);
+                throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
+            }
+
+            // pruning trick so we never store long persisted paths
+            if (child?.IsPersisted == true)
+            {
+                UnresolveChild(childIndex);
+            }
 
             return child;
         }
@@ -600,6 +663,15 @@ namespace Nethermind.Trie
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
+            trieNode.FullPath = this.FullPath;
+            return trieNode;
+        }
+
+        public TrieNode CloneWithChangedKey(HexPrefix key, Span<byte> fullPath)
+        {
+            TrieNode trieNode = Clone();
+            trieNode.Key = key;
+            trieNode.FullPath = fullPath.ToArray();
             return trieNode;
         }
 
@@ -627,6 +699,7 @@ namespace Nethermind.Trie
         {
             TrieNode trieNode = Clone();
             trieNode.Value = changedValue;
+            trieNode.FullPath = FullPath;
             return trieNode;
         }
 
@@ -829,6 +902,64 @@ namespace Nethermind.Trie
             {
                 rlpStream.SkipItem();
             }
+        }
+
+        private object? ResolveChild(ITrieNodeResolver tree, Span<byte> path, int i)
+        {
+            object? childOrRef;
+            if (_rlpStream is null)
+            {
+                childOrRef = _data?[i];
+            }
+            else
+            {
+                InitData();
+                if (_data![i] is null)
+                {
+                    // Allows to load children in parallel
+                    RlpStream rlpStream = new(_rlpStream!.Data!);
+                    SeekChild(rlpStream, i);
+                    int prefix = rlpStream!.ReadByte();
+
+                    switch (prefix)
+                    {
+                        case 0:
+                        case 128:
+                            {
+                                _data![i] = childOrRef = _nullNode;
+                                break;
+                            }
+                        case 160:
+                            {
+                                rlpStream.Position--;
+                                //Keccak keccak = rlpStream.DecodeKeccak();
+                                TrieNode child = tree.FindCachedOrUnknown(path);
+                                _data![i] = childOrRef = child;
+
+                                if (IsPersisted && !child.IsPersisted)
+                                {
+                                    child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
+                                }
+
+                                break;
+                            }
+                        default:
+                            {
+                                rlpStream.Position--;
+                                Span<byte> fullRlp = rlpStream.PeekNextItem();
+                                TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                                _data![i] = childOrRef = child;
+                                break;
+                            }
+                    }
+                }
+                else
+                {
+                    childOrRef = _data?[i];
+                }
+            }
+
+            return childOrRef;
         }
 
         private object? ResolveChild(ITrieNodeResolver tree, int i)

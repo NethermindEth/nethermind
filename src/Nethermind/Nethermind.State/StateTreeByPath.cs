@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -12,28 +13,21 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public interface IStateTree : IPatriciaTree
-    {
-        void Set(Address address, Account? account);
-        Rlp? Set(Keccak keccak, Account? account);
-    }
-
-
-    public class StateTree : PatriciaTree, IStateTree
+    public class StateTreeByPath : PatriciaTreeByPath, IStateTree
     {
         private readonly AccountDecoder _decoder = new();
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
-        public StateTree()
+        public StateTreeByPath()
             : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
         {
             TrieType = TrieType.State;
         }
 
         [DebuggerStepThrough]
-        public StateTree(ITrieStore? store, ILogManager? logManager)
+        public StateTreeByPath(ITrieStore? store, ILogManager? logManager)
             : base(store, Keccak.EmptyTreeHash, true, true, logManager)
         {
             TrieType = TrieType.State;
@@ -42,19 +36,25 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
-            byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
-            if (bytes is null)
+            Span<byte> pathNibbles = stackalloc byte[64];
+            Nibbles.BytesToNibbleBytes(ValueKeccak.Compute(address.Bytes).BytesAsSpan, pathNibbles);
+            TrieNode accountNode = TrieStore.FindCachedOrUnknown(pathNibbles);
+            if (!accountNode.IsLeaf || accountNode.FullRlp is null)
             {
                 return null;
             }
 
-            return _decoder.Decode(bytes.AsRlpStream());
+            return _decoder.Decode(accountNode.Value.AsRlpStream());
         }
 
         [DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
         {
-            byte[]? bytes = Get(keccak.Bytes);
+            Span<byte> pathNibbles = stackalloc byte[64];
+            Nibbles.BytesToNibbleBytes(keccak.Bytes, pathNibbles);
+            TrieNode accountNode = TrieStore.FindCachedOrUnknown(pathNibbles);
+            accountNode.ResolveNode(TrieStore, pathNibbles);
+            byte[]? bytes = accountNode.FullRlp is null ? Get(keccak.Bytes) : accountNode.Value;
             if (bytes is null)
             {
                 return null;

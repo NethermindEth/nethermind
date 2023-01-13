@@ -51,7 +51,14 @@ namespace Nethermind.Trie
         {
             TrieNode node = new(NodeType.Extension);
             node.Key = key;
-            node.FullPath = key.Path;
+            return node;
+        }
+
+        public static TrieNode CreateExtension(HexPrefix key, Span<byte> fullPath)
+        {
+            TrieNode node = new(NodeType.Extension);
+            node.Key = key;
+            node.FullPath = fullPath.ToArray();
             return node;
         }
 
@@ -64,6 +71,19 @@ namespace Nethermind.Trie
             TrieNode node = new(NodeType.Extension);
             node.SetChild(0, child);
             node.Key = key;
+            return node;
+        }
+
+        public static TrieNode CreateExtension(HexPrefix key, TrieNode child, Span<byte> fullPath)
+        {
+            Debug.Assert(
+                key.IsExtension,
+                $"{nameof(NodeType.Extension)} should always be created with an extension {nameof(HexPrefix)}");
+
+            TrieNode node = new(NodeType.Extension);
+            node.SetChild(0, child);
+            node.Key = key;
+            node.FullPath = fullPath.ToArray();
             return node;
         }
     }

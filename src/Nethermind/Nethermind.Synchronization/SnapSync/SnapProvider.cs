@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.SnapSync
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
 
-            _store = new TrieStore(
+            _store = new TrieStoreByPath(
                 _dbProvider.StateDb,
                 Trie.Pruning.No.Pruning,
                 Persist.EveryBlock,
@@ -71,7 +71,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
-            StateTree tree = new(_store, _logManager);
+            StateTreeByPath tree = new(_store, _logManager);
 
             (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes) =
                 SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);

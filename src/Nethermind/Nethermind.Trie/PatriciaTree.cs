@@ -18,8 +18,20 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
+    public interface IPatriciaTree
+    {
+        Keccak RootHash { get; set; }
+        TrieNode? RootRef { get; set; }
+        void UpdateRootHash();
+        void Commit(long blockNumber, bool skipRoot = false);
+
+        ITrieStore TrieStore { get; }
+        void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null);
+    }
+
+
     [DebuggerDisplay("{RootHash}")]
-    public class PatriciaTree
+    public class PatriciaTree : IPatriciaTree
     {
         private readonly ILogger _logger;
 
@@ -42,7 +54,7 @@ namespace Nethermind.Trie
 
         private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
 
-        public readonly ITrieStore TrieStore;
+        private readonly ITrieStore _trieStore;
 
         private readonly bool _parallelBranches;
 
@@ -50,7 +62,7 @@ namespace Nethermind.Trie
 
         private Keccak _rootHash = Keccak.EmptyTreeHash;
 
-        public TrieNode? RootRef;
+        private TrieNode? _rootRef;
 
         /// <summary>
         /// Only used in EthereumTests
@@ -69,6 +81,9 @@ namespace Nethermind.Trie
             get => _rootHash;
             set => SetRootHash(value, true);
         }
+        public TrieNode? RootRef { get => _rootRef; set => _rootRef = value; }
+
+        public ITrieStore TrieStore => _trieStore;
 
         public PatriciaTree()
             : this(NullTrieStore.Instance, EmptyTreeHash, false, true, NullLogManager.Instance)
@@ -108,7 +123,7 @@ namespace Nethermind.Trie
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
-            TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
             RootHash = rootHash;
