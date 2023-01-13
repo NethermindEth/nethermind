@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
-using Nethermind.Int256;
 
 namespace Nethermind.Core;
 
@@ -28,7 +27,7 @@ public class Withdrawal
     /// <summary>
     /// Gets or sets the withdrawal amount in Wei.
     /// </summary>
-    public UInt256 Amount { get; set; }
+    public ulong Amount { get; set; }
 
     public override string ToString() => ToString(string.Empty);
 
