@@ -9,7 +9,7 @@ public class WithdrawalBuilder : BuilderBase<Withdrawal>
 
     public WithdrawalBuilder WithAmount(ulong amount)
     {
-        TestObject.Amount = amount;
+        TestObject.AmountInGWei = amount;
 
         return this;
     }

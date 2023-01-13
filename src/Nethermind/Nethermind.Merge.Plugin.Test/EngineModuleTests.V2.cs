@@ -44,7 +44,7 @@ public partial class EngineModuleTests
         };
         Withdrawal[] withdrawals = new[]
         {
-            new Withdrawal { Index = 1, Amount = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
+            new Withdrawal { Index = 1, AmountInGWei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
         };
         var payloadAttrs = new
         {
