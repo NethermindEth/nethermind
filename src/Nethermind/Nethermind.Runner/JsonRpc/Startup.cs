@@ -191,7 +191,7 @@ namespace Nethermind.Runner.JsonRpc
                                 }
                                 else
                                 {
-                                    jsonSerializer.Serialize(resultStream, result.Response.Value.Response);
+                                    jsonSerializer.Serialize(resultStream, result.Response);
                                 }
 
                                 if (jsonRpcConfig.BufferResponses)
@@ -222,7 +222,7 @@ namespace Nethermind.Runner.JsonRpc
                             long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
                             jsonRpcLocalStats.ReportCall(result.IsCollection
                                 ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
-                                : result.Response.Value.Report, handlingTimeMicroseconds, responseSize);
+                                : result.Report.Value, handlingTimeMicroseconds, responseSize);
 
                             Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, responseSize);
 
@@ -250,23 +250,15 @@ namespace Nethermind.Runner.JsonRpc
             }
             else
             {
-                return ModuleTimeout(result.Response.Value)
+                return ModuleTimeout(result.Response)
                     ? StatusCodes.Status503ServiceUnavailable
                     : StatusCodes.Status200OK;
             }
         }
 
-        private static bool ModuleTimeout(JsonRpcResult.Entry result)
+        private static bool ModuleTimeout(JsonRpcResponse? response)
         {
-            static bool ModuleTimeoutError(JsonRpcResponse response) =>
-                response is JsonRpcErrorResponse errorResponse && errorResponse.Error?.Code == ErrorCodes.ModuleTimeout;
-
-            if (ModuleTimeoutError(result.Response))
-            {
-                return true;
-            }
-
-            return false;
+            return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout };
         }
     }
 }

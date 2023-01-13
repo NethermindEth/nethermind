@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.WebSockets
                 else
                 {
                     long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                    _jsonRpcLocalStats.ReportCall(result.Response!.Value.Report, handlingTimeMicroseconds, singleResponseSize);
+                    _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
                 }
                 stopwatch.Restart();
             }
@@ -127,7 +127,7 @@ namespace Nethermind.JsonRpc.WebSockets
             }
             else
             {
-                int singleResponseSize = await SendJsonRpcResultEntry(result.Response!.Value);
+                int singleResponseSize = await SendJsonRpcResultEntry(result.SingleResponse!.Value);
                 return singleResponseSize;
             }
         }
