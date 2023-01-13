@@ -71,7 +71,8 @@ namespace Nethermind.JsonRpc.WebSockets
                 _jsonRpcService,
                 _jsonRpcLocalStats,
                 _jsonSerializer,
-                jsonRpcUrl);
+                jsonRpcUrl,
+                _maxBatchResponseBodySize);
 
             _clients.TryAdd(socketsClient.Id, socketsClient);
 
