@@ -151,13 +151,14 @@ namespace Nethermind.Runner.JsonRpc
                 {
                     if (jsonRpcUrl.IsAuthenticated && !rpcAuthentication!.Authenticate(ctx.Request.Headers["Authorization"]))
                     {
-                        var response = jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
+                        JsonRpcErrorResponse? response = jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
                         ctx.Response.ContentType = "application/json";
                         ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                         jsonSerializer.Serialize(ctx.Response.Body, response);
                         await ctx.Response.CompleteAsync();
                         return;
                     }
+
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     using CountingTextReader request = new(new StreamReader(ctx.Request.Body, Encoding.UTF8));
                     try
@@ -175,19 +176,41 @@ namespace Nethermind.Runner.JsonRpc
                                 if (result.IsCollection)
                                 {
                                     resultStream.WriteByte(_jsonOpeningBracket);
+                                    responseSize += 1;
                                     bool first = true;
-                                    await foreach (JsonRpcResult.Entry entry in result.BatchedResponses)
+                                    JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses.GetAsyncEnumerator(CancellationToken.None);
+                                    try
                                     {
-                                        using (entry)
+                                        while (await enumerator.MoveNextAsync())
                                         {
-                                            if (!first) resultStream.WriteByte(_jsonComma);
-                                            first = false;
+                                            JsonRpcResult.Entry entry = enumerator.Current;
+                                            using (entry)
+                                            {
+                                                if (!first)
+                                                {
+                                                    resultStream.WriteByte(_jsonComma);
+                                                    responseSize += 1;
+                                                }
 
-                                            jsonSerializer.Serialize(resultStream, entry.Response);
-                                            jsonRpcLocalStats.ReportCall(entry.Report);
+                                                first = false;
+                                                responseSize += jsonSerializer.Serialize(resultStream, entry.Response);
+                                                jsonRpcLocalStats.ReportCall(entry.Report);
+
+                                                // We reached the limit and don't want to responded to more request in the batch
+                                                if (responseSize > jsonRpcConfig.MaxBatchResponseBodySize)
+                                                {
+                                                    enumerator.IsStopped = true;
+                                                }
+                                            }
                                         }
                                     }
+                                    finally
+                                    {
+                                        await enumerator.DisposeAsync();
+                                    }
+
                                     resultStream.WriteByte(_jsonClosingBracket);
+                                    responseSize += 1;
                                 }
                                 else
                                 {
