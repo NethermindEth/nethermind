@@ -73,7 +73,6 @@ namespace Nethermind.JsonRpc
         {
             IEnumerable<JToken> parsedJson = JTokenUtils.ParseMulticontent(json);
 
-            List<(JsonRpcRequest Model, List<JsonRpcRequest> Collection)> list = new();
             foreach (JToken token in parsedJson)
             {
                 if (token is JArray array)
@@ -151,9 +150,7 @@ namespace Nethermind.JsonRpc
                     TraceResult(response);
                     stopwatch.Stop();
                     deserializationFailureResult = JsonRpcResult.Single(
-                        RecordResponse(
-                            new JsonRpcResult.Entry(response, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false))
-                        ));
+                        RecordResponse(response, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
                 }
 
                 if (deserializationFailureResult.HasValue)
@@ -182,12 +179,12 @@ namespace Nethermind.JsonRpc
                         {
                             JsonRpcErrorResponse? response = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
 
-                            yield return JsonRpcResult.Single(RecordResponse(new JsonRpcResult.Entry(response, new RpcReport("# error #", 0, false))));
+                            yield return JsonRpcResult.Single(RecordResponse(response, RpcReport.Error));
                             continue;
                         }
 
                         stopwatch.Stop();
-                        yield return JsonRpcResult.Collection(IterateRequest(rpcRequest.Collection, context));
+                        yield return JsonRpcResult.Collection(new JsonRpcBatchResult((e, c) => IterateRequest(rpcRequest.Collection, context, e).GetAsyncEnumerator(c)));
                     }
 
                     if (rpcRequest.Model is null && rpcRequest.Collection is null)
@@ -197,13 +194,16 @@ namespace Nethermind.JsonRpc
                         TraceResult(errorResponse);
                         stopwatch.Stop();
                         if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-                        yield return JsonRpcResult.Single(RecordResponse(new JsonRpcResult.Entry(errorResponse, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false))));
+                        yield return JsonRpcResult.Single(RecordResponse(errorResponse, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
                     }
                 }
             } while (moveNext);
         }
 
-        private async IAsyncEnumerable<JsonRpcResult.Entry> IterateRequest(List<JsonRpcRequest> requests, JsonRpcContext context)
+        private async IAsyncEnumerable<JsonRpcResult.Entry> IterateRequest(
+            List<JsonRpcRequest> requests,
+            JsonRpcContext context,
+            JsonRpcBatchResultAsyncEnumerator enumerator)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
 
@@ -212,12 +212,18 @@ namespace Nethermind.JsonRpc
             {
                 JsonRpcRequest jsonRpcRequest = requests[index];
 
-                JsonRpcResult.Entry response = await HandleSingleRequest(jsonRpcRequest, context);
+                JsonRpcResult.Entry response = enumerator.IsStopped
+                    ? new JsonRpcResult.Entry(
+                        _jsonRpcService.GetErrorResponse(
+                            jsonRpcRequest.Method,
+                            ErrorCodes.LimitExceeded,
+                            $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB()}KB exceeded",
+                            jsonRpcRequest.Id),
+                        RpcReport.Error)
+                    : await HandleSingleRequest(jsonRpcRequest, context);
 
                 if (_logger.IsDebug) _logger.Debug($"  {++requestIndex}/{requests.Count} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
-
                 TraceResult(response);
-
                 yield return RecordResponse(response);
             }
 
@@ -251,6 +257,9 @@ namespace Nethermind.JsonRpc
             TraceResult(result);
             return result;
         }
+
+        private JsonRpcResult.Entry RecordResponse(JsonRpcResponse response, RpcReport report) =>
+            RecordResponse(new JsonRpcResult.Entry(response, report));
 
         private JsonRpcResult.Entry RecordResponse(JsonRpcResult.Entry result)
         {

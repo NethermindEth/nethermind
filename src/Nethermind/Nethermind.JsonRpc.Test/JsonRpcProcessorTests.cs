@@ -7,6 +7,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Numerics;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Logging;
@@ -26,8 +27,8 @@ namespace Nethermind.JsonRpc.Test
         private readonly bool _returnErrors;
         private IFileSystem _fileSystem = null!;
         private JsonRpcContext _context = null!;
-
-        private JsonRpcErrorResponse _errorResponse = new();
+        private readonly JsonRpcErrorResponse _errorResponse = new();
+        private JsonRpcProcessor _jsonRpcProcessor = null!;
 
         public JsonRpcProcessorTests(bool returnErrors)
         {
@@ -40,6 +41,7 @@ namespace Nethermind.JsonRpc.Test
             IJsonRpcService service = Substitute.For<IJsonRpcService>();
             service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(ci => _returnErrors ? new JsonRpcErrorResponse { Id = ci.Arg<JsonRpcRequest>().Id } : new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
             service.GetErrorResponse(0, null!).ReturnsForAnyArgs(_errorResponse);
+            service.GetErrorResponse(null!, 0, null!, null!).ReturnsForAnyArgs(_errorResponse);
             service.Converters.Returns(new JsonConverter[] { new AddressConverter() }); // just to test converter loader
 
             _fileSystem = Substitute.For<IFileSystem>();
@@ -52,8 +54,6 @@ namespace Nethermind.JsonRpc.Test
             _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), configWithRecorder, _fileSystem, LimboLogs.Instance);
             _context = new JsonRpcContext(RpcEndpoint.Http);
         }
-
-        private JsonRpcProcessor _jsonRpcProcessor = null!;
 
         [Test]
         public async Task Can_process_guid_ids()
@@ -266,6 +266,37 @@ namespace Nethermind.JsonRpc.Test
             IList<JsonRpcResult> result = await ProcessAsync(request.ToString());
             result.Should().HaveCount(1);
             result[0].Response.Should().BeAssignableTo<JsonRpcErrorResponse>();
+        }
+
+        [Test]
+        public async Task Can_process_batch_request_with_result_limit([Values(false, true)] bool limit)
+        {
+            IList<JsonRpcResult> result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]},{\"id\":68,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}]");
+            result[0].IsCollection.Should().BeTrue();
+            result[0].BatchedResponses.Should().NotBeNull();
+            JsonRpcBatchResultAsyncEnumerator enumerator = result[0].BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
+            (await enumerator.MoveNextAsync()).Should().BeTrue();
+            if (_returnErrors)
+            {
+                enumerator.Current.Response.Should().BeOfType<JsonRpcErrorResponse>();
+            }
+            else
+            {
+                enumerator.Current.Response.Should().NotBeOfType<JsonRpcErrorResponse>();
+            }
+
+            enumerator.IsStopped = limit; // limiting
+            (await enumerator.MoveNextAsync()).Should().BeTrue();
+            if (limit || _returnErrors)
+            {
+                enumerator.Current.Response.Should().BeOfType<JsonRpcErrorResponse>();
+            }
+            else
+            {
+                enumerator.Current.Response.Should().NotBeOfType<JsonRpcErrorResponse>();
+            }
+
+            (await enumerator.MoveNextAsync()).Should().BeFalse();
         }
 
         [Test]

@@ -11,6 +11,7 @@ namespace Nethermind.JsonRpc
     {
         Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context);
         JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage);
+        JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object id);
         JsonConverter[] Converters { get; }
     }
 }
