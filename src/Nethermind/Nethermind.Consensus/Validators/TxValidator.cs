@@ -38,7 +38,13 @@ namespace Nethermind.Consensus.Validators
                       while for an init it will be empty */
                    ValidateSignature(transaction.Signature, releaseSpec) &&
                    ValidateChainId(transaction) &&
-                   Validate1559GasFields(transaction, releaseSpec);
+                   Validate1559GasFields(transaction, releaseSpec) &&
+                   Validate3860Rules(transaction, releaseSpec);
+        }
+
+        private bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec)
+        {
+            return !(transaction.IsContractCreation && releaseSpec.IsEip3860Enabled && (transaction.Data?.Length ?? 0) > releaseSpec.MaxInitCodeSize);
         }
 
         private bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec)

@@ -11,6 +11,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -85,6 +86,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase complexCase = new()
                 {
+                    ReleaseSpec = Berlin.Instance,
                     AccountStates =
                     {
                         {TestItem.AddressA, (1000, 1)},
@@ -134,7 +136,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase baseFeeBalanceCheck = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (1000, 1) } },
                     Transactions =
@@ -154,7 +156,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase balanceBelowMaxFeeTimesGasLimit = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (400, 1) } },
                     Transactions =
@@ -169,7 +171,7 @@ namespace Nethermind.Blockchain.Test
                 ProperTransactionsSelectedTestCase balanceFailingWithMaxFeePerGasCheck =
                     new()
                     {
-                        Eip1559Enabled = true,
+                        ReleaseSpec = London.Instance,
                         BaseFee = 5,
                         AccountStates = { { TestItem.AddressA, (400, 1) } },
                         Transactions =
@@ -185,7 +187,28 @@ namespace Nethermind.Blockchain.Test
             }
         }
 
+        public static IEnumerable Eip3860TestCases
+        {
+            get
+            {
+                ProperTransactionsSelectedTestCase balanceBelowMaxFeeTimesGasLimit = new()
+                {
+                    ReleaseSpec = Shanghai.Instance,
+                    BaseFee = 5,
+                    AccountStates = { { TestItem.AddressA, (400, 1) } },
+                    Transactions =
+                    {
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+                            .WithMaxFeePerGas(45).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                    },
+                    GasLimit = 10000000
+                };
+                yield return new TestCaseData(balanceBelowMaxFeeTimesGasLimit).SetName("EIP3860 Transactions");
+            }
+        }
+
         [TestCaseSource(nameof(ProperTransactionsSelectedTestCases))]
+        [TestCaseSource(nameof(Eip3860TestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             MemDb stateDb = new();
@@ -195,10 +218,7 @@ namespace Nethermind.Blockchain.Test
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
-            IReleaseSpec spec = new ReleaseSpec()
-            {
-                IsEip1559Enabled = testCase.Eip1559Enabled
-            };
+            IReleaseSpec spec = testCase.ReleaseSpec;
             specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong?>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
@@ -263,5 +283,41 @@ namespace Nethermind.Blockchain.Test
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, spec);
             blockToProduce.Transactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
         }
+        //
+        // [Test]
+        // public void Cannot_pick_transaction_with_initicode_above_maxinitcode_when_EIP3860_enabled()
+        // {
+        //     MemDb stateDb = new();
+        //     MemDb codeDb = new();
+        //     TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        //     StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+        //     IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
+        //     ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        //     ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        //     var txArray =
+        //     {
+        //         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3)
+        //             .WithGasPrice(60).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+        //         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+        //             .WithGasPrice(30).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+        //         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2)
+        //             .WithGasPrice(20).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+        //     };
+        //     BlockProcessor.BlockProductionTransactionsExecutor txExecutor =
+        //         new(
+        //             transactionProcessor,
+        //             stateProvider,
+        //             storageProvider,
+        //             specProvider,
+        //             LimboLogs.Instance);
+        //     Block block = Build.A.Block
+        //         .WithNumber(0)
+        //         .WithTransactions(txArray)
+        //         .TestObject;
+        //     BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+        //     txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, NullTxTracer.Instance, spec);
+        //     blockToProduce.Transactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
+        //
+        // }
     }
 }
