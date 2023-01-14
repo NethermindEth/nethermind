@@ -16,12 +16,18 @@ namespace Nethermind.Network.Rlpx
     {
         private ILogger _logger;
 
-        private ZeroPacket _zeroPacket;
+        private ZeroPacket? _zeroPacket;
         private FrameHeaderReader _headerReader = new();
 
         public ZeroFrameMerger(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger<ZeroFrameMerger>() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+
+        public override void HandlerRemoved(IChannelHandlerContext context)
+        {
+            base.HandlerRemoved(context);
+            _zeroPacket?.Release();
         }
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
@@ -79,12 +85,7 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                content = input.ReadSlice(frame.Size - 1);
-
-                // Since we will call release in the next handler and we use a derived buffer here
-                // we need to call Retain to prevent the buffer from being released twice
-                // (once in the next handler and once in the base class).
-                content.Retain();
+                content = input.ReadRetainedSlice(frame.Size - 1);
             }
 
             _zeroPacket = new ZeroPacket(content);
@@ -95,7 +96,7 @@ namespace Nethermind.Network.Rlpx
             if (frame.IsChunked)
             {
                 input.ReadBytes(_zeroPacket.Content, frame.Size - 1);
-                // do not call Release since the input buffer is managed by 
+                // do not call Release since the input buffer is managed by
             }
         }
 

@@ -6,6 +6,7 @@ using System.IO;
 using System.Net;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -88,6 +89,13 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressD = PublicKeyD.Address;
         public static Address AddressE = PublicKeyE.Address;
         public static Address AddressF = PublicKeyF.Address;
+
+        public static Withdrawal WithdrawalA_1Eth = new() { Address = AddressA, Index = 1, ValidatorIndex = 2001, Amount = 1.Ether() };
+        public static Withdrawal WithdrawalB_2Eth = new() { Address = AddressB, Index = 2, ValidatorIndex = 2002, Amount = 2.Ether() };
+        public static Withdrawal WithdrawalC_3Eth = new() { Address = AddressC, Index = 3, ValidatorIndex = 2003, Amount = 3.Ether() };
+        public static Withdrawal WithdrawalD_4Eth = new() { Address = AddressD, Index = 4, ValidatorIndex = 2004, Amount = 4.Ether() };
+        public static Withdrawal WithdrawalE_5Eth = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, Amount = 5.Ether() };
+        public static Withdrawal WithdrawalF_6Eth = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, Amount = 6.Ether() };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");

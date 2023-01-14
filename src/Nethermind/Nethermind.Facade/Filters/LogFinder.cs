@@ -188,7 +188,7 @@ namespace Nethermind.Blockchain.Find
                 }
 
                 fromBlock = _blockFinder.FindHeader(fromBlock.Number + 1);
-                if (fromBlock == null) break;
+                if (fromBlock is null) break;
 
                 count++;
             }

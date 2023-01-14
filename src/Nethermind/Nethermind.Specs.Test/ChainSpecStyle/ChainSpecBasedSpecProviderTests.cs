@@ -15,7 +15,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using NSubstitute;
-using NSubstitute.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle
@@ -339,7 +338,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                                      p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
                          .Where(p => isMainnet || checkDifficultyBomb ||
                                      p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
-                         .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock)))
+                         .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
+                         .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp)))
             {
                 Assert.AreEqual(propertyInfo.GetValue(expectedSpec), propertyInfo.GetValue(ActualSpec),
                     activation + "." + propertyInfo.Name);
@@ -611,6 +611,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 r.Eip1559TransitionBlock = 15590L;
                 r.IsTimeAdjustmentPostOlympic = true;
                 r.MaximumUncleCount = 2;
+                r.WithdrawalTimestamp = ulong.MaxValue;
             });
 
             TestTransitions((ForkActivation)1L, r =>

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
@@ -8,6 +9,7 @@ using System.Reflection;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -184,5 +186,38 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcSuccessResponse? response = TestRequest(web3RpcModule, "web3_sha3", "0x68656c6c6f20776f726c64") as JsonRpcSuccessResponse;
             Assert.AreEqual(TestItem.KeccakA, response?.Result);
         }
+
+        [TestCaseSource(nameof(BlockForRpcTestSource))]
+        public void BlockForRpc_should_expose_withdrawals_if_any((bool Expected, Block Block) item)
+        {
+            var specProvider = Substitute.For<ISpecProvider>();
+            var rpcBlock = new BlockForRpc(item.Block, false, specProvider);
+
+            rpcBlock.WithdrawalsRoot.Should().BeEquivalentTo(item.Block.WithdrawalsRoot);
+            rpcBlock.Withdrawals.Should().BeEquivalentTo(item.Block.Withdrawals);
+
+            var json = new EthereumJsonSerializer().Serialize(rpcBlock);
+
+            json.Contains("withdrawals\"", StringComparison.Ordinal).Should().Be(item.Expected);
+            json.Contains("withdrawalsRoot", StringComparison.Ordinal).Should().Be(item.Expected);
+        }
+
+        // With (Block, bool), tests don't run for some reason. Flipped to (bool, Block).
+        private static IEnumerable<(bool, Block)> BlockForRpcTestSource() =>
+            new[]
+            {
+                (true, Build.A.Block
+                    .WithWithdrawals(new[]
+                    {
+                        Build.A.Withdrawal
+                            .WithAmount(1)
+                            .WithRecipient(TestItem.AddressA)
+                            .TestObject
+                    })
+                    .TestObject
+                ),
+
+                (false, Build.A.Block.WithWithdrawals(null).TestObject)
+            };
     }
 }

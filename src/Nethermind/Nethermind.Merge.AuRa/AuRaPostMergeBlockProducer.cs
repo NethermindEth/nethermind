@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;

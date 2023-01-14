@@ -339,7 +339,9 @@ namespace Nethermind.Consensus.Processing
 
             if (!shouldProcess)
             {
-                if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
+                if (_logger.IsDebug)
+                    _logger.Debug(
+                        $"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
                 return null;
             }
 
@@ -499,7 +501,7 @@ namespace Nethermind.Consensus.Processing
             List<Block> blocksToProcess = processingBranch.BlocksToProcess;
             if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
             {
-                processingBranch.Blocks.Clear();
+                processingBranch.Blocks.Clear(); // TODO: investigate why if we clear it all we need to collect and iterate on all the blocks in PrepareProcessingBranch?
                 blocksToProcess.Add(suggestedBlock);
             }
             else
@@ -537,9 +539,15 @@ namespace Nethermind.Consensus.Processing
             bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
 
             Block toBeProcessed = suggestedBlock;
+            long iterations = 0;
             do
             {
-                blocksToBeAddedToMain.Add(toBeProcessed);
+                iterations++;
+                if (!options.ContainsFlag(ProcessingOptions.ForceProcessing))
+                {
+                    blocksToBeAddedToMain.Add(toBeProcessed);
+                }
+
                 if (_logger.IsTrace)
                     _logger.Trace(
                         $"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
@@ -586,7 +594,7 @@ namespace Nethermind.Consensus.Processing
                     // If we hit this condition, it means that something is wrong in MultiSyncModeSelector.
                     // MultiSyncModeSelector switched to full sync when it shouldn't
                     // In this case, it is better to stop searching for more blocks and failed during the processing than trying to build a branch up to the genesis point
-                    if (blocksToBeAddedToMain.Count > MaxBlocksDuringFastSyncTransition)
+                    if (iterations > MaxBlocksDuringFastSyncTransition)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Too long branch to be processed during fast sync transition. Current block to be processed {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
                         break;
@@ -610,11 +618,13 @@ namespace Nethermind.Consensus.Processing
                 // we need to dig deeper to go all the way to the false (reorg boundary) head
                 // otherwise some nodes would be missing
                 bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
-                bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
+                bool notReachedTheReorgBoundary = (options & ProcessingOptions.Trace) == ProcessingOptions.Trace
+                && (branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0));
                 preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
                 if (_logger.IsTrace)
                     _logger.Trace(
                         $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
+
             } while (preMergeFinishBranchingCondition);
 
             if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)

@@ -712,6 +712,25 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Nodes left after the root node saved - count: {_pendingItems.Count}");
             }
+
+            CleanupMemory();
+        }
+
+        private void CleanupMemory()
+        {
+            _syncStateLock.EnterWriteLock();
+            try
+            {
+                _pendingRequests.Clear();
+                _dependencies.Clear();
+                _alreadySavedNode.Clear();
+                _alreadySavedCode.Clear();
+                _codesSameAsNodes.Clear();
+            }
+            finally
+            {
+                _syncStateLock.ExitWriteLock();
+            }
         }
 
         private void StoreProgressInDb()
