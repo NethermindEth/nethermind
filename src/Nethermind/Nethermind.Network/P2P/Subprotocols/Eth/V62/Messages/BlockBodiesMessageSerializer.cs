@@ -10,8 +10,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
-        private readonly TxDecoder _txDecoder = new();
-        private readonly HeaderDecoder _headerDecoder = new();
+        private readonly TxDecoder _txDecoder = new TxDecoder();
+        private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
+        private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new WithdrawalDecoder();
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
@@ -43,9 +44,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
 
             stream.StartSequence(GetUnclesLength(body.Uncles));
-            foreach (var uncle in body.Uncles)
+            foreach (BlockHeader? uncle in body.Uncles)
             {
                 stream.Encode(uncle);
+            }
+
+            if (body.Withdrawals != null)
+            {
+                stream.StartSequence(GetWithdrawalsLength(body.Withdrawals));
+                foreach (Withdrawal? withdrawal in body.Withdrawals)
+                {
+                    stream.Encode(withdrawal);
+                }
             }
         }
 
@@ -59,39 +69,38 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             contentLength = message.Bodies.Select(b => b == null
                 ? Rlp.OfEmptySequence.Length
-                : Rlp.LengthOfSequence(
-                    GetBodyLength(b)
-                    )
+                : Rlp.LengthOfSequence(GetBodyLength(b))
             ).Sum();
             return Rlp.LengthOfSequence(contentLength);
         }
 
         private int GetBodyLength(BlockBody b)
         {
+            if (b.Withdrawals != null)
+            {
+                return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
+                       Rlp.LengthOfSequence(GetUnclesLength(b.Uncles)) + Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals));
+            }
             return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
                 Rlp.LengthOfSequence(GetUnclesLength(b.Uncles));
         }
 
         private int GetTxLength(Transaction[] transactions)
         {
-            int txLength = 0;
-            for (int i = 0; i < transactions.Length; i++)
-            {
-                txLength += _txDecoder.GetLength(transactions[i], RlpBehaviors.None);
-            }
 
-            return txLength;
+            return transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
         }
 
         private int GetUnclesLength(BlockHeader[] headers)
         {
-            int unclesLength = 0;
-            for (int i = 0; i < headers.Length; i++)
-            {
-                unclesLength += _headerDecoder.GetLength(headers[i], RlpBehaviors.None);
-            }
 
-            return unclesLength;
+            return headers.Sum(t => _headerDecoder.GetLength(t, RlpBehaviors.None));
+        }
+
+        private int GetWithdrawalsLength(Withdrawal[] withdrawals)
+        {
+
+            return withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
         }
 
         public static BlockBodiesMessage Deserialize(RlpStream rlpStream)
