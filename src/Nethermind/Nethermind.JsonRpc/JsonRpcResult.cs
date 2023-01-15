@@ -2,21 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 
 namespace Nethermind.JsonRpc
 {
     public readonly struct JsonRpcResult
     {
         [MemberNotNullWhen(true, nameof(BatchedResponses))]
+        [MemberNotNullWhen(false, nameof(SingleResponse))]
         [MemberNotNullWhen(false, nameof(Response))]
+        [MemberNotNullWhen(false, nameof(Report))]
         public bool IsCollection { get; }
+        public IJsonRpcBatchResult? BatchedResponses { get; }
+        public Entry? SingleResponse { get; }
+        public JsonRpcResponse? Response => SingleResponse?.Response;
+        public RpcReport? Report => SingleResponse?.Report;
 
-        public IAsyncEnumerable<Entry>? BatchedResponses { get; }
-        public Entry? Response { get; }
-
-        private JsonRpcResult(IAsyncEnumerable<Entry> batchedResponses)
+        private JsonRpcResult(IJsonRpcBatchResult batchedResponses)
         {
             IsCollection = true;
             BatchedResponses = batchedResponses;
@@ -25,7 +28,7 @@ namespace Nethermind.JsonRpc
         private JsonRpcResult(Entry singleResult)
         {
             IsCollection = false;
-            Response = singleResult;
+            SingleResponse = singleResult;
         }
 
         public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
@@ -34,7 +37,7 @@ namespace Nethermind.JsonRpc
         public static JsonRpcResult Single(Entry entry)
             => new(entry);
 
-        public static JsonRpcResult Collection(IAsyncEnumerable<Entry> responses)
+        public static JsonRpcResult Collection(IJsonRpcBatchResult responses)
             => new(responses);
 
         public readonly struct Entry : IDisposable
