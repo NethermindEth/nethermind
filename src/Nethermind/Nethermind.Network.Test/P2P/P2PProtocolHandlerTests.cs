@@ -91,13 +91,26 @@ namespace Nethermind.Network.Test.P2P
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Wit, 66));
 
-            Packet message = CreatePacket(new HelloMessage()
+            HelloMessage message = new HelloMessage()
             {
-                Capabilities = new List<Capability>() { new Capability(Protocol.Eth, 63) },
+                Capabilities = new List<Capability>()
+                {
+                    new Capability(Protocol.Eth, 63)
+                },
                 NodeId = TestItem.PublicKeyA,
-            });
+            };
 
-            p2PProtocolHandler.HandleMessage(message);
+            IByteBuffer data = _serializer.ZeroSerialize(message);
+            // to account for adaptive packet type
+            data.ReadByte();
+
+            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            {
+                Protocol = message.Protocol,
+                PacketType = (byte)message.PacketType,
+            };
+
+            p2PProtocolHandler.HandleMessage(packet);
 
             _nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation.Should().NotBeNull();
             _session.Received(1).InitiateDisconnect(InitiateDisconnectReason.NoCapabilityMatched, Arg.Any<string>());
