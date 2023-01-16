@@ -43,6 +43,8 @@ namespace Nethermind.Core
         public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
 
+        public int DataLength => Data?.Length ?? 0;
+
         public AccessList? AccessList { get; set; } // eip2930
 
         /// <summary>

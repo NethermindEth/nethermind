@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -21,6 +22,7 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
+        private readonly long? _maxBatchResponseBodySize;
         private readonly JsonRpcContext _jsonRpcContext;
 
         public JsonRpcSocketsClient(
@@ -31,12 +33,14 @@ namespace Nethermind.JsonRpc.WebSockets
             IJsonRpcService jsonRpcService,
             IJsonRpcLocalStats jsonRpcLocalStats,
             IJsonSerializer jsonSerializer,
-            JsonRpcUrl? url = null)
+            JsonRpcUrl? url = null,
+            long? maxBatchResponseBodySize = null)
             : base(clientName, handler, jsonSerializer)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
             _jsonRpcLocalStats = jsonRpcLocalStats;
+            _maxBatchResponseBodySize = maxBatchResponseBodySize;
             _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
         }
 
@@ -46,9 +50,9 @@ namespace Nethermind.JsonRpc.WebSockets
             Closed?.Invoke(this, EventArgs.Empty);
         }
 
-        private static readonly byte[] _jsonOpeningBracket = { Convert.ToByte('{') };
+        private static readonly byte[] _jsonOpeningBracket = { Convert.ToByte('[') };
         private static readonly byte[] _jsonComma = { Convert.ToByte(',') };
-        private static readonly byte[] _jsonClosingBracket = { Convert.ToByte('}') };
+        private static readonly byte[] _jsonClosingBracket = { Convert.ToByte(']') };
 
         public override async Task ProcessAsync(ArraySegment<byte> data)
         {
@@ -72,7 +76,7 @@ namespace Nethermind.JsonRpc.WebSockets
                 else
                 {
                     long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                    _jsonRpcLocalStats.ReportCall(result.Response!.Value.Report, handlingTimeMicroseconds, singleResponseSize);
+                    _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
                 }
                 stopwatch.Restart();
             }
@@ -110,25 +114,48 @@ namespace Nethermind.JsonRpc.WebSockets
         {
             if (result.IsCollection)
             {
-                int singleResponseSize = 0;
+                int singleResponseSize = 1;
                 bool isFirst = true;
                 await _handler.SendRawAsync(_jsonOpeningBracket, false);
-                await foreach (JsonRpcResult.Entry innerResult in result.BatchedResponses!)
+                JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
+                try
                 {
-                    if (!isFirst) await _handler.SendRawAsync(_jsonComma, false);
-                    isFirst = false;
+                    while (await enumerator.MoveNextAsync())
+                    {
+                        JsonRpcResult.Entry entry = enumerator.Current;
+                        using (entry)
+                        {
+                            if (!isFirst)
+                            {
+                                await _handler.SendRawAsync(_jsonComma, false);
+                                singleResponseSize += 1;
+                            }
 
-                    singleResponseSize += await SendJsonRpcResultEntry(innerResult, false);
-                    _jsonRpcLocalStats.ReportCall(innerResult.Report);
+                            isFirst = false;
+                            singleResponseSize += await SendJsonRpcResultEntry(entry, false);
+                            _jsonRpcLocalStats.ReportCall(entry.Report);
+
+                            // We reached the limit and don't want to responded to more request in the batch
+                            if (singleResponseSize > _maxBatchResponseBodySize)
+                            {
+                                enumerator.IsStopped = true;
+                            }
+                        }
+                    }
                 }
+                finally
+                {
+                    await enumerator.DisposeAsync();
+                }
+
                 await _handler.SendRawAsync(_jsonClosingBracket, true);
+                singleResponseSize += 1;
 
                 return singleResponseSize;
             }
             else
             {
-                int singleResponseSize = await SendJsonRpcResultEntry(result.Response!.Value);
-                return singleResponseSize;
+                return await SendJsonRpcResultEntry(result.SingleResponse!.Value);
             }
         }
 
