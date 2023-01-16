@@ -90,6 +90,10 @@ namespace Nethermind.Db
         }
 
         public Span<byte> GetSpan(byte[] key) => this[key].AsSpan();
+        public void PutSpan(byte[] keyBytes, ReadOnlySpan<byte> value)
+        {
+            throw new InvalidOperationException();
+        }
 
         public void DangerousReleaseMemory(in Span<byte> span) { }
     }
