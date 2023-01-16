@@ -90,12 +90,12 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressE = PublicKeyE.Address;
         public static Address AddressF = PublicKeyF.Address;
 
-        public static Withdrawal WithdrawalA_1Eth = new() { Address = AddressA, Index = 1, ValidatorIndex = 2001, AmountInGWei = 1_000_000_000 };
-        public static Withdrawal WithdrawalB_2Eth = new() { Address = AddressB, Index = 2, ValidatorIndex = 2002, AmountInGWei = 2_000_000_000 };
-        public static Withdrawal WithdrawalC_3Eth = new() { Address = AddressC, Index = 3, ValidatorIndex = 2003, AmountInGWei = 3_000_000_000 };
-        public static Withdrawal WithdrawalD_4Eth = new() { Address = AddressD, Index = 4, ValidatorIndex = 2004, AmountInGWei = 4_000_000_000 };
-        public static Withdrawal WithdrawalE_5Eth = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, AmountInGWei = 5_000_000_000 };
-        public static Withdrawal WithdrawalF_6Eth = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, AmountInGWei = 6_000_000_000 };
+        public static Withdrawal WithdrawalA_1Eth = new() { Address = AddressA, Index = 1, ValidatorIndex = 2001, AmountInGwei = 1_000_000_000 };
+        public static Withdrawal WithdrawalB_2Eth = new() { Address = AddressB, Index = 2, ValidatorIndex = 2002, AmountInGwei = 2_000_000_000 };
+        public static Withdrawal WithdrawalC_3Eth = new() { Address = AddressC, Index = 3, ValidatorIndex = 2003, AmountInGwei = 3_000_000_000 };
+        public static Withdrawal WithdrawalD_4Eth = new() { Address = AddressD, Index = 4, ValidatorIndex = 2004, AmountInGwei = 4_000_000_000 };
+        public static Withdrawal WithdrawalE_5Eth = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, AmountInGwei = 5_000_000_000 };
+        public static Withdrawal WithdrawalF_6Eth = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, AmountInGwei = 6_000_000_000 };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");

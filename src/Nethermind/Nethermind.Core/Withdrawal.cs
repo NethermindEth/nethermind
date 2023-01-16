@@ -30,11 +30,11 @@ public class Withdrawal
     /// <summary>
     /// Gets or sets the withdrawal amount in GWei.
     /// </summary>
-    [JsonProperty(PropertyName = "Amount")]
-    public ulong AmountInGWei { get; set; }
+    [JsonProperty(PropertyName = "amount")]
+    public ulong AmountInGwei { get; set; }
 
     [JsonIgnore]
-    public UInt256 AmountInWei => AmountInGWei * 1.GWei();
+    public UInt256 AmountInWei => AmountInGwei * 1.GWei();
 
     public override string ToString() => ToString(string.Empty);
 
@@ -42,6 +42,6 @@ public class Withdrawal
         .Append($"{nameof(Index)}: {Index}, ")
         .Append($"{nameof(ValidatorIndex)}: {ValidatorIndex}, ")
         .Append($"{nameof(Address)}: {Address}, ")
-        .Append($"{nameof(AmountInGWei)}: {AmountInGWei}}}")
+        .Append($"{nameof(AmountInGwei)}: {AmountInGwei}}}")
         .ToString();
 }

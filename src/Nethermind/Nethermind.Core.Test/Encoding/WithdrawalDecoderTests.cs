@@ -20,7 +20,7 @@ public class WithdrawalDecoderTests
             Index = 1,
             ValidatorIndex = 2,
             Address = Address.SystemUser,
-            AmountInGWei = 3
+            AmountInGwei = 3
         };
         byte[] rlp = Rlp.Encode(withdrawal).Bytes;
 
@@ -35,7 +35,7 @@ public class WithdrawalDecoderTests
             Index = 1,
             ValidatorIndex = 2,
             Address = new Address("0x773f86fb098bb19f228f441a7715daa13d10a751"),
-            AmountInGWei = 3
+            AmountInGwei = 3
         };
         byte[] rlp = Rlp.Encode(withdrawal).Bytes;
         Withdrawal decoded = Rlp.Decode<Withdrawal>(rlp);
@@ -51,7 +51,7 @@ public class WithdrawalDecoderTests
             Index = long.MaxValue,
             ValidatorIndex = int.MaxValue,
             Address = new Address("0x773f86fb098bb19f228f441a7715daa13d10a751"),
-            AmountInGWei = ulong.MaxValue
+            AmountInGwei = ulong.MaxValue
         };
         RlpStream stream = new(1024);
         WithdrawalDecoder codec = new();
@@ -72,7 +72,7 @@ public class WithdrawalDecoderTests
             Index = long.MaxValue,
             ValidatorIndex = int.MaxValue,
             Address = new Address("0x7e24b8f924a82df020eef45c320deb224559f13e"),
-            AmountInGWei = ulong.MaxValue
+            AmountInGwei = ulong.MaxValue
         };
         byte[] rlp1 = new WithdrawalDecoder().Encode(withdrawal).Bytes;
         byte[] rlp2 = Rlp.Encode(withdrawal).Bytes;

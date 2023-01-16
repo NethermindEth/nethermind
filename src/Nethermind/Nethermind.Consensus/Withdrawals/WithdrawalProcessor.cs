@@ -35,7 +35,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
         {
             foreach (var withdrawal in block.Withdrawals)
             {
-                if (_logger.IsTrace) _logger.Trace($"  {withdrawal.AmountInGWei} GWei to account {withdrawal.Address}");
+                if (_logger.IsTrace) _logger.Trace($"  {withdrawal.AmountInGwei} GWei to account {withdrawal.Address}");
 
                 // Consensus clients are using Gwei for withdrawals amount. We need to convert it to Wei before applying state changes https://github.com/ethereum/execution-apis/pull/354
                 if (_stateProvider.AccountExists(withdrawal.Address))
