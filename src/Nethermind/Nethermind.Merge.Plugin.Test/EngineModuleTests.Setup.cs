@@ -82,7 +82,6 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.BlockProcessingQueue,
                     invalidChainTracker,
                     chain.BeaconSync,
-                    chain.SpecProvider,
                     chain.LogManager,
                     newPayloadTimeout,
                     newPayloadCacheSize),
@@ -103,6 +102,7 @@ namespace Nethermind.Merge.Plugin.Test
                 new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
+                chain.SpecProvider,
                 chain.LogManager);
         }
 

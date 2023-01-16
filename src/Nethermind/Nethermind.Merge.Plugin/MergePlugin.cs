@@ -317,7 +317,6 @@ namespace Nethermind.Merge.Plugin
                         _api.BlockProcessingQueue,
                         _invalidChainTracker,
                         _beaconSync,
-                        _api.SpecProvider,
                         _api.LogManager),
                     new ForkchoiceUpdatedHandler(
                         _api.BlockTree,
@@ -336,6 +335,7 @@ namespace Nethermind.Merge.Plugin
                     new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                     new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                     new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
+                    _api.SpecProvider,
                     _api.LogManager);
 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);

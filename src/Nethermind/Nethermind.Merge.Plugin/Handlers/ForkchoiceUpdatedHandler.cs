@@ -235,20 +235,20 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
             if (spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is null)
             {
-                var error = "Withdrawals cannot be null when EIP-4895 activated.";
+                var error = "PayloadAttributesV2 expected";
 
                 if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
 
-                return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+                return ForkchoiceUpdatedV1Result.Error(error, ErrorCodes.InvalidParams);
             }
 
             if (!spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is not null)
             {
-                var error = "Withdrawals must be null when EIP-4895 not activated.";
+                var error = "PayloadAttributesV1 expected";
 
                 if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
 
-                return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+                return ForkchoiceUpdatedV1Result.Error(error, ErrorCodes.InvalidParams);
             }
 
             payloadAttributes.GasLimit = null;
