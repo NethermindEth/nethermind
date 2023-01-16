@@ -23,9 +23,13 @@ using Nethermind.Merge.Plugin.Synchronization;
 namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <summary>
-/// Propagates the change in the fork choice to the execution client. May initiate creating new payload.
-/// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_forkchoiceupdatedv2">engine_forkchoiceupdatedv2</see>.
+/// Provides a fork choice update handler as defined in Engine API
+/// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_forkchoiceupdatedv2">
+/// Shanghai</see> specification.
 /// </summary>
+/// <remarks>
+/// May initiate a new payload creation.
+/// </remarks>
 public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 {
     private readonly IBlockTree _blockTree;
