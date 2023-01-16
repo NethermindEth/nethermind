@@ -283,41 +283,5 @@ namespace Nethermind.Blockchain.Test
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, spec);
             blockToProduce.Transactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
         }
-        //
-        // [Test]
-        // public void Cannot_pick_transaction_with_initicode_above_maxinitcode_when_EIP3860_enabled()
-        // {
-        //     MemDb stateDb = new();
-        //     MemDb codeDb = new();
-        //     TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        //     StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
-        //     IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
-        //     ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        //     ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        //     var txArray =
-        //     {
-        //         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3)
-        //             .WithGasPrice(60).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-        //         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
-        //             .WithGasPrice(30).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-        //         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2)
-        //             .WithGasPrice(20).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
-        //     };
-        //     BlockProcessor.BlockProductionTransactionsExecutor txExecutor =
-        //         new(
-        //             transactionProcessor,
-        //             stateProvider,
-        //             storageProvider,
-        //             specProvider,
-        //             LimboLogs.Instance);
-        //     Block block = Build.A.Block
-        //         .WithNumber(0)
-        //         .WithTransactions(txArray)
-        //         .TestObject;
-        //     BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
-        //     txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, NullTxTracer.Instance, spec);
-        //     blockToProduce.Transactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
-        //
-        // }
     }
 }
