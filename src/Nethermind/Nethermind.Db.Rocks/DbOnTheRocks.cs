@@ -412,7 +412,7 @@ public class DbOnTheRocks : IDbWithSpan
 
         try
         {
-            _db.Put(key, value);
+            _db.Put(key, value, null, WriteOptions);
         }
         catch (RocksDbSharpException e)
         {
