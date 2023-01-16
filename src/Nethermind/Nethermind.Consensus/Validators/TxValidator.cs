@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.Validators
 
         private bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec)
         {
-            bool aboveInitCode = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled && (transaction.Data?.Length ?? 0) > releaseSpec.MaxInitCodeSize;
+            bool aboveInitCode = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled && transaction.DataLength > releaseSpec.MaxInitCodeSize;
             return !aboveInitCode;
         }
 
