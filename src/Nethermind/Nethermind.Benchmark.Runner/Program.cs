@@ -94,8 +94,30 @@ namespace Nethermind.Benchmark.Runner
 
         private static void ExecutePrecompilesBytecodeBenchmark(IEnumerable<string> filters)
         {
-            var config = new DashboardConfig(filters, Job.MediumRun.WithRuntime(CoreRuntime.Core60));
-            BenchmarkRunner.Run<PrecompilesBytecodeBenchmark>(config);
+            var config = new NoOutputConfig(filters, Job.ShortRun.WithRuntime(CoreRuntime.Core60));
+
+            var firstLine = true;
+            var summary = BenchmarkRunner.Run<PrecompilesBytecodeBenchmark>(config);
+
+            foreach (var report in summary.Reports)
+            {
+                if (firstLine)
+                {
+                    Console.WriteLine("Benchmark Process Environment Information:");
+                    Console.WriteLine("Runtime=" + report.GetRuntimeInfo());
+                    Console.WriteLine("GC=" + report.GetGcInfo());
+                    Console.WriteLine();
+                    Console.WriteLine($"Benchmark,Test,NominalGasCost,RunsCount,TimeNs,MemGcOps,MemAllocPerOp");
+                    firstLine = false;
+                }
+
+                var parameterJson = Newtonsoft.Json.JsonConvert.SerializeObject(report.BenchmarkCase.Parameters.Items[0].Value);
+                dynamic parameter = Newtonsoft.Json.JsonConvert.DeserializeObject(parameterJson);
+
+                var memAllocPerOp = report.GcStats.GetBytesAllocatedPerOperation(report.BenchmarkCase);
+
+                Console.WriteLine($"{parameter.Type},{parameter.Name},{parameter.NominalGasCost},{report.ResultStatistics.N},{report.ResultStatistics.Mean},{report.GcStats.TotalOperations},{memAllocPerOp}");
+            }
         }
 
         private static void ExecutePrecompilesBenchmark(IEnumerable<string> filters)
