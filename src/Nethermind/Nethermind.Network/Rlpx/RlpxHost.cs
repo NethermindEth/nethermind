@@ -209,7 +209,7 @@ namespace Nethermind.Network.Rlpx
 
             if (session.Direction == ConnectionDirection.Out)
             {
-                pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
+                pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
             }
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 

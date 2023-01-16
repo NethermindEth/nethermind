@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -22,7 +22,12 @@ namespace Nethermind.Evm.Test
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
         private IReleaseSpec ShanghaiSpec = new OverridableReleaseSpec(Shanghai.Instance) { IsEip3670Enabled = false };
 
-        private ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, ShanghaiSpec);
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
+        {
+            IsEip4200Enabled = false,
+            IsEip4750Enabled = false,
+            IsEip5450Enabled = false,
+        });
 
         public static IEnumerable<TestCase> Eip3670BodyTestCases
         {
@@ -95,13 +100,27 @@ namespace Nethermind.Evm.Test
         [Test]
         public void EOF_validation_tests([ValueSource(nameof(Eip3670BodyTestCases))] TestCase testcase)
         {
-            Instance.EOF_contract_header_parsing_tests(testcase, ShanghaiSpec);
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
+            {
+                IsEip4200Enabled = false,
+                IsEip4750Enabled = false,
+                IsEip5450Enabled = false,
+            };
+
+            Instance.EOF_contract_header_parsing_tests(testcase, TargetReleaseSpec);
         }
 
         [Test]
         public void Eip3670_contract_deployment_tests([ValueSource(nameof(Eip3670TxTestCases))] TestCase testcase)
         {
-            Instance.EOF_contract_deployment_tests(testcase, ShanghaiSpec);
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
+            {
+                IsEip4200Enabled = false,
+                IsEip4750Enabled = false,
+                IsEip5450Enabled = false,
+            };
+
+            Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);
         }
     }
 }

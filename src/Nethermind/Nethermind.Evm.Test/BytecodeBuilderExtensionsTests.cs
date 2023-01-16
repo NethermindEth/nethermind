@@ -23,11 +23,13 @@ using FastEnumUtility;
 using System;
 using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test
 {
     public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
     {
+        static IReleaseSpec _releaseSpec = Shanghai.Instance;
         public class TestCase
         {
             public byte[] FluentCodes;
@@ -41,7 +43,7 @@ namespace Nethermind.Evm.Test
             {
                 // opcode with multiple indexes at the end like PUSH or DUP or SWAP are represented as one function
                 // with the char 'x' instead of the number with one byte argument to diff i.g : PUSH32 => PUSHx(32, ...)
-                opcodeAsString = opcode.ToString();
+                opcodeAsString = opcode.GetName(true, _releaseSpec);
                 prefixLen = opcodeAsString.Length;
 
                 // STORE8 is excluded from filter and always returns false cause it is one of it own and has a function mapped directly to it
@@ -112,8 +114,6 @@ namespace Nethermind.Evm.Test
                     Instruction.PC,
                     Instruction.JUMPDEST,
                     Instruction.MSIZE,
-                    Instruction.BEGINSUB,
-                    Instruction.RETURNSUB,
                     Instruction.INVALID,
 
                     Instruction.SWAP1, Instruction.SWAP5, Instruction.SWAP9 , Instruction.SWAP13,
@@ -138,6 +138,8 @@ namespace Nethermind.Evm.Test
                 {
                     >= Instruction.SWAP1 and <= Instruction.SWAP16 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.SWAP1 + 1) }),
                     >= Instruction.DUP1 and <= Instruction.DUP16 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.DUP1 + 1) }),
+                    Instruction.BEGINSUB => Prepare.EvmCode.BEGINSUB(),
+                    Instruction.RETURNSUB => Prepare.EvmCode.RETURNSUB(),
                     _ => (Prepare)method.Invoke(null, new object[] { initBytecode })
                 };
 
@@ -173,11 +175,15 @@ namespace Nethermind.Evm.Test
                     Instruction.SLOAD,
                     Instruction.TLOAD,
                     Instruction.MLOAD,
-                    Instruction.JUMPSUB,
                 };
 
             foreach (Instruction opcode in address_opcodes)
             {
+                if (_releaseSpec is Shanghai && opcode is Instruction.JUMPSUB)
+                {
+                    continue;
+                }
+
                 Address arguments = Address.Zero;
                 var initBytecode = Prepare.EvmCode;
                 MethodInfo method = GetFluentOpcodeFunction(opcode);
@@ -199,12 +205,21 @@ namespace Nethermind.Evm.Test
 
             foreach (Instruction opcode in number_opcodes)
             {
+                if (_releaseSpec is Shanghai && opcode is Instruction.CALLF)
+                {
+                    continue;
+                }
+
                 UInt256 arguments = UInt256.Zero;
                 var initBytecode = Prepare.EvmCode;
                 MethodInfo method = GetFluentOpcodeFunction(opcode);
-                initBytecode = (Prepare)method.Invoke(null, new object[] {
-                    initBytecode , arguments
-                });
+                initBytecode = opcode switch
+                {
+                    Instruction.JUMPSUB => Prepare.EvmCode.JUMPSUB(),
+                    _ => (Prepare)method.Invoke(null, new object[] {
+                        initBytecode , arguments
+                    })
+                };
 
                 yield return new TestCase()
                 {

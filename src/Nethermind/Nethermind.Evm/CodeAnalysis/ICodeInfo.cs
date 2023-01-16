@@ -14,5 +14,6 @@ public interface ICodeInfo
     ReadOnlyMemory<byte> TypeSection => Memory<byte>.Empty;
     ReadOnlyMemory<byte> CodeSection => MachineCode;
     ReadOnlyMemory<byte> DataSection => Memory<byte>.Empty;
+    int SectionOffset(int _) => 0;
     bool ValidateJump(int destination, bool isSubroutine);
 }

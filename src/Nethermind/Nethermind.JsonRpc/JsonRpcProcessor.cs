@@ -191,6 +191,14 @@ namespace Nethermind.JsonRpc
                     {
                         if (_logger.IsDebug) _logger.Debug($"{rpcRequest.Collection.Count} JSON RPC requests");
 
+                        if (rpcRequest.Collection.Count > _jsonRpcConfig.MaxBatchSize)
+                        {
+                            JsonRpcErrorResponse? response = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
+
+                            yield return RecordResponse(JsonRpcResult.Single(response, new RpcReport("# error #", 0, false)));
+                            continue;
+                        }
+
                         var responses = new List<JsonRpcResponse>(rpcRequest.Collection.Count);
                         var reports = new List<RpcReport>(rpcRequest.Collection.Count);
                         int requestIndex = 0;

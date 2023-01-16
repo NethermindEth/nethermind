@@ -1,14 +1,15 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm;
 using Nethermind.Logging;
 
 namespace Nethermind.Evm.EOF;
@@ -75,40 +76,55 @@ internal static class EvmObjectFormat
             : container[VERSION_OFFSET];
     }
 
-    private class Eof1 : IEofVersionHandler
+    internal class Eof1 : IEofVersionHandler
     {
         public const byte VERSION = 0x01;
-        private const byte KIND_TYPE = 0x01;
-        private const byte KIND_CODE = 0x02;
-        private const byte KIND_DATA = 0x03;
-        private const byte TERMINATOR = 0x00;
+        internal const byte KIND_TYPE = 0x01;
+        internal const byte KIND_CODE = 0x02;
+        internal const byte KIND_DATA = 0x03;
+        internal const byte TERMINATOR = 0x00;
 
-        private const byte MINIMUM_TYPESECTION_SIZE = 4;
-        private const byte MINIMUM_CODESECTION_SIZE = 1;
+        internal const byte MINIMUM_TYPESECTION_SIZE = 4;
+        internal const byte MINIMUM_CODESECTION_SIZE = 1;
 
-        private const byte KIND_TYPE_OFFSET = VERSION_OFFSET + ONE_BYTE_LENGTH; // version length
-        private const byte TYPE_SIZE_OFFSET = KIND_TYPE_OFFSET + ONE_BYTE_LENGTH; // kind type length
-        private const byte KIND_CODE_OFFSET = TYPE_SIZE_OFFSET + TWO_BYTE_LENGTH; // type size length
-        private const byte NUM_CODE_SECTIONS_OFFSET = KIND_CODE_OFFSET + ONE_BYTE_LENGTH; // kind code length
-        private const byte CODESIZE_OFFSET = NUM_CODE_SECTIONS_OFFSET + TWO_BYTE_LENGTH; // num code sections length
-        private const byte KIND_DATA_OFFSET = CODESIZE_OFFSET + DYNAMIC_OFFSET; // all code size length
-        private const byte DATA_SIZE_OFFSET = KIND_DATA_OFFSET + ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // kind data length + all code size length
-        private const byte TERMINATOR_OFFSET = DATA_SIZE_OFFSET + TWO_BYTE_LENGTH + DYNAMIC_OFFSET; // data size length + all code size length
-        private const byte HEADER_END_OFFSET = TERMINATOR_OFFSET + ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // terminator length + all code size length
-        private const byte DYNAMIC_OFFSET = 0; // to mark dynamic offset needs to be added
+        internal const byte KIND_TYPE_OFFSET = VERSION_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH; // version length
+        internal const byte TYPE_SIZE_OFFSET = KIND_TYPE_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH; // kind type length
+        internal const byte KIND_CODE_OFFSET = TYPE_SIZE_OFFSET + EvmObjectFormat.TWO_BYTE_LENGTH; // type size length
+        internal const byte NUM_CODE_SECTIONS_OFFSET = KIND_CODE_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH; // kind code length
+        internal const byte CODESIZE_OFFSET = NUM_CODE_SECTIONS_OFFSET + EvmObjectFormat.TWO_BYTE_LENGTH; // num code sections length
+        internal const byte KIND_DATA_OFFSET = CODESIZE_OFFSET + DYNAMIC_OFFSET; // all code size length
+        internal const byte DATA_SIZE_OFFSET = KIND_DATA_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // kind data length + all code size length
+        internal const byte TERMINATOR_OFFSET = DATA_SIZE_OFFSET + EvmObjectFormat.TWO_BYTE_LENGTH + DYNAMIC_OFFSET; // data size length + all code size length
+        internal const byte HEADER_END_OFFSET = TERMINATOR_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // terminator length + all code size length
+        internal const byte DYNAMIC_OFFSET = 0; // to mark dynamic offset needs to be added
+        internal const byte TWO_BYTE_LENGTH = 2;// indicates the number of bytes to skip for immediates
+        internal const byte ONE_BYTE_LENGTH = 1; // indicates the length of the count immediate of jumpv
+        internal const byte MINIMUMS_ACCEPTABLE_JUMPT_JUMPTABLE_LENGTH = 1; // indicates the length of the count immediate of jumpv
 
-        private const ushort MINIMUM_NUM_CODE_SECTIONS = 1;
-        private const ushort MAXIMUM_NUM_CODE_SECTIONS = 1024;
+        internal const byte SECTION_INPUT_COUNT_OFFSET = 0; // to mark dynamic offset needs to be added
+        internal const byte SECTION_OUTPUT_COUNT_OFFSET = 1; // to mark dynamic offset needs to be added
 
-        private const ushort MINIMUM_SIZE = HEADER_END_OFFSET
-                                            + TWO_BYTE_LENGTH // one code size
+        internal const byte INPUTS_OFFSET = 0;
+        internal const byte INPUTS_MAX = 0x7F;
+        internal const byte OUTPUTS_OFFSET = INPUTS_OFFSET + 1;
+        internal const byte OUTPUTS_MAX = 0x7F;
+        internal const byte MAX_STACK_HEIGHT_OFFSET = OUTPUTS_OFFSET + 1;
+        internal const int MAX_STACK_HEIGHT_LENGTH = 2;
+        internal const ushort MAX_STACK_HEIGHT = 0x3FF;
+
+        internal const ushort MINIMUM_NUM_CODE_SECTIONS = 1;
+        internal const ushort MAXIMUM_NUM_CODE_SECTIONS = 1024;
+        internal const ushort RETURN_STACK_MAX_HEIGHT = MAXIMUM_NUM_CODE_SECTIONS; // the size in the type sectionn allocated to each function section
+
+        internal const ushort MINIMUM_SIZE = HEADER_END_OFFSET
+                                            + EvmObjectFormat.TWO_BYTE_LENGTH // one code size
                                             + MINIMUM_TYPESECTION_SIZE // minimum type section body size
                                             + MINIMUM_CODESECTION_SIZE; // minimum code section body size;
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CalculateHeaderSize(int codeSections) =>
-            HEADER_END_OFFSET + codeSections * TWO_BYTE_LENGTH;
+            HEADER_END_OFFSET + codeSections * EvmObjectFormat.TWO_BYTE_LENGTH;
 
         public bool TryParseEofHeader(ReadOnlySpan<byte> container, out EofHeader? header)
         {
@@ -175,7 +191,7 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            int codeSizeLenght = numberOfCodeSections * TWO_BYTE_LENGTH;
+            int codeSizeLenght = numberOfCodeSections * EvmObjectFormat.TWO_BYTE_LENGTH;
             int dynamicOffset = codeSizeLenght;
 
             // we need to be able to parse header + all code sizes
@@ -192,9 +208,9 @@ internal static class EvmObjectFormat
 
             int codeSectionsSizeUpToNow = 0;
             SectionHeader[] codeSections = new SectionHeader[numberOfCodeSections];
-            for (ushort i = 0; i < numberOfCodeSections; i++)
+            for (ushort pos = 0; pos < numberOfCodeSections; pos++)
             {
-                int currentCodeSizeOffset = CODESIZE_OFFSET + i * TWO_BYTE_LENGTH; // offset of i'th code size
+                int currentCodeSizeOffset = CODESIZE_OFFSET + pos * EvmObjectFormat.TWO_BYTE_LENGTH; // offset of pos'th code size
                 SectionHeader codeSection = new()
                 {
                     Start = typeSection.EndOffset + codeSectionsSizeUpToNow,
@@ -207,7 +223,7 @@ internal static class EvmObjectFormat
                     return false;
                 }
 
-                codeSections[i] = codeSection;
+                codeSections[pos] = codeSection;
                 codeSectionsSizeUpToNow += codeSection.Size;
             }
 
@@ -243,26 +259,39 @@ internal static class EvmObjectFormat
             return true;
         }
 
-        private const byte INPUTS_OFFSET = 0;
-        private const byte INPUTS_MAX = 0x7F;
-        private const byte OUTPUTS_OFFSET = INPUTS_OFFSET + 1;
-        private const byte OUTPUTS_MAX = 0x7F;
-        private const byte MAX_STACK_HEIGHT_OFFSET = OUTPUTS_OFFSET + 1;
-        private const int MAX_STACK_HEIGHT_LENGTH = 2;
-        private const ushort MAX_STACK_HEIGHT = 0x3FF;
-
         public bool ValidateBody(ReadOnlyMemory<byte> container, EofHeader header)
         {
             int startOffset = CalculateHeaderSize(header.CodeSections.Length);
             int calculatedCodeLength = header.TypeSection.Size
                 + header.CodeSectionsSize
                 + header.DataSection.Size;
-
+            SectionHeader[]? codeSections = header.CodeSections;
             ReadOnlySpan<byte> contractBody = container.Span[startOffset..];
+            (int typeSectionStart, ushort typeSectionSize) = header.TypeSection;
+
 
             if (contractBody.Length != calculatedCodeLength)
             {
                 if (Logger.IsTrace) Logger.Trace("EIP-3540 : SectionSizes indicated in bundled header are incorrect, or ContainerCode is incomplete");
+                return false;
+            }
+
+            if (codeSections.Length == 0 || codeSections.Any(section => section.Size == 0))
+            {
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {codeSections.Length}");
+                return false;
+            }
+
+            if (codeSections.Length != (typeSectionSize / MINIMUM_TYPESECTION_SIZE))
+            {
+                if (Logger.IsTrace) Logger.Trace($"EIP-4750: Code Sections count must match TypeSection count, CodeSection count was {codeSections.Length}, expected {typeSectionSize / MINIMUM_TYPESECTION_SIZE}");
+                return false;
+            }
+
+            ReadOnlyMemory<byte> typesection = container.Slice(typeSectionStart, typeSectionSize);
+            if (!ValidateTypeSection(typesection.Span))
+            {
+                if (Logger.IsTrace) Logger.Trace($"EIP-4750: invalid typesection found");
                 return false;
             }
 
@@ -272,50 +301,335 @@ internal static class EvmObjectFormat
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
                 (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
                 ReadOnlySpan<byte> code = container.Span.Slice(codeSectionStartOffset, codeSectionSize);
-                if (!ValidateInstructions(code, header))
+                if (!ValidateInstructions(code, header) ||
+                    !ValidateStackState(sectionIdx, code, typesection.Span, header))
                 {
                     state.Stop();
                     return;
                 }
                 Interlocked.Increment(ref validSection);
             });
+
             return validSection == header.CodeSections.Length;
         }
-        bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header)
+
+        bool ValidateTypeSection(ReadOnlySpan<byte> types)
         {
-            int pos;
-            for (pos = 0; pos < code.Length; pos++)
+            if (types[SECTION_INPUT_COUNT_OFFSET] != 0 || types[SECTION_OUTPUT_COUNT_OFFSET] != 0)
             {
-                Instruction opcode = (Instruction)code[pos];
-
-                // validate opcode
-                if (!opcode.IsValid(IsEofContext: true))
-                {
-                    if (Logger.IsTrace)
-                    {
-                        Logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
-                    }
-                    return false;
-                }
-
-                // Check truncated immediates
-                if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
-                {
-                    int len = code[pos] - (int)Instruction.PUSH1 + 1;
-                    pos += len;
-                }
-            }
-
-            if (pos >= code.Length)
-            {
-                if (Logger.IsTrace)
-                {
-                    Logger.Trace($"EIP-3670 : PC Reached out of bounds");
-                }
+                if (Logger.IsTrace) Logger.Trace($"EIP-4750: first 2 bytes of type section must be 0s");
                 return false;
             }
 
+            if (types.Length % MINIMUM_TYPESECTION_SIZE != 0)
+            {
+                if (Logger.IsTrace) Logger.Trace($"EIP-4750: type section length must be a product of {MINIMUM_TYPESECTION_SIZE}");
+                return false;
+            }
+
+            for (int offset = 0; offset < types.Length; offset += MINIMUM_TYPESECTION_SIZE)
+            {
+                byte inputCount = types[offset + SECTION_INPUT_COUNT_OFFSET];
+                byte outputCount = types[offset + SECTION_OUTPUT_COUNT_OFFSET];
+                ushort maxStackHeight = types.Slice(offset + MAX_STACK_HEIGHT_OFFSET, MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16();
+
+                if (inputCount > INPUTS_MAX)
+                {
+                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many inputs");
+                    return false;
+                }
+
+                if (outputCount > OUTPUTS_MAX)
+                {
+                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many outputs");
+                    return false;
+                }
+
+                if (maxStackHeight > MAX_STACK_HEIGHT)
+                {
+                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Stack depth too high");
+                    return false;
+                }
+            }
             return true;
+        }
+        bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header)
+        {
+            ArrayPool<byte> pool = ArrayPool<byte>.Shared;
+            byte[] codeBitmap = pool.Rent((code.Length / 8) + 1 + 4);
+            byte[] jumpdests = pool.Rent((code.Length / 8) + 1 + 4);
+            try
+            {
+                int pos;
+
+                for (pos = 0; pos < code.Length;)
+                {
+                    Instruction opcode = (Instruction)code[pos];
+                    int postInstructionByte = pos + 1;
+
+                    if (!opcode.IsValid(IsEofContext: true))
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
+                        return false;
+                    }
+
+                    if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
+                    {
+                        if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump Argument underflow");
+                            return false;
+                        }
+
+                        var offset = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthInt16();
+                        var rjumpdest = offset + TWO_BYTE_LENGTH + postInstructionByte;
+
+                        if (rjumpdest < 0 || rjumpdest >= code.Length)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
+                            return false;
+                        }
+
+                        BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, ref jumpdests, ref rjumpdest);
+                        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, ref codeBitmap, ref postInstructionByte);
+                    }
+
+                    if (opcode is Instruction.RJUMPV)
+                    {
+                        if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
+                            return false;
+                        }
+
+                        byte count = code[postInstructionByte];
+                        if (count < MINIMUMS_ACCEPTABLE_JUMPT_JUMPTABLE_LENGTH)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
+                            return false;
+                        }
+
+                        if (postInstructionByte + ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH > code.Length)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : jumpv jumptable underflow");
+                            return false;
+                        }
+
+                        var immediateValueSize = ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH;
+                        for (int j = 0; j < count; j++)
+                        {
+                            var offset = code.Slice(postInstructionByte + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthInt16();
+                            var rjumpdest = offset + immediateValueSize + postInstructionByte;
+                            if (rjumpdest < 0 || rjumpdest >= code.Length)
+                            {
+                                if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
+                                return false;
+                            }
+                            BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, ref jumpdests, ref rjumpdest);
+                        }
+                        BitmapHelper.HandleNumbits(immediateValueSize, ref codeBitmap, ref postInstructionByte);
+                    }
+
+                    if (opcode is Instruction.CALLF)
+                    {
+                        if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-4750 : CALLF Argument underflow");
+                            return false;
+                        }
+
+                        ushort targetSectionId = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
+                        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, ref codeBitmap, ref postInstructionByte);
+
+                        if (targetSectionId >= header.CodeSections.Length)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-4750 : Invalid Section Id");
+                            return false;
+                        }
+                    }
+
+                    if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
+                    {
+                        int len = opcode - Instruction.PUSH1 + 1;
+                        if (postInstructionByte + len > code.Length)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
+                            return false;
+                        }
+                        BitmapHelper.HandleNumbits(len, ref codeBitmap, ref postInstructionByte);
+                    }
+                    pos = postInstructionByte;
+                }
+
+                if (pos > code.Length)
+                {
+                    if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
+                    return false;
+                }
+
+                bool result = !BitmapHelper.CheckCollision(ref codeBitmap, ref jumpdests);
+                return result;
+            }
+            finally
+            {
+                pool.Return(codeBitmap);
+                pool.Return(jumpdests);
+            }
+        }
+        public bool ValidateReachableCode(int sectionId, in ReadOnlySpan<byte> code, Dictionary<int, int>.KeyCollection reachedOpcode, in EofHeader? header)
+        {
+            for (int i = 0; i < code.Length;)
+            {
+                var opcode = (Instruction)code[i];
+
+                if (!reachedOpcode.Contains(i))
+                {
+                    return false;
+                }
+
+                i++;
+                if (opcode is Instruction.RJUMP or Instruction.RJUMPI or Instruction.CALLF)
+                {
+                    i += TWO_BYTE_LENGTH;
+                }
+                else if (opcode is Instruction.RJUMPV)
+                {
+                    byte count = code[i];
+
+                    i += 1 + count * TWO_BYTE_LENGTH;
+                }
+                else if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
+                {
+                    int len = code[i - 1] - (int)Instruction.PUSH1 + 1;
+                    i += len;
+                }
+            }
+            return true;
+        }
+
+        public bool ValidateStackState(int sectionId, in ReadOnlySpan<byte> code, in ReadOnlySpan<byte> typesection, in EofHeader? header)
+        {
+            Dictionary<int, int> recordedStackHeight = new();
+            int peakStackHeight = typesection[sectionId * 4];
+            ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
+
+            Stack<(int Position, int StackHeigth)> workSet = new();
+            workSet.Push((0, peakStackHeight));
+
+            while (workSet.TryPop(out var worklet))
+            {
+                (int pos, int stackHeight) = worklet;
+                bool stop = false;
+
+                while (!stop)
+                {
+                    Instruction opcode = (Instruction)code[pos];
+                    (int inputs, int outputs, int immediates) = opcode.StackRequirements();
+
+                    if (recordedStackHeight.ContainsKey(pos))
+                    {
+                        if (stackHeight != recordedStackHeight[pos])
+                        {
+
+                            if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Branch joint line has invalid stack height");
+                            return false;
+                        }
+                        break;
+                    }
+                    else
+                    {
+                        recordedStackHeight[pos] = stackHeight;
+                    }
+
+                    if (opcode is Instruction.CALLF)
+                    {
+                        var sectionIndex = code.Slice(pos + ONE_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
+                        inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE];
+                        outputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + 1];
+                    }
+
+                    if (stackHeight < inputs)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack Underflow required {inputs} but found {stackHeight}");
+                        return false;
+                    }
+
+                    stackHeight += outputs - inputs;
+                    peakStackHeight = Math.Max(peakStackHeight, stackHeight);
+
+                    switch (opcode)
+                    {
+                        case Instruction.RJUMP:
+                            {
+                                var offset = code.Slice(pos + 1, TWO_BYTE_LENGTH).ReadEthInt16();
+                                var jumpDestination = pos + immediates + 1 + offset;
+                                workSet.Push((jumpDestination, stackHeight));
+                                stop = true;
+                                break;
+                            }
+                        case Instruction.RJUMPI:
+                            {
+                                var offset = code.Slice(pos + 1, TWO_BYTE_LENGTH).ReadEthInt16();
+                                var jumpDestination = pos + immediates + 1 + offset;
+                                workSet.Push((jumpDestination, stackHeight));
+                                pos += immediates + 1;
+                                break;
+                            }
+                        case Instruction.RJUMPV:
+                            {
+                                var count = code[pos + ONE_BYTE_LENGTH];
+                                immediates = count * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH;
+                                for (short j = 0; j < count; j++)
+                                {
+                                    int case_v = pos + TWO_BYTE_LENGTH + j * TWO_BYTE_LENGTH;
+                                    int offset = code.Slice(case_v, TWO_BYTE_LENGTH).ReadEthInt16();
+                                    int jumptDestination = pos + immediates + ONE_BYTE_LENGTH + offset;
+                                    workSet.Push((jumptDestination, stackHeight));
+                                }
+                                pos += immediates + 1;
+                                break;
+                            }
+                        default:
+                            {
+                                pos += 1 + immediates;
+                                break;
+                            }
+                    }
+
+                    if (stop) break;
+
+                    if (opcode.IsTerminating())
+                    {
+                        var expectedHeight = opcode is Instruction.RETF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + 1] : stackHeight;
+                        if (expectedHeight != stackHeight)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {stackHeight}");
+                            return false;
+                        }
+                        break;
+                    }
+
+                    else if (pos >= code.Length)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Invalid code, reached end of code without a terminating instruction");
+                        return false;
+                    }
+                }
+            }
+
+            if (!ValidateReachableCode(sectionId, code, recordedStackHeight.Keys, in header))
+            {
+                if (Logger.IsTrace) Logger.Trace($"EIP-5450 : bytecode has unreachable segments");
+                return false;
+            }
+
+            if (peakStackHeight != suggestedMaxHeight)
+            {
+                if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Suggested Max Stack height mismatches with actual Max, expected {suggestedMaxHeight} but found {peakStackHeight}");
+                return false;
+            }
+
+            return peakStackHeight <= MAX_STACK_HEIGHT;
         }
     }
 }

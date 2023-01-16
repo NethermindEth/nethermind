@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -25,6 +25,12 @@ namespace Nethermind.Evm.Test
     /// </summary>
     public class EofTestsBase : VirtualMachineTestsBase
     {
+        [Flags]
+        public enum BytecodeTypes
+        {
+            Classical, EvmObjectFormat
+        }
+
         [Flags]
         public enum FormatScenario
         {
@@ -151,17 +157,33 @@ namespace Nethermind.Evm.Test
         public record FunctionCase(int InputCount, int OutputCount, int MaxStack, byte[] Body);
         public record ScenarioCase(FunctionCase[] Functions, byte[] Data)
         {
+            public static TestCase CreateFromBytecode(BytecodeTypes bytecodeType, byte[][] bytecodes, byte[] databytes, int idx = -1, (byte Status, String Message)? expectedResults = null)
+            {
+                var caseBytecode = bytecodeType switch
+                {
+                    BytecodeTypes.EvmObjectFormat => new ScenarioCase(bytecodes.Select(sectionCode => new FunctionCase(0, 0, 1023, sectionCode)).ToArray(), databytes).Bytecode,
+                    BytecodeTypes.Classical => bytecodes[0],
+                    _ => throw new UnreachableException()
+                };
+
+                var resultMessage = expectedResults is null ? ((byte)0, String.Empty) : (expectedResults.Value.Status, $"EOF1 validation : \nbytecode {caseBytecode.ToHexString(true)} : \nScenario : {expectedResults.Value.Message}");
+
+                return new TestCase(idx)
+                {
+                    Bytecode = caseBytecode,
+                    Result = resultMessage
+                };
+
+            }
             public static TestCase CreateFromScenario(BodyScenario scenario)
             {
                 Prepare prepare = Prepare.EvmCode;
-                int opcodeCount = 0;
+                int stackHeight = 0;
                 if (!scenario.HasFlag(BodyScenario.WithEmptyCodeSection))
                 {
                     if (scenario.HasFlag(BodyScenario.UseDeprecatedOpcode))
                     {
                         prepare = prepare.CALLCODE();
-                        opcodeCount += 2;
-
                     }
 
                     if (scenario.HasFlag(BodyScenario.UseUndefinedOpcode))
@@ -172,30 +194,32 @@ namespace Nethermind.Evm.Test
                             opcode++;
                         }
                         prepare = prepare.Op(opcode);
-                        opcodeCount += 1;
                     }
 
                     if (scenario.HasFlag(BodyScenario.EndWithTruncatedPush))
                     {
                         prepare.Op(Instruction.PUSH32)
                             .Data(Enumerable.Range(0, 23).Select(i => (byte)i).ToArray());
+                        stackHeight++;
                     }
                     else
                     {
                         prepare.Op(Instruction.PUSH32)
                             .Data(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray());
+                        stackHeight++;
                     }
+                    prepare.STOP();
                 }
 
                 byte[] bytecode = prepare.Done;
                 byte[] databytes = scenario.HasFlag(BodyScenario.WithDataSection) ? new byte[] { 0xde, 0xad, 0xbe, 0xef } : Array.Empty<byte>();
-                var resultCase = new ScenarioCase(new[] { new FunctionCase(0, 0, 1024, bytecode) }, databytes);
+                var resultCase = new ScenarioCase(new[] { new FunctionCase(0, 0, stackHeight, bytecode) }, databytes);
                 bytecode = resultCase.Bytecode;
                 bool validCase = scenario is BodyScenario.None || scenario is BodyScenario.WithDataSection;
                 return new TestCase(scenario.ToInt32())
                 {
                     Bytecode = bytecode,
-                    Result = (validCase ? StatusCode.Success : StatusCode.Failure, $"EOF1 validation : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenario.GetEnumMemberValue()}"),
+                    Result = (validCase ? StatusCode.Success : StatusCode.Failure, $"EOF1 validation : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenario.FastToString()}"),
                 };
             }
             public byte[] Bytecode => GenerateFormatScenarios(FormatScenario.None).Bytecode;
@@ -439,7 +463,7 @@ namespace Nethermind.Evm.Test
                 return new TestCase(scenarios.ToInt32())
                 {
                     Bytecode = bytecode,
-                    Result = (scenarios is FormatScenario.None ? StatusCode.Success : StatusCode.Failure, $"EOF1 deploy : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.GetEnumMemberValue()}"),
+                    Result = (scenarios is FormatScenario.None ? StatusCode.Success : StatusCode.Failure, $"EOF1 deploy : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.FastToString()}"),
                 };
             }
             public TestCase GenerateDeploymentScenarios(DeploymentScenario scenarios, DeploymentContext ctx)
@@ -495,7 +519,7 @@ namespace Nethermind.Evm.Test
                     if (hasEofInitCode)
                     {
                         initcode = new ScenarioCase(
-                            new[] { new FunctionCase(0, 0, 1024, initcode) },
+                            new[] { new FunctionCase(0, 0, 2, initcode) },
                             Array.Empty<byte>()
                         ).Bytecode;
                     }
@@ -520,8 +544,8 @@ namespace Nethermind.Evm.Test
                     // wrap initcode in container
                     byte[] result = ctx switch
                     {
-                        DeploymentContext.UseCreate => Prepare.EvmCode.Create(initcode, UInt256.Zero).Done,
-                        DeploymentContext.UseCreate2 => Prepare.EvmCode.Create2(initcode, salt, UInt256.Zero).Done,
+                        DeploymentContext.UseCreate => Prepare.EvmCode.Create(initcode, UInt256.Zero).STOP().Done,
+                        DeploymentContext.UseCreate2 => Prepare.EvmCode.Create2(initcode, salt, UInt256.Zero).STOP().Done,
                         DeploymentContext.UseCreateTx => initcode,
                         _ => throw new UnreachableException()
                     };
@@ -533,12 +557,13 @@ namespace Nethermind.Evm.Test
                         return result;
                     }
 
+                    Instruction createOpcode = ctx is DeploymentContext.UseCreate ? Instruction.CREATE : Instruction.CREATE2;
                     // if container should be EOF
                     bool hasEofContainer = scenarios.HasFlag(DeploymentScenario.EofContainer);
                     if (hasEofContainer)
                     {
                         result = new ScenarioCase(
-                            new[] { new FunctionCase(0, 0, 1024, result) },
+                            new[] { new FunctionCase(0, 0, createOpcode.StackRequirements().InputCount, result) },
                             Array.Empty<byte>()
                         ).Bytecode;
                     }
