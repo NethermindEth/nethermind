@@ -187,28 +187,7 @@ namespace Nethermind.Blockchain.Test
             }
         }
 
-        public static IEnumerable Eip3860TestCases
-        {
-            get
-            {
-                ProperTransactionsSelectedTestCase balanceBelowMaxFeeTimesGasLimit = new()
-                {
-                    ReleaseSpec = Shanghai.Instance,
-                    BaseFee = 5,
-                    AccountStates = { { TestItem.AddressA, (400, 1) } },
-                    Transactions =
-                    {
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
-                            .WithMaxFeePerGas(45).WithMaxPriorityFeePerGas(25).WithGasLimit(10).WithType(TxType.EIP1559).WithValue(60).SignedAndResolved(TestItem.PrivateKeyA).TestObject
-                    },
-                    GasLimit = 10000000
-                };
-                yield return new TestCaseData(balanceBelowMaxFeeTimesGasLimit).SetName("EIP3860 Transactions");
-            }
-        }
-
         [TestCaseSource(nameof(ProperTransactionsSelectedTestCases))]
-        [TestCaseSource(nameof(Eip3860TestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             MemDb stateDb = new();
