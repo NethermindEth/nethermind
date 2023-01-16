@@ -310,7 +310,7 @@ namespace Nethermind.Blockchain.Test
                     Assert.Fail($"Block {block} was expected to be added");
                 }
 
-                _blockTree.UpdateMainChain(new []{ block }, false);
+                _blockTree.UpdateMainChain(new[] { block }, false);
                 _blockProcessor.Allow(block.Hash);
                 _recoveryStep.Allow(block.Hash);
 
