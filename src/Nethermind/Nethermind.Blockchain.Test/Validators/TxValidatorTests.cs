@@ -217,12 +217,14 @@ namespace Nethermind.Blockchain.Test.Validators
             return txValidator.IsWellFormed(tx, London.Instance);
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Transaction_with_init_code_above_max_value_is_rejected_when_eip3860Enabled(bool eip3860Enabled)
+        [TestCase(true, 1, false)]
+        [TestCase(false, 1, true)]
+        [TestCase(true, -1, true)]
+        [TestCase(false, -1, true)]
+        public void Transaction_with_init_code_above_max_value_is_rejected_when_eip3860Enabled(bool eip3860Enabled, int dataSizeAboveInitCode, bool expectedResult)
         {
             IReleaseSpec releaseSpec = eip3860Enabled ? Shanghai.Instance : GrayGlacier.Instance;
-            byte[] initCode = Enumerable.Repeat((byte)0x20, (int)releaseSpec.MaxInitCodeSize + 1).ToArray();
+            byte[] initCode = Enumerable.Repeat((byte)0x20, (int)releaseSpec.MaxInitCodeSize + dataSizeAboveInitCode).ToArray();
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
@@ -236,7 +238,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 .WithData(initCode).TestObject;
 
             TxValidator txValidator = new(1);
-            txValidator.IsWellFormed(tx, releaseSpec).Should().Be(!eip3860Enabled);
+            txValidator.IsWellFormed(tx, releaseSpec).Should().Be(expectedResult);
         }
     }
 }
