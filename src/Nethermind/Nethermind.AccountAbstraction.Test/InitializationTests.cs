@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
 using Nethermind.JsonRpc;
 using NSubstitute;
@@ -33,7 +32,7 @@ namespace Nethermind.AccountAbstraction.Test
         }
 
         [Test]
-        public void ChainId_is_used()
+        public void ChainId_is_used_for_UserOperationPool()
         {
             _ = _api!.SpecProvider!.Received().ChainId;
             _ = _api.SpecProvider!.DidNotReceive().NetworkId;
