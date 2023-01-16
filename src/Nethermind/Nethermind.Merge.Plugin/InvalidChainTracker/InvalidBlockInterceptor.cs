@@ -99,13 +99,41 @@ public class InvalidBlockInterceptor : IBlockValidator
         return !HeaderValidator.ValidateHash(header);
     }
 
+    public bool ValidateWithdrawals(Block block, out string? error)
+    {
+        bool result = _baseValidator.ValidateWithdrawals(block, out error);
+
+        if (!result)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
+
+            if (ShouldNotTrackInvalidation(block.Header))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
+
+                return false;
+            }
+
+            _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
+        }
+
+        _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
+
+        return result;
+    }
+
     private static bool ShouldNotTrackInvalidation(Block block)
     {
-        if (ShouldNotTrackInvalidation(block.Header)) return true;
+        if (ShouldNotTrackInvalidation(block.Header))
+            return true;
 
         // Body does not match header, but it does not mean the hash that the header point to is invalid.
-        if (!BlockValidator.ValidateTxRootMatchesTxs(block, out Keccak _)) return true;
-        if (!BlockValidator.ValidateUnclesHashMatches(block)) return true;
-        return false;
+        if (!BlockValidator.ValidateTxRootMatchesTxs(block, out Keccak _))
+            return true;
+
+        if (!BlockValidator.ValidateUnclesHashMatches(block, out Keccak _))
+            return true;
+
+        return !BlockValidator.ValidateWithdrawalsHashMatches(block, out Keccak _);
     }
 }

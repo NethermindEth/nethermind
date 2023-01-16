@@ -23,6 +23,7 @@ using Nethermind.Facade;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -1081,6 +1082,44 @@ public partial class EthRpcModuleTests
         rpcTx.EnsureDefaults(gasCap);
 
         Assert.AreEqual(long.MaxValue, rpcTx.Gas, "Gas must be set to max if gasCap is null or 0");
+    }
+
+    [Test]
+    public async Task eth_getBlockByNumber_should_return_withdrawals_correctly()
+    {
+        using Context ctx = await Context.Create();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+            .WithTransactions(new[] { Build.A.Transaction.TestObject })
+            .WithWithdrawals(new[] { Build.A.Withdrawal.WithAmount(1_000).TestObject })
+            .TestObject;
+
+        LogEntry[] entries = new[]
+        {
+            Build.A.LogEntry.TestObject,
+            Build.A.LogEntry.TestObject
+        };
+
+        TxReceipt receipt = Build.A.Receipt.WithBloom(new Bloom(entries, new Bloom())).WithAllFieldsFilled
+            .WithSender(TestItem.AddressE)
+            .WithLogs(entries).TestObject;
+        TxReceipt[] receiptsTab = { receipt };
+        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+        receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
+        receiptFinder.Get(Arg.Any<Keccak>()).Returns(receiptsTab);
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).Build();
+        string result = ctx.Test.TestEthRpc("eth_getBlockByNumber", TestItem.KeccakA.ToString(), "true");
+
+        result.Should().Be(new EthereumJsonSerializer().Serialize(new
+        {
+            jsonrpc = "2.0",
+            result = new BlockForRpc(block, true, Substitute.For<ISpecProvider>()),
+            id = 67
+        }));
     }
 
     private static (byte[] ByteCode, AccessListItemForRpc[] AccessList) GetTestAccessList(long loads = 2, bool allowSystemUser = true)

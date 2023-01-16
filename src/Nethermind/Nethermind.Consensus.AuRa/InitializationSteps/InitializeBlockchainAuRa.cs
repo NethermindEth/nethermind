@@ -20,6 +20,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -96,6 +97,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
+                new WithdrawalProcessor(_api.StateProvider, _api.LogManager),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter

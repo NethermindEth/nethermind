@@ -31,5 +31,12 @@ namespace Nethermind.Consensus.Validators
         {
             return false;
         }
+
+        public bool ValidateWithdrawals(Block block, out string? error)
+        {
+            error = null;
+
+            return false;
+        }
     }
 }

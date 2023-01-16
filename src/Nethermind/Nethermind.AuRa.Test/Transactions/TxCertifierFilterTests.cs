@@ -13,6 +13,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -155,7 +156,8 @@ namespace Nethermind.AuRa.Test.Transactions
                     Storage,
                     ReceiptStorage,
                     LimboLogs.Instance,
-                    BlockTree);
+                    BlockTree,
+                    new WithdrawalProcessor(State, LogManager));
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;

@@ -749,7 +749,7 @@ namespace Nethermind.Serialization.Rlp
                 return Data[Position] >= 192;
             }
 
-            public int ReadNumberOfItemsRemaining(int? beforePosition = null)
+            public int ReadNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
             {
                 int positionStored = Position;
                 int numberOfItems = 0;
@@ -783,6 +783,10 @@ namespace Nethermind.Serialization.Rlp
                     }
 
                     numberOfItems++;
+                    if (numberOfItems >= maxSearch)
+                    {
+                        break;
+                    }
                 }
 
                 Position = positionStored;

@@ -19,7 +19,7 @@ using Newtonsoft.Json.Linq;
 namespace Nethermind.Specs.ChainSpecStyle
 {
     /// <summary>
-    /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it. 
+    /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it.
     /// </summary>
     public class ChainSpecLoader : IChainSpecLoader
     {
@@ -137,6 +137,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip3651TransitionTimestamp = chainSpecJson.Params.Eip3651TransitionTimestamp,
                 Eip3855TransitionTimestamp = chainSpecJson.Params.Eip3855TransitionTimestamp,
                 Eip3860TransitionTimestamp = chainSpecJson.Params.Eip3860TransitionTimestamp,
+                Eip4895TransitionTimestamp = chainSpecJson.Params.Eip4895TransitionTimestamp,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
@@ -192,6 +193,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                 chainSpec.HomesteadBlockNumber = 0;
             }
 
+            IEnumerable<long?> difficultyBombDelaysBlockNumbers = chainSpec.Ethash?.DifficultyBombDelays
+                .Keys
+                .Cast<long?>()
+                .ToArray();
+
             chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
             chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
             chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
@@ -202,18 +208,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.ConstantinopleFixBlockNumber =
                 chainSpec.Parameters.Eip1283DisableTransition ?? chainSpec.Parameters.Eip145Transition;
             chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
-            chainSpec.MuirGlacierNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 2 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[2]
-                : null;
-            chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition ?? (long.MaxValue - 1);
-            chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition ?? (long.MaxValue - 1);
-            chainSpec.ArrowGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 4 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[4]
-                : null;
-            chainSpec.GrayGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 5 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[5]
-                : null;
-            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp ?? (long.MaxValue - 1);
+            chainSpec.MuirGlacierNumber = difficultyBombDelaysBlockNumbers?.Skip(2).FirstOrDefault();
+            chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition;
+            chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
+            chainSpec.ArrowGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(4).FirstOrDefault();
+            chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
+            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
 
             // TheMerge parameters
             chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
@@ -352,7 +352,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                     ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
                     : UInt256.Zero;
 
-
             BlockHeader genesisHeader = new(
                 parentHash,
                 Keccak.OfAnEmptySequenceRlp,
@@ -372,12 +371,17 @@ namespace Nethermind.Specs.ChainSpecStyle
             genesisHeader.StateRoot = Keccak.EmptyTreeHash;
             genesisHeader.TxRoot = Keccak.EmptyTreeHash;
             genesisHeader.BaseFeePerGas = baseFee;
+            bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
+            if (withdrawalsEnabled)
+                genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
 
             genesisHeader.AuRaStep = step;
             genesisHeader.AuRaSignature = auRaSignature;
 
-
-            chainSpec.Genesis = new Block(genesisHeader);
+            if (withdrawalsEnabled)
+                chainSpec.Genesis = new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+            else
+                chainSpec.Genesis = new Block(genesisHeader);
         }
 
         private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
