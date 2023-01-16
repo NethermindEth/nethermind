@@ -54,11 +54,14 @@ public class NonceManager : INonceManager
         private HashSet<UInt256> _usedNonces = new();
         private UInt256 _reservedNonce;
         private UInt256 _currentNonce;
+        private UInt256 _previousAccountNonce;
         private readonly Mutex _mutex = new();
 
         public UInt256 ReserveNonce(UInt256 accountNonce)
         {
             _mutex.WaitOne();
+
+            ReleaseNonces(accountNonce);
             _currentNonce = UInt256.Max(_currentNonce, accountNonce);
             _reservedNonce = _currentNonce;
             return _currentNonce;
@@ -79,6 +82,16 @@ public class NonceManager : INonceManager
         {
             _mutex.WaitOne();
             _reservedNonce = nonce;
+        }
+
+        private void ReleaseNonces(UInt256 accountNonce)
+        {
+            for (UInt256 i = _previousAccountNonce; i < accountNonce; i++)
+            {
+                _usedNonces.Remove(i);
+            }
+
+            _previousAccountNonce = accountNonce;
         }
 
         public void TxRejected() => _mutex.ReleaseMutex();
