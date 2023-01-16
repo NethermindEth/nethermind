@@ -41,12 +41,12 @@ public static class BitmapHelper
 
             if (numbits == 0) continue;
 
-            HandleNumbits(numbits, ref bitvec, ref pc);
+            HandleNumbits(numbits, bitvec, ref pc);
         }
         return bitvec;
     }
 
-    public static void HandleNumbits(int numbits, scoped ref byte[] bitvec, scoped ref int pc)
+    public static void HandleNumbits(int numbits, byte[] bitvec, scoped ref int pc)
     {
         if (numbits >= 8)
         {
@@ -98,11 +98,6 @@ public static class BitmapHelper
     /// <summary>
     /// Checks if the position is in a code segment.
     /// </summary>
-    public static bool IsCodeSegment(ref byte[] bitvec, int pos)
-    {
-        return (bitvec[pos / 8] & (0x80 >> (pos % 8))) == 0;
-    }
-
     public static bool IsCodeSegment(byte[] bitvec, int pos)
     {
         return (bitvec[pos / 8] & (0x80 >> (pos % 8))) == 0;
@@ -146,7 +141,7 @@ public static class BitmapHelper
     private const uint Vector256ByteCount = 32;
     private const uint Vector256IntCount = 8;
 
-    public static bool CheckCollision(ref byte[] codeSegments, ref byte[] jumpmask)
+    public static bool CheckCollision(byte[] codeSegments, byte[] jumpmask)
     {
         int count = Math.Min(codeSegments.Length, jumpmask.Length);
 
