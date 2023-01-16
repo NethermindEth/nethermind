@@ -35,9 +35,9 @@ namespace Nethermind.Runner.JsonRpc
 {
     public class Startup
     {
-        private static readonly byte _jsonOpeningBracket = Convert.ToByte('{');
+        private static readonly byte _jsonOpeningBracket = Convert.ToByte('[');
         private static readonly byte _jsonComma = Convert.ToByte(',');
-        private static readonly byte _jsonClosingBracket = Convert.ToByte('}');
+        private static readonly byte _jsonClosingBracket = Convert.ToByte(']');
 
         public void ConfigureServices(IServiceCollection services)
         {
