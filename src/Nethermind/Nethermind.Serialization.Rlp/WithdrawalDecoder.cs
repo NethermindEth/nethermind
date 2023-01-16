@@ -23,7 +23,7 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
             Index = rlpStream.DecodeULong(),
             ValidatorIndex = rlpStream.DecodeULong(),
             Address = rlpStream.DecodeAddress(),
-            AmountInGwei = rlpStream.DecodeUlong()
+            AmountInGwei = rlpStream.DecodeULong()
         };
     }
 
