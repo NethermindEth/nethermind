@@ -21,4 +21,11 @@
       <ProjectReference Include="..\Nethermind.Precompiles.Benchmark\Nethermind.Precompiles.Benchmark.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Content Include="..\..\tests\bytecodes\precompiles\*.*">
+        <Link>bytecodes\precompiles\%(RecursiveDir)%(FileName)%(Extension)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+
 </Project>
