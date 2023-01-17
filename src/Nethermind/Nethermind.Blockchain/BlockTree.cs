@@ -1950,7 +1950,7 @@ namespace Nethermind.Blockchain
             void SetTotalDifficultyDeep(BlockHeader current)
             {
                 Stack<BlockHeader> stack = new();
-                while (!current.IsNonZeroTotalDifficulty())
+                while (current.TotalDifficulty is null)
                 {
                     (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(current.Number, current.Hash, true);
                     if (level is null || blockInfo is null || blockInfo.TotalDifficulty == 0)
@@ -1978,7 +1978,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (header.IsNonZeroTotalDifficulty())
+            if (header.TotalDifficulty is not null)
             {
                 return;
             }
