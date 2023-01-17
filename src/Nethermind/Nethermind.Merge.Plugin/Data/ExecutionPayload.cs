@@ -162,7 +162,7 @@ public static class ExecutionPayloadVersioningExtensions
 
         error = actualVersion switch
         {
-            1 when spec.WithdrawalsEnabled => "ExecutionPayloadV2+ expected",
+            1 when spec.WithdrawalsEnabled => "ExecutionPayloadV2 expected",
             > 1 when !spec.WithdrawalsEnabled => "ExecutionPayloadV1 expected",
             _ => actualVersion > version ? $"ExecutionPayloadV{version} expected" : null
         };

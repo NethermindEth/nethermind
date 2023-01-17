@@ -63,7 +63,7 @@ public static class PayloadAttributesVersioningExtensions
 
         error = actualVersion switch
         {
-            1 when spec.WithdrawalsEnabled => "PayloadAttributesV2+ expected",
+            1 when spec.WithdrawalsEnabled => "PayloadAttributesV2 expected",
             > 1 when !spec.WithdrawalsEnabled => "PayloadAttributesV1 expected",
             _ => actualVersion > version ? $"PayloadAttributesV{version} expected" : null
         };
