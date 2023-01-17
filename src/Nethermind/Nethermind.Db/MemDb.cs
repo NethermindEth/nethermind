@@ -124,6 +124,11 @@ namespace Nethermind.Db
         {
         }
 
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        {
+            this[key] = value.ToArray();
+        }
+
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
         }

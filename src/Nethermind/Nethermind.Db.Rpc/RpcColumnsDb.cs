@@ -23,6 +23,10 @@ namespace Nethermind.Db.Rpc
         public IEnumerable<T> ColumnKeys { get; } = Array.Empty<T>();
 
         public Span<byte> GetSpan(ReadOnlySpan<byte> key) => this[key].AsSpan();
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        {
+            this[key] = value.ToArray();
+        }
 
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {

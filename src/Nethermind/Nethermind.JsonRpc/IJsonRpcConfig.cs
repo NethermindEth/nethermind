@@ -130,5 +130,10 @@ namespace Nethermind.JsonRpc
             Description = "Limit batch size for batched json rpc call",
             DefaultValue = "100")]
         int MaxBatchSize { get; set; }
+
+        [ConfigItem(
+            Description = "Max response body size when using batch requests, subsequent requests are trimmed",
+            DefaultValue = "30000000")]
+        long? MaxBatchResponseBodySize { get; set; }
     }
 }

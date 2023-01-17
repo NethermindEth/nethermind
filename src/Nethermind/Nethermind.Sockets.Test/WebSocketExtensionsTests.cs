@@ -8,6 +8,7 @@ using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
@@ -118,12 +119,13 @@ namespace Nethermind.Sockets.Test
             processor.ProcessAsync(default, default).ReturnsForAnyArgs((x) => new List<JsonRpcResult>()
             {
                 JsonRpcResult.Single(new JsonRpcResponse(), new RpcReport()),
-                JsonRpcResult.Collection(new List<JsonRpcResult.Entry>()
+                JsonRpcResult.Collection(new JsonRpcBatchResult((e, c) =>
+                    new List<JsonRpcResult.Entry>()
                 {
                     new(new JsonRpcResponse(), new RpcReport()),
                     new(new JsonRpcResponse(), new RpcReport()),
-                    new(new JsonRpcResponse(), new RpcReport())
-                }.ToAsyncEnumerable())
+                    new(new JsonRpcResponse(), new RpcReport()),
+                }.ToAsyncEnumerable().GetAsyncEnumerator(c)))
             }.ToAsyncEnumerable());
 
             var service = Substitute.For<IJsonRpcService>();
@@ -138,7 +140,8 @@ namespace Nethermind.Sockets.Test
                 service,
                 localStats,
                 Substitute.For<IJsonSerializer>(),
-                null);
+                null,
+                30.MB());
 
             webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(async x =>
             {
