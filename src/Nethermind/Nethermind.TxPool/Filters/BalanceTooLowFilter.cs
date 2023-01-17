@@ -11,16 +11,16 @@ using Nethermind.TxPool.Collections;
 namespace Nethermind.TxPool.Filters
 {
     /// <summary>
-    /// Filters out transactions where gas fee properties were set too low.
+    /// Filters out transactions where the sender has not enough balance.
     /// </summary>
-    internal class FeeTooLowFilter : IIncomingTxFilter
+    internal class BalanceTooLowFilter : IIncomingTxFilter
     {
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly TxDistinctSortedPool _txs;
         private readonly ILogger _logger;
 
-        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, ILogManager logManager)
+        public BalanceTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, ILogManager logManager)
         {
             _specProvider = headInfo.SpecProvider;
             _headInfo = headInfo;
@@ -36,17 +36,16 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.Accepted;
             }
 
-            if (_txs.TryGetLast(out Transaction? lastTx))
-            {
-                IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
-                UInt256 gasPrice = tx.CalculateGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee);
+            IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
+            UInt256 balance = state.SenderAccount.Balance;
+            UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);
 
-                if (gasPrice <= lastTx?.GasBottleneck)
-                {
-                    Metrics.PendingTransactionsTooLowFee++;
-                    if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
-                    return AcceptTxResult.FeeTooLow.WithMessage($"FeePerGas needs to be higher than {lastTx.GasBottleneck.Value} to be added to the TxPool. FeePerGas of rejected tx: {gasPrice}.");
-                }
+            if (_txs.TryGetLast(out Transaction? lastTx)
+                && affordableGasPrice <= lastTx?.GasBottleneck)
+            {
+                Metrics.PendingTransactionsBalanceToLowToCompeteOnFee++;
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
+                return AcceptTxResult.InsufficientFundsToCompete.WithMessage($"FeePerGas needs to be higher than {lastTx.GasBottleneck.Value} to be added to the TxPool. Affordable FeePerGas of rejected tx: {affordableGasPrice}.");
             }
 
             return AcceptTxResult.Accepted;

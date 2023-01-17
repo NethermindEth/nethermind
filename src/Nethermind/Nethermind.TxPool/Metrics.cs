@@ -22,8 +22,14 @@ namespace Nethermind.TxPool
         [Description("Number of pending transactions received that were ignored because of not having preceding nonce of this sender in TxPool.")]
         public static long PendingTransactionsNonceGap { get; set; }
 
-        [Description("Number of pending transactions received that were ignored because of effective fee lower than the lowest effective fee in transaction pool.")]
+        [Description("Number of pending transactions received that were ignored because of fee lower than the lowest fee in transaction pool.")]
         public static long PendingTransactionsTooLowFee { get; set; }
+
+        [Description("Number of pending transactions received that were ignored because of effective fee lower than the lowest effective fee in transaction pool.")]
+        public static long PendingTransactionsBalanceToLowToCompeteOnFee { get; set; }
+
+        [Description("Number of pending transactions received that were ignored after passing early rejections as balance is too low to compete with lowest effective fee in transaction pool.")]
+        public static long PendingTransactionsPassedFiltersButCannotCompeteOnFees { get; set; }
 
         [Description("Number of pending transactions that reached filters which are resource expensive")]
         public static long PendingTransactionsWithExpensiveFiltering { get; set; }
