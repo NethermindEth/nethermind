@@ -543,7 +543,7 @@ namespace Nethermind.Merkleization
 
         public void Feed(IReadOnlyList<Bytes32> value, ulong maxLength)
         {
-            // TODO: If UInt256 is the correct memory layout 
+            // TODO: If UInt256 is the correct memory layout
             UInt256[] subRoots = new UInt256[value.Count];
             for (int i = 0; i < value.Count; i++)
             {

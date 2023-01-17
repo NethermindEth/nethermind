@@ -14,4 +14,8 @@
       <ProjectReference Include="..\Nethermind.Ssz\Nethermind.Ssz.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.0.0" />
+    </ItemGroup>
+
 </Project>

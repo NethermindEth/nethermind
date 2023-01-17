@@ -13,8 +13,17 @@
       <Name>Nethermind.Core</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
+    <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Nethermind.Merkleization">
+      <HintPath>..\Nethermind.Merkleization\bin\Debug\net7.0\Nethermind.Merkleization.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Nethermind.Numerics.Dirichlet" Version="1.0.0" />
   </ItemGroup>
 </Project>
