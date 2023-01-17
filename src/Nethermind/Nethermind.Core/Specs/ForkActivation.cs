@@ -16,6 +16,9 @@ public readonly struct ForkActivation : IEquatable<ForkActivation>, IComparable<
         BlockNumber = blockNumber;
         Timestamp = timestamp;
     }
+
+    public static ForkActivation TimestampOnly(ulong timestamp) => new(long.MaxValue, timestamp);
+
     public void Deconstruct(out long blockNumber, out ulong? timestamp)
     {
         blockNumber = BlockNumber;
