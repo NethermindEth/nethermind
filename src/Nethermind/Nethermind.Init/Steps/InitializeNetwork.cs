@@ -213,6 +213,9 @@ public class InitializeNetwork : IStep
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
 
+        // TODO: Review enabling conditions
+        _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+
         if (_syncConfig.SnapSync && !stateSyncFinished)
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
