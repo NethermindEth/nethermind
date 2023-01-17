@@ -8,6 +8,7 @@ using FluentAssertions.Equivalency;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P
