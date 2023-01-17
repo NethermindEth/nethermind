@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.IO.Abstractions;
 using System.Net;
 using System.Threading;
@@ -57,6 +56,8 @@ namespace Nethermind.HealthChecks
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             _initConfig = _api.Config<IInitConfig>();
             _logger = api.LogManager.GetClassLogger();
+            //blocking until enough disk space is available
+            EnsureEnoughFreeSpace();
 
             return Task.CompletedTask;
         }
@@ -117,7 +118,7 @@ namespace Nethermind.HealthChecks
                 try
                 {
                     drives = _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath);
-                    _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_healthChecksConfig, _logger, drives, _api.TimerFactory);
+                    _freeDiskSpaceChecker ??= new FreeDiskSpaceChecker(_healthChecksConfig, _logger, drives, _api.TimerFactory);
                     _freeDiskSpaceChecker.StartAsync(default);
                 }
                 catch (Exception ex)
@@ -151,6 +152,22 @@ namespace Nethermind.HealthChecks
             string host = _jsonRpcConfig.Host.Replace("0.0.0.0", "localhost");
             host = host.Replace("[::]", "localhost");
             return new UriBuilder("http", host, _jsonRpcConfig.Port, _healthChecksConfig.Slug).ToString();
+        }
+
+        private void EnsureEnoughFreeSpace()
+        {
+            if (_healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
+            {
+                try
+                {
+                    _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_healthChecksConfig, _logger, _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath), _api.TimerFactory);
+                    _freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(_api.TimerFactory);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error("Failed to check free disk space on node start", ex);
+                }
+            }
         }
 
         private class ClHealthLogger : IHostedService, IAsyncDisposable
