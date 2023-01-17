@@ -35,7 +35,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
         {
             foreach (var withdrawal in block.Withdrawals)
             {
-                if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.Amount / (BigInteger)Unit.Ether:N3}GNO to account {withdrawal.Address}");
+                if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.AmountInWei / (BigInteger)Unit.Ether:N3}GNO to account {withdrawal.Address}");
 
                 //if (_auraParams.AccountExists(withdrawal.Address))
                 //{

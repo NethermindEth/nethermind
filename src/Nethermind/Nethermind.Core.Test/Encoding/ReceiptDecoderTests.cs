@@ -215,6 +215,24 @@ namespace Nethermind.Core.Test.Encoding
             AssertStorageReceipt(txReceipt, deserialized);
         }
 
+        [Test]
+        public void Netty_and_rlp_array_encoding_should_be_the_same()
+        {
+            TxReceipt[] receipts = new[]
+            {
+                Build.A.Receipt.WithAllFieldsFilled.TestObject,
+                Build.A.Receipt.WithAllFieldsFilled.TestObject
+            };
+
+            ReceiptStorageDecoder decoder = new();
+            Rlp rlp = decoder.Encode(receipts);
+            using (NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts))
+            {
+                byte[] nettyBytes = nettyRlpStream.AsSpan().ToArray();
+                nettyBytes.Should().BeEquivalentTo(rlp.Bytes);
+            }
+        }
+
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
         {
             Bloom bloom = new();
@@ -273,6 +291,5 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(txReceipt.Recipient, deserialized.Recipient, "recipient");
             Assert.AreEqual(txReceipt.StatusCode, deserialized.StatusCode, "status");
         }
-
     }
 }

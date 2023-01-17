@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> To(Address address)
+        public TransactionBuilder<T> To(Address? address)
         {
             TestObjectInternal.To = address;
             return this;

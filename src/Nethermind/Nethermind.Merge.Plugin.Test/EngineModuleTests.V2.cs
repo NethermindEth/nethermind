@@ -44,7 +44,7 @@ public partial class EngineModuleTests
         };
         Withdrawal[] withdrawals = new[]
         {
-            new Withdrawal { Index = 1, Amount = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
+            new Withdrawal { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
         };
         var payloadAttrs = new
         {
@@ -79,7 +79,7 @@ public partial class EngineModuleTests
             }
         }));
 
-        Keccak blockHash = new("0xed14029504c440624047d5d0223899fb2c8abc4550464ac21e8f42ccdbb472d3");
+        Keccak blockHash = new("0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68");
         Block block = new(
             new(
                 startingHead,
@@ -98,7 +98,7 @@ public partial class EngineModuleTests
                 Hash = blockHash,
                 MixHash = prevRandao,
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
-                StateRoot = new("0xde9a4fd5deef7860dc840612c5e960c942b76a9b2e710504de9bab8289156491"),
+                StateRoot = new("0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51"),
             },
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
