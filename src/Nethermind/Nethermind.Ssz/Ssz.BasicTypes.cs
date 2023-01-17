@@ -6,8 +6,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Nethermind.Dirichlet.Numerics;
-using UInt128 = Nethermind.Dirichlet.Numerics.UInt128;
+using Nethermind.Int256;
 
 namespace Nethermind.Ssz
 {
@@ -87,8 +86,8 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, UInt128 value)
         {
-            BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(0, 8), value.S0);
-            BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(8, 8), value.S1);
+            BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(0, 8), (ulong)(value & ulong.MaxValue));
+            BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(8, 8), (ulong)(value >> 64));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -273,8 +272,8 @@ namespace Nethermind.Ssz
 
             ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(0, 8));
             ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
-            UInt128.Create(out UInt128 result, s0, s1);
-            return result;
+
+            return new UInt128(s0, s1);
         }
 
         public static UInt256 DecodeUInt256(Span<byte> span)
@@ -284,13 +283,8 @@ namespace Nethermind.Ssz
             {
                 throw new InvalidDataException($"{nameof(DecodeUInt256)} expects input of length {expectedLength} and received {span.Length}");
             }
-
-            ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(0, 8));
-            ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
-            ulong s2 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(16, 8));
-            ulong s3 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(24, 8));
-            UInt256.Create(out UInt256 result, s0, s1, s2, s3);
-            return result;
+            
+            return new UInt256(span);
         }
 
         public static UInt256[] DecodeUInts256(Span<byte> span)
