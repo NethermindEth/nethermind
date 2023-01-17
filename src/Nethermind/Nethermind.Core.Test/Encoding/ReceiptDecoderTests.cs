@@ -228,7 +228,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlp = decoder.Encode(receipts);
             using (NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts))
             {
-                byte[] nettyBytes = nettyRlpStream.AsSpan.ToArray();
+                byte[] nettyBytes = nettyRlpStream.AsSpan().ToArray();
                 nettyBytes.Should().BeEquivalentTo(rlp.Bytes);
             }
         }

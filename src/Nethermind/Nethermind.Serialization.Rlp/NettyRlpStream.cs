@@ -102,7 +102,8 @@ namespace Nethermind.Serialization.Rlp
         public override bool HasBeenRead => _buffer.ReadableBytes > 0;
 
         protected override string Description => "|NettyRlpStream|description missing|";
-        public Span<byte> AsSpan => _buffer.Array.AsSpan().Slice(_buffer.ArrayOffset + _initialPosition, _buffer.WriterIndex - _initialPosition);
+
+        public Span<byte> AsSpan() => _buffer.AsSpan();
 
         public void Dispose()
         {

@@ -563,7 +563,7 @@ namespace Nethermind.Blockchain
             // 3M Goerli blocks fast sync
             using (NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header))
             {
-                _headerDb.Set(header.Hash, newRlp.AsSpan);
+                _headerDb.Set(header.Hash, newRlp.AsSpan());
             }
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
@@ -662,7 +662,7 @@ namespace Nethermind.Blockchain
             // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
             using (NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block))
             {
-                _blockDb.Set(block.Hash, newRlp.AsSpan);
+                _blockDb.Set(block.Hash, newRlp.AsSpan());
             }
 
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
@@ -751,13 +751,13 @@ namespace Nethermind.Blockchain
                 }
 
                 using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
-                _blockDb.Set(block.Hash, newRlp.AsSpan);
+                _blockDb.Set(block.Hash, newRlp.AsSpan());
             }
 
             if (!isKnown)
             {
                 using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
-                _headerDb.Set(header.Hash, newRlp.AsSpan);
+                _headerDb.Set(header.Hash, newRlp.AsSpan());
             }
 
             if (!isKnown || fillBeaconBlock)
