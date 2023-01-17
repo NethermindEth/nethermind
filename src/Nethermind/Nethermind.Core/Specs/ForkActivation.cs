@@ -30,60 +30,31 @@ public readonly struct ForkActivation : IEquatable<ForkActivation>, IComparable<
     public static implicit operator (long blocknumber, ulong? timestamp)(ForkActivation forkActivation)
         => (forkActivation.BlockNumber, forkActivation.Timestamp);
 
-    public bool Equals(ForkActivation other)
-    {
-        return BlockNumber == other.BlockNumber && Timestamp == other.Timestamp;
-    }
+    public bool Equals(ForkActivation other) => BlockNumber == other.BlockNumber && Timestamp == other.Timestamp;
 
-    public override bool Equals(object? obj)
-    {
-        return obj is ForkActivation other && Equals(other);
-    }
+    public override bool Equals(object? obj) => obj is ForkActivation other && Equals(other);
 
-    public override int GetHashCode()
-    {
-        return HashCode.Combine(BlockNumber, Timestamp);
-    }
+    public override int GetHashCode() => HashCode.Combine(BlockNumber, Timestamp);
 
-    public override string ToString()
-    {
-        return $"{BlockNumber} {Timestamp}";
-    }
+    public override string ToString() => $"{BlockNumber} {Timestamp}";
 
-    public int CompareTo(ForkActivation other)
-    {
-        return Timestamp is null || other.Timestamp is null
+    public int CompareTo(ForkActivation other) =>
+        Timestamp is null || other.Timestamp is null
             ? BlockNumber.CompareTo(other.BlockNumber)
             : Timestamp.Value.CompareTo(other.Timestamp.Value);
-    }
 
-    public static bool operator ==(ForkActivation first, ForkActivation second)
-    {
-        return first.Equals(second);
-    }
+    public static bool operator ==(ForkActivation first, ForkActivation second) => first.Equals(second);
 
-    public static bool operator !=(ForkActivation first, ForkActivation second)
-    {
-        return !first.Equals(second);
-    }
+    public static bool operator !=(ForkActivation first, ForkActivation second) => !first.Equals(second);
 
-    public static bool operator <(ForkActivation first, ForkActivation second)
-    {
-        return first.CompareTo(second) < 0;
-    }
+    public static bool operator <(ForkActivation first, ForkActivation second) => first.CompareTo(second) < 0;
 
-    public static bool operator >(ForkActivation first, ForkActivation second)
-    {
-        return first.CompareTo(second) > 0;
-    }
+    public static bool operator >(ForkActivation first, ForkActivation second) => first.CompareTo(second) > 0;
 
-    public static bool operator <=(ForkActivation first, ForkActivation second)
-    {
-        return first.CompareTo(second) <= 0;
-    }
+    public static bool operator <=(ForkActivation first, ForkActivation second) => first.CompareTo(second) <= 0;
 
-    public static bool operator >=(ForkActivation first, ForkActivation second)
-    {
-        return first.CompareTo(second) >= 0;
-    }
+    public static bool operator >=(ForkActivation first, ForkActivation second) => first.CompareTo(second) >= 0;
+
+    public static int CompareActivation(ForkActivation activation, ForkActivation transition) =>
+        activation.Timestamp?.CompareTo(transition.Timestamp) ?? activation.BlockNumber.CompareTo(transition.BlockNumber);
 }
