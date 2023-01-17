@@ -27,7 +27,7 @@ namespace Nethermind.Db.Test.Rpc
         {
             _jsonSerializer = Substitute.For<IJsonSerializer>();
             _jsonRpcClient = Substitute.For<IJsonRpcClient>();
-            _recordDb = Substitute.For<IDb>();
+            _recordDb = new MemDb();
             _rpcDb = new RpcDb("Name", _jsonSerializer, _jsonRpcClient, LimboLogs.Instance, _recordDb);
         }
 
@@ -39,7 +39,7 @@ namespace Nethermind.Db.Test.Rpc
             byte[] key = new byte[1];
             byte[] elem = _rpcDb[key];
             _jsonRpcClient.Received().Post("debug_getFromDb", "Name", key.ToHexString());
-            _recordDb.Received()[key] = Arg.Is<byte[]>(a => a.SequenceEqual(Bytes.FromHexString(result)));
+            _recordDb[key].Should().BeEquivalentTo(Bytes.FromHexString(result));
         }
     }
 }

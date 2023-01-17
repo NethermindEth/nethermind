@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -23,7 +24,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Collects_on_reads()
         {
             Context context = new();
-            context.Wrapped[Key1].Returns(Value1);
+            context.Wrapped.ReadFunc = (key) => Value1;
 
             using IDisposable tracker = context.WitnessCollector.TrackOnThisThread();
             _ = context.Database[Key1];
@@ -35,7 +36,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Does_not_collect_if_no_tracking()
         {
             Context context = new();
-            context.Wrapped[Key1].Returns(Value1);
+            context.Wrapped.ReadFunc = (key) => Value1;
             _ = context.Database[Key1];
             context.WitnessCollector.Collected.Should().HaveCount(0);
         }
@@ -44,9 +45,9 @@ namespace Nethermind.Store.Test.Witnesses
         public void Collects_on_reads_when_cached_underneath()
         {
             Context context = new(2);
-            context.Wrapped[Key1].Returns(Value1);
-            context.Wrapped[Key2].Returns(Value2);
-            context.Wrapped[Key3].Returns(Value3);
+            context.Wrapped[Key1] = Value1;
+            context.Wrapped[Key2] = Value2;
+            context.Wrapped[Key3] = Value3;
 
             using IDisposable tracker = context.WitnessCollector.TrackOnThisThread();
             _ = context.Database[Key1];
@@ -95,14 +96,15 @@ namespace Nethermind.Store.Test.Witnesses
         public void Only_works_with_32_bytes_keys(int keyLength)
         {
             Context context = new();
-            context.Wrapped[null].ReturnsForAnyArgs(Bytes.Empty);
+            context.Wrapped.ReadFunc = (key) => Bytes.Empty;
+
             Assert.Throws<NotSupportedException>(
                 () => _ = context.Database[new byte[keyLength]]);
         }
 
         private class Context
         {
-            public IKeyValueStoreWithBatching Wrapped { get; } = Substitute.For<IKeyValueStoreWithBatching>();
+            public TestMemDb Wrapped { get; } = new TestMemDb();
 
             public WitnessingStore Database { get; }
 

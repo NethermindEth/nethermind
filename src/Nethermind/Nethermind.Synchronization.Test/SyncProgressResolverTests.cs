@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.Test
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-            IDb stateDb = Substitute.For<IDb>();
+            IDb stateDb = new MemDb();
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = "1";
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.Test
             var head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(head.Header);
-            stateDb.Get(head.StateRoot).Returns(new byte[] { 1 });
+            stateDb[head.StateRoot.Bytes] = new byte[] { 1 };
             Assert.AreEqual(head.Number, syncProgressResolver.FindBestFullState());
         }
 
@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.Test
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-            IDb stateDb = Substitute.For<IDb>();
+            IDb stateDb = new MemDb();
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = "1";
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
@@ -85,8 +85,9 @@ namespace Nethermind.Synchronization.Test
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(suggested);
             blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
-            stateDb.Get(head.StateRoot).Returns(new byte[] { 1 });
-            stateDb.Get(suggested.StateRoot).Returns(new byte[] { 1 });
+
+            stateDb[head.StateRoot.Bytes] = new byte[] { 1 };
+            stateDb[suggested.StateRoot.Bytes] = new byte[] { 1 };
             Assert.AreEqual(suggested.Number, syncProgressResolver.FindBestFullState());
         }
 
@@ -95,7 +96,7 @@ namespace Nethermind.Synchronization.Test
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-            IDb stateDb = Substitute.For<IDb>();
+            IDb stateDb = new MemDb();
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = "1";
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
@@ -106,8 +107,8 @@ namespace Nethermind.Synchronization.Test
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(suggested);
             blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head?.Header);
-            stateDb.Get(head.StateRoot).Returns(new byte[] { 1 });
-            stateDb.Get(suggested.StateRoot).Returns((byte[])null);
+            stateDb[head.StateRoot.Bytes] = new byte[] { 1 };
+            stateDb[suggested.StateRoot.Bytes] = null;
             Assert.AreEqual(head.Number, syncProgressResolver.FindBestFullState());
         }
 

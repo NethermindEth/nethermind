@@ -41,7 +41,7 @@ namespace Nethermind.Db
 
         public string Name { get; }
 
-        public byte[]? this[ReadOnlySpan<byte> key]
+        public virtual byte[]? this[ReadOnlySpan<byte> key]
         {
             get
             {
@@ -66,6 +66,11 @@ namespace Nethermind.Db
             }
         }
 
+        public virtual Span<byte> GetSpan(byte[] key)
+        {
+            return this[key].AsSpan();
+        }
+
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]
         {
             get
@@ -80,7 +85,7 @@ namespace Nethermind.Db
             }
         }
 
-        public void Remove(ReadOnlySpan<byte> key)
+        public virtual void Remove(ReadOnlySpan<byte> key)
         {
             _db.TryRemove(key.ToArray(), out _);
         }
@@ -117,11 +122,6 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
-        }
-
-        public Span<byte> GetSpan(byte[] key)
-        {
-            return this[key].AsSpan();
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)
