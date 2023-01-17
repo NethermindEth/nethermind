@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Core2.Types;
+using Nethermind.Core;
+//using Nethermind.Core2.Types;
 using Nethermind.Merkleization;
 using NUnit.Framework;
 

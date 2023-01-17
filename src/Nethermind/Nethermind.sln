@@ -231,18 +231,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UPnP", "UPnP", "{2EDE2554-5
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.UPnP.Plugin", "Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj", "{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Core2", "Core2", "{C383B461-6A25-493F-8950-BC40C808EBA3}"
-	ProjectSection(SolutionItems) = preProject
-		Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj = Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj
-	EndProjectSection
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Core2", "Nethermind.Core2\Nethermind.Core2.csproj", "{01E5FA3D-3F30-485A-AA74-3D19904BA5C8}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{0E0F75A7-A03F-4D66-910B-17DB659A33E3}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Ssz", "Nethermind.Ssz\Nethermind.Ssz.csproj", "{30343D31-0CDC-4F96-9269-4A3DBA43E444}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Ssz.Test", "Nethermind.Ssz.Test\Nethermind.Ssz.Test.csproj", "{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Merkleization", "Nethermind.Merkleization\Nethermind.Merkleization.csproj", "{E5001E79-6562-4EC4-9000-4C70DF95DF00}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -622,10 +617,6 @@ Global
 		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}.Release|Any CPU.Build.0 = Release|Any CPU
-		{01E5FA3D-3F30-485A-AA74-3D19904BA5C8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{01E5FA3D-3F30-485A-AA74-3D19904BA5C8}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{01E5FA3D-3F30-485A-AA74-3D19904BA5C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{01E5FA3D-3F30-485A-AA74-3D19904BA5C8}.Release|Any CPU.Build.0 = Release|Any CPU
 		{30343D31-0CDC-4F96-9269-4A3DBA43E444}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{30343D31-0CDC-4F96-9269-4A3DBA43E444}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{30343D31-0CDC-4F96-9269-4A3DBA43E444}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -634,6 +625,10 @@ Global
 		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E5001E79-6562-4EC4-9000-4C70DF95DF00}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E5001E79-6562-4EC4-9000-4C70DF95DF00}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E5001E79-6562-4EC4-9000-4C70DF95DF00}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E5001E79-6562-4EC4-9000-4C70DF95DF00}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -697,7 +692,6 @@ Global
 		{B4A10FCA-4982-4D89-8D8C-6154882938E4} = {06AF5D92-0E47-4A98-AF49-492F814618E3}
 		{2EDE2554-59C0-4E78-92F7-EB8077AA597D} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
 		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE} = {2EDE2554-59C0-4E78-92F7-EB8077AA597D}
-		{01E5FA3D-3F30-485A-AA74-3D19904BA5C8} = {C383B461-6A25-493F-8950-BC40C808EBA3}
 		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
