@@ -17,6 +17,14 @@ public readonly struct ForkActivation : IEquatable<ForkActivation>, IComparable<
         Timestamp = timestamp;
     }
 
+    /// <summary>
+    /// Fork activation for forks past The Merge/Paris
+    /// </summary>
+    /// <param name="timestamp">Timestamp of the fork or check</param>
+    /// <returns>Post merge fork activation</returns>
+    /// <remarks>
+    /// Post Merge are based only on timestamp and we can ignore block number.
+    /// </remarks>
     public static ForkActivation TimestampOnly(ulong timestamp) => new(long.MaxValue, timestamp);
 
     public void Deconstruct(out long blockNumber, out ulong? timestamp)
