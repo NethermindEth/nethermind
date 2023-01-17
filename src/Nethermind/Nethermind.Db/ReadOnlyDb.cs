@@ -89,8 +89,8 @@ namespace Nethermind.Db
             _memDb.Clear();
         }
 
-        public Span<byte> GetSpan(Span<byte> key) => this[key].AsSpan();
+        public Span<byte> GetSpan(ReadOnlySpan<byte> key) => this[key].AsSpan();
 
-        public void DangerousReleaseMemory(in Span<byte> span) { }
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
     }
 }

@@ -66,7 +66,7 @@ namespace Nethermind.Db
             }
         }
 
-        public virtual Span<byte> GetSpan(Span<byte> key)
+        public virtual Span<byte> GetSpan(ReadOnlySpan<byte> key)
         {
             return this[key].AsSpan();
         }
@@ -124,7 +124,7 @@ namespace Nethermind.Db
         {
         }
 
-        public void DangerousReleaseMemory(in Span<byte> span)
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
         }
     }

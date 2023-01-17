@@ -22,9 +22,9 @@ namespace Nethermind.Db.Rpc
         [Todo(Improve.MissingFunctionality, "Need to implement RPC method for column DB's")]
         public IEnumerable<T> ColumnKeys { get; } = Array.Empty<T>();
 
-        public Span<byte> GetSpan(Span<byte> key) => this[key].AsSpan();
+        public Span<byte> GetSpan(ReadOnlySpan<byte> key) => this[key].AsSpan();
 
-        public void DangerousReleaseMemory(in Span<byte> span)
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
 
         }

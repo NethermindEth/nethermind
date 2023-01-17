@@ -380,7 +380,7 @@ public class DbOnTheRocks : IDbWithSpan
     }
 
     [Todo("Make this use span. Extension does not use span for some reason.")]
-    public Span<byte> GetSpan(Span<byte> key)
+    public Span<byte> GetSpan(ReadOnlySpan<byte> key)
     {
         if (_isDisposing)
         {
@@ -403,7 +403,7 @@ public class DbOnTheRocks : IDbWithSpan
         }
     }
 
-    public void DangerousReleaseMemory(in Span<byte> span)
+    public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         if (!span.IsNullOrEmpty())
             GC.RemoveMemoryPressure(span.Length);

@@ -13,7 +13,7 @@ internal static class RocksDbExtensions
 {
     private static readonly ReadOptions _defaultReadOptions = new();
 
-    internal static unsafe void DangerousReleaseMemory(this RocksDb _, in Span<byte> span)
+    internal static unsafe void DangerousReleaseMemory(this RocksDb _, in ReadOnlySpan<byte> span)
     {
         ref var ptr = ref MemoryMarshal.GetReference(span);
         var intPtr = new IntPtr(Unsafe.AsPointer(ref ptr));
@@ -21,7 +21,7 @@ internal static class RocksDbExtensions
         RocksDbNative.Instance.rocksdb_free(intPtr);
     }
 
-    internal static unsafe Span<byte> GetSpan(this RocksDb db, Span<byte> key, ColumnFamilyHandle? cf = null)
+    internal static unsafe Span<byte> GetSpan(this RocksDb db, ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null)
     {
         var readOptions = _defaultReadOptions.Handle;
         var keyLength = (long)key.Length;
