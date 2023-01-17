@@ -8,11 +8,11 @@ namespace Nethermind.Db
     public interface IDbWithSpan : IDb
     {
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="key"></param>
         /// <returns>Can return null or empty Span on missing key</returns>
-        Span<byte> GetSpan(byte[] key);
+        Span<byte> GetSpan(Span<byte> key);
         void DangerousReleaseMemory(in Span<byte> span);
     }
 }

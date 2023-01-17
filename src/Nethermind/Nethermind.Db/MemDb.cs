@@ -66,7 +66,7 @@ namespace Nethermind.Db
             }
         }
 
-        public virtual Span<byte> GetSpan(byte[] key)
+        public virtual Span<byte> GetSpan(Span<byte> key)
         {
             return this[key].AsSpan();
         }

@@ -38,7 +38,7 @@ public class TestMemDb : MemDb
         }
     }
 
-    public override Span<byte> GetSpan(byte[] key)
+    public override Span<byte> GetSpan(Span<byte> key)
     {
         return this[key];
     }

@@ -380,7 +380,7 @@ public class DbOnTheRocks : IDbWithSpan
     }
 
     [Todo("Make this use span. Extension does not use span for some reason.")]
-    public Span<byte> GetSpan(byte[] key)
+    public Span<byte> GetSpan(Span<byte> key)
     {
         if (_isDisposing)
         {

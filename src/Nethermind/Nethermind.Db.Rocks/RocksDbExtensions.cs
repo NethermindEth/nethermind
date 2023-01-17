@@ -21,18 +21,26 @@ internal static class RocksDbExtensions
         RocksDbNative.Instance.rocksdb_free(intPtr);
     }
 
-    internal static unsafe Span<byte> GetSpan(this RocksDb db, byte[] key, ColumnFamilyHandle? cf = null)
+    internal static unsafe Span<byte> GetSpan(this RocksDb db, Span<byte> key, ColumnFamilyHandle? cf = null)
     {
         var readOptions = _defaultReadOptions.Handle;
-        var keyLength = key.GetLongLength(0);
+        var keyLength = (long)key.Length;
 
         if (keyLength == 0)
             keyLength = key.Length;
 
-        var keyLengthPtr = (UIntPtr)keyLength;
-        var result = cf is null
-            ? RocksDbNative.Instance.rocksdb_get(db.Handle, readOptions, key, keyLengthPtr, out var valueLength, out var error)
-            : RocksDbNative.Instance.rocksdb_get_cf(db.Handle, readOptions, cf.Handle, key, keyLengthPtr, out valueLength, out error);
+        nint result;
+        nint error;
+        UIntPtr valueLength;
+
+        fixed (byte* ptr = key)
+        {
+            var keyLengthPtr = (UIntPtr)keyLength;
+            result = cf is null
+                ? RocksDbNative.Instance.rocksdb_get(db.Handle, readOptions, ptr, keyLengthPtr, out valueLength, out error)
+                : RocksDbNative.Instance.rocksdb_get_cf(db.Handle, readOptions, cf.Handle, ptr, keyLengthPtr, out valueLength, out error);
+
+        }
 
         if (error != IntPtr.Zero)
             throw new RocksDbException(error);
