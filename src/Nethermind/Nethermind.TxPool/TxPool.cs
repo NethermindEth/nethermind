@@ -99,13 +99,14 @@ namespace Nethermind.TxPool
 
             _filterPipeline.Add(new NullHashTxFilter());
             _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache, _logger));
+            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, logManager));
             _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
             _filterPipeline.Add(new LowNonceFilter(_logger)); // has to be after UnknownSenderFilter as it uses sender
             _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
             _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _transactions, _logger));
-            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, logManager));
+            _filterPipeline.Add(new BalanceTooLowFilter(_headInfo, _transactions, logManager));
             _filterPipeline.Add(new ReusedOwnNonceTxFilter(_nonces, _logger));
             if (incomingTxFilter is not null)
             {
@@ -180,9 +181,10 @@ namespace Nethermind.TxPool
             if (previousBlock is not null)
             {
                 bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Header).IsEip155Enabled;
-                for (int i = 0; i < previousBlock.Transactions.Length; i++)
+                Transaction[] txs = previousBlock.Transactions;
+                for (int i = 0; i < txs.Length; i++)
                 {
-                    Transaction tx = previousBlock.Transactions[i];
+                    Transaction tx = txs[i];
                     _hashCache.Delete(tx.Hash!);
                     SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }

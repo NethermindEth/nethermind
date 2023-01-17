@@ -11,6 +11,21 @@ namespace Nethermind.TxPool
 {
     internal static class TransactionExtensions
     {
+        public static UInt256 CalculateGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
+        {
+            if (eip1559Enabled && tx.IsEip1559)
+            {
+                if (tx.GasLimit > 0)
+                {
+                    return tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee);
+                }
+
+                return 0;
+            }
+
+            return tx.GasPrice;
+        }
+
         public static UInt256 CalculateAffordableGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee, in UInt256 balance)
         {
             if (eip1559Enabled && tx.IsEip1559)

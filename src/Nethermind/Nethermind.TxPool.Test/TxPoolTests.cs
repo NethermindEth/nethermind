@@ -392,10 +392,10 @@ namespace Nethermind.TxPool.Test
 
         [TestCase(4, 0, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(4, 11, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(4, 12, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(4, 12, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(5, 0, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(5, 10, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(5, 11, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(5, 11, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(9, 0, nameof(AcceptTxResult.Accepted))]
         [TestCase(9, 6, nameof(AcceptTxResult.Accepted))]
         [TestCase(9, 7, nameof(AcceptTxResult.InsufficientFunds))]
