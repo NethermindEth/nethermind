@@ -51,7 +51,7 @@ public class PayloadAttributes
 public static class PayloadAttributesVersioningExtensions
 {
     public static int GetVersion(this PayloadAttributes executionPayload) =>
-        executionPayload.Withdrawals is null ? 2 : 1;
+        executionPayload.Withdrawals is null ? 1 : 2;
 
     public static bool Validate(
         this PayloadAttributes payloadAttributes,

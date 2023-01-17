@@ -150,7 +150,7 @@ public class ExecutionPayload
 public static class ExecutionPayloadVersioningExtensions
 {
     public static int GetVersion(this ExecutionPayload executionPayload) =>
-        executionPayload.Withdrawals is null ? 2 : 1;
+        executionPayload.Withdrawals is null ? 1 : 2;
 
     public static bool Validate(
         this ExecutionPayload executionPayload,
