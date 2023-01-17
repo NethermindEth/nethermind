@@ -76,7 +76,7 @@ public static class PayloadAttributesVersioningExtensions
         int version,
         [NotNullWhen(false)] out string? error) =>
         payloadAttributes.Validate(
-            specProvider.GetSpec(0, payloadAttributes.Timestamp),
+            specProvider.GetSpec(long.MaxValue, payloadAttributes.Timestamp),
             version,
             out error);
 }
