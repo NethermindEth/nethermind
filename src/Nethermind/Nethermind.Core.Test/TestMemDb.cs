@@ -13,7 +13,7 @@ namespace Nethermind.Core.Test;
 /// <summary>
 /// MemDB with additional tools for testing purposes since you can't use NSubstitute with refstruct
 /// </summary>
-public class TestMemDb: MemDb
+public class TestMemDb : MemDb
 {
     private List<byte[]> _readKeys = new();
     private List<byte[]> _writeKeys = new();
