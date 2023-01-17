@@ -28,15 +28,7 @@ namespace Nethermind.Merge.Plugin
             _getPayloadHandlerV1.HandleAsync(payloadId);
 
         public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
-        {
-            if (!executionPayload.Validate(_specProvider, 1, out string? error))
-            {
-                if (_logger.IsWarn) _logger.Warn(error);
-                return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
-            }
-
-            return await NewPayload(executionPayload, 1);
-        }
+            => await NewPayload(executionPayload, 1);
 
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
             => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, 1);
