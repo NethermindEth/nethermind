@@ -69,6 +69,6 @@ namespace Nethermind.Network
         }
 
         private static int CompareTransitionOnActivation(ForkActivation activation, (ForkActivation Activation, ForkId _) transition) =>
-            ForkActivation.CompareActivation(activation, transition.Activation);
+            activation.CompareTo(transition.Activation);
     }
 }
