@@ -54,7 +54,4 @@ public readonly struct ForkActivation : IEquatable<ForkActivation>, IComparable<
     public static bool operator <=(ForkActivation first, ForkActivation second) => first.CompareTo(second) <= 0;
 
     public static bool operator >=(ForkActivation first, ForkActivation second) => first.CompareTo(second) >= 0;
-
-    public static int CompareActivation(ForkActivation activation, ForkActivation transition) =>
-        activation.Timestamp?.CompareTo(transition.Timestamp) ?? activation.BlockNumber.CompareTo(transition.BlockNumber);
 }
