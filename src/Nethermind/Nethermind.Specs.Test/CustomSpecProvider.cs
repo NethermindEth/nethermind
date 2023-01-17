@@ -65,8 +65,8 @@ namespace Nethermind.Specs.Test
                 ? transition.Spec
                 : GenesisSpec;
 
-        private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation Activation, IReleaseSpec Spec) transition) =>
-            forkActivation.CompareTo(transition.Activation);
+        private static int CompareTransitionOnBlock(ForkActivation activation, (ForkActivation Activation, IReleaseSpec Spec) transition) =>
+            activation.Timestamp?.CompareTo(transition.Activation.Timestamp) ?? activation.BlockNumber.CompareTo(transition.Activation.BlockNumber);
 
         public long? DaoBlockNumber
         {
