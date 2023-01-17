@@ -391,7 +391,7 @@ namespace Nethermind.Trie
                     {
                         if (_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue}");
                         HexPrefix key = HexPrefix.Leaf(updatePath.Slice(0, nibblesCount).ToArray());
-                        RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue, traverseContext.UpdatePath);
+                        RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue, EmptyKeyPath);
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Keeping the root as null in {traverseContext.ToString()}");
@@ -711,7 +711,7 @@ namespace Nethermind.Trie
                 byte[] leafPath = traverseContext.UpdatePath.Slice(
                     traverseContext.CurrentIndex,
                     traverseContext.UpdatePath.Length - traverseContext.CurrentIndex).ToArray();
-                TrieNode leaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(leafPath), traverseContext.UpdateValue, traverseContext.UpdatePath);
+                TrieNode leaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(leafPath), traverseContext.UpdateValue, traverseContext.GetCurrentPath());
                 ConnectNodes(leaf);
 
                 return traverseContext.UpdateValue;
@@ -815,24 +815,25 @@ namespace Nethermind.Trie
                 TrieNode shortLeaf;
                 if (shorterPath.Length == 64)
                 {
-                    shortLeaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(shortLeafPath.ToArray()), shorterPathValue, shorterPath);
+                    Span<byte> pathToShortLeaf = shorterPath.Slice(0, extensionLength + 1);
+                    shortLeaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(shortLeafPath.ToArray()), shorterPathValue, pathToShortLeaf);
                 }
                 else
                 {
-                    Span<byte> fullPath = stackalloc byte[64];
-                    traverseContext.UpdatePath.Slice(0, traverseContext.CurrentIndex).CopyTo(fullPath);
-                    shorterPath.CopyTo(fullPath.Slice(traverseContext.CurrentIndex));
-                    shortLeaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(shortLeafPath.ToArray()), shorterPathValue, fullPath);
+                    Span<byte> pathToShortLeaf = stackalloc byte[branch.PathToNode.Length + 1];
+                    branch.PathToNode.CopyTo(pathToShortLeaf);
+                    pathToShortLeaf[branch.PathToNode.Length] = shorterPath[extensionLength];
+                    shortLeaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(shortLeafPath.ToArray()), shorterPathValue, pathToShortLeaf);
                 }
                 branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
 
             Span<byte> leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
-            Span<byte> longerFullPath = stackalloc byte[64];
-            traverseContext.GetCurrentPath().CopyTo(longerFullPath);
-            longerPath.CopyTo(longerFullPath.Slice(traverseContext.CurrentIndex));
+            Span<byte> pathToLeaf = stackalloc byte[branch.PathToNode.Length + 1];
+            branch.PathToNode.CopyTo(pathToLeaf);
+            pathToLeaf[branch.PathToNode.Length] = longerPath[extensionLength];
             TrieNode withUpdatedKeyAndValue = node.CloneWithChangedKeyAndValue(
-                HexPrefix.Leaf(leafPath.ToArray()), longerPathValue, longerFullPath.ToArray());
+                HexPrefix.Leaf(leafPath.ToArray()), longerPathValue, pathToLeaf.ToArray());
 
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
             ConnectNodes(withUpdatedKeyAndValue);
@@ -902,7 +903,7 @@ namespace Nethermind.Trie
             else
             {
                 byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1).ToArray();
-                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(path), traverseContext.UpdateValue, traverseContext.UpdatePath);
+                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(path), traverseContext.UpdateValue, traverseContext.UpdatePath.Slice(0, traverseContext.CurrentIndex + extensionLength + 1));
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 

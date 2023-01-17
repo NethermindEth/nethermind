@@ -151,7 +151,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             Assert.IsTrue(data.RequestedNodesCount < accounts.Count / 2);
         }
 
-        private static void ProcessAccountRange(StateTree remoteStateTree, StateTree localStateTree, int blockNumber, Keccak rootHash, PathWithAccount[] accounts)
+        private static void ProcessAccountRange(IStateTree remoteStateTree, IStateTree localStateTree, int blockNumber, Keccak rootHash, PathWithAccount[] accounts)
         {
             Keccak startingHash = accounts.First().Path;
             Keccak endHash = accounts.Last().Path;

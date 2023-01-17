@@ -689,11 +689,8 @@ namespace Nethermind.Trie.Pruning
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
                 if (currentNode.IsLeaf && currentNode.Key.Path.Length < 64)
-                {
-                    byte[] pathTo = new byte[64 - currentNode.Key.Path.Length];
-                    Array.Copy(currentNode.FullPath, pathTo, 64 - currentNode.Key.Path.Length);
-                    _currentBatch[pathTo] = currentNode.FullPath;
-                }
+                    _currentBatch[currentNode.PathToNode] = currentNode.FullPath;
+
                 _currentBatch[currentNode.FullPath] = currentNode.FullRlp;
 
                 currentNode.IsPersisted = true;

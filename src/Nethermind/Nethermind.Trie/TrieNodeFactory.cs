@@ -15,10 +15,10 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateBranch(Span<byte> fullPath)
+        public static TrieNode CreateBranch(Span<byte> pathToNode)
         {
             TrieNode node = new(NodeType.Branch);
-            node.FullPath = fullPath.ToArray();
+            node.PathToNode = pathToNode.ToArray();
             return node;
         }
 
@@ -34,7 +34,7 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateLeaf(HexPrefix key, byte[]? value, Span<byte> fullPath)
+        public static TrieNode CreateLeaf(HexPrefix key, byte[]? value, Span<byte> pathToNode)
         {
             Debug.Assert(
                 key.IsLeaf,
@@ -43,7 +43,9 @@ namespace Nethermind.Trie
             TrieNode node = new(NodeType.Leaf);
             node.Key = key;
             node.Value = value;
-            node.FullPath = fullPath.ToArray();
+            node.PathToNode = pathToNode.ToArray();
+            if (node.Path.Length + node.PathToNode.Length != 64)
+                throw new Exception("what?");
             return node;
         }
 
@@ -54,11 +56,11 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateExtension(HexPrefix key, Span<byte> fullPath)
+        public static TrieNode CreateExtension(HexPrefix key, Span<byte> pathToNode)
         {
             TrieNode node = new(NodeType.Extension);
             node.Key = key;
-            node.FullPath = fullPath.ToArray();
+            node.PathToNode = pathToNode.ToArray();
             return node;
         }
 
@@ -74,7 +76,7 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateExtension(HexPrefix key, TrieNode child, Span<byte> fullPath)
+        public static TrieNode CreateExtension(HexPrefix key, TrieNode child, Span<byte> pathToNode)
         {
             Debug.Assert(
                 key.IsExtension,
@@ -83,7 +85,7 @@ namespace Nethermind.Trie
             TrieNode node = new(NodeType.Extension);
             node.SetChild(0, child);
             node.Key = key;
-            node.FullPath = fullPath.ToArray();
+            node.PathToNode = pathToNode.ToArray();
             return node;
         }
     }

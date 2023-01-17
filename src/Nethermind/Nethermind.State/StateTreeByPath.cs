@@ -52,15 +52,16 @@ namespace Nethermind.State
         {
             Span<byte> pathNibbles = stackalloc byte[64];
             Nibbles.BytesToNibbleBytes(keccak.Bytes, pathNibbles);
-            TrieNode accountNode = TrieStore.FindCachedOrUnknown(pathNibbles);
-            accountNode.ResolveNode(TrieStore, pathNibbles);
-            byte[]? bytes = accountNode.FullRlp is null ? Get(keccak.Bytes) : accountNode.Value;
-            if (bytes is null)
-            {
-                return null;
-            }
 
-            return _decoder.Decode(bytes.AsRlpStream());
+            byte[]? nodeData = TrieStore[pathNibbles.ToArray()];
+            if (nodeData is not null)
+            {
+                TrieNode node = new(NodeType.Unknown, nodeData);
+                node.ResolveNode(TrieStore);
+                return _decoder.Decode(node.Value.AsRlpStream());
+            }
+            byte[]? bytes = Get(keccak.Bytes);
+            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
         public void Set(Address address, Account? account)

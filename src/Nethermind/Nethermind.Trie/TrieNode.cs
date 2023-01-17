@@ -67,7 +67,21 @@ namespace Nethermind.Trie
         public long? LastSeen { get; set; }
 
         public byte[]? Path => Key?.Path;
-        public byte[]? FullPath { get; internal set; }
+        public byte[]? PathToNode { get; internal set; }
+        public byte[]? FullPath
+        {
+            get
+            {
+                if (IsLeaf)
+                {
+                    byte[] full = new byte[64];
+                    PathToNode.CopyTo(full, 0);
+                    Array.Copy(Path, 0, full, PathToNode.Length, 64 - PathToNode.Length);
+                    return full;
+                }
+                return PathToNode;
+            }
+        }
 
         internal HexPrefix? Key
         {
@@ -186,7 +200,7 @@ namespace Nethermind.Trie
 
         public TrieNode(NodeType nodeType, Span<byte> path)
         {
-            FullPath = path.ToArray();
+            PathToNode = path.ToArray();
             NodeType = nodeType;
             if (nodeType == NodeType.Unknown)
             {
@@ -216,7 +230,7 @@ namespace Nethermind.Trie
         public TrieNode(NodeType nodeType, byte[] path, byte[] rlp)
             : this(nodeType, rlp)
         {
-            FullPath = path;
+            PathToNode = path;
             if (nodeType == NodeType.Unknown)
             {
                 IsPersisted = true;
@@ -274,7 +288,7 @@ namespace Nethermind.Trie
                     return;
                 }
                 ResolveNodeProcessStream();
-              
+
             }
             catch (RlpException rlpException)
             {
@@ -301,8 +315,6 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    if (FullPath is null)
-                        FullPath = path.ToArray();
                     return;
                 }
 
@@ -663,7 +675,7 @@ namespace Nethermind.Trie
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
-            trieNode.FullPath = this.FullPath;
+            trieNode.PathToNode = PathToNode;
             return trieNode;
         }
 
@@ -671,7 +683,7 @@ namespace Nethermind.Trie
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
-            trieNode.FullPath = fullPath.ToArray();
+            trieNode.PathToNode = fullPath.ToArray();
             return trieNode;
         }
 
@@ -699,7 +711,7 @@ namespace Nethermind.Trie
         {
             TrieNode trieNode = Clone();
             trieNode.Value = changedValue;
-            trieNode.FullPath = FullPath;
+            trieNode.PathToNode = PathToNode;
             return trieNode;
         }
 
@@ -716,7 +728,7 @@ namespace Nethermind.Trie
             TrieNode trieNode = Clone();
             trieNode.Key = key;
             trieNode.Value = changedValue;
-            trieNode.FullPath = changedFullPath;
+            trieNode.PathToNode = changedFullPath;
             return trieNode;
         }
 

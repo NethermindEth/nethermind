@@ -56,6 +56,7 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
         private readonly IDb _stateDb;
+        private readonly ITrieStore _stateStore;
 
         private readonly IBlockTree _blockTree;
 
@@ -87,6 +88,8 @@ namespace Nethermind.Synchronization.FastSync
             _data = new DetailedProgress(_blockTree.ChainId, progress);
             _pendingItems = new PendingSyncItems();
             _branchProgress = new BranchProgress(0, _logger);
+
+            _stateStore = new TrieStoreByPath(stateDb, logManager);
         }
 
         public async Task<StateSyncBatch?> PrepareRequest(SyncMode syncMode)
@@ -741,6 +744,12 @@ namespace Nethermind.Synchronization.FastSync
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
             TrieNode trieNode = new(NodeType.Unknown, currentResponseItem);
             trieNode.ResolveNode(NullTrieNodeResolver.Instance); // TODO: will this work now?
+
+            Span<byte> fullPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + (trieNode.Path?.Length ?? 0)];
+            currentStateSyncItem.PathNibbles.CopyTo(fullPath);
+            trieNode.Path.CopyTo(fullPath.Slice(currentStateSyncItem.PathNibbles.Length));
+            trieNode.ResolveNode(NullTrieNodeResolver.Instance, fullPath);
+
             switch (trieNode.NodeType)
             {
                 case NodeType.Unknown:
