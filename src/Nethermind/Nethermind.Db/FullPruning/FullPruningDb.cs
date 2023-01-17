@@ -51,7 +51,7 @@ namespace Nethermind.Db.FullPruning
                 byte[]? value = _currentDb[key]; // we are reading from the main DB
                 if (_pruningContext?.DuplicateReads == true)
                 {
-                    Duplicate(_pruningContext.CloningDb, key.ToArray(), value);
+                    Duplicate(_pruningContext.CloningDb, key, value);
                 }
 
                 return value;
@@ -62,14 +62,14 @@ namespace Nethermind.Db.FullPruning
                 IDb? cloningDb = _pruningContext?.CloningDb;
                 if (cloningDb is not null) // if pruning is in progress we are also writing to the secondary, copied DB
                 {
-                    Duplicate(cloningDb, key.ToArray(), value);
+                    Duplicate(cloningDb, key, value);
                 }
             }
         }
 
-        private void Duplicate(IKeyValueStore db, byte[] key, byte[]? value)
+        private void Duplicate(IKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value)
         {
-            db[key] = value;
+            db[key.ToArray()] = value;
             _updateDuplicateWriteMetrics?.Invoke();
         }
 
@@ -198,7 +198,7 @@ namespace Nethermind.Db.FullPruning
             public byte[]? this[ReadOnlySpan<byte> key]
             {
                 get => CloningDb[key];
-                set => _db.Duplicate(CloningDb, key.ToArray(), value);
+                set => _db.Duplicate(CloningDb, key, value);
             }
 
             /// <inheritdoc />
@@ -266,7 +266,7 @@ namespace Nethermind.Db.FullPruning
                 set
                 {
                     _batch[key] = value;
-                    _db.Duplicate(_clonedBatch, key.ToArray(), value);
+                    _db.Duplicate(_clonedBatch, key, value);
                 }
             }
         }

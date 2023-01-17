@@ -302,9 +302,6 @@ namespace Nethermind.Blockchain.Test
                 return null;
             };
 
-            // blocksInfosDb[BlockTree.DeletePointerAddressInDb.Bytes.AsSpan()].Returns((byte[])null);
-            // blocksInfosDb[Arg.Is<byte[]>(b => !Bytes.AreEqual(b, BlockTree.DeletePointerAddressInDb.Bytes))].Returns(chainLevel.Bytes);
-
             BlockTree blockTree = new(_blocksDb, _headersDb, blocksInfosDb, new ChainLevelInfoRepository(blocksInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
             Assert.AreEqual(256000000, blockTree.BestKnownNumber);
