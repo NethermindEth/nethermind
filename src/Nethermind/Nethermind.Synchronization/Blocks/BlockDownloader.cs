@@ -785,9 +785,12 @@ namespace Nethermind.Synchronization.Blocks
 
             public void Cancel()
             {
-                if (!_isDisposed)
+                lock(Cancellation)
                 {
-                    Cancellation.Cancel();
+                    if (!_isDisposed)
+                    {
+                        Cancellation.Cancel();
+                    }
                 }
             }
 
@@ -795,10 +798,13 @@ namespace Nethermind.Synchronization.Blocks
 
             public void Dispose()
             {
-                if (!_isDisposed)
+                lock(Cancellation)
                 {
-                    _isDisposed = true;
-                    Cancellation.Dispose();
+                    if (!_isDisposed)
+                    {
+                        _isDisposed = true;
+                        Cancellation.Dispose();
+                    }
                 }
             }
         }
