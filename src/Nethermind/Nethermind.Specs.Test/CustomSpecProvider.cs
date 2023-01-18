@@ -17,16 +17,17 @@ namespace Nethermind.Specs.Test
         private readonly (ForkActivation Activation, IReleaseSpec Spec)[] _transitions;
 
         public ulong NetworkId { get; }
-        public ulong ChainId => NetworkId;
+        public ulong ChainId { get; }
 
         public ForkActivation[] TransitionActivations { get; }
 
-        public CustomSpecProvider(params (ForkActivation Activation, IReleaseSpec Spec)[] transitions) : this(0, transitions)
+        public CustomSpecProvider(params (ForkActivation Activation, IReleaseSpec Spec)[] transitions) : this(0, 0, transitions)
         {
         }
 
-        public CustomSpecProvider(ulong networkId, params (ForkActivation Activation, IReleaseSpec Spec)[] transitions)
+        public CustomSpecProvider(ulong chainId, ulong networkId, params (ForkActivation Activation, IReleaseSpec Spec)[] transitions)
         {
+            ChainId = chainId;
             NetworkId = networkId;
 
             if (transitions.Length == 0)

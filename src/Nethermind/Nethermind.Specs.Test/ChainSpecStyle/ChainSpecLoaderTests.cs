@@ -47,6 +47,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(0, chainSpec.Ethash.DaoHardforkAccounts.Length);
             Assert.AreEqual(0L, chainSpec.Ethash.Eip100bTransition);
 
+            Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
             Assert.AreEqual(1, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
             Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
 

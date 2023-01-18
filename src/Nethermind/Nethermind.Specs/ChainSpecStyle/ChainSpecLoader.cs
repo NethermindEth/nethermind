@@ -41,7 +41,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 ChainSpec chainSpec = new();
 
                 chainSpec.NetworkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
-                chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpecJson.Params.NetworkId ?? 1;
+                chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
                 chainSpec.Name = chainSpecJson.Name;
                 chainSpec.DataDir = chainSpecJson.DataDir;
                 LoadGenesis(chainSpecJson, chainSpec);
