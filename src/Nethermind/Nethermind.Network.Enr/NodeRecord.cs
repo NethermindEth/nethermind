@@ -116,9 +116,9 @@ public class NodeRecord
     /// <returns>Value of the entry or <value>null</value> if the entry is missing.</returns>
     public TValue? GetValue<TValue>(string entryKey) where TValue : struct
     {
-        if (Entries.ContainsKey(entryKey))
+        if (Entries.TryGetValue(entryKey, out EnrContentEntry? value))
         {
-            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)Entries[entryKey];
+            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)value;
             return entry.Value;
         }
 
@@ -133,9 +133,9 @@ public class NodeRecord
     /// <returns>Value of the entry or <value>null</value> if the entry is missing.</returns>
     public TValue? GetObj<TValue>(string entryKey) where TValue : class
     {
-        if (Entries.ContainsKey(entryKey))
+        if (Entries.TryGetValue(entryKey, out EnrContentEntry? value))
         {
-            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)Entries[entryKey];
+            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)value;
             return entry.Value;
         }
 

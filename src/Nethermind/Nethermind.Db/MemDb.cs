@@ -51,8 +51,7 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount++;
-                byte[] keyAsArray = key.ToArray();
-                return _db.ContainsKey(keyAsArray) ? _db[keyAsArray] : null;
+                return _db.TryGetValue(key, out byte[] value) ? value : null;
             }
             set
             {
@@ -61,7 +60,7 @@ namespace Nethermind.Db
                     Thread.Sleep(_writeDelay);
                 }
 
-                WritesCount++;
+             http://localhost:3000/d/lEW2zSMVz/nethermind-thingi?orgId=1&from=now-3h&to=now&refresh=30s   WritesCount++;
                 _db[key.ToArray()] = value;
             }
         }
