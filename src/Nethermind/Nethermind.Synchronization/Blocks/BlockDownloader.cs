@@ -785,7 +785,7 @@ namespace Nethermind.Synchronization.Blocks
 
             public void Cancel()
             {
-                lock(Cancellation)
+                lock (Cancellation)
                 {
                     if (!_isDisposed)
                     {
@@ -798,7 +798,7 @@ namespace Nethermind.Synchronization.Blocks
 
             public void Dispose()
             {
-                lock(Cancellation)
+                lock (Cancellation)
                 {
                     if (!_isDisposed)
                     {
