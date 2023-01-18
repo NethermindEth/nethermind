@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using FluentAssertions;
 using Nethermind.Consensus;
@@ -138,7 +139,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                     return true;
                 });
             GetPooledTransactionsMessage request = new(TestItem.Keccaks);
-            PooledTransactionsMessage response = _handler.FulfillPooledTransactionsRequest(request);
+            PooledTransactionsMessage response = _handler.FulfillPooledTransactionsRequest(request, new List<Transaction>());
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
 
@@ -162,7 +163,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                     return true;
                 });
             GetPooledTransactionsMessage request = new(new Keccak[2048]);
-            PooledTransactionsMessage response = _handler.FulfillPooledTransactionsRequest(request);
+            PooledTransactionsMessage response = _handler.FulfillPooledTransactionsRequest(request, new List<Transaction>());
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
     }
