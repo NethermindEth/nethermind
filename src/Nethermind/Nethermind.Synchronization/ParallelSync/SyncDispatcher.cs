@@ -101,7 +101,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         else
                         {
                             Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
-                            DoHandleResponse(null, request);
+                            DoHandleResponse(request);
                         }
                     }
                     else if (currentStateLocal == SyncFeedState.Finished)
@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     return;
                 }
 
-                DoHandleResponse(allocatedPeer, request);
+                DoHandleResponse(request, allocatedPeer);
             }
             finally
             {
@@ -149,7 +149,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        private void DoHandleResponse(PeerInfo? allocatedPeer, T request)
+        private void DoHandleResponse(T request, PeerInfo? allocatedPeer = null)
         {
             try
             {
@@ -188,7 +188,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     case SyncResponseHandlingResult.Emptish:
                         break;
                     case SyncResponseHandlingResult.Ignored:
-                        Logger.Error($"Feed response was ignored.");
                         break;
                     case SyncResponseHandlingResult.LesserQuality:
                         SyncPeerPool.ReportWeakPeer(peer, Feed.Contexts);

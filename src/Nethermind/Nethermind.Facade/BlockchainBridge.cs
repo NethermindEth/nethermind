@@ -257,9 +257,6 @@ namespace Nethermind.Facade
                     blockHeader.GasLimit,
                     Math.Max(blockHeader.Timestamp + 1, _timestamper.UnixTime.Seconds),
                     Array.Empty<byte>())
-                {
-                    BaseFeePerGas = BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpecFor1559(blockHeader.Number + 1)),
-                }
                 : new(
                     blockHeader.ParentHash!,
                     blockHeader.UnclesHash!,
@@ -268,11 +265,11 @@ namespace Nethermind.Facade
                     blockHeader.Number,
                     blockHeader.GasLimit,
                     blockHeader.Timestamp,
-                    blockHeader.ExtraData)
-                {
-                    BaseFeePerGas = blockHeader.BaseFeePerGas,
-                };
+                    blockHeader.ExtraData);
 
+            callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
+                ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader))
+                : blockHeader.BaseFeePerGas;
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();

@@ -8,6 +8,7 @@ using DotNetty.Buffers;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {

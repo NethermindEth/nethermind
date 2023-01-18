@@ -21,6 +21,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private ValidatorInfo _latestValidatorInfo;
         private static readonly int EmptyBlockNumber = -1;
         private static readonly ValidatorInfo EmptyValidatorInfo = new ValidatorInfo(-1, -1, Array.Empty<Address>());
+        private static Keccak GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
         public ValidatorStore(IDb db)
         {
@@ -42,12 +43,19 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private Keccak GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
-
-        public Address[] GetValidators(long? blockNumber = null)
+        public Address[] GetValidators(in long? blockNumber = null)
         {
-            return blockNumber is null || blockNumber > _latestFinalizedValidatorsBlockNumber ? GetLatestValidatorInfo().Validators : FindValidatorInfo(blockNumber.Value);
+            return blockNumber == null || blockNumber > _latestFinalizedValidatorsBlockNumber
+                ? GetLatestValidatorInfo().Validators
+                : FindValidatorInfo(blockNumber.Value).Validators;
+        }
+
+        public ValidatorInfo GetValidatorsInfo(in long? blockNumber = null)
+        {
+            return blockNumber == null || blockNumber > _latestFinalizedValidatorsBlockNumber
+                ? GetLatestValidatorInfo()
+                : FindValidatorInfo(blockNumber.Value);
         }
 
         public PendingValidators PendingValidators
@@ -60,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             set => _db.Set(PendingValidatorsKey, PendingValidatorsDecoder.Encode(value).Bytes);
         }
 
-        private Address[] FindValidatorInfo(in long blockNumber)
+        private ValidatorInfo FindValidatorInfo(in long blockNumber)
         {
             var currentValidatorInfo = GetLatestValidatorInfo();
             while (currentValidatorInfo.FinalizingBlockNumber >= blockNumber)
@@ -68,7 +76,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 currentValidatorInfo = LoadValidatorInfo(currentValidatorInfo.PreviousFinalizingBlockNumber);
             }
 
-            return currentValidatorInfo.Validators;
+            return currentValidatorInfo;
         }
 
         private ValidatorInfo GetLatestValidatorInfo()

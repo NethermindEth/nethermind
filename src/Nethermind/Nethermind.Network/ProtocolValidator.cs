@@ -150,19 +150,6 @@ namespace Nethermind.Network
             return p2PVersion == 4 || p2PVersion == 5;
         }
 
-        private static bool ValidateCapabilities(IEnumerable<Capability> capabilities)
-        {
-            // TODO: this is duplicated from P2PProtocolHandler.HandleHello. One should probably be removed
-            return capabilities.Any(x =>
-                // x.ProtocolCode == Protocol.Les ||
-                x.ProtocolCode == Protocol.Eth && (
-                    x.Version == 62 ||
-                    x.Version == 63 ||
-                    x.Version == 64 ||
-                    x.Version == 65 ||
-                    x.Version == 66));
-        }
-
         private bool ValidateChainId(ulong chainId)
         {
             return chainId == _blockTree.ChainId;

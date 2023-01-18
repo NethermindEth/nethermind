@@ -130,7 +130,8 @@ namespace Nethermind.Runner.JsonRpc
                     _jsonRpcProcessor,
                     _jsonRpcService,
                     _jsonRpcLocalStats,
-                    _jsonSerializer);
+                    _jsonSerializer,
+                    maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);
 
                 await socketsClient.ReceiveAsync();
             }

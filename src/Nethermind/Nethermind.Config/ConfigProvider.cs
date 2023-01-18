@@ -46,17 +46,17 @@ namespace Nethermind.Config
         {
             for (int i = 0; i < _configSource.Count; i++)
             {
-                (bool isSet, string value) = _configSource[i].GetRawValue(category, name);
+                (bool isSet, string str) = _configSource[i].GetRawValue(category, name);
                 if (isSet)
                 {
-                    return value;
+                    return str;
                 }
             }
 
-            return Categories.ContainsKey(category) ? Categories[category].GetType()
+            return Categories.TryGetValue(category, out object value) ? value.GetType()
                 .GetProperties(BindingFlags.Instance | BindingFlags.Public)
                 .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.InvariantCultureIgnoreCase))
-                ?.GetValue(Categories[category]) : null;
+                ?.GetValue(value) : null;
         }
 
         public void AddSource(IConfigSource configSource)
@@ -111,7 +111,7 @@ namespace Nethermind.Config
 
         public (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) FindIncorrectSettings()
         {
-            if (_instances.Count == 0)
+            if (_instances.IsEmpty)
             {
                 Initialize();
             }
