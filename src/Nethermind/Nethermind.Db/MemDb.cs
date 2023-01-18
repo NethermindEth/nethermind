@@ -49,7 +49,7 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount++;
-                return _db.ContainsKey(key) ? _db[key] : null;
+                return _db.TryGetValue(key, out byte[] value) ? value : null;
             }
             set
             {
@@ -119,6 +119,11 @@ namespace Nethermind.Db
         public Span<byte> GetSpan(byte[] key)
         {
             return this[key].AsSpan();
+        }
+
+        public void PutSpan(byte[] key, ReadOnlySpan<byte> value)
+        {
+            this[key] = value.ToArray();
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)

@@ -71,7 +71,7 @@ public partial class EngineModuleTests
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
         Keccak blockHash = new("0xb1b3b07ef3832bd409a04fdea9bf2bfa83d7af0f537ff25f4a3d2eb632ebfb0f");
-        var expectedPayload = chain.JsonSerializer.Serialize(new ExecutionPayload
+        string? expectedPayload = chain.JsonSerializer.Serialize(new ExecutionPayload
         {
             BaseFeePerGas = 0,
             BlockHash = blockHash,
@@ -123,6 +123,13 @@ public partial class EngineModuleTests
         string[] parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams) };
         string? result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"SYNCING\",\"latestValidHash\":null,\"validationError\":null},\"payloadId\":null},\"id\":67}");
+    }
+
+    [Test]
+    public void ForkchoiceV1_ToString_returns_correct_results()
+    {
+        ForkchoiceStateV1 forkchoiceState = new(TestItem.KeccakA, TestItem.KeccakF, TestItem.KeccakC);
+        forkchoiceState.ToString().Should().Be("ForkchoiceState: (HeadBlockHash: 0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760, SafeBlockHash: 0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72, FinalizedBlockHash: 0xe61d9a3d3848fb2cdd9a2ab61e2f21a10ea431275aed628a0557f9dee697c37a)");
     }
 
     [Test]
@@ -217,7 +224,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
-        var result = rpc.engine_getPayloadBodiesByRangeV1(0, 1025);
+        Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> result = rpc.engine_getPayloadBodiesByRangeV1(0, 1025);
         result.Result.ErrorCode.Should().Be(-32005);
     }
 

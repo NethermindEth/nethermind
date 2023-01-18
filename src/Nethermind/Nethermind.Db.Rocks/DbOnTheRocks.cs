@@ -10,6 +10,7 @@ using System.Reflection;
 using System.Threading;
 using ConcurrentCollections;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
@@ -388,7 +389,10 @@ public class DbOnTheRocks : IDbWithSpan
 
         try
         {
-            return _db.GetSpan(key);
+            Span<byte> span = _db.GetSpan(key);
+            if (!span.IsNullOrEmpty())
+                GC.AddMemoryPressure(span.Length);
+            return span;
         }
         catch (RocksDbSharpException e)
         {
@@ -397,7 +401,32 @@ public class DbOnTheRocks : IDbWithSpan
         }
     }
 
-    public void DangerousReleaseMemory(in Span<byte> span) => _db.DangerousReleaseMemory(span);
+    public void PutSpan(byte[] key, ReadOnlySpan<byte> value)
+    {
+        if (_isDisposing)
+        {
+            throw new ObjectDisposedException($"Attempted to write form a disposed database {Name}");
+        }
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Put(key, value, null, WriteOptions);
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    public void DangerousReleaseMemory(in Span<byte> span)
+    {
+        if (!span.IsNullOrEmpty())
+            GC.RemoveMemoryPressure(span.Length);
+        _db.DangerousReleaseMemory(span);
+    }
 
     public void Remove(byte[] key)
     {

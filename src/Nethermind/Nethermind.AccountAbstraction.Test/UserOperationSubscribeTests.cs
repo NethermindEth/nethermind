@@ -207,7 +207,7 @@ namespace Nethermind.AccountAbstraction.Test
             userOperation.CalculateRequestId(_entryPointAddress, TestBlockchainIds.ChainId);
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
 
-            JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out var subscriptionId, false);
+            JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out string subscriptionId, false);
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);

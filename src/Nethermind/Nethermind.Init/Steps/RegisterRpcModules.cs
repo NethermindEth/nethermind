@@ -146,6 +146,7 @@ namespace Nethermind.Init.Steps
                 _api.RewardCalculatorSource,
                 _api.ReceiptStorage,
                 _api.SpecProvider,
+                _api.PoSSwitcher,
                 _api.LogManager);
 
             rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, rpcConfig.Timeout);

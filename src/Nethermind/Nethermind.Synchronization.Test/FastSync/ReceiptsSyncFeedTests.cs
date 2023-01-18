@@ -269,14 +269,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.ContainsKey(ci.Arg<Keccak>())
-                        ? scenario.BlocksByHash[ci.Arg<Keccak>()]
-                        : null);
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block value) ? value : null);
 
             _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.ContainsKey(ci.Arg<Keccak>())
-                        ? scenario.BlocksByHash[ci.Arg<Keccak>()].Header
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block value) ? value.Header
                         : null);
 
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?)null);
