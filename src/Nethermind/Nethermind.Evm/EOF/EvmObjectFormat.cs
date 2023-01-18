@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
@@ -17,7 +16,7 @@ internal static class EvmObjectFormat
 {
     private interface IEofVersionHandler
     {
-        bool ValidateBody(ReadOnlyMemory<byte> code, EofHeader header);
+        bool ValidateBody(ReadOnlySpan<byte> code, EofHeader header);
         bool TryParseEofHeader(ReadOnlySpan<byte> code, [NotNullWhen(true)] out EofHeader? header);
     }
 
@@ -42,12 +41,11 @@ internal static class EvmObjectFormat
     /// <returns></returns>
     public static bool IsEof(ReadOnlySpan<byte> container) => container.StartsWith(MAGIC);
 
-    public static bool IsValidEof(ReadOnlyMemory<byte> container, out EofHeader? header)
+    public static bool IsValidEof(ReadOnlySpan<byte> container, out EofHeader? header)
     {
-        ReadOnlySpan<byte> containerAsSpan = container.Span;
         if (container.Length >= VERSION_OFFSET
-            && _eofVersionHandlers.TryGetValue(containerAsSpan[VERSION_OFFSET], out IEofVersionHandler handler)
-            && handler.TryParseEofHeader(containerAsSpan, out header))
+            && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
+            && handler.TryParseEofHeader(container, out header))
         {
             EofHeader h = header.Value;
             if (handler.ValidateBody(container, h))
@@ -259,14 +257,14 @@ internal static class EvmObjectFormat
             return true;
         }
 
-        public bool ValidateBody(ReadOnlyMemory<byte> container, EofHeader header)
+        public bool ValidateBody(ReadOnlySpan<byte> container, EofHeader header)
         {
             int startOffset = CalculateHeaderSize(header.CodeSections.Length);
             int calculatedCodeLength = header.TypeSection.Size
                 + header.CodeSectionsSize
                 + header.DataSection.Size;
             SectionHeader[]? codeSections = header.CodeSections;
-            ReadOnlySpan<byte> contractBody = container.Span[startOffset..];
+            ReadOnlySpan<byte> contractBody = container[startOffset..];
             (int typeSectionStart, ushort typeSectionSize) = header.TypeSection;
 
 
@@ -288,29 +286,26 @@ internal static class EvmObjectFormat
                 return false;
             }
 
-            ReadOnlyMemory<byte> typesection = container.Slice(typeSectionStart, typeSectionSize);
-            if (!ValidateTypeSection(typesection.Span))
+            ReadOnlySpan<byte> typesection = container.Slice(typeSectionStart, typeSectionSize);
+            if (!ValidateTypeSection(typesection))
             {
                 if (Logger.IsTrace) Logger.Trace($"EIP-4750: invalid typesection found");
                 return false;
             }
 
-            bool validSections = true;
-            Parallel.For(0, header.CodeSections.Length, (sectionIdx, state) =>
+            for (int sectionIdx = 0; sectionIdx < header.CodeSections.Length; sectionIdx++)
             {
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
                 (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
-                ReadOnlySpan<byte> code = container.Span.Slice(codeSectionStartOffset, codeSectionSize);
+                ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
                 if (!ValidateInstructions(code, header) ||
-                    !ValidateStackState(sectionIdx, code, typesection.Span, header))
+                    !ValidateStackState(sectionIdx, code, typesection, header))
                 {
-                    state.Stop();
-                    validSections = false;
-                    return;
+                    return false;
                 }
-            });
+            }
 
-            return validSections;
+            return true;
         }
 
         bool ValidateTypeSection(ReadOnlySpan<byte> types)

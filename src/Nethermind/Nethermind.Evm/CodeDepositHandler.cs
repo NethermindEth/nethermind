@@ -28,16 +28,15 @@ namespace Nethermind.Evm
 
         public static bool CodeIsInvalid(ReadOnlySpan<byte> code, IReleaseSpec spec) => !CodeIsValid(code, spec);
 
-        public static bool CreateCodeIsValid(ICodeInfo codeInfo, ReadOnlyMemory<byte> initCode, IReleaseSpec spec)
+        public static bool CreateCodeIsValid(ICodeInfo codeInfo, ReadOnlySpan<byte> initCode, IReleaseSpec spec)
         {
             if (spec.IsEip3540Enabled)
             {
                 byte version = codeInfo.EofVersion();
-                ReadOnlySpan<byte> initCodeAsSpan = initCode.Span;
-                if (version > 0 && version != EvmObjectFormat.GetCodeVersion(initCodeAsSpan))
+                if (version > 0 && version != EvmObjectFormat.GetCodeVersion(initCode))
                     return false;
                 if (codeInfo.IsEof()) // this needs test cases
-                    return EvmObjectFormat.IsEof(initCodeAsSpan) && EvmObjectFormat.IsValidEof(initCode, out _);
+                    return EvmObjectFormat.IsEof(initCode) && EvmObjectFormat.IsValidEof(initCode, out _);
             }
 
             return true;
