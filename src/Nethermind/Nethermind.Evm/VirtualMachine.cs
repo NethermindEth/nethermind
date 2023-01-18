@@ -2659,6 +2659,18 @@ namespace Nethermind.Evm
                             EndInstructionTrace();
                             return new CallResult(callState);
                         }
+                    case Instruction.PAY:
+                        {
+                            if (!spec.PayOpcodeEnabled) {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
+
+                            stack.PopAddress(out Address payee);
+                            stack.PopUInt256(out UInt256 amount);
+
+                            
+                        }
                     case Instruction.REVERT:
                         {
                             if (!spec.RevertOpcodeEnabled)

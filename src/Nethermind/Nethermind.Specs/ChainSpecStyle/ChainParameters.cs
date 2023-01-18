@@ -120,5 +120,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? Eip3860TransitionTimestamp { get; set; }
 
         public ulong? Eip4895TransitionTimestamp { get; set; }
+
+        public ulong? Eip5920TransitionTimestamp { get; set; }
     }
 }

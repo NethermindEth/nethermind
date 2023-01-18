@@ -258,6 +258,13 @@ namespace Nethermind.Core.Specs
         bool IsEip4895Enabled { get; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the
+        /// <see href="https://eips.ethereum.org/EIPS/eip-5920">EIP-5920</see>
+        /// PAY opcode is enabled.
+        /// </summary>
+        bool IsEip5920Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -333,5 +340,7 @@ namespace Nethermind.Core.Specs
         public bool TransientStorageEnabled => IsEip1153Enabled;
 
         public bool WithdrawalsEnabled => IsEip4895Enabled;
+
+        public bool PayOpcodeEnabled => IsEip5920Enabled;
     }
 }

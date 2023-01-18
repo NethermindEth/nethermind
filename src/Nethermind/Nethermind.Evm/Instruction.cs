@@ -171,6 +171,7 @@ namespace Nethermind.Evm
         STATICCALL = 0xfa,
         REVERT = 0xfd,
         INVALID = 0xfe,
+        PAY = 0xf9,
         SELFDESTRUCT = 0xff,
     }
 
