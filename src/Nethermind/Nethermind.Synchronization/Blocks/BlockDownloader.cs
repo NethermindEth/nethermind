@@ -575,7 +575,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (_logger.IsTrace) _logger.Trace("Seal validation complete");
 
-            if (exceptions.Count > 0)
+            if (!exceptions.IsEmpty)
             {
                 if (_logger.IsDebug) _logger.Debug("Seal validation failure");
                 throw new AggregateException(exceptions);

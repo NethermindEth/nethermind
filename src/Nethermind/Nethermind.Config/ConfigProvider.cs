@@ -111,7 +111,7 @@ namespace Nethermind.Config
 
         public (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) FindIncorrectSettings()
         {
-            if (_instances.Count == 0)
+            if (_instances.IsEmpty)
             {
                 Initialize();
             }

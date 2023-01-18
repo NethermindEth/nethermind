@@ -69,7 +69,7 @@ namespace Nethermind.Grpc.Servers
                 return Task.CompletedTask;
             }
 
-            if (_clientResults.Count == 0)
+            if (_clientResults.IsEmpty)
             {
                 return Task.CompletedTask;
             }
