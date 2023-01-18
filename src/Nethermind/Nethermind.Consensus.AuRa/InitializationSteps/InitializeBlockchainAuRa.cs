@@ -16,6 +16,7 @@ using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
@@ -86,8 +87,11 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             return processor;
         }
 
-        protected virtual BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter) =>
-            new AuRaBlockProcessor(
+        protected virtual BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
+        {
+            var withdrawalContractFactory = new WithdrawalContractFactory(_api.ChainSpec.AuRa, _api.AbiEncoder);
+
+            return new AuRaBlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
@@ -97,11 +101,13 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
-                new WithdrawalProcessor(_api.StateProvider, _api.LogManager),
+                new Withdrawals.WithdrawalProcessor(
+                    withdrawalContractFactory.Create(_api.TransactionProcessor), _api.LogManager),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter
             );
+        }
 
         protected ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
             new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);

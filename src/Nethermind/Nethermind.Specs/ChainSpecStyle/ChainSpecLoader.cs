@@ -271,6 +271,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                     TwoThirdsMajorityTransition = chainSpecJson.Engine.AuthorityRound.TwoThirdsMajorityTransition ?? AuRaParameters.TransitionDisabled,
                     PosdaoTransition = chainSpecJson.Engine.AuthorityRound.PosdaoTransition ?? AuRaParameters.TransitionDisabled,
                     RewriteBytecode = chainSpecJson.Engine.AuthorityRound.RewriteBytecode,
+                    WithdrawalContractAddress = chainSpecJson.Engine.AuthorityRound.WithdrawalContractAddress,
+                    WithdrawalContractTransition = chainSpecJson.Engine.AuthorityRound.WithdrawalContractTransition
                 };
             }
             else if (chainSpecJson.Engine?.Clique is not null)

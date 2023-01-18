@@ -3,17 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    [SuppressMessage("ReSharper", "ClassNeverInstantiated.Global")]
-    [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
-    [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
     internal class ChainSpecJson
     {
         public string Name { get; set; }
@@ -87,6 +84,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long? TwoThirdsMajorityTransition { get; set; }
             public long? PosdaoTransition { get; set; }
             public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; } = new Dictionary<long, IDictionary<Address, byte[]>>();
+            public Address WithdrawalContractAddress { get; set; }
+            public ForkActivation WithdrawalContractTransition { get; set; }
 
             public class StepDurationJson : SortedDictionary<long, long> { }
         }
@@ -156,6 +155,10 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public IDictionary<long, Address> BlockGasLimitContractTransitions => Params.BlockGasLimitContractTransitions;
 
             public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode => Params.RewriteBytecode;
+
+            public Address WithdrawalContractAddress => Params.WithdrawalContractAddress;
+
+            public ForkActivation WithdrawalContractTransition => Params.WithdrawalContractTransition;
 
             public AuraEngineParamsJson Params { get; set; }
         }

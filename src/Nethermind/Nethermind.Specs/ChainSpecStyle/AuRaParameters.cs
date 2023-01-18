@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle
@@ -66,6 +67,10 @@ namespace Nethermind.Specs.ChainSpecStyle
         public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; }
 
         public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; }
+
+        public Address WithdrawalContractAddress { get; set; }
+
+        public ForkActivation WithdrawalContractTransition { get; set; }
 
         public enum ValidatorType
         {

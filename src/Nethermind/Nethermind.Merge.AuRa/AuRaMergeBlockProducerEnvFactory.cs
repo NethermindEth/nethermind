@@ -71,6 +71,8 @@ namespace Nethermind.Merge.AuRa
             ILogManager logManager,
             IBlocksConfig blocksConfig)
         {
+            var withdrawalContractFactory = new WithdrawalContractFactory(_auraApi.ChainSpec!.AuRa, _auraApi.AbiEncoder);
+
             return new AuRaMergeBlockProcessor(
                 specProvider,
                 blockValidator,
@@ -82,7 +84,11 @@ namespace Nethermind.Merge.AuRa
                 logManager,
                 _blockTree,
                 new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
-                    new WithdrawalProcessor(_auraApi.ChainSpec!.AuRa, logManager))
+                    new WithdrawalProcessor(
+                        withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
+                        logManager
+                        )
+                    )
                 );
         }
 
