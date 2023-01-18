@@ -519,6 +519,20 @@ namespace Nethermind.Consensus.Processing
 
                     blocksToProcess.Add(block);
                 }
+
+                if (!blocksToProcess[0].IsGenesis)
+                {
+                    BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None);
+                    if (parentOfFirstBlock == null)
+                    {
+                        throw new InvalidOperationException("Attempted to process a disconnected blockchain");
+                    }
+
+                    if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
+                    {
+                        throw new InvalidOperationException("Attempted to process a blockchain without having starting state");
+                    }
+                }
             }
 
             if (_logger.IsTrace)
@@ -618,8 +632,7 @@ namespace Nethermind.Consensus.Processing
                 // we need to dig deeper to go all the way to the false (reorg boundary) head
                 // otherwise some nodes would be missing
                 bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
-                bool notReachedTheReorgBoundary = (options & ProcessingOptions.Trace) == ProcessingOptions.Trace
-                && (branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0));
+                bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
                 preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
                 if (_logger.IsTrace)
                     _logger.Trace(
