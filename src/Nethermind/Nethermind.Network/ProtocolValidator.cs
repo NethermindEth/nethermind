@@ -65,19 +65,6 @@ namespace Nethermind.Network
                 return false;
             }
 
-            if (!ValidateCapabilities(args.Capabilities))
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Initiating disconnect with peer: {session.RemoteNodeId}, no Eth62 capability, supported capabilities: [{string.Join(",", args.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"))}]");
-                _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.Capabilities);
-                Disconnect(session, InitiateDisconnectReason.InvalidCapability, "capabilities");
-                if (session.Node.IsStatic && _logger.IsWarn)
-                    _logger.Warn(
-                        $"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (capabilities)");
-                return false;
-            }
-
             return true;
         }
 
