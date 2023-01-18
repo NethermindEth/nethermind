@@ -109,13 +109,12 @@ namespace Nethermind.Network
             for (int i = 0; i < Forks.Length; i++)
             {
                 (ForkActivation forkActivation, ForkId forkId) = Forks[i];
-                bool usingTimestamp = forkActivation.Timestamp is not null
-                    || (i + 1 < Forks.Length && Forks[i + 1].Activation.Timestamp is not null);
+                bool usingTimestamp = forkActivation.Timestamp != null;
                 ulong headActivation = (usingTimestamp ? head.Timestamp : (ulong)head.Number);
 
                 // If our head is beyond this fork, continue to the next (we have a dummy
                 // fork of maxuint64 as the last item to always fail this check eventually).
-                if (i + 1 < Forks.Length && headActivation >= Forks[i + 1].Activation.Activation) continue;
+                if (i+1 < Forks.Length && headActivation >= Forks[i+1].Activation.Activation) continue;
 
                 // Found the first unpassed fork block, check if our current state matches
                 // the remote checksum (rule #1).
@@ -138,9 +137,12 @@ namespace Nethermind.Network
                     if (Bytes.AreEqual(Forks[j].Id.ForkHash, peerId.ForkHash))
                     {
                         // Remote checksum is a subset, validate based on the announced next fork
-                        return Forks[j + 1].Activation.Activation != peerId.Next
-                            ? IForkInfo.ValidationResult.RemoteStale
-                            : IForkInfo.ValidationResult.Valid;
+                        if (Forks[j+1].Activation.Activation != peerId.Next)
+                        {
+                            return IForkInfo.ValidationResult.RemoteStale;
+                        }
+
+                        return IForkInfo.ValidationResult.Valid;
                     }
                 }
 
