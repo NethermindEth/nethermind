@@ -2666,10 +2666,36 @@ namespace Nethermind.Evm
                                 return CallResult.InvalidInstructionException;
                             }
 
+                            if (!UpdateGas(GasCostOf.Pay, ref gasAvailable))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
                             stack.PopAddress(out Address payee);
                             stack.PopUInt256(out UInt256 amount);
 
-                            
+                            if (payee != Address.Zero && !ChargeAccountAccessGas(ref gasAvailable, vmState, payee, spec, false))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            // Make sure sender has enough balance
+                            if (_state.GetBalance(env.ExecutingAccount) < amount)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.NotEnoughBalance);
+                                return CallResult.NotEnoughBalanceException;
+                            }
+
+                            // Remove the ether from the sender
+                            _state.SubtractFromBalance(env.ExecutingAccount, amount, spec);
+
+                            // If the address is not zero, the corresponding ether is added
+                            if (payee != Address.Zero)
+                            {
+                                _state.AddToBalance(payee, amount, spec);
+                            }
                         }
                     case Instruction.REVERT:
                         {
