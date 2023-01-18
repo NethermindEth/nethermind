@@ -134,7 +134,8 @@ public static partial class Merkle
 
     public static void MixIn(ref UInt256 root, int value)
     {
-        var lengthPart = new UInt256((ulong)value);
+        var v = value < 0 ? ulong.MaxValue : 0L;
+        var lengthPart = new UInt256((ulong)value, v, v, v);
         root = HashConcatenation(root, lengthPart, 0);
     }
 
@@ -155,7 +156,8 @@ public static partial class Merkle
 
     public static void Ize(out UInt256 root, int value)
     {
-        root = new UInt256((ulong)value);
+        var v = value < 0 ? ulong.MaxValue : 0L;
+        root = new UInt256((ulong)value, v, v, v);
     }
 
     public static void Ize(out UInt256 root, uint value)
