@@ -136,9 +136,9 @@ namespace Nethermind.State.Proofs
 
         public bool ShouldVisit(Keccak nextNode)
         {
-            if (_storageNodeInfos.ContainsKey(nextNode))
+            if (_storageNodeInfos.TryGetValue(nextNode, out StorageNodeInfo value))
             {
-                _pathTraversalIndex = _storageNodeInfos[nextNode].PathIndex;
+                _pathTraversalIndex = value.PathIndex;
             }
 
             return _nodeToVisitFilter.Contains(nextNode);
@@ -227,9 +227,9 @@ namespace Nethermind.State.Proofs
         {
             if (trieVisitContext.IsStorage)
             {
-                if (_storageNodeInfos.ContainsKey(node.Keccak))
+                if (_storageNodeInfos.TryGetValue(node.Keccak, out StorageNodeInfo value))
                 {
-                    foreach (int storageIndex in _storageNodeInfos[node.Keccak].StorageIndices)
+                    foreach (int storageIndex in value.StorageIndices)
                     {
                         _storageProofItems[storageIndex].Add(node.FullRlp);
                     }
@@ -245,9 +245,9 @@ namespace Nethermind.State.Proofs
         {
             if (trieVisitContext.IsStorage)
             {
-                if (_storageNodeInfos.ContainsKey(node.Keccak))
+                if (_storageNodeInfos.TryGetValue(node.Keccak, out StorageNodeInfo value))
                 {
-                    foreach (int storageIndex in _storageNodeInfos[node.Keccak].StorageIndices)
+                    foreach (int storageIndex in value.StorageIndices)
                     {
                         _storageProofItems[storageIndex].Add(Array.Empty<byte>());
                     }

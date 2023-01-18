@@ -468,9 +468,7 @@ namespace Nethermind.Runner.Test
             foreach (string singleWildcard in configWildcards)
             {
                 string singleWildcardBase = singleWildcard.Replace("^", string.Empty);
-                var result = groups.ContainsKey(singleWildcardBase)
-                    ? groups[singleWildcardBase]
-                    : Enumerable.Repeat(singleWildcardBase, 1);
+                var result = groups.TryGetValue(singleWildcardBase, out IEnumerable<string> value) ? value : Enumerable.Repeat(singleWildcardBase, 1);
 
                 if (singleWildcard.StartsWith("^"))
                 {
