@@ -235,26 +235,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
             }
 
-            var spec = _specProvider.GetSpec(newHeadBlock.Number + 1, payloadAttributes.Timestamp);
-
-            if (spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is null)
-            {
-                var error = "PayloadAttributesV2 expected";
-
-                if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
-
-                return ForkchoiceUpdatedV1Result.Error(error, ErrorCodes.InvalidParams);
-            }
-
-            if (!spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is not null)
-            {
-                var error = "PayloadAttributesV1 expected";
-
-                if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
-
-                return ForkchoiceUpdatedV1Result.Error(error, ErrorCodes.InvalidParams);
-            }
-
             payloadAttributes.GasLimit = null;
             payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
         }
