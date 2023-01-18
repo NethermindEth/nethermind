@@ -114,7 +114,7 @@ namespace Nethermind.Network
 
                 // If our head is beyond this fork, continue to the next (we have a dummy
                 // fork of maxuint64 as the last item to always fail this check eventually).
-                if (i+1 < Forks.Length && headActivation >= Forks[i+1].Activation.Activation) continue;
+                if (i + 1 < Forks.Length && headActivation >= Forks[i + 1].Activation.Activation) continue;
 
                 // Found the first unpassed fork block, check if our current state matches
                 // the remote checksum (rule #1).
@@ -137,7 +137,7 @@ namespace Nethermind.Network
                     if (Bytes.AreEqual(Forks[j].Id.ForkHash, peerId.ForkHash))
                     {
                         // Remote checksum is a subset, validate based on the announced next fork
-                        if (Forks[j+1].Activation.Activation != peerId.Next)
+                        if (Forks[j + 1].Activation.Activation != peerId.Next)
                         {
                             return IForkInfo.ValidationResult.RemoteStale;
                         }
