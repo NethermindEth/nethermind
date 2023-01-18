@@ -27,7 +27,7 @@ namespace Nethermind.HealthChecks
         private IInitConfig _initConfig;
 
         private ClHealthLogger _clHealthLogger;
-        private FreeDiskSpaceChecker _freeDiskSpaceChecker;
+        private Lazy<FreeDiskSpaceChecker> _freeDiskSpaceChecker;
 
         private const int ClUnavailableReportMessageDelay = 5;
 
@@ -37,9 +37,9 @@ namespace Nethermind.HealthChecks
             {
                 await _clHealthLogger.DisposeAsync();
             }
-            if (_freeDiskSpaceChecker is not null)
+            if (_freeDiskSpaceChecker.IsValueCreated)
             {
-                await _freeDiskSpaceChecker.DisposeAsync();
+                await FreeDiskSpaceChecker.DisposeAsync();
             }
         }
 
@@ -49,6 +49,8 @@ namespace Nethermind.HealthChecks
 
         public string Author => "Nethermind";
 
+        public FreeDiskSpaceChecker FreeDiskSpaceChecker => _freeDiskSpaceChecker.Value;
+
         public Task Init(INethermindApi api)
         {
             _api = api;
@@ -56,6 +58,11 @@ namespace Nethermind.HealthChecks
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             _initConfig = _api.Config<IInitConfig>();
             _logger = api.LogManager.GetClassLogger();
+            _freeDiskSpaceChecker = new Lazy<FreeDiskSpaceChecker>(() =>
+            {
+                return new FreeDiskSpaceChecker(_healthChecksConfig, _logger, _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath), _api.TimerFactory);
+            });
+
             //blocking until enough disk space is available
             EnsureEnoughFreeSpace();
 
@@ -118,8 +125,7 @@ namespace Nethermind.HealthChecks
                 try
                 {
                     drives = _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath);
-                    _freeDiskSpaceChecker ??= new FreeDiskSpaceChecker(_healthChecksConfig, _logger, drives, _api.TimerFactory);
-                    _freeDiskSpaceChecker.StartAsync(default);
+                    FreeDiskSpaceChecker.StartAsync(default);
                 }
                 catch (Exception ex)
                 {
@@ -160,8 +166,7 @@ namespace Nethermind.HealthChecks
             {
                 try
                 {
-                    _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_healthChecksConfig, _logger, _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath), _api.TimerFactory);
-                    _freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(_api.TimerFactory);
+                    FreeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(_api.TimerFactory);
                 }
                 catch (Exception ex)
                 {
