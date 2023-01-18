@@ -492,8 +492,8 @@ namespace Nethermind.AuRa.Test.Validators
                     blockNumber = test.Current.BlockNumber + i;
                 }
 
-                if (hashSeeds.ContainsKey(blockNumber))
-                    hashSeeds[blockNumber]++;
+                if (hashSeeds.TryGetValue(blockNumber, out int value))
+                    value++;
                 else
                     hashSeeds[blockNumber] = 0;
 
