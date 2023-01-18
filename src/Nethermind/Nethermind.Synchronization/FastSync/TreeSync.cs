@@ -569,9 +569,9 @@ namespace Nethermind.Synchronization.FastSync
             List<DependentItem> nodesToSave = new();
             lock (_dependencies)
             {
-                if (_dependencies.ContainsKey(hash))
+                if (_dependencies.TryGetValue(hash, out HashSet<DependentItem> value))
                 {
-                    HashSet<DependentItem> dependentItems = _dependencies[hash];
+                    HashSet<DependentItem> dependentItems = value;
 
                     if (_logger.IsTrace)
                     {
