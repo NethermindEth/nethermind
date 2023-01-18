@@ -1026,8 +1026,10 @@ namespace Nethermind.Serialization.Rlp
                     {
                         keccak = new KeccakStructRef(Keccak.EmptyTreeHash.Bytes);
                     }
-
-                    keccak = new KeccakStructRef(keccakSpan);
+                    else
+                    {
+                        keccak = new KeccakStructRef(keccakSpan);
+                    }
                 }
             }
 
