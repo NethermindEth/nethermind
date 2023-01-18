@@ -5,10 +5,14 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
+using CoreUInt256 = Nethermind.Int256.UInt256;
+using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 
 namespace Nethermind.Merkleization
 {
@@ -565,6 +569,21 @@ namespace Nethermind.Merkleization
 
             Merkle.Ize(out _chunks[^1], input);
             Feed(_chunks[^1]);
+        }
+
+        public void Feed(Address? value)
+        {
+            if (value is null)
+            {
+                Merkle.Ize(out UInt256 root, new byte[64]);
+                Feed(root);
+            }
+            else
+            {
+                Merkle.Ize(out UInt256 root, value.Bytes);
+                Merkle.Ize(out UInt256 rooot, new UInt256[] { root, new UInt256(1) });
+                Feed(rooot);
+            }
         }
 
         public void Feed(IReadOnlyList<Root> value, ulong maxLength)
