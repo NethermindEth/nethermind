@@ -37,14 +37,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "-c goerli -dd /home/amirul/workscratch/nethermind_goerli --JsonRpc.Enabled true --Metrics.Enabled true --Metrics.ExposePort 9999 --JsonRpc.JwtSecretFile=/tmp/jwtsecret --Network.EnableUPnP true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Goerli2": {
-      "commandName": "Project",
-      "commandLineArgs": "-c goerli2 -dd /home/amirul/workscratch/nethermind_goerli_2 --JsonRpc.Enabled true --Metrics.Enabled true --Metrics.ExposePort 9998 --JsonRpc.JwtSecretFile=/tmp/jwtsecret2 --Network.EnableUPnP true",
+      "commandLineArgs": "-c goerli -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
