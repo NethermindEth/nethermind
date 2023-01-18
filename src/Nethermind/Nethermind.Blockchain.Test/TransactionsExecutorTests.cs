@@ -11,6 +11,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -85,6 +86,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase complexCase = new()
                 {
+                    ReleaseSpec = Berlin.Instance,
                     AccountStates =
                     {
                         {TestItem.AddressA, (1000, 1)},
@@ -134,7 +136,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase baseFeeBalanceCheck = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (1000, 1) } },
                     Transactions =
@@ -154,7 +156,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase balanceBelowMaxFeeTimesGasLimit = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (400, 1) } },
                     Transactions =
@@ -169,7 +171,7 @@ namespace Nethermind.Blockchain.Test
                 ProperTransactionsSelectedTestCase balanceFailingWithMaxFeePerGasCheck =
                     new()
                     {
-                        Eip1559Enabled = true,
+                        ReleaseSpec = London.Instance,
                         BaseFee = 5,
                         AccountStates = { { TestItem.AddressA, (400, 1) } },
                         Transactions =
@@ -195,10 +197,7 @@ namespace Nethermind.Blockchain.Test
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
-            IReleaseSpec spec = new ReleaseSpec()
-            {
-                IsEip1559Enabled = testCase.Eip1559Enabled
-            };
+            IReleaseSpec spec = testCase.ReleaseSpec;
             specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong?>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);

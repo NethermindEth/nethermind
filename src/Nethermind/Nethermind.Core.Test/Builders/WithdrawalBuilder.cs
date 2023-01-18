@@ -1,17 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Int256;
-
 namespace Nethermind.Core.Test.Builders;
 
 public class WithdrawalBuilder : BuilderBase<Withdrawal>
 {
     public WithdrawalBuilder() => TestObject = new();
 
-    public WithdrawalBuilder WithAmount(UInt256 amount)
+    public WithdrawalBuilder WithAmount(ulong amount)
     {
-        TestObject.Amount = amount;
+        TestObject.AmountInGwei = amount;
 
         return this;
     }
