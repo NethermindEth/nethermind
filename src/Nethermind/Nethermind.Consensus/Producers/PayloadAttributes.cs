@@ -20,12 +20,8 @@ public class PayloadAttributes
 
     public IList<Withdrawal>? Withdrawals { get; set; }
 
-    /// <summary>
-    /// GasLimit
-    /// </summary>
-    /// <remarks>
-    /// Only used for MEV-Boost
-    /// </remarks>
+    /// <summary>Gets or sets the gas limit.</summary>
+    /// <remarks>Used for MEV-Boost only.</remarks>
     public long? GasLimit { get; set; }
 
     public override string ToString() => ToString(string.Empty);
@@ -48,7 +44,7 @@ public class PayloadAttributes
     }
 }
 
-public static class PayloadAttributesVersioningExtensions
+public static class PayloadAttributesExtensions
 {
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload.Withdrawals is null ? 1 : 2;

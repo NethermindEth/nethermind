@@ -11,7 +11,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -43,7 +42,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly IBeaconPivot _beaconPivot;
     private readonly ILogger _logger;
     private readonly IPeerRefresher _peerRefresher;
-    private readonly ISpecProvider _specProvider;
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
@@ -56,7 +54,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         IMergeSyncController mergeSyncController,
         IBeaconPivot beaconPivot,
         IPeerRefresher peerRefresher,
-        ISpecProvider specProvider,
         ILogManager logManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -69,7 +66,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _mergeSyncController = mergeSyncController;
         _beaconPivot = beaconPivot;
         _peerRefresher = peerRefresher;
-        _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
     }
 

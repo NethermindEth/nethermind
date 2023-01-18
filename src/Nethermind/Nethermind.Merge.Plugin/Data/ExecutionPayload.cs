@@ -147,7 +147,7 @@ public class ExecutionPayload
     public override string ToString() => $"{BlockNumber} ({BlockHash})";
 }
 
-public static class ExecutionPayloadVersioningExtensions
+public static class ExecutionPayloadExtensions
 {
     public static int GetVersion(this ExecutionPayload executionPayload) =>
         executionPayload.Withdrawals is null ? 1 : 2;
