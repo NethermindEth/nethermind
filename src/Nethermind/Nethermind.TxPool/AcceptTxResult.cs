@@ -76,6 +76,11 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult SenderIsContract = new(12, nameof(SenderIsContract));
 
+        /// <summary>
+        /// Sender account has not enough balance to execute this transaction.
+        /// </summary>
+        public static readonly AcceptTxResult InsufficientFundsToCompete = new(13, nameof(InsufficientFundsToCompete));
+
 
         private int Id { get; }
         private string Code { get; }

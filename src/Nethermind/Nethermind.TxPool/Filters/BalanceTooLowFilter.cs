@@ -43,9 +43,9 @@ namespace Nethermind.TxPool.Filters
             if (_txs.TryGetLast(out Transaction? lastTx)
                 && affordableGasPrice <= lastTx?.GasBottleneck)
             {
-                Metrics.PendingTransactionsTooLowFee++;
+                Metrics.PendingTransactionsBalanceToLowToCompeteOnFee++;
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
-                return AcceptTxResult.FeeTooLow.WithMessage($"FeePerGas needs to be higher than {lastTx.GasBottleneck.Value} to be added to the TxPool. Affordable FeePerGas of rejected tx: {affordableGasPrice}.");
+                return AcceptTxResult.InsufficientFundsToCompete.WithMessage($"FeePerGas needs to be higher than {lastTx.GasBottleneck.Value} to be added to the TxPool. Affordable FeePerGas of rejected tx: {affordableGasPrice}.");
             }
 
             return AcceptTxResult.Accepted;
