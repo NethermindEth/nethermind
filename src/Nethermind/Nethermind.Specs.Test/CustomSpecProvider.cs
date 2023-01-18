@@ -21,14 +21,14 @@ namespace Nethermind.Specs.Test
 
         public ForkActivation[] TransitionActivations { get; }
 
-        public CustomSpecProvider(params (ForkActivation Activation, IReleaseSpec Spec)[] transitions) : this(0, 0, transitions)
+        public CustomSpecProvider(params (ForkActivation Activation, IReleaseSpec Spec)[] transitions) : this(TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId, transitions)
         {
         }
 
-        public CustomSpecProvider(ulong chainId, ulong networkId, params (ForkActivation Activation, IReleaseSpec Spec)[] transitions)
+        public CustomSpecProvider(ulong networkId, ulong chainId, params (ForkActivation Activation, IReleaseSpec Spec)[] transitions)
         {
-            ChainId = chainId;
             NetworkId = networkId;
+            ChainId = chainId;
 
             if (transitions.Length == 0)
             {

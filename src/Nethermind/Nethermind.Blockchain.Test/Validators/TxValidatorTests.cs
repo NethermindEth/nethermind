@@ -233,7 +233,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Transaction tx = Build.A.Transaction
                 .WithSignature(signature)
                 .WithGasLimit(int.MaxValue)
-                .WithChainId(ChainId.Mainnet)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .To(null)
                 .WithData(initCode).TestObject;
 
