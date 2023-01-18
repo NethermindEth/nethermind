@@ -23,7 +23,8 @@ public class WithdrawalSszTrieTests
                 AmountInGwei = 5055030296454530815
             }
         });
-        // f2c455ad181342d83abbc0dc5a5d9b22f97f84c048c06d1bee7016eb5e37f741
+        // f2c455ad181342d83abbc0dc5a5d9b22f97f84c048c06d1bee7016eb5e37f741 - EthereumJS
+        // 0xed9cec6fb8ee22b146059d02c38940cca1dd22a00d0132b000999b983fceff95 - Consensus reference tests https://media.githubusercontent.com/media/ethereum/consensus-spec-tests/v1.3.0-rc.1/tests/mainnet/capella/ssz_static/Withdrawal/ssz_random/case_0/roots.yaml
     }
 
     [Test]
