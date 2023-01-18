@@ -89,7 +89,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Metrics.Eth65GetPooledTransactionsReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            Send(FulfillPooledTransactionsRequest(msg));
+            using ArrayPoolList<Transaction> txsToSend = new(1024);
+            Send(FulfillPooledTransactionsRequest(msg, txsToSend));
+            txsToSend.Dispose();
             stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
@@ -97,10 +99,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         }
 
         internal PooledTransactionsMessage FulfillPooledTransactionsRequest(
-            GetPooledTransactionsMessage msg)
+            GetPooledTransactionsMessage msg, IList<Transaction> txsToSend)
         {
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-            List<Transaction> txsToSend = new();
             for (int i = 0; i < msg.Hashes.Count; i++)
             {
                 if (_txPool.TryGetPendingTransaction(msg.Hashes[i], out Transaction tx))
