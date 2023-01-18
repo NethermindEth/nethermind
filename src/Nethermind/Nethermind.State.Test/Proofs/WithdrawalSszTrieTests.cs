@@ -17,13 +17,13 @@ public class WithdrawalSszTrieTests
         {
             new Withdrawal()
             {
-                Index = 10078475495033652149,
-                ValidatorIndex = 3916426429657093836,
-                Address = new Address("0x7f16ebcc35e62c99c7c545585d37c8a9d09e3a2a"),
-                AmountInGwei = 12260575381911018860
+                Index = 17107150653359250726,
+                ValidatorIndex = 1906681273455760070,
+                Address = new Address("0x02ab1379b6334b58df82c85d50ff1214663cba20"),
+                AmountInGwei = 5055030296454530815
             }
         });
-        // 0x7e203616f66a3a61be5be65a8c58fb7356a56865fbb9c09cc33c31fe0e967db6
+        // f2c455ad181342d83abbc0dc5a5d9b22f97f84c048c06d1bee7016eb5e37f741
     }
 
     [Test]

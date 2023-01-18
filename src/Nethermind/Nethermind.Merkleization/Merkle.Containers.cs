@@ -330,7 +330,7 @@ namespace Nethermind.Merkleization
                 return;
             }
 
-            Merkleizer merkleizer = new Merkleizer(1);
+            Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.Index);
             merkleizer.Feed(container.ValidatorIndex);
             merkleizer.Feed(container.Address);
