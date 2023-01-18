@@ -197,7 +197,7 @@ namespace Nethermind.Runner
                 }
                 catch (OperationCanceledException)
                 {
-                    if (_logger.IsTrace) _logger.Trace("Runner operation was cancelled");
+                    if (_logger.IsTrace) _logger.Trace("Runner operation was canceled");
                 }
                 catch (Exception e)
                 {
