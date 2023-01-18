@@ -51,7 +51,7 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount++;
-                return _db.TryGetValue(key, out byte[] value) ? value : null;
+                return _db.TryGetValue(key.ToArray(), out byte[] value) ? value : null;
             }
             set
             {
@@ -60,7 +60,6 @@ namespace Nethermind.Db
                     Thread.Sleep(_writeDelay);
                 }
 
-             http://localhost:3000/d/lEW2zSMVz/nethermind-thingi?orgId=1&from=now-3h&to=now&refresh=30s   WritesCount++;
                 _db[key.ToArray()] = value;
             }
         }
