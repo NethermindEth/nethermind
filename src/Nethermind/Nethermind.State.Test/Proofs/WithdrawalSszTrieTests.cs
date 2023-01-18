@@ -20,10 +20,10 @@ public class WithdrawalSszTrieTests
                 Index = 10078475495033652149,
                 ValidatorIndex = 3916426429657093836,
                 Address = new Address("0x7f16ebcc35e62c99c7c545585d37c8a9d09e3a2a"),
-                Amount = 12260575381911018860
+                AmountInGwei = 12260575381911018860
             }
         });
-
+        // 0x7e203616f66a3a61be5be65a8c58fb7356a56865fbb9c09cc33c31fe0e967db6
     }
 
     [Test]
@@ -31,7 +31,7 @@ public class WithdrawalSszTrieTests
     {
         WithdrawalTrie trie = new WithdrawalTrie(new List<Withdrawal>()
         {
-            new Withdrawal() { Index = 10078475495033652149, ValidatorIndex = 3916426429657093836, Address = new Address("0x7f16ebcc35e62c99c7c545585d37c8a9d09e3a2a"), Amount = 12260575381911018860 }
+            new Withdrawal() { Index = 10078475495033652149, ValidatorIndex = 3916426429657093836, Address = new Address("0x7f16ebcc35e62c99c7c545585d37c8a9d09e3a2a"), AmountInGwei = 12260575381911018860 }
         });
     }
 }

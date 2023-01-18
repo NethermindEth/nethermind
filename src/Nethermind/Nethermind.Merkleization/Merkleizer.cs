@@ -315,6 +315,24 @@ namespace Nethermind.Merkleization
             Feed(_chunks[^1]);
         }
 
+        public void Feed(IReadOnlyList<Withdrawal> value, ulong maxLength)
+        {
+            if (value is null)
+            {
+                return;
+            }
+
+            UInt256[] subRoots = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
+            {
+                Merkle.Ize(out subRoots[i], value[i]);
+            }
+
+            Merkle.Ize(out _chunks[^1], subRoots, maxLength);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
+            Feed(_chunks[^1]);
+        }
+
         public void Feed(Gwei[]? value, ulong maxLength)
         {
             if (value is null)
