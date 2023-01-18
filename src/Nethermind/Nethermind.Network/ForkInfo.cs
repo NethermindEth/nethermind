@@ -108,12 +108,13 @@ namespace Nethermind.Network
             for (int i = 0; i < Forks.Length; i++)
             {
                 (ForkActivation forkActivation, ForkId forkId) = Forks[i];
-                bool usingTimestamp = forkActivation.Timestamp != null || (i+1 < Forks.Length && Forks[i+1].Activation.Timestamp != null);
+                bool usingTimestamp = forkActivation.Timestamp is not null
+                    || (i + 1 < Forks.Length && Forks[i + 1].Activation.Timestamp is not null);
                 ulong headActivation = (usingTimestamp ? head.Timestamp : (ulong)head.Number);
 
                 // If our head is beyond this fork, continue to the next (we have a dummy
                 // fork of maxuint64 as the last item to always fail this check eventually).
-                if (i+1 < Forks.Length && headActivation >= Forks[i+1].Activation.Activation) continue;
+                if (i + 1 < Forks.Length && headActivation >= Forks[i + 1].Activation.Activation) continue;
 
                 // Found the first unpassed fork block, check if our current state matches
                 // the remote checksum (rule #1).
@@ -136,12 +137,9 @@ namespace Nethermind.Network
                     if (Bytes.AreEqual(Forks[j].Id.ForkHash, peerId.ForkHash))
                     {
                         // Remote checksum is a subset, validate based on the announced next fork
-                        if (Forks[j+1].Activation.Activation != peerId.Next)
-                        {
-                            return IForkInfo.ValidationResult.RemoteStale;
-                        }
-
-                        return IForkInfo.ValidationResult.Valid;
+                        return Forks[j + 1].Activation.Activation != peerId.Next
+                            ? IForkInfo.ValidationResult.RemoteStale
+                            : IForkInfo.ValidationResult.Valid;
                     }
                 }
 
@@ -160,6 +158,66 @@ namespace Nethermind.Network
             }
 
             throw new InvalidOperationException();
+        }
+
+        /// <summary>
+        /// Verify that the forkid from peer matches our forks. Code is largely copied from Geth.
+        /// </summary>
+        /// <param name="peerId"></param>
+        /// <returns></returns>
+        public IForkInfo.ValidationResult ValidateForkId2(ForkId peerId)
+        {
+            BlockHeader? head = _blockTree.Head?.Header;
+            if (head == null) return IForkInfo.ValidationResult.Valid;
+            (ForkActivation? foundActivation, ForkId? foundForkId) = (null, null);
+            ForkActivation? nextActivation= null;
+            for (int i = 0; i < Forks.Length; i++)
+            {
+                if (Bytes.AreEqual(Forks[i].Id.ForkHash, peerId.ForkHash))
+                {
+                    foundActivation = Forks[i].Activation;
+                    foundForkId = Forks[i].Id;
+                    if (i < Forks.Length - 1)
+                    {
+                        nextActivation = Forks[i + 1].Activation;
+                    }
+                    break;
+                }
+            }
+            if (foundActivation is null)
+            {
+                return IForkInfo.ValidationResult.IncompatibleOrStale;
+            }
+            bool usingTimestamp = foundActivation.Value.Timestamp is not null;
+            ulong headActivation = (usingTimestamp ? head.Timestamp : (ulong)head.Number);
+
+            // my approach is to accept all peers except the ones we dont like. which is the oposite of what
+            // geth does. they reject all except ones they think are right.
+
+            if (foundForkId.Value.Next != peerId.Next)
+            {
+                if (peerId.Next == 0
+                    && nextActivation is not null
+                    && headActivation > nextActivation.Value.Activation)
+                {
+                    return IForkInfo.ValidationResult.RemoteStale;
+                }
+                if (peerId.Next > 0
+                    && headActivation > foundActivation.Value.Activation)
+                {
+                    if (headActivation >= peerId.Next)
+                    {
+                        return IForkInfo.ValidationResult.IncompatibleOrStale;
+                    }
+                    if (nextActivation is not null
+                        && headActivation >= nextActivation.Value.Activation
+                        && peerId.Next != nextActivation.Value.Activation)
+                    {
+                        return IForkInfo.ValidationResult.IncompatibleOrStale;
+                    }
+                }
+            }
+            return IForkInfo.ValidationResult.Valid;
         }
     }
 }

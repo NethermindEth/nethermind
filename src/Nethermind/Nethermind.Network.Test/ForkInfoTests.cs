@@ -278,6 +278,7 @@ namespace Nethermind.Network.Test
             ForkInfo forkInfo = new(MainnetSpecProvider.Instance, KnownHashes.MainnetGenesis, blockTree);
 
             forkInfo.ValidateForkId(new ForkId(Bytes.FromHexString(hash), next)).Should().Be(result);
+            forkInfo.ValidateForkId2(new ForkId(Bytes.FromHexString(hash), next)).Should().Be(result);
         }
 
         private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
