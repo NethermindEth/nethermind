@@ -10,7 +10,7 @@ using Nethermind.Native;
 
 namespace Nethermind.Secp256k1
 {
-    public static class Proxy
+    public static partial class Proxy
     {
         private const string Secp256k1 = "secp256k1";
 
@@ -25,48 +25,56 @@ namespace Nethermind.Secp256k1
         /*****************************************************************************************/
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern /* secp256k1_context */ IntPtr secp256k1_context_create(uint flags);
+        [LibraryImport(Secp256k1)]
+        public static partial IntPtr secp256k1_context_create(uint flags);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern /* void */ IntPtr secp256k1_context_destroy(IntPtr context);
+        [LibraryImport(Secp256k1)]
+        public static partial IntPtr secp256k1_context_destroy(IntPtr context);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern bool secp256k1_ec_seckey_verify( /* secp256k1_context */ IntPtr context, byte[] seckey);
+        [LibraryImport(Secp256k1)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool secp256k1_ec_seckey_verify( /* secp256k1_context */ IntPtr context, byte[] seckey);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern unsafe bool secp256k1_ec_pubkey_create( /* secp256k1_context */ IntPtr context, void* pubkey, byte[] seckey);
+        [LibraryImport(Secp256k1)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static unsafe partial bool secp256k1_ec_pubkey_create( /* secp256k1_context */ IntPtr context, void* pubkey, byte[] seckey);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern unsafe bool secp256k1_ec_pubkey_serialize( /* secp256k1_context */ IntPtr context, void* serializedPublicKey, ref uint outputSize, void* publicKey, uint flags);
+        [LibraryImport(Secp256k1)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static unsafe partial bool secp256k1_ec_pubkey_serialize( /* secp256k1_context */ IntPtr context, void* serializedPublicKey, ref uint outputSize, void* publicKey, uint flags);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern bool secp256k1_ecdsa_sign_recoverable( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] messageHash, byte[] privateKey, IntPtr nonceFunction, IntPtr nonceData);
+        [LibraryImport(Secp256k1)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool secp256k1_ecdsa_sign_recoverable( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] messageHash, byte[] privateKey, IntPtr nonceFunction, IntPtr nonceData);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern bool secp256k1_ecdsa_recoverable_signature_serialize_compact( /* secp256k1_context */ IntPtr context, byte[] compactSignature, out int recoveryId, byte[] signature);
+        [LibraryImport(Secp256k1)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool secp256k1_ecdsa_recoverable_signature_serialize_compact( /* secp256k1_context */ IntPtr context, byte[] compactSignature, out int recoveryId, byte[] signature);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern unsafe bool secp256k1_ecdsa_recoverable_signature_parse_compact( /* secp256k1_context */ IntPtr context, void* signature, void* compactSignature, int recoveryId);
+        [LibraryImport(Secp256k1)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static unsafe partial bool secp256k1_ecdsa_recoverable_signature_parse_compact( /* secp256k1_context */ IntPtr context, void* signature, void* compactSignature, int recoveryId);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern unsafe bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, void* publicKey, void* signature, byte[] message);
+        [LibraryImport(Secp256k1)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static unsafe partial bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, void* publicKey, void* signature, byte[] message);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern bool secp256k1_ecdh( /* secp256k1_context */ IntPtr context, byte[] output, byte[] publicKey, byte[] privateKey, IntPtr hashFunctionPointer, IntPtr data);
+        [LibraryImport(Secp256k1)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static partial bool secp256k1_ecdh( /* secp256k1_context */ IntPtr context, byte[] output, byte[] publicKey, byte[] privateKey, IntPtr hashFunctionPointer, IntPtr data);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern unsafe int secp256k1_ec_pubkey_parse(IntPtr ctx, void* pubkey, void* input, uint inputlen);
+        [LibraryImport(Secp256k1)]
+        public static unsafe partial int secp256k1_ec_pubkey_parse(IntPtr ctx, void* pubkey, void* input, uint inputlen);
 
 
         /*****************************************************************************************/

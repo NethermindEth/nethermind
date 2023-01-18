@@ -7,15 +7,15 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Crypto.Bls
 {
-    public static class ShamatarLib
+    public static partial class ShamatarLib
     {
         static ShamatarLib()
         {
             LibResolver.Setup();
         }
 
-        [DllImport("shamatar")]
-        private static extern unsafe uint eip196_perform_operation(
+        [LibraryImport("shamatar")]
+        private static unsafe partial uint eip196_perform_operation(
             byte operation,
             byte* input,
             int inputLength,
@@ -24,8 +24,8 @@ namespace Nethermind.Crypto.Bls
             byte* error,
             ref int errorLength);
 
-        [DllImport("shamatar")]
-        private static extern unsafe uint eip2537_perform_operation(
+        [LibraryImport("shamatar")]
+        private static unsafe partial uint eip2537_perform_operation(
             byte operation,
             byte* input,
             int inputLength,
