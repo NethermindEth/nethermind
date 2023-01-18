@@ -170,7 +170,7 @@ namespace Nethermind.Network
             BlockHeader? head = _blockTree.Head?.Header;
             if (head == null) return IForkInfo.ValidationResult.Valid;
             (ForkActivation? foundActivation, ForkId? foundForkId) = (null, null);
-            ForkActivation? nextActivation= null;
+            ForkActivation? nextActivation = null;
             for (int i = 0; i < Forks.Length; i++)
             {
                 if (Bytes.AreEqual(Forks[i].Id.ForkHash, peerId.ForkHash))
