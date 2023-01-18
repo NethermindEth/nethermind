@@ -56,6 +56,10 @@
     <Content Include="Specs\hive_zero_balance_test.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <None Remove="Specs\shanghai_from_genesis.json" />
+    <Content Include="Specs\shanghai_from_genesis.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Specs" />

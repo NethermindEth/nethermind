@@ -44,6 +44,10 @@ namespace Nethermind.Api
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
+        /// <summary>
+        /// PoS switcher for The Merge
+        /// </summary>
+        IPoSSwitcher PoSSwitcher { get; set; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
         ISealEngine SealEngine { get; set; }

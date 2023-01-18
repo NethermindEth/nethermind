@@ -3,11 +3,11 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Consensus.Validators
+namespace Nethermind.Consensus.Validators;
+
+public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
 {
-    public interface IBlockValidator : IHeaderValidator
-    {
-        bool ValidateSuggestedBlock(Block block);
-        bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock);
-    }
+    bool ValidateSuggestedBlock(Block block);
+
+    bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock);
 }

@@ -101,8 +101,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         else
                         {
                             Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
-                            SyncResponseHandlingResult result = Feed.HandleResponse(request);
-                            ReactToHandlingResult(request, result, null);
+                            DoHandleResponse(request);
                         }
                     }
                     else if (currentStateLocal == SyncFeedState.Finished)
@@ -142,6 +141,18 @@ namespace Nethermind.Synchronization.ParallelSync
                     return;
                 }
 
+                DoHandleResponse(request, allocatedPeer);
+            }
+            finally
+            {
+                Free(allocation);
+            }
+        }
+
+        private void DoHandleResponse(T request, PeerInfo? allocatedPeer = null)
+        {
+            try
+            {
                 SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
                 ReactToHandlingResult(request, result, allocatedPeer);
             }
@@ -154,10 +165,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 // possibly clear the response and handle empty response batch here (to avoid missing parts)
                 // this practically corrupts sync
                 if (Logger.IsError) Logger.Error("Error when handling response", e);
-            }
-            finally
-            {
-                Free(allocation);
             }
         }
 
@@ -181,7 +188,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     case SyncResponseHandlingResult.Emptish:
                         break;
                     case SyncResponseHandlingResult.Ignored:
-                        Logger.Error($"Feed response was ignored.");
                         break;
                     case SyncResponseHandlingResult.LesserQuality:
                         SyncPeerPool.ReportWeakPeer(peer, Feed.Contexts);

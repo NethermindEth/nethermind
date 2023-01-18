@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Force.Crc32;
 using Nethermind.Core.Collections;
@@ -45,19 +46,17 @@ namespace Nethermind.Network
 
         private static ulong GetNextActivation(int index, ForkActivation[] transitionActivations)
         {
-            ulong nextActivation;
-            int nextIndex = index + 1;
-            if (nextIndex < transitionActivations.Length)
-            {
-                ForkActivation nextForkActivation = transitionActivations[nextIndex];
-                nextActivation = nextForkActivation.Timestamp ?? (ulong)nextForkActivation.BlockNumber;
-            }
-            else
-            {
-                nextActivation = 0;
-            }
+            static T? GetActivationPrimitive<T>(T? activation, T delta) where T : struct, INumber<T>, IMinMaxValue<T> =>
+                activation is null ? default : activation < T.MaxValue - delta ? activation : T.Zero;
 
-            return nextActivation;
+            static ulong GetActivation(ForkActivation forkActivation) =>
+                GetActivationPrimitive(forkActivation.Timestamp, 4UL)
+                ?? (ulong)GetActivationPrimitive(forkActivation.BlockNumber, 4L);
+
+            index += 1;
+            return index < transitionActivations.Length
+                ? GetActivation(transitionActivations[index])
+                : 0;
         }
 
         public ForkId GetForkId(long headNumber, ulong headTimestamp)

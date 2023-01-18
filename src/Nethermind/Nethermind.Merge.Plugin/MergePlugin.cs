@@ -16,7 +16,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
@@ -26,8 +25,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.Handlers.V1;
-using Nethermind.Merge.Plugin.Handlers.V2;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -101,6 +98,7 @@ namespace Nethermind.Merge.Plugin
                     _api.BlockTree,
                     _blockCacheService,
                     _api.LogManager);
+                _api.PoSSwitcher = _poSSwitcher;
                 _api.DisposeStack.Push(_invalidChainTracker);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
@@ -307,7 +305,7 @@ namespace Nethermind.Merge.Plugin
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
                     new GetPayloadV2Handler(payloadPreparationService, _api.LogManager),
-                    new NewPayloadV1Handler(
+                    new NewPayloadHandler(
                         _api.BlockValidator,
                         _api.BlockTree,
                         _api.Config<IInitConfig>(),
@@ -321,7 +319,7 @@ namespace Nethermind.Merge.Plugin
                         _beaconSync,
                         _api.SpecProvider,
                         _api.LogManager),
-                    new ForkchoiceUpdatedV1Handler(
+                    new ForkchoiceUpdatedHandler(
                         _api.BlockTree,
                         _blockFinalizationManager,
                         _poSSwitcher,
@@ -332,6 +330,7 @@ namespace Nethermind.Merge.Plugin
                         _beaconSync,
                         _beaconPivot,
                         _peerRefresher,
+                        _api.SpecProvider,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree),
                     new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),

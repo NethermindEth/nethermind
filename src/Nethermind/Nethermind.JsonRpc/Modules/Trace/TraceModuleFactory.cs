@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
@@ -31,6 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly ILogManager _logManager;
         private readonly IBlockPreprocessorStep _recoveryStep;
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
+        private readonly IPoSSwitcher _poSSwitcher;
 
         public TraceModuleFactory(
             IDbProvider dbProvider,
@@ -41,6 +43,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptFinder,
             ISpecProvider specProvider,
+            IPoSSwitcher poSSwitcher,
             ILogManager logManager)
         {
             _dbProvider = dbProvider.AsReadOnly(false);
@@ -51,6 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
             _receiptStorage = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             logManager.GetClassLogger();
         }
@@ -60,7 +64,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             ReadOnlyTxProcessingEnv txProcessingEnv =
                 new(_dbProvider, _trieNodeResolver, _blockTree, _specProvider, _logManager);
 
-            IRewardCalculator rewardCalculator = _rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
+            IRewardCalculator rewardCalculator =
+                new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor),
+                    _poSSwitcher);
 
             RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(txProcessingEnv.TransactionProcessor, txProcessingEnv.StateProvider);
 

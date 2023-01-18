@@ -45,9 +45,9 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(expectedGasUsage, tracer.GasSpent - _transactionCallCost);
         }
 
-        [TestCase("60006000F0", 41225)] //static and dynamic cost deducted: 32000 (call) + 9225 (memory cost) = 41225 // 3074 (word cost) NOT deducted
-        [TestCase("60006000F5", 50447)] //static and dynamic cost deducted: 32000 (call) + 9222 (hash cost) + 9225 (memory cost) = 50447 // 3074 (word cost) NOT deducted
-        public void Test_EIP_3860_InitCode_Create_Exceeds_Limit(string createCode, long expectedGasUsage)
+        [TestCase("60006000F0")]
+        [TestCase("60006000F5")]
+        public void Test_EIP_3860_InitCode_Create_Exceeds_Limit(string createCode)
         {
             string dataLenghtHex = (Spec.MaxInitCodeSize + 1).ToString("X");
             Instruction dataPush = Instruction.PUSH1 + (byte)(dataLenghtHex.Length / 2 - 1);
@@ -61,15 +61,15 @@ namespace Nethermind.Evm.Test
             Keccak createCodeHash = TestState.UpdateCode(evmCode);
             TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
-            byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 60000).Done;
+            const int contractCreationGasLimit = 50000;
+            byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, contractCreationGasLimit).Done;
 
             var tracer = Execute(callCode);
             Assert.AreEqual(StatusCode.Success, tracer.StatusCode);
-            //how to test byteCode returned empty (CREATE) not call ?
-            //Assert.AreEqual(StatusCode.FailureBytes, tracer.ReturnValue);
-            Assert.AreEqual(Array.Empty<byte>(), tracer.ReturnValue);
-            Assert.AreEqual(expectedGasUsage, tracer.GasSpent - _transactionCallCost - (isCreate2 ? 4 : 3) * GasCostOf.VeryLow);
+            Assert.AreEqual(1, tracer.ReportedActionErrors.Count);
+            Assert.AreEqual(EvmExceptionType.OutOfGas, tracer.ReportedActionErrors[0]);
             Assert.AreEqual((UInt256)0, TestState.GetAccount(TestItem.AddressC).Nonce);
+            Assert.AreEqual(_transactionCallCost + contractCreationGasLimit, tracer.GasSpent);
         }
 
         [Test]
