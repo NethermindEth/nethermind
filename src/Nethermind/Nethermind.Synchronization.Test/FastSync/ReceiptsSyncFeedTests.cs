@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         static ReceiptsSyncFeedTests()
         {
-            _specProvider = new SingleReleaseSpecProvider(Istanbul.Instance, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId);
+            _specProvider = new TestSingleReleaseSpecProvider(Istanbul.Instance);
             _1024BodiesWithOneTxEach = new Scenario(_specProvider, 1024, 1);
             _256BodiesWithOneTxEach = new Scenario(_specProvider, 256, 1);
             _64BodiesWithOneTxEach = new Scenario(_specProvider, 64, 1);

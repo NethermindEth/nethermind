@@ -10,6 +10,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -40,6 +41,8 @@ namespace Nethermind.Blockchain.Test.Validators
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
+        private static byte CalculateV() => (byte)EthereumEcdsa.CalculateV(TestBlockchainIds.ChainId);
+
         [Test]
         public void Zero_s_is_not_valid()
         {
@@ -60,7 +63,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35 + 1;
+            sigData[64] = (byte)(1 + CalculateV());
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
@@ -87,7 +90,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
@@ -124,7 +127,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
@@ -150,7 +153,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType)
@@ -176,7 +179,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
@@ -200,7 +203,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
