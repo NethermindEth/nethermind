@@ -250,8 +250,21 @@ jobs:
         echo "Import GPG owner trust"
         echo ${{ secrets.GPG_OWNERTRUST }} | base64 --decode | gpg --import-ownertrust
     - name: Install PPA dependencies
-      run: sudo apt update > /dev/null 2>&1 && sudo apt install debhelper devscripts -y > /dev/null 2>&1
+      run: sudo apt update && sudo apt install debhelper devscripts -y
     - name: Publish to PPA
       run: | 
         chmod +x $SCRIPTS_PATH/publish-ppa.sh
         $SCRIPTS_PATH/publish-ppa.sh
+    - name: Sleep for 1 hour
+      run: sleep 3600s
+      shell: bash
+    - uses: actions/setup-python@v4
+    - run: pip install launchpadlib --upgrade
+    - name: Run copy binaries PPA script
+      env: 
+        LP_CREDENTIALS_FILE: /tmp/credentials.txt
+      run: |
+        echo ${{secrets.PPA_COPY_TOKEN}} | base64 --decode > /tmp/credentials.txt
+        chmod +x scripts/copy-ppa-packages-to-new-series.sh
+        ./scripts/copy-ppa-packages-to-new-series.sh
+
