@@ -463,6 +463,17 @@ namespace Nethermind.Merkleization
             Feed(_chunks[^1]);
         }
 
+        public void Feed(Withdrawal? value)
+        {
+            if (value is null)
+            {
+                return;
+            }
+
+            Merkle.Ize(out _chunks[^1], value);
+            Feed(_chunks[^1]);
+        }
+
         public void Feed(Ref<DepositData> value)
         {
             if (value.Root is null)
@@ -598,9 +609,9 @@ namespace Nethermind.Merkleization
             }
             else
             {
-                Merkle.Ize(out UInt256 root, value.Bytes);
-                Merkle.Ize(out UInt256 rooot, new UInt256[] { root, new UInt256(1) });
-                Feed(rooot);
+                Merkle.Ize(out UInt256 root, value);
+             //   Merkle.Ize(out UInt256 rooot, new UInt256[] { root, new UInt256(1) });
+                Feed(root);
             }
         }
 

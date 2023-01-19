@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using UInt128 = Nethermind.Dirichlet.Numerics.UInt128;
 
@@ -41,6 +42,13 @@ namespace Nethermind.Ssz
         {
             Encode(span.Slice(offset, sizeof(ulong)), value);
             offset += sizeof(ulong);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Encode(Span<byte> span, Address value, ref int offset)
+        {
+            Encode(span.Slice(offset, Address.ByteLength), value.Bytes);
+            offset += Address.ByteLength;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

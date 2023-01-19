@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
+using Nethermind.Core;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -239,6 +240,13 @@ namespace Nethermind.Merkleization
             {
                 Ize(out root, MemoryMarshal.Cast<byte, Chunk>(value));
             }
+        }
+
+        internal static void Ize(out UInt256 root, Address address)
+        {
+            byte[] data = new byte[32];
+            address.Bytes.CopyTo(data, 0);
+            UInt256.CreateFromLittleEndian(out root, data.AsSpan());
         }
 
         public static void Ize(out UInt256 root, ReadOnlySpan<byte> value, ulong chunkCount)
