@@ -179,27 +179,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "The Merge (Kiln M2)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_kiln_m2 -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 100",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (Kiln MEV)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_kiln_mev -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (Kiln test vectors)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_kiln_testvectors -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false --Merge.FeeRecipient 0x0000000000000000000000000000000000000000",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Volta": {
       "commandName": "Project",
       "commandLineArgs": "-c volta -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
