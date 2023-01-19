@@ -384,12 +384,12 @@ namespace Nethermind.Trie
                 {
                     if (traverseContext.UpdateValue is not null)
                     {
-                        if(_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue}");
+                        if (_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue}");
                         byte[] key = updatePath.Slice(0, nibblesCount).ToArray();
                         RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue);
                     }
 
-                    if(_logger.IsTrace) _logger.Trace($"Keeping the root as null in {traverseContext.ToString()}");
+                    if (_logger.IsTrace) _logger.Trace($"Keeping the root as null in {traverseContext.ToString()}");
                     result = traverseContext.UpdateValue;
                 }
                 else
@@ -500,7 +500,7 @@ namespace Nethermind.Trie
                             if (childNode.IsBranch)
                             {
                                 TrieNode extensionFromBranch =
-                                    TrieNodeFactory.CreateExtension(new []{(byte) childNodeIndex}, childNode);
+                                    TrieNodeFactory.CreateExtension(new[] { (byte)childNodeIndex }, childNode);
                                 if (_logger.IsTrace)
                                     _logger.Trace(
                                         $"Extending child {childNodeIndex} {childNode} of {node} into {extensionFromBranch}");
@@ -544,7 +544,7 @@ namespace Nethermind.Trie
                             }
                             else if (childNode.IsLeaf)
                             {
-                                byte[] newKey = Bytes.Concat((byte) childNodeIndex, childNode.Key);
+                                byte[] newKey = Bytes.Concat((byte)childNodeIndex, childNode.Key);
 
                                 TrieNode extendedLeaf = childNode.CloneWithChangedKey(newKey);
                                 if (_logger.IsTrace)

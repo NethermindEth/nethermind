@@ -25,18 +25,18 @@ namespace Nethermind.Trie
         public static byte[] ToBytes(byte[] path, bool isLeaf)
         {
             byte[] output = new byte[path.Length / 2 + 1];
-            output[0] = (byte) (isLeaf ? 0x20 : 0x000);
+            output[0] = (byte)(isLeaf ? 0x20 : 0x000);
             if (path.Length % 2 != 0)
             {
-                output[0] += (byte) (0x10 + path[0]);
+                output[0] += (byte)(0x10 + path[0]);
             }
 
             for (int i = 0; i < path.Length - 1; i = i + 2)
             {
                 output[i / 2 + 1] =
                     path.Length % 2 == 0
-                        ? (byte) (16 * path[i] + path[i + 1])
-                        : (byte) (16 * path[i + 1] + path[i + 2]);
+                        ? (byte)(16 * path[i] + path[i + 1])
+                        : (byte)(16 * path[i + 1] + path[i + 2]);
             }
 
             return output;

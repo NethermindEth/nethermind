@@ -936,7 +936,7 @@ namespace Nethermind.Trie.Test
             public Context()
             {
                 TiniestLeaf = new TrieNode(NodeType.Leaf);
-                TiniestLeaf.Key =  new byte[] { 5 };
+                TiniestLeaf.Key = new byte[] { 5 };
                 TiniestLeaf.Value = new byte[] { 10 };
 
                 HeavyLeaf = new TrieNode(NodeType.Leaf);
