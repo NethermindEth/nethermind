@@ -338,6 +338,13 @@ namespace Nethermind.Merkleization
             merkleizer.CalculateRoot(out root);
         }
 
+        public static void Ize(out UInt256 root, Withdrawal[] container)
+        {
+            Merkleizer merkleizer = new Merkleizer(NextPowerOfTwoExponent(1));
+            merkleizer.Feed(container, 16);
+            merkleizer.CalculateRoot(out root);
+        }
+
         private static UInt256 RootOfNull;
 
         public static void Ize(out UInt256 root, ProposerSlashing container)

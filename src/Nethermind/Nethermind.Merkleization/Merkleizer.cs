@@ -85,6 +85,12 @@ namespace Nethermind.Merkleization
             Feed(_chunks[^1]);
         }
 
+        public void Feed(Address value)
+        {
+            Merkle.Ize(out _chunks[^1], value.Bytes);
+            Feed(_chunks[^1]);
+        }
+
         public void Feed(byte[]? value)
         {
             if (value is null)
@@ -174,6 +180,19 @@ namespace Nethermind.Merkleization
 
             Merkle.Ize(out _chunks[^1], subRoots, maxLength);
             Merkle.MixIn(ref _chunks[^1], value.Count);
+            Feed(_chunks[^1]);
+        }
+
+        public void Feed(Withdrawal[] value, ulong maxLength)
+        {
+            UInt256[] subRoots = new UInt256[value.Length];
+            for (int i = 0; i < value.Length; i++)
+            {
+                Merkle.Ize(out subRoots[i], value[i]);
+            }
+
+            Merkle.Ize(out _chunks[^1], subRoots, maxLength);
+            Merkle.MixIn(ref _chunks[^1], value.Length);
             Feed(_chunks[^1]);
         }
 

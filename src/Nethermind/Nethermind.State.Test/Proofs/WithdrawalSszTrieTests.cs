@@ -11,6 +11,64 @@ namespace Nethermind.Store.Test.Proofs;
 
 public class WithdrawalSszTrieTests
 {
+
+    [Test]
+    public void Test_multipleSszs()
+    {
+        var Index = new Merkle.W[] { new()
+            {
+                Index = 0,
+                ValidatorIndex = 65535,
+                Address =  new Address("0000000000000000000000000000000000000000"),
+                AmountInGwei =  0,
+            },
+            new(){
+                Index = 1,
+                ValidatorIndex = 65536,
+                Address =  new Address("0100000000000000000000000000000000000000"),
+                AmountInGwei =  04523128485832663883,
+            },
+            new(){
+                Index = 2,
+                ValidatorIndex = 65537,
+                Address =  new Address("0200000000000000000000000000000000000000"),
+                AmountInGwei =  09046256971665327767,
+            },
+            new(){
+                Index = 4,
+                ValidatorIndex = 65538,
+                Address =  new Address("0300000000000000000000000000000000000000"),
+                AmountInGwei =  13569385457497991651,
+            },
+            new(){
+                Index = 4,
+                ValidatorIndex = 65539,
+                Address =  new Address("0400000000000000000000000000000000000000"),
+                AmountInGwei =  18446744073709551615,
+            },
+            new(){
+                Index = 5,
+                ValidatorIndex = 65540,
+                Address =  new Address("0500000000000000000000000000000000000000"),
+                AmountInGwei =  02261564242916331941,
+            },
+            new(){
+                Index = 6,
+                ValidatorIndex = 65541,
+                Address =  new Address("0600000000000000000000000000000000000000"),
+                AmountInGwei =  02713877091499598330,
+            },
+            new(){
+                Index = 7,
+                ValidatorIndex = 65542,
+                Address =  new Address("0700000000000000000000000000000000000000"),
+                AmountInGwei =  03166189940082864718,
+            },};
+        Merkle.Ize(out UInt256 root, a);
+        Assert.AreEqual(UInt256.Parse("ed9cec6fb8ee22b146059d02c38940cca1dd22a00d0132b000999b983fceff95"), root);
+    }
+
+
     [Test]
     public void Root_experiment()
     {
