@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Collections.Generic;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
@@ -11,7 +14,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
     [TestFixture]
     public class ParityAccountChangeConverterTests
     {
-        private ParityAccountStateChangeConverter converter;
+        private ParityAccountStateChangeConverter converter = null!;
 
         [SetUp]
         public void SetUp()
@@ -27,7 +30,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             ParityAccountStateChange change = new()
             {
-                Code = new ParityStateChange<byte[]>(new byte[] { 1 }, null)
+                Code = new ParityStateChange<byte[]>(new byte[] { 1 }, null!)
             };
 
             Assert.DoesNotThrow(() => converter.WriteJson(writer, change, serializer));
@@ -41,7 +44,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             ParityAccountStateChange change = new()
             {
-                Code = new ParityStateChange<byte[]>(null, new byte[] { 1 })
+                Code = new ParityStateChange<byte[]>(null!, new byte[] { 1 })
             };
 
             Assert.DoesNotThrow(() => converter.WriteJson(writer, change, serializer));

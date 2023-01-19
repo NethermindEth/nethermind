@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -202,9 +188,9 @@ namespace Nethermind.AccountAbstraction.Source
 
         private void ReAddReorganizedUserOperations(Block? previousBlock)
         {
-            if (previousBlock is not null && _removedUserOperations.ContainsKey(previousBlock.Number))
+            if (previousBlock is not null && _removedUserOperations.TryGetValue(previousBlock.Number, out HashSet<UserOperation>? value))
             {
-                foreach (UserOperation op in _removedUserOperations[previousBlock.Number])
+                foreach (UserOperation op in value)
                 {
                     ResultWrapper<Keccak> result = AddUserOperation(op);
                     if (result.Result == Result.Success)
@@ -267,8 +253,8 @@ namespace Nethermind.AccountAbstraction.Source
 
         private void UpdateCurrentBaseFee()
         {
-            IReleaseSpec spec = _specProvider.GetSpec(_blockTree.Head!.Number + 1);
-            UInt256 baseFee = BaseFeeCalculator.Calculate(_blockTree.Head!.Header, spec);
+            IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(_blockTree.Head!.Number + 1);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(_blockTree.Head!.Header, specFor1559);
             _currentBaseFee = baseFee;
         }
 
@@ -321,9 +307,9 @@ namespace Nethermind.AccountAbstraction.Source
             _removedUserOperations.TryRemove(block.Number - Reorganization.MaxDepth, out _);
 
             // remove any user operations that were only allowed to stay for 10 blocks due to throttled paymasters
-            if (_userOperationsToDelete.ContainsKey(block.Number))
+            if (_userOperationsToDelete.TryGetValue(block.Number, out HashSet<Keccak>? value))
             {
-                foreach (var userOperationHash in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperationHash);
+                foreach (var userOperationHash in value) RemoveUserOperation(userOperationHash);
             }
 
             BlockParameter currentBlockParameter = new BlockParameter(block.Number);
@@ -340,7 +326,7 @@ namespace Nethermind.AccountAbstraction.Source
                 if (log.Topics[0] == _userOperationEventTopic)
                 {
                     Keccak requestId = log.Topics[1];
-                    if (_userOperationSortedPool.TryGetValue(requestId, out UserOperation op))
+                    if (_userOperationSortedPool.TryGetValue(requestId, out UserOperation? op))
                     {
                         if (_logger.IsInfo) _logger.Info($"UserOperation {op.RequestId!} removed from pool after being included by miner");
                         Metrics.UserOperationsIncluded++;

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -5,6 +8,7 @@ using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
@@ -112,14 +116,17 @@ namespace Nethermind.Sockets.Test
             WebSocketMock mock = new(receiveResult);
 
             var processor = Substitute.For<IJsonRpcProcessor>();
-            processor.ProcessAsync(default, default).ReturnsForAnyArgs((x) =>
+            processor.ProcessAsync(default, default).ReturnsForAnyArgs((x) => new List<JsonRpcResult>()
             {
-                return new List<JsonRpcResult>()
+                JsonRpcResult.Single(new JsonRpcResponse(), new RpcReport()),
+                JsonRpcResult.Collection(new JsonRpcBatchResult((e, c) =>
+                    new List<JsonRpcResult.Entry>()
                 {
-                    new(),
-                    JsonRpcResult.Collection(new List<JsonRpcResponse>(){new(), new(), new()}, new List<RpcReport>{new(), new(), new()})
-                }.ToAsyncEnumerable();
-            });
+                    new(new JsonRpcResponse(), new RpcReport()),
+                    new(new JsonRpcResponse(), new RpcReport()),
+                    new(new JsonRpcResponse(), new RpcReport()),
+                }.ToAsyncEnumerable().GetAsyncEnumerator(c)))
+            }.ToAsyncEnumerable());
 
             var service = Substitute.For<IJsonRpcService>();
 
@@ -133,12 +140,13 @@ namespace Nethermind.Sockets.Test
                 service,
                 localStats,
                 Substitute.For<IJsonSerializer>(),
-                null);
+                null,
+                30.MB());
 
-            webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs((x) =>
+            webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(async x =>
             {
                 var par = x.Arg<JsonRpcResult>();
-                return Task.FromResult(par.IsCollection ? par.Responses.Count * 100 : 100);
+                return await Task.FromResult(par.IsCollection ? par.BatchedResponses.ToListAsync().Result.Count * 100 : 100);
             });
 
             await webSocketsClient.ReceiveAsync();
@@ -147,7 +155,6 @@ namespace Nethermind.Sockets.Test
             Assert.AreEqual(400, Metrics.JsonRpcBytesSentWebSockets);
             localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 100);
             localStats.Received(1).ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), 300);
-            localStats.Received(1).ReportCalls(Arg.Is<List<RpcReport>>(l => l.Count == 3));
         }
 
         [Test]

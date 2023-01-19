@@ -1,6 +1,0 @@
-C:/src/nevermind/src/Nethermind/secp256k1_win32/CMakeFiles/gen_context.dir
-C:/src/nevermind/src/Nethermind/secp256k1_win32/CMakeFiles/ecmult_static_context.dir
-C:/src/nevermind/src/Nethermind/secp256k1_win32/CMakeFiles/secp256k1.dir
-C:/src/nevermind/src/Nethermind/secp256k1_win32/CMakeFiles/INSTALL.dir
-C:/src/nevermind/src/Nethermind/secp256k1_win32/CMakeFiles/ALL_BUILD.dir
-C:/src/nevermind/src/Nethermind/secp256k1_win32/CMakeFiles/ZERO_CHECK.dir

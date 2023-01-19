@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -29,21 +15,19 @@ namespace Nethermind.TxPool.Filters
     internal class GapNonceFilter : IIncomingTxFilter
     {
         private readonly TxDistinctSortedPool _txs;
-        private readonly IAccountStateProvider _accounts;
         private readonly ILogger _logger;
 
-        public GapNonceFilter(IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogger logger)
+        public GapNonceFilter(TxDistinctSortedPool txs, ILogger logger)
         {
             _txs = txs;
-            _accounts = accountStateProvider;
             _logger = logger;
         }
 
-        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            int numberOfSenderTxsInPending = _txs.GetBucketCount(tx.SenderAddress);
+            int numberOfSenderTxsInPending = _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
             bool isTxPoolFull = _txs.IsFull();
-            UInt256 currentNonce = _accounts.GetAccount(tx.SenderAddress!).Nonce;
+            UInt256 currentNonce = state.SenderAccount.Nonce;
             long nextNonceInOrder = (long)currentNonce + numberOfSenderTxsInPending;
             bool isTxNonceNextInOrder = tx.Nonce <= nextNonceInOrder;
             if (isTxPoolFull && !isTxNonceNextInOrder)

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -59,10 +46,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         }
 
-        private static ParityTraceTypes GetParityTypes(string[] types)
-        {
-            return types.Select(s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate((t1, t2) => t1 | t2);
-        }
+        public static ParityTraceTypes GetParityTypes(string[] types) =>
+            types.Select(s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate((t1, t2) => t1 | t2);
 
         public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null)
         {
@@ -167,7 +152,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
-            IReadOnlyCollection<ParityLikeTxTrace>? txTrace = Trace(block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
+            IReadOnlyCollection<ParityLikeTxTrace>? txTrace = TraceBlock(block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(txTrace));
         }
 
@@ -229,6 +214,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Keccak txHash, long[] positions)
         {
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
+            List<ParityTxTraceFromStore> traces = ExtractPositionsFromTxTrace(positions, traceTransaction);
+            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+        }
+
+        public static List<ParityTxTraceFromStore> ExtractPositionsFromTxTrace(long[] positions, ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction)
+        {
             List<ParityTxTraceFromStore> traces = new();
             ParityTxTraceFromStore[] transactionTraces = traceTransaction.Data.ToArray();
             for (int index = 0; index < positions.Length; index++)
@@ -241,7 +232,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
             }
 
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+            return traces;
         }
 
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Keccak txHash)
@@ -260,19 +251,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTrace = Trace(block, new(txHash, ParityTraceTypes.Trace));
+            IReadOnlyCollection<ParityLikeTxTrace> txTrace = TraceBlock(block, new(txHash, ParityTraceTypes.Trace));
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer)
-        {
-            using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
-            _tracer.Trace(block, tracer.WithCancellation(cancellationToken));
-            return tracer.BuildResult();
-        }
-
-        private IReadOnlyCollection<ParityLikeTxTrace> Trace(Block block, ParityLikeBlockTracer tracer)
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;

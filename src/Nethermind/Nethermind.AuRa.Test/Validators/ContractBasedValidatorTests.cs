@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -486,6 +473,8 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCaseSource(nameof(ConsecutiveInitiateChangeData))]
         public void consecutive_initiate_change_gets_finalized_and_switch_validators(ConsecutiveInitiateChangeTestParameters test)
         {
+            Dictionary<int, int> hashSeeds = new();
+
             Address[] currentValidators = GenerateValidators(1);
             SetupInitialValidators(currentValidators);
 
@@ -503,20 +492,34 @@ namespace Nethermind.AuRa.Test.Validators
                     blockNumber = test.Current.BlockNumber + i;
                 }
 
+                if (hashSeeds.TryGetValue(blockNumber, out int value))
+                    value++;
+                else
+                    hashSeeds[blockNumber] = 0;
+
                 _block.Header.Number = blockNumber;
                 _block.Header.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
                 _block.Header.AuRaStep = blockNumber;
-                _block.Header.Hash = Keccak.Compute(blockNumber.ToString());
+                _block.Header.Hash = Keccak.Compute((blockNumber + hashSeeds[blockNumber]).ToString());
+                _block.Header.ParentHash = blockNumber == test.StartBlockNumber ? Keccak.Zero : Keccak.Compute((blockNumber - 1 + hashSeeds[blockNumber - 1]).ToString());
+
                 TxReceipt[] txReceipts = test.GetReceipts(_validatorContract, _block, _contractAddress, _abiEncoder, SetupAbiAddresses);
+
+                Keccak? blockHashForClosure = _block.Hash;
+                _receiptsStorage.Get(Arg.Is<Block>(b => b.Hash == blockHashForClosure)).Returns(txReceipts);
+
                 _block.Header.Bloom = new Bloom(txReceipts.SelectMany(r => r.Logs).ToArray());
+
+                _blockTree.FindBlock(_block.Header.Hash, Arg.Any<BlockTreeLookupOptions>()).Returns(new Block(_block.Header.Clone()));
 
                 Action preProcess = () => validator.OnBlockProcessingStart(_block);
                 preProcess.Should().NotThrow<InvalidOperationException>(test.TestName);
                 validator.OnBlockProcessingEnd(_block, txReceipts);
                 int finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
+                _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
                 _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
                     new FinalizeEventArgs(_block.Header, Build.A.BlockHeader.WithNumber(finalizedNumber)
-                            .WithHash(Keccak.Compute(finalizedNumber.ToString())).TestObject));
+                            .WithHash(Keccak.Compute((finalizedNumber + hashSeeds[finalizedNumber]).ToString())).TestObject));
 
                 currentValidators = test.GetCurrentValidators(blockNumber);
                 validator.Validators.Should().BeEquivalentTo(currentValidators, o => o.WithStrictOrdering(), $"Validator address should be recognized in block {blockNumber}");
@@ -539,7 +542,7 @@ namespace Nethermind.AuRa.Test.Validators
             {
 
                 Block? block = bt.FindBlock(bt.Head.Hash, BlockTreeLookupOptions.None);
-                while (block != null)
+                while (block is not null)
                 {
                     yield return block;
                     block = bt.FindBlock(block.ParentHash, BlockTreeLookupOptions.None);

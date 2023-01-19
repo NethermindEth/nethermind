@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Runtime.CompilerServices;
@@ -48,7 +35,7 @@ namespace Nethermind.Synchronization.Test
         [MethodImpl(MethodImplOptions.Synchronized)]
         public static void InitOnce()
         {
-            if (Empty == null)
+            if (Empty is null)
             {
                 // _logger = new ConsoleAsyncLogger(LogLevel.Debug);
                 // _logManager = new OneLoggerLogManager(_logger);
@@ -102,6 +89,32 @@ namespace Nethermind.Synchronization.Test
                     remoteStorageTree.UpdateRootHash();
                     codeDb[codeHash.Bytes] = code;
                     tree.Set(new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
+                    tree.Commit(0);
+                }),
+                ("storage_hash_and_code_hash_same_with_additional_account_of_same_storage_root", (tree, stateDb, codeDb) =>
+                {
+                    var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
+                    Keccak codeHash = Keccak.Compute(code);
+                    StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
+                    remoteStorageTree.Set((UInt256) 1, new byte[] {1});
+                    remoteStorageTree.Commit(0);
+                    remoteStorageTree.UpdateRootHash();
+                    codeDb[codeHash.Bytes] = code;
+                    tree.Set(new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
+                    tree.Set(new Keccak("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
+                    tree.Commit(0);
+                }),
+                ("storage_hash_and_code_hash_same_with_additional_account_of_same_code", (tree, stateDb, codeDb) =>
+                {
+                    var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
+                    Keccak codeHash = Keccak.Compute(code);
+                    StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
+                    remoteStorageTree.Set((UInt256) 1, new byte[] {1});
+                    remoteStorageTree.Commit(0);
+                    remoteStorageTree.UpdateRootHash();
+                    codeDb[codeHash.Bytes] = code;
+                    tree.Set(new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedCodeHash(codeHash));
+                    tree.Set(new Keccak("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
                     tree.Commit(0);
                 }),
                 ("branch_with_same_accounts_at_different_addresses", (tree, stateDb, codeDb) =>

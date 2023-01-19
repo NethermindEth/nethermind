@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.IO;
@@ -229,20 +216,23 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
 
         [Test]
-        public void Can_load_xdai()
+        public void Can_load_gnosis()
         {
-            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/xdai.json");
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/gnosis.json");
             ChainSpec chainSpec = LoadChainSpec(path);
 
             Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
             Assert.AreEqual(100, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
-            Assert.AreEqual("DaiChain", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual("GnosisChain", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
 
             int berlinXdaiBlockNumber = 16101500;
             chainSpec.Parameters.Eip2565Transition.Should().Be(berlinXdaiBlockNumber);
             chainSpec.Parameters.Eip2929Transition.Should().Be(berlinXdaiBlockNumber);
             chainSpec.Parameters.Eip2930Transition.Should().Be(berlinXdaiBlockNumber);
+
+            chainSpec.Parameters.TerminalTotalDifficulty.ToString()
+                .Should().Be("8626000000000000000000058750000000000000000000");
         }
 
         [Test]
@@ -294,6 +284,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.LondonBlockNumber.Should().Be(MainnetSpecProvider.LondonBlockNumber);
             chainSpec.ArrowGlacierBlockNumber.Should().Be(MainnetSpecProvider.ArrowGlacierBlockNumber);
             chainSpec.GrayGlacierBlockNumber.Should().Be(MainnetSpecProvider.GrayGlacierBlockNumber);
+            //should be added one the timestamp for Shanghai is know and included in the chainspec for mainent.
+            //chainSpec.ShanghaiTimestamp.Should().Be(MainnetSpecProvider.ShanghaiBlockTimestamp);
         }
 
         [Test]
@@ -365,25 +357,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.LondonBlockNumber.Should().Be(0L);
             chainSpec.ArrowGlacierBlockNumber.Should().Be(null);
             chainSpec.GrayGlacierBlockNumber.Should().Be(null);
-        }
-
-        [Test]
-        public void Can_load_catalyst()
-        {
-            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/catalyst.json");
-            ChainSpec chainSpec = LoadChainSpec(path);
-
-            chainSpec.HomesteadBlockNumber.Should().Be(0L);
-            chainSpec.DaoForkBlockNumber.Should().Be(null);
-            chainSpec.TangerineWhistleBlockNumber.Should().Be(0L);
-            chainSpec.SpuriousDragonBlockNumber.Should().Be(0L);
-            chainSpec.ByzantiumBlockNumber.Should().Be(0L);
-            chainSpec.ConstantinopleBlockNumber.Should().Be(0L);
-            chainSpec.ConstantinopleFixBlockNumber.Should().Be(0L);
-            chainSpec.IstanbulBlockNumber.Should().Be(0L);
-            chainSpec.MuirGlacierNumber.Should().Be(null);
-            chainSpec.BerlinBlockNumber.Should().Be(0L);
-            chainSpec.SealEngineType.Should().Be("Eth2Merge");
         }
 
         [Test]

@@ -1,22 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,6 +19,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly BlockDecoder _blockDecoder = new();
         private static readonly TxDecoder _txDecoder = new();
         private static readonly ReceiptMessageDecoder _receiptDecoder = new();
+        private static readonly WithdrawalDecoder _withdrawalDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
         protected RlpStream()
@@ -70,6 +59,8 @@ namespace Nethermind.Serialization.Rlp
         {
             _receiptDecoder.Encode(this, value);
         }
+
+        public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
 
         public void Encode(LogEntry value)
         {
@@ -149,10 +140,25 @@ namespace Nethermind.Serialization.Rlp
             Data[Position++] = byteToWrite;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Write(byte[] bytesToWrite)
+        {
+            Write(bytesToWrite.AsSpan());
+        }
+
         public virtual void Write(Span<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
+        }
+
+        public virtual void Write(IReadOnlyList<byte> bytesToWrite)
+        {
+            for (int i = 0; i < bytesToWrite.Count; ++i)
+            {
+                Data![Position + i] = bytesToWrite[i];
+            }
+            Position += bytesToWrite.Count;
         }
 
         protected virtual string Description =>
@@ -173,7 +179,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Keccak? keccak)
         {
-            if (keccak == null)
+            if (keccak is null)
             {
                 WriteByte(EmptyArrayByte);
             }
@@ -194,7 +200,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Keccak[] keccaks)
         {
-            if (keccaks == null)
+            if (keccaks is null)
             {
                 EncodeNullObject();
             }
@@ -211,7 +217,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Address? address)
         {
-            if (address == null)
+            if (address is null)
             {
                 WriteByte(EmptyArrayByte);
             }
@@ -224,7 +230,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Rlp? rlp)
         {
-            if (rlp == null)
+            if (rlp is null)
             {
                 WriteByte(EmptyArrayByte);
             }
@@ -243,7 +249,7 @@ namespace Nethermind.Serialization.Rlp
                 WriteByte(0);
                 WriteZero(256);
             }
-            else if (bloom == null)
+            else if (bloom is null)
             {
                 WriteByte(EmptyArrayByte);
             }
@@ -449,9 +455,15 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Encode(byte[] input)
+        {
+            Encode(input.AsSpan());
+        }
+
         public void Encode(Span<byte> input)
         {
-            if (input == null || input.Length == 0)
+            if (input.IsEmpty)
             {
                 WriteByte(EmptyArrayByte);
             }
@@ -471,6 +483,32 @@ namespace Nethermind.Serialization.Rlp
                 byte prefix = (byte)(183 + lengthOfLength);
                 WriteByte(prefix);
                 WriteEncodedLength(input.Length);
+                Write(input);
+            }
+        }
+
+        public void Encode(IReadOnlyList<byte> input)
+        {
+            if (input.Count == 0)
+            {
+                WriteByte(EmptyArrayByte);
+            }
+            else if (input.Count == 1 && input[0] < 128)
+            {
+                WriteByte(input[0]);
+            }
+            else if (input.Count < 56)
+            {
+                byte smallPrefix = (byte)(input.Count + 128);
+                WriteByte(smallPrefix);
+                Write(input);
+            }
+            else
+            {
+                int lengthOfLength = Rlp.LengthOfLength(input.Count);
+                byte prefix = (byte)(183 + lengthOfLength);
+                WriteByte(prefix);
+                WriteEncodedLength(input.Count);
                 Write(input);
             }
         }
@@ -771,7 +809,7 @@ namespace Nethermind.Serialization.Rlp
             // https://github.com/NethermindEth/nethermind/issues/113
             if (PeekByte() == 249)
             {
-                SkipBytes(5); // tks: skip 249 1 2 129 127 and read 256 bytes 
+                SkipBytes(5); // tks: skip 249 1 2 129 127 and read 256 bytes
                 bloomBytes = Read(256);
             }
             else

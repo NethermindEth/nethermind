@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -24,7 +11,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Blockchain.Contracts.Json
 {
-    internal static class AbiParameterConverterStatics
+    internal static partial class AbiParameterConverterStatics
     {
         internal const string TypeGroup = "T";
         internal const string TypeLengthGroup = "M";
@@ -40,8 +27,7 @@ namespace Nethermind.Blockchain.Contracts.Json
         /// A - if matched type is array
         /// L - if matched, denotes length of fixed length array 
         /// </remarks>
-        internal static readonly Regex TypeExpression = new(@"^(?<T>u?int(?<M>\d{1,3})?|address|bool|u?fixed((?<M>\d{1,3})x(?<N>\d{1,2}))?|bytes(?<M>\d{1,3})?|function|string|tuple)(?<A>\[(?<L>\d+)?\])?$",
-            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        internal static readonly Regex TypeExpression = TypeExpressionRegex();
 
 
         internal static readonly IDictionary<string, Func<int?, int?, AbiType>> SimpleTypeFactories = new Dictionary<string, Func<int?, int?, AbiType>>(StringComparer.InvariantCultureIgnoreCase)
@@ -52,10 +38,13 @@ namespace Nethermind.Blockchain.Contracts.Json
             {"bool", (m, n) => AbiType.Bool},
             {"fixed", (m, n) => new AbiFixed(m ?? 128, n ?? 18)},
             {"ufixed", (m, n) => new AbiUFixed(m ?? 128, n ?? 18)},
-            {"bytes", (m, n) => m.HasValue ? (AbiType) new AbiBytes(m.Value) : AbiType.DynamicBytes},
+            {"bytes", (m, n) => m.HasValue ?  new AbiBytes(m.Value) : AbiType.DynamicBytes},
             {"function", (m, n) => AbiType.Function},
             {"string", (m, n) => AbiType.String}
         };
+
+        [GeneratedRegex("^(?<T>u?int(?<M>\\d{1,3})?|address|bool|u?fixed((?<M>\\d{1,3})x(?<N>\\d{1,2}))?|bytes(?<M>\\d{1,3})?|function|string|tuple)(?<A>\\[(?<L>\\d+)?\\])?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        private static partial Regex TypeExpressionRegex();
     }
 
     public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : AbiParameter, new()

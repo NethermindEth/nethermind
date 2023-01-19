@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
 using DotNetty.Buffers;
@@ -130,9 +116,9 @@ public class NodeRecord
     /// <returns>Value of the entry or <value>null</value> if the entry is missing.</returns>
     public TValue? GetValue<TValue>(string entryKey) where TValue : struct
     {
-        if (Entries.ContainsKey(entryKey))
+        if (Entries.TryGetValue(entryKey, out EnrContentEntry? value))
         {
-            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)Entries[entryKey];
+            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)value;
             return entry.Value;
         }
 
@@ -147,9 +133,9 @@ public class NodeRecord
     /// <returns>Value of the entry or <value>null</value> if the entry is missing.</returns>
     public TValue? GetObj<TValue>(string entryKey) where TValue : class
     {
-        if (Entries.ContainsKey(entryKey))
+        if (Entries.TryGetValue(entryKey, out EnrContentEntry? value))
         {
-            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)Entries[entryKey];
+            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)value;
             return entry.Value;
         }
 

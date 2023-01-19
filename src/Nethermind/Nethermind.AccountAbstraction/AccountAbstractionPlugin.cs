@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -29,7 +32,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Network.Config;
 using Nethermind.Consensus.Producers;
-
+using Nethermind.Config;
 
 namespace Nethermind.AccountAbstraction
 {
@@ -133,7 +136,8 @@ namespace Nethermind.AccountAbstraction
                 _whitelistedPaymasters.ToArray(),
                 getFromApi.SpecProvider!,
                 getFromApi.Timestamper,
-                getFromApi.LogManager);
+                getFromApi.LogManager,
+                getFromApi.Config<IBlocksConfig>());
 
             return _userOperationSimulators[entryPoint];
         }

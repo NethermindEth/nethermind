@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -20,14 +7,10 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Common.Concurrency;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -50,13 +33,22 @@ namespace Nethermind.Synchronization.Test.FastSync
 {
     public class StateSyncFeedTestsBase
     {
-        private const int TimeoutLength = 1000;
+        private const int TimeoutLength = 2000;
 
         protected static IBlockTree _blockTree;
         private static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
 
         protected ILogger _logger;
         protected ILogManager _logManager;
+
+        private readonly int _defaultPeerCount;
+        private readonly int _defaultPeerMaxRandomLatency;
+
+        public StateSyncFeedTestsBase(int defaultPeerCount = 1, int defaultPeerMaxRandomLatency = 0)
+        {
+            _defaultPeerCount = defaultPeerCount;
+            _defaultPeerMaxRandomLatency = defaultPeerMaxRandomLatency;
+        }
 
         public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios => TrieScenarios.Scenarios;
 
@@ -83,7 +75,23 @@ namespace Nethermind.Synchronization.Test.FastSync
             return remoteStorageTree;
         }
 
-        protected SafeContext PrepareDownloader(DbContext dbContext, ISyncPeer syncPeer)
+        protected SafeContext PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null)
+        {
+            SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
+            for (int i = 0; i < _defaultPeerCount; i++)
+            {
+                Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true) { EthDetails = "eth66" };
+                SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, node: node, maxRandomizedLatencyMs: _defaultPeerMaxRandomLatency);
+                mockMutator?.Invoke(mock);
+                syncPeers[i] = mock;
+            }
+
+            SafeContext ctx = PrepareDownloaderWithPeer(dbContext, syncPeers);
+            ctx.SyncPeerMocks = syncPeers;
+            return ctx;
+        }
+
+        protected SafeContext PrepareDownloaderWithPeer(DbContext dbContext, params ISyncPeer[] syncPeers)
         {
             SafeContext ctx = new SafeContext();
             ctx = new SafeContext();
@@ -91,7 +99,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), 25, LimboLogs.Instance);
             ctx.Pool.Start();
-            ctx.Pool.AddPeer(syncPeer);
+
+            for (int i = 0; i < syncPeers.Length; i++)
+            {
+                ctx.Pool.AddPeer(syncPeers[i]);
+            }
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
@@ -126,6 +138,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         protected class SafeContext
         {
             public ISyncModeSelector SyncModeSelector;
+            public SyncPeerMock[] SyncPeerMocks;
             public ISyncPeerPool Pool;
             public TreeSync TreeFeed;
             public StateSyncFeed Feed;
@@ -232,14 +245,23 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             private Keccak[] _filter;
 
-            public SyncPeerMock(IDb stateDb, IDb codeDb, Func<IReadOnlyList<Keccak>, Task<byte[][]>> executorResultFunction = null)
+            private readonly long _maxRandomizedLatencyMs;
+
+            public SyncPeerMock(
+                IDb stateDb,
+                IDb codeDb,
+                Func<IReadOnlyList<Keccak>, Task<byte[][]>> executorResultFunction = null,
+                long? maxRandomizedLatencyMs = null,
+                Node? node = null
+            )
             {
                 _stateDb = stateDb;
                 _codeDb = codeDb;
 
-                if (executorResultFunction != null) _executorResultFunction = executorResultFunction;
+                if (executorResultFunction is not null) _executorResultFunction = executorResultFunction;
 
-                Node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true);
+                Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth66" };
+                _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
             }
 
             public int MaxResponseLength { get; set; } = int.MaxValue;
@@ -252,7 +274,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
 
-            public void Disconnect(DisconnectReason reason, string details)
+            public void Disconnect(InitiateDisconnectReason reason, string details)
             {
                 throw new NotImplementedException();
             }
@@ -294,9 +316,14 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
+            public async Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
             {
-                if (_executorResultFunction != null) return _executorResultFunction(hashes);
+                if (_maxRandomizedLatencyMs != 0)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(TestContext.CurrentContext.Random.NextLong() % _maxRandomizedLatencyMs));
+                }
+
+                if (_executorResultFunction is not null) return await _executorResultFunction(hashes);
 
                 var responses = new byte[hashes.Count][];
 
@@ -305,12 +332,12 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     if (i >= MaxResponseLength) break;
 
-                    if (_filter == null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes];
+                    if (_filter is null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes];
 
                     i++;
                 }
 
-                return Task.FromResult(responses);
+                return responses;
             }
 
             public void SetFilter(Keccak[] availableHashes)

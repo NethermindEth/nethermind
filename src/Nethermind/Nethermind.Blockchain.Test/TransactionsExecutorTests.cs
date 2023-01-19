@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
 using System.Collections.Generic;
@@ -25,6 +11,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -99,6 +86,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase complexCase = new()
                 {
+                    ReleaseSpec = Berlin.Instance,
                     AccountStates =
                     {
                         {TestItem.AddressA, (1000, 1)},
@@ -148,7 +136,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase baseFeeBalanceCheck = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (1000, 1) } },
                     Transactions =
@@ -168,7 +156,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase balanceBelowMaxFeeTimesGasLimit = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (400, 1) } },
                     Transactions =
@@ -183,7 +171,7 @@ namespace Nethermind.Blockchain.Test
                 ProperTransactionsSelectedTestCase balanceFailingWithMaxFeePerGasCheck =
                     new()
                     {
-                        Eip1559Enabled = true,
+                        ReleaseSpec = London.Instance,
                         BaseFee = 5,
                         AccountStates = { { TestItem.AddressA, (400, 1) } },
                         Transactions =
@@ -209,11 +197,10 @@ namespace Nethermind.Blockchain.Test
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
-            IReleaseSpec spec = new ReleaseSpec()
-            {
-                IsEip1559Enabled = testCase.Eip1559Enabled
-            };
-            specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
+            IReleaseSpec spec = testCase.ReleaseSpec;
+            specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong?>()).Returns(spec);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(spec);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             transactionProcessor.When(t => t.BuildUp(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<ITxTracer>()))
@@ -230,7 +217,7 @@ namespace Nethermind.Blockchain.Test
             TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
-            Transaction[] txArray = testCase.Transactions.Where(t => t?.SenderAddress != null).OrderBy(t => t, comparer).ToArray();
+            Transaction[] txArray = testCase.Transactions.Where(t => t?.SenderAddress is not null).OrderBy(t => t, comparer).ToArray();
 
             Block block = Build.A.Block
                 .WithNumber(0)

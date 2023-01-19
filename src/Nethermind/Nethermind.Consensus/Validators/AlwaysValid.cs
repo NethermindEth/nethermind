@@ -1,90 +1,83 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
-namespace Nethermind.Consensus.Validators
+namespace Nethermind.Consensus.Validators;
+
+public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxValidator
 {
-    public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxValidator
+    private readonly bool _result;
+
+    private Always(bool result)
     {
-        private readonly bool _result;
+        _result = result;
+    }
 
-        private Always(bool result)
-        {
-            _result = result;
-        }
+    // ReSharper disable once NotNullMemberIsNotInitialized
+    private static Always _valid;
 
-        // ReSharper disable once NotNullMemberIsNotInitialized
-        private static Always _valid;
+    public static Always Valid
+        => LazyInitializer.EnsureInitialized(ref _valid, () => new Always(true));
 
-        public static Always Valid
-            => LazyInitializer.EnsureInitialized(ref _valid, () => new Always(true));
+    // ReSharper disable once NotNullMemberIsNotInitialized
+    private static Always _invalid;
 
-        // ReSharper disable once NotNullMemberIsNotInitialized
-        private static Always _invalid;
+    public static Always Invalid
+        => LazyInitializer.EnsureInitialized(ref _invalid, () => new Always(false));
 
-        public static Always Invalid
-            => LazyInitializer.EnsureInitialized(ref _invalid, () => new Always(false));
+    public bool ValidateHash(BlockHeader header)
+    {
+        return _result;
+    }
 
-        public bool ValidateHash(BlockHeader header)
-        {
-            return _result;
-        }
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle = false)
+    {
+        return _result;
+    }
 
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle = false)
-        {
-            return _result;
-        }
+    public bool Validate(BlockHeader header, bool isUncle = false)
+    {
+        return _result;
+    }
 
-        public bool Validate(BlockHeader header, bool isUncle = false)
-        {
-            return _result;
-        }
+    public bool ValidateSuggestedBlock(Block block)
+    {
+        return _result;
+    }
 
-        public bool ValidateSuggestedBlock(Block block)
-        {
-            return _result;
-        }
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
+    {
+        return _result;
+    }
 
-        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-        {
-            return _result;
-        }
+    public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
+    {
+        return _result;
+    }
 
-        public bool ValidateParams(BlockHeader parent, BlockHeader header)
-        {
-            return _result;
-        }
+    public bool ValidateSeal(BlockHeader header, bool force)
+    {
+        return _result;
+    }
 
-        public bool ValidateSeal(BlockHeader header, bool force)
-        {
-            return _result;
-        }
+    public bool Validate(BlockHeader header, BlockHeader[] uncles)
+    {
+        return _result;
+    }
 
-        public bool Validate(BlockHeader header, BlockHeader[] uncles)
-        {
-            return _result;
-        }
+    public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        return _result;
+    }
 
-        public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
-        {
-            return _result;
-        }
+    public bool ValidateWithdrawals(Block block, out string? error)
+    {
+        error = null;
+
+        return _result;
     }
 }

@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -84,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId)
         {
             if (_subscriptions.TryGetValue(subscriptionId, out var subscription)
-                && subscription != null
+                && subscription is not null
                 && subscription.JsonRpcDuplexClient.Id == jsonRpcDuplexClient.Id)
             {
                 subscription.Dispose();
@@ -134,7 +120,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             foreach (var subscriptionInBag in subscriptionsBag)
             {
                 if (_subscriptions.TryRemove(subscriptionInBag.Id, out var subscription)
-                   && subscription != null)
+                   && subscription is not null)
                 {
                     subscription.Dispose();
                     if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} removed from dictionary _subscriptions.");

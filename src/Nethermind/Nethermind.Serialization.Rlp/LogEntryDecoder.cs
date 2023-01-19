@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -69,7 +56,7 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }
@@ -81,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 rlpStream.EncodeNullObject();
                 return;
@@ -103,7 +90,7 @@ namespace Nethermind.Serialization.Rlp
 
         public int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return 1;
             }
@@ -114,7 +101,7 @@ namespace Nethermind.Serialization.Rlp
         private static (int Total, int Topics) GetContentLength(LogEntry? item)
         {
             var contentLength = 0;
-            if (item == null)
+            if (item is null)
             {
                 return (contentLength, 0);
             }
@@ -130,7 +117,7 @@ namespace Nethermind.Serialization.Rlp
 
         private static int GetTopicsLength(LogEntry? item)
         {
-            if (item == null)
+            if (item is null)
             {
                 return 0;
             }
@@ -144,7 +131,7 @@ namespace Nethermind.Serialization.Rlp
             return topicsLength;
         }
 
-        public static void DecodeStructRef(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
+        public static void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
         {
             if (decoderContext.IsNextItemNull())
             {

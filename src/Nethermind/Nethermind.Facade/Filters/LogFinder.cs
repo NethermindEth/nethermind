@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -109,7 +96,7 @@ namespace Nethermind.Blockchain.Find
             {
                 token.ThrowIfCancellationRequested();
                 var blockHash = _blockFinder.FindBlockHash(blockNumber);
-                if (blockHash == null)
+                if (blockHash is null)
                 {
                     if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
                 }
@@ -193,17 +180,15 @@ namespace Nethermind.Blockchain.Find
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
             int count = 0;
-            while (count < _maxBlockDepth && toBlock.Number >= (fromBlock?.Number ?? long.MaxValue))
+            while (count < _maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
             {
-                foreach (var filterLog in FindLogsInBlock(filter, toBlock, cancellationToken))
+                foreach (var filterLog in FindLogsInBlock(filter, fromBlock, cancellationToken))
                 {
                     yield return filterLog;
                 }
 
-                if (!TryGetParentBlock(toBlock, out toBlock))
-                {
-                    break;
-                }
+                fromBlock = _blockFinder.FindHeader(fromBlock.Number + 1);
+                if (fromBlock is null) break;
 
                 count++;
             }
@@ -216,7 +201,7 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Keccak blockHash, long blockNumber, CancellationToken cancellationToken)
         {
-            if (blockHash != null)
+            if (blockHash is not null)
             {
                 return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out var iterator)
                     ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, cancellationToken)
@@ -236,7 +221,7 @@ namespace Nethermind.Blockchain.Find
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    LogEntriesIterator logsIterator = receipt.Logs == null ? new LogEntriesIterator(receipt.LogsRlp) : new LogEntriesIterator(receipt.Logs);
+                    LogEntriesIterator logsIterator = receipt.Logs is null ? new LogEntriesIterator(receipt.LogsRlp) : new LogEntriesIterator(receipt.Logs);
                     if (filter.Matches(ref receipt.Bloom))
                     {
                         while (logsIterator.TryGetNext(out var log))
@@ -248,7 +233,7 @@ namespace Nethermind.Blockchain.Find
                                 logList ??= new List<FilterLog>();
                                 Keccak[] topics = log.Topics;
 
-                                if (topics == null)
+                                if (topics is null)
                                 {
                                     var topicsValueDecoderContext = new Rlp.ValueDecoderContext(log.TopicsRlp);
                                     topics = KeccakDecoder.Instance.DecodeArray(ref topicsValueDecoderContext);
@@ -294,7 +279,7 @@ namespace Nethermind.Blockchain.Find
                 else
                 {
                     var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    return block == null ? null : _receiptFinder.Get(block);
+                    return block is null ? null : _receiptFinder.Get(block);
                 }
             }
 
@@ -303,7 +288,7 @@ namespace Nethermind.Blockchain.Find
                 if (_receiptsRecovery.NeedRecover(receipts))
                 {
                     var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    if (block != null)
+                    if (block is not null)
                     {
                         if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.Success)
                         {
@@ -317,7 +302,7 @@ namespace Nethermind.Blockchain.Find
 
             var receipts = GetReceipts(blockHash, blockNumber);
             long logIndexInBlock = 0;
-            if (receipts != null)
+            if (receipts is not null)
             {
                 for (var i = 0; i < receipts.Length; i++)
                 {

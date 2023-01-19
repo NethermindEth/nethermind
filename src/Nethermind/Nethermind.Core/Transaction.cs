@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
 using System.Text;
@@ -49,12 +36,14 @@ namespace Nethermind.Core
         public byte[]? Data { get; set; }
         public Address? SenderAddress { get; set; }
         public Signature? Signature { get; set; }
-        public bool IsSigned => Signature != null;
-        public bool IsContractCreation => To == null;
-        public bool IsMessageCall => To != null;
+        public bool IsSigned => Signature is not null;
+        public bool IsContractCreation => To is null;
+        public bool IsMessageCall => To is not null;
         public Keccak? Hash { get; set; }
         public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
+
+        public int DataLength => Data?.Length ?? 0;
 
         public AccessList? AccessList { get; set; } // eip2930
 
@@ -69,6 +58,15 @@ namespace Nethermind.Core
         /// </summary>
         /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
+
+        private int? _size = null;
+        /// <summary>
+        /// Encoded transaction length
+        /// </summary>
+        public int GetLength(ITransactionSizeCalculator sizeCalculator)
+        {
+            return _size ??= sizeCalculator.GetLength(this);
+        }
 
         public string ToShortString()
         {
@@ -115,7 +113,16 @@ namespace Nethermind.Core
     public class GeneratedTransaction : Transaction { }
 
     /// <summary>
-    /// System transaction that is to be executed by the node without including in the block. 
+    /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
     public class SystemTransaction : Transaction { }
+
+    /// <summary>
+    /// Used inside Transaction::GetSize to calculate encoded transaction size
+    /// </summary>
+    /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
+    public interface ITransactionSizeCalculator
+    {
+        int GetLength(Transaction tx);
+    }
 }

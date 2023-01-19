@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -71,7 +57,7 @@ namespace Nethermind.Core.Collections
 
         public void ExceptWith(IEnumerable<T>? other)
         {
-            if (other == null) throw new ArgumentNullException(nameof(other));
+            if (other is null) throw new ArgumentNullException(nameof(other));
 
             foreach (T t in other)
             {
@@ -81,7 +67,7 @@ namespace Nethermind.Core.Collections
 
         public void IntersectWith(IEnumerable<T>? other)
         {
-            if (other == null) throw new ArgumentNullException(nameof(other));
+            if (other is null) throw new ArgumentNullException(nameof(other));
 
             T[] ts = new T[Count];
             CopyTo(ts, 0);
@@ -97,7 +83,7 @@ namespace Nethermind.Core.Collections
 
         public bool IsProperSubsetOf(IEnumerable<T>? other)
         {
-            if (other == null) throw new ArgumentNullException(nameof(other));
+            if (other is null) throw new ArgumentNullException(nameof(other));
 
             int contains = 0;
             int noContains = 0;
@@ -118,7 +104,7 @@ namespace Nethermind.Core.Collections
 
         public bool IsProperSupersetOf(IEnumerable<T>? other)
         {
-            if (other == null) throw new ArgumentNullException(nameof(other));
+            if (other is null) throw new ArgumentNullException(nameof(other));
 
             ISet<T> set = other.ToHashSet();
             int otherCount = set.Count;
@@ -146,7 +132,7 @@ namespace Nethermind.Core.Collections
 
         public bool IsSubsetOf(IEnumerable<T>? other)
         {
-            if (other == null) throw new ArgumentNullException(nameof(other));
+            if (other is null) throw new ArgumentNullException(nameof(other));
 
             ISet<T> set = other.ToHashSet();
             return this.All(t => set.Contains(t));
@@ -154,21 +140,21 @@ namespace Nethermind.Core.Collections
 
         public bool IsSupersetOf(IEnumerable<T>? other)
         {
-            if (other == null) throw new ArgumentNullException(nameof(other));
+            if (other is null) throw new ArgumentNullException(nameof(other));
 
             return other.All(Contains);
         }
 
         public bool Overlaps(IEnumerable<T>? other)
         {
-            if (other == null) throw new ArgumentNullException(nameof(other));
+            if (other is null) throw new ArgumentNullException(nameof(other));
 
             return other.Any(Contains);
         }
 
         public bool SetEquals(IEnumerable<T>? other)
         {
-            if (other == null) throw new ArgumentNullException(nameof(other));
+            if (other is null) throw new ArgumentNullException(nameof(other));
 
             ISet<T> set = other.ToHashSet();
             return Count == set.Count && IsSupersetOf(set);
@@ -176,7 +162,7 @@ namespace Nethermind.Core.Collections
 
         public void SymmetricExceptWith(IEnumerable<T> other)
         {
-            if (other == null) throw new ArgumentNullException(nameof(other));
+            if (other is null) throw new ArgumentNullException(nameof(other));
 
             T[] ts = new T[Count];
             CopyTo(ts, 0);
@@ -200,7 +186,7 @@ namespace Nethermind.Core.Collections
 
         public void UnionWith(IEnumerable<T>? other)
         {
-            if (other == null) throw new ArgumentNullException(nameof(other));
+            if (other is null) throw new ArgumentNullException(nameof(other));
 
             foreach (T t in other)
             {

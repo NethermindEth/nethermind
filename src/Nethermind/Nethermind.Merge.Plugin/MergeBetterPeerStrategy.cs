@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -59,15 +45,28 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
 
     public bool IsDesiredPeer(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
     {
+        if (_logger.IsTrace) _logger.Trace(
+            $"IsDesiredPeer: " +
+            $"_beaconPivot.PivotNumber: {_beaconPivot.PivotNumber}, " +
+            $"bestPeerInfo.Number: {bestPeerInfo.Number}, " +
+            $"bestPeerInfo.TotalDifficulty: {bestPeerInfo.TotalDifficulty}, " +
+            $"bestHeader.TotalDifficulty: {bestHeader.TotalDifficulty}, " +
+            $"_posSwitcher.TerminalTotalDifficulty: {_poSSwitcher.TerminalTotalDifficulty}, ");
+
+        // Post-merge it depends on the beacon pivot.
+        // Some hive test sync to a lower number and have peer without the beacon pivot, but it has
+        // the pivot's parent. So we need to allow peer with the parent of the beacon pivot.
+        if (_beaconPivot.BeaconPivotExists())
+        {
+            return bestPeerInfo.Number >= _beaconPivot.PivotNumber - 1;
+        }
+
         if (ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestHeader.TotalDifficulty))
         {
             return _preMergeBetterPeerStrategy.IsDesiredPeer(bestPeerInfo, bestHeader);
         }
 
-        // Post-merge it depends on the beacon pivot.
-        // Some hive test sync to a lower number and have peer without the beacon pivot, but it has
-        // the pivot's parent. So we need to allow peer with the parent of the beacon pivot.
-        return _beaconPivot.BeaconPivotExists() && bestPeerInfo.Number >= _beaconPivot.PivotNumber - 1;
+        return false;
     }
 
     public bool IsLowerThanTerminalTotalDifficulty(UInt256 totalDifficulty) =>

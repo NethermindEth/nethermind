@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Globalization;
 using System.Linq;
@@ -40,9 +27,9 @@ namespace Nethermind.Overseer.Test
         [Test]
         public async Task One_validator()
         {
-            StartAuRaMiner("val1", "0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38")
+            StartAuRaMiner("auraval1", "0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38")
                 .Wait(5000)
-                .Kill("val1");
+                .Kill("auraval1");
 
             await ScenarioCompletion;
         }
@@ -52,9 +39,9 @@ namespace Nethermind.Overseer.Test
         {
             (string Name, string Address, string PrivateKey)[] validators = new (string Name, string Address, string PrivateKey)[]
             {
-                ("val1", "0x557abc72a6594d1bd9a655a1cb58a595526416c8", "0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38"),
-                ("val2", "0x69399093be61566a1c86b09bd02612c6bf31214f", "0xcb807c162517bfb179adfeee0d440b81e0bba770e377be4f887e0a4e6c27575d"),
-                ("val3", "0x4cb87ff61e0e3f9f4043f69fe391a62b5a018b97", "0x2429abae64ce7db0f75941082dc6fa1de10c48a7907f29f54c1c1e9f5bd2baf3"),
+                ("auraval11", "0x557abc72a6594d1bd9a655a1cb58a595526416c8", "0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38"),
+                ("auraval22", "0x69399093be61566a1c86b09bd02612c6bf31214f", "0xcb807c162517bfb179adfeee0d440b81e0bba770e377be4f887e0a4e6c27575d"),
+                ("auraval33", "0x4cb87ff61e0e3f9f4043f69fe391a62b5a018b97", "0x2429abae64ce7db0f75941082dc6fa1de10c48a7907f29f54c1c1e9f5bd2baf3"),
             };
 
             var auRaState = new AuRaState();

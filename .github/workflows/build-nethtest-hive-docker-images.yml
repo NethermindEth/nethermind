@@ -11,31 +11,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checking out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Unshallow fetching
         run: git fetch --unshallow
       - name: Settings
         id: settings
         run: |
-          echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
-          echo ::set-output name=docker_image_nethtest::nethermindeth/nethtest
-          echo ::set-output name=docker_image_hive::nethermindeth/hive
+          echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
+          echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
       - name: Setting up QEMU
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v2
       - name: Setting up Docker Buildx
         id: buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v2
       - name: Logging to Docker Hub
         if: success()
-        env:
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
-          echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
+          echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
       - name: Building & Pushing image to docker registry
         run: |
-          docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image_nethtest }}" -f Dockerfile.stateRunner --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
-          docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image_hive }}:latest" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+          docker buildx build --platform=linux/amd64 -t nethermindeth/nethtest -f Dockerfile.stateRunner . --push
+          docker buildx build --platform=linux/amd64 -t nethermindeth/hive:latest -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} . --push
       - name: Clearing
         if: always()
         run: |
-          rm -f ${HOME}/.docker/config.json
+          rm -f $HOME/.docker/config.json

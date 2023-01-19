@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Net;
@@ -55,8 +42,8 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class ParityRpcModuleTests
     {
-        private IParityRpcModule _parityRpcModule;
-        private Signer _signerStore;
+        private IParityRpcModule _parityRpcModule = null!;
+        private Signer _signerStore = null!;
 
         [SetUp]
         public void Initialize()
@@ -83,7 +70,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new(ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(specProvider), blockTree, stateProvider), new TxPoolConfig(),
+            TxPool.TxPool txPool = new(ethereumEcdsa, new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), blockTree, stateProvider), new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
@@ -95,21 +82,21 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockNumber = 2;
             Transaction pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber)).TestObject;
-            pendingTransaction.Signature.V = 37;
-            stateProvider.CreateAccount(pendingTransaction.SenderAddress, UInt256.UInt128MaxValue);
+            pendingTransaction.Signature!.V = 37;
+            stateProvider.CreateAccount(pendingTransaction.SenderAddress!, UInt256.UInt128MaxValue);
             txPool.SubmitTx(pendingTransaction, TxHandlingOptions.None);
 
             blockNumber = 1;
             Transaction transaction1 = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(100).TestObject;
-            transaction1.Signature.V = 37;
-            stateProvider.CreateAccount(transaction1.SenderAddress, UInt256.UInt128MaxValue);
+            transaction1.Signature!.V = 37;
+            stateProvider.CreateAccount(transaction1.SenderAddress!, UInt256.UInt128MaxValue);
 
             var transaction2 = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(120).TestObject;
-            transaction2.Signature.V = 37;
+            transaction2.Signature!.V = 37;
 
             var transaction3 = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
@@ -240,7 +227,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private static Peer SetUpPeerC()
         {
-            Peer peer = new(null);
+            Peer peer = new(null!);
             peer.InSession = Substitute.For<ISession>();
             peer.InSession.RemoteNodeId.Returns(TestItem.PublicKeyB);
 
@@ -265,6 +252,24 @@ namespace Nethermind.JsonRpc.Test.Modules
             await Task.Delay(100);
             string serialized = RpcTest.TestSerializedRequest(_parityRpcModule, "parity_pendingTransactions");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"hash\":\"0xd4720d1b81c70ed4478553a213a83bd2bf6988291677f5d05c6aae0b287f947e\",\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x0000000000000000000000000000000000000002\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"input\":\"0x\",\"raw\":\"0xf85f8001825208940000000000000000000000000000000000000000018025a0ef2effb79771cbe42fc7f9cc79440b2a334eedad6e528ea45c2040789def4803a0515bdfe298808be2e07879faaeacd0ad17f3b13305b9f971647bbd5d5b584642\",\"creates\":null,\"publicKey\":\"0x15a1cc027cfd2b970c8aa2b3b22dfad04d29171109f6502d5fb5bde18afe86dddd44b9f8d561577527f096860ee03f571cc7f481ea9a14cb48cc7c20c964373a\",\"chainId\":\"0x1\",\"condition\":null,\"r\":\"0xef2effb79771cbe42fc7f9cc79440b2a334eedad6e528ea45c2040789def4803\",\"s\":\"0x515bdfe298808be2e07879faaeacd0ad17f3b13305b9f971647bbd5d5b584642\",\"v\":\"0x25\",\"standardV\":\"0x0\"}],\"id\":67}";
+            Assert.AreEqual(expectedResult, serialized);
+        }
+
+        [Test]
+        public async Task parity_pendingTransactions_With_Address()
+        {
+            await Task.Delay(100);
+            string serialized = RpcTest.TestSerializedRequest(_parityRpcModule, "parity_pendingTransactions", "0x0000000000000000000000000000000000000002");
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"hash\":\"0xd4720d1b81c70ed4478553a213a83bd2bf6988291677f5d05c6aae0b287f947e\",\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x0000000000000000000000000000000000000002\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"input\":\"0x\",\"raw\":\"0xf85f8001825208940000000000000000000000000000000000000000018025a0ef2effb79771cbe42fc7f9cc79440b2a334eedad6e528ea45c2040789def4803a0515bdfe298808be2e07879faaeacd0ad17f3b13305b9f971647bbd5d5b584642\",\"creates\":null,\"publicKey\":\"0x15a1cc027cfd2b970c8aa2b3b22dfad04d29171109f6502d5fb5bde18afe86dddd44b9f8d561577527f096860ee03f571cc7f481ea9a14cb48cc7c20c964373a\",\"chainId\":\"0x1\",\"condition\":null,\"r\":\"0xef2effb79771cbe42fc7f9cc79440b2a334eedad6e528ea45c2040789def4803\",\"s\":\"0x515bdfe298808be2e07879faaeacd0ad17f3b13305b9f971647bbd5d5b584642\",\"v\":\"0x25\",\"standardV\":\"0x0\"}],\"id\":67}";
+            Assert.AreEqual(expectedResult, serialized);
+        }
+
+        [Test]
+        public async Task parity_pendingTransactions_With_Address_Empty_Result()
+        {
+            await Task.Delay(100);
+            string serialized = RpcTest.TestSerializedRequest(_parityRpcModule, "parity_pendingTransactions", "0x0000000000000000000000000000000000000005");
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}";
             Assert.AreEqual(expectedResult, serialized);
         }
 
@@ -336,7 +341,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
-            TxPool.TxPool txPool = new(ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(specProvider), blockTree, new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(),
+            TxPool.TxPool txPool = new(ethereumEcdsa, new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), blockTree, new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance)), new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId), LimboLogs.Instance, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();

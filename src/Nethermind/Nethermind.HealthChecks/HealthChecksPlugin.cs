@@ -1,20 +1,9 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.IO.Abstractions;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,12 +28,19 @@ namespace Nethermind.HealthChecks
         private IInitConfig _initConfig;
 
         private ClHealthLogger _clHealthLogger;
+        private FreeDiskSpaceChecker _freeDiskSpaceChecker;
+
+        private const int ClUnavailableReportMessageDelay = 5;
 
         public async ValueTask DisposeAsync()
         {
             if (_clHealthLogger is not null)
             {
                 await _clHealthLogger.DisposeAsync();
+            }
+            if (_freeDiskSpaceChecker is not null)
+            {
+                await _freeDiskSpaceChecker.DisposeAsync();
             }
         }
 
@@ -60,7 +56,6 @@ namespace Nethermind.HealthChecks
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             _initConfig = _api.Config<IInitConfig>();
-
             _logger = api.LogManager.GetClassLogger();
 
             return Task.CompletedTask;
@@ -74,6 +69,12 @@ namespace Nethermind.HealthChecks
                     args: new object[] { _nodeHealthService, _api, _api.LogManager });
             if (_healthChecksConfig.UIEnabled)
             {
+                if (!_healthChecksConfig.Enabled)
+                {
+                    if (_logger.IsWarn) _logger.Warn("To use HealthChecksUI please enable HealthChecks. (--HealthChecks.Enabled=true)");
+                    return;
+                }
+
                 service.AddHealthChecksUI(setup =>
                 {
                     setup.AddHealthCheckEndpoint("health", BuildEndpointForUi());
@@ -82,21 +83,20 @@ namespace Nethermind.HealthChecks
                     if (_healthChecksConfig.WebhooksEnabled)
                     {
                         setup.AddWebhookNotification("webhook",
-                        uri: _healthChecksConfig.WebhooksUri,
-                        payload: _healthChecksConfig.WebhooksPayload,
-                        restorePayload: _healthChecksConfig.WebhooksRestorePayload,
-                        customDescriptionFunc: report =>
-                        {
-                            string description = report.Entries["node-health"].Description;
+                            uri: _healthChecksConfig.WebhooksUri,
+                            payload: _healthChecksConfig.WebhooksPayload,
+                            restorePayload: _healthChecksConfig.WebhooksRestorePayload,
+                            customDescriptionFunc: (livenessName, report) =>
+                            {
+                                string description = report.Entries["node-health"].Description;
 
-                            IMetricsConfig metricsConfig;
-                            metricsConfig = _api.Config<IMetricsConfig>();
+                                IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
 
-                            string hostname = Dns.GetHostName();
+                                string hostname = Dns.GetHostName();
 
-                            HealthChecksWebhookInfo info = new(description, _api.IpResolver, metricsConfig, hostname);
-                            return info.GetFullInfo();
-                        }
+                                HealthChecksWebhookInfo info = new(description, _api.IpResolver, metricsConfig, hostname);
+                                return info.GetFullInfo();
+                            }
                         );
                     }
                 })
@@ -110,9 +110,25 @@ namespace Nethermind.HealthChecks
 
         public Task InitRpcModules()
         {
+            IDriveInfo[] drives = Array.Empty<IDriveInfo>();
+
+            if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || _healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
+            {
+                try
+                {
+                    drives = _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath);
+                    _freeDiskSpaceChecker = new FreeDiskSpaceChecker(_healthChecksConfig, _logger, drives, _api.TimerFactory);
+                    _freeDiskSpaceChecker.StartAsync(default);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error("Failed to initialize available disk space check module", ex);
+                }
+            }
+
             _nodeHealthService = new NodeHealthService(_api.SyncServer,
                 _api.BlockchainProcessor!, _api.BlockProducer!, _healthChecksConfig, _api.HealthHintService!,
-                _api.EthSyncingInfo!, _api, _initConfig.IsMining);
+                _api.EthSyncingInfo!, _api, drives, _initConfig.IsMining);
 
             if (_healthChecksConfig.Enabled)
             {
@@ -121,7 +137,7 @@ namespace Nethermind.HealthChecks
                 if (_logger.IsInfo) _logger.Info("Health RPC Module has been enabled");
             }
 
-            if (_api.SpecProvider!.TerminalTotalDifficulty != null)
+            if (_api.SpecProvider!.TerminalTotalDifficulty is not null)
             {
                 _clHealthLogger = new ClHealthLogger(_nodeHealthService, _logger);
                 _clHealthLogger.StartAsync(default);
@@ -153,7 +169,7 @@ namespace Nethermind.HealthChecks
             public Task StartAsync(CancellationToken cancellationToken)
             {
                 _timer = new Timer(ReportClStatus, null, TimeSpan.Zero,
-                    TimeSpan.FromSeconds(5));
+                    TimeSpan.FromSeconds(ClUnavailableReportMessageDelay));
 
                 return Task.CompletedTask;
             }
@@ -175,9 +191,7 @@ namespace Nethermind.HealthChecks
             {
                 if (!_nodeHealthService.CheckClAlive())
                 {
-                    if (_logger.IsWarn)
-                        _logger.Warn(
-                            "No incoming messages from Consensus Client. Please make sure that it's working properly");
+                    if (_logger.IsWarn) _logger.Warn("No incoming messages from Consensus Client. Please make sure that it's working properly");
                 }
             }
         }

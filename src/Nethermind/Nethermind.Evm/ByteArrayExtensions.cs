@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Int256;
@@ -61,7 +48,7 @@ namespace Nethermind.Evm
             return new ZeroPaddedMemory(memory.Slice(startIndex, copiedLength), length - copiedLength, padDirection);
         }
 
-        public static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> span, in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
+        public static ZeroPaddedSpan SliceWithZeroPadding(this Span<byte> span, scoped in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
         {
             if (startIndex >= span.Length || startIndex > int.MaxValue)
             {
@@ -71,7 +58,7 @@ namespace Nethermind.Evm
             return SliceWithZeroPadding(span, (int)startIndex, length, padDirection);
         }
 
-        public static ZeroPaddedMemory SliceWithZeroPadding(this ReadOnlyMemory<byte> bytes, in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
+        public static ZeroPaddedMemory SliceWithZeroPadding(this ReadOnlyMemory<byte> bytes, scoped in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
         {
             if (startIndex >= bytes.Length || startIndex > int.MaxValue)
             {

@@ -19,14 +19,14 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public void WithInheritance()
         {
-            var spec = _provider.GetSpec(MainnetSpecProvider.ShanghaiBlockNumber);
+            var spec = _provider.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp));
             _ = spec.UseTxAccessLists;
         }
 
         [Benchmark]
         public void WithoutInheritance()
         {
-            var spec = _provider.GetSpec(0L);
+            var spec = _provider.GetSpec((ForkActivation)0L);
             _ = spec.UseTxAccessLists;
         }
 

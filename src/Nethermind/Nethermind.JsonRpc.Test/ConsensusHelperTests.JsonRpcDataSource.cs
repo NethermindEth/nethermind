@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Net.Http;
@@ -26,7 +12,7 @@ namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private abstract class JsonRpcDataSource<T> : IConsensusDataSource<T>
+        private abstract class JsonRpcDataSource<T2> : IConsensusDataSource<T2>
         {
             private readonly Uri _uri;
             protected readonly IJsonSerializer _serializer;
@@ -71,10 +57,10 @@ namespace Nethermind.JsonRpc.Test
                 public new T Result { get { return (T)base.Result; } set { base.Result = value; } }
             }
 
-            public virtual async Task<(T, string)> GetData()
+            public virtual async Task<(T2, string)> GetData()
             {
                 string jsonData = await GetJsonData();
-                return (_serializer.Deserialize<JsonRpcSuccessResponse<T>>(jsonData).Result, jsonData);
+                return (_serializer.Deserialize<JsonRpcSuccessResponse<T2>>(jsonData).Result, jsonData);
             }
 
             public abstract Task<string> GetJsonData();
