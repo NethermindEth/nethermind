@@ -1,9 +1,11 @@
-﻿// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Merkleization;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
 
@@ -15,7 +17,7 @@ public class WithdrawalSszTrieTests
     [Test]
     public void Test_multipleSszs()
     {
-        var Index = new Merkle.W[] { new()
+        Withdrawal[] withdrawals = new Withdrawal[] { new()
             {
                 Index = 0,
                 ValidatorIndex = 65535,
@@ -64,8 +66,8 @@ public class WithdrawalSszTrieTests
                 Address =  new Address("0700000000000000000000000000000000000000"),
                 AmountInGwei =  03166189940082864718,
             },};
-        Merkle.Ize(out UInt256 root, a);
-        Assert.AreEqual(UInt256.Parse("ed9cec6fb8ee22b146059d02c38940cca1dd22a00d0132b000999b983fceff95"), root);
+        Merkle.Ize(out UInt256 root, withdrawals);
+        Assert.AreEqual(UInt256.Parse("bd97f65e513f870484e85927510acb291fcfb3e593c05ab7f21f206921264946", System.Globalization.NumberStyles.HexNumber), root);
     }
 
 

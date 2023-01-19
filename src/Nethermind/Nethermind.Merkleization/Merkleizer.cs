@@ -619,20 +619,20 @@ namespace Nethermind.Merkleization
             Feed(_chunks[^1]);
         }
 
-        public void Feed(Address? value)
-        {
-            if (value is null)
-            {
-                Merkle.Ize(out UInt256 root, new byte[64]);
-                Feed(root);
-            }
-            else
-            {
-                Merkle.Ize(out UInt256 root, value);
-             //   Merkle.Ize(out UInt256 rooot, new UInt256[] { root, new UInt256(1) });
-                Feed(root);
-            }
-        }
+        //public void Feed(Address? value)
+        //{
+        //    if (value is null)
+        //    {
+        //        Merkle.Ize(out UInt256 root, new byte[64]);
+        //        Feed(root);
+        //    }
+        //    else
+        //    {
+        //        Merkle.Ize(out UInt256 root, value);
+        //     //   Merkle.Ize(out UInt256 rooot, new UInt256[] { root, new UInt256(1) });
+        //        Feed(root);
+        //    }
+        //}
 
         public void Feed(IReadOnlyList<Root> value, ulong maxLength)
         {
