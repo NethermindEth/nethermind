@@ -33,7 +33,7 @@ namespace Nethermind.Specs
             };
         public long? DaoBlockNumber => null;
 
-        public ulong NetworkId => 2;
+        public ulong NetworkId => BlockchainIds.Morden;
         public ulong ChainId => NetworkId;
         public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0 };
     }
