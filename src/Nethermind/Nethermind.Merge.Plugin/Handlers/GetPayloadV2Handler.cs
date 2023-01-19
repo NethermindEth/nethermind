@@ -11,6 +11,9 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
+    /// <summary>
+    /// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_getpayloadv2">engine_getpayloadv22</see>.
+    /// </summary>
     public class GetPayloadV2Handler : IAsyncHandler<byte[], GetPayloadV2Result?>
     {
         private readonly IPayloadPreparationService _payloadPreparationService;

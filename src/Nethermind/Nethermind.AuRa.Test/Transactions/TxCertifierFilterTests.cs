@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
 using System.Threading.Tasks;
@@ -157,7 +157,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,
-                    new ValidationWithdrawalProcessor(State, LogManager));
+                    new WithdrawalProcessor(State, LogManager));
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;

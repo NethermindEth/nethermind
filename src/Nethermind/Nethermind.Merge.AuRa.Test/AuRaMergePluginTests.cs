@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
@@ -15,7 +16,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
 using Nethermind.Merge.Plugin;
@@ -51,7 +51,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     // You can verify this by removing `SealEngineType = Nethermind.Core.SealEngineType.AuRa;` from the constructor of
     // the test class above and rerunning the tests.
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
-    public override async Task engine_newPayloadV2_should_validate_withdrawals((
+    public override async Task newPayloadV2_should_validate_withdrawals((
         IReleaseSpec Spec,
         string ErrorMessage,
         IEnumerable<Withdrawal>? Withdrawals,
@@ -85,7 +85,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             : base(mergeConfig, mockedPayloadPreparationService)
         {
-            SealEngineType = Nethermind.Core.SealEngineType.AuRa;
+            SealEngineType = Core.SealEngineType.AuRa;
         }
 
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
@@ -136,7 +136,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             AuRaBlockProducer preMergeBlockProducer = new(
                 txPoolTxSource,
                 blockProducerEnvFactory.Create().ChainProcessor,
-                ((TestBlockchain)this).BlockProductionTrigger,
+                BlockProductionTrigger,
                 State,
                 sealer,
                 BlockTree,

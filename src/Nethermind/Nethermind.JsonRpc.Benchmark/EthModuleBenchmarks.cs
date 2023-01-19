@@ -35,6 +35,7 @@ using NSubstitute;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -80,7 +81,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
             BlockProcessor blockProcessor = new(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor,
-                stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, new ValidationWithdrawalProcessor(stateProvider, LimboLogs.Instance), LimboLogs.Instance);
+                stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(
@@ -123,6 +124,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 Timestamper.Default,
                 logFinder,
                 specProvider,
+                new BlocksConfig(),
                 false);
 
             GasPriceOracle gasPriceOracle = new(blockTree, specProvider, LimboLogs.Instance);

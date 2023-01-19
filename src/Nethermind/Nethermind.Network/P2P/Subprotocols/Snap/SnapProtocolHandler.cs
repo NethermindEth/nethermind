@@ -149,28 +149,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private void Handle(GetAccountRangeMessage msg)
         {
             Metrics.SnapGetAccountRangeReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
             if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (AccountRange). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetStorageRangeMessage getStorageRangesMessage)
         {
             Metrics.SnapGetStorageRangesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
             if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (StorageRange). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetByteCodesMessage getByteCodesMessage)
         {
             Metrics.SnapGetByteCodesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
             if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (ByteCodes). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetTrieNodesMessage getTrieNodesMessage)
         {
             Metrics.SnapGetTrieNodesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
             if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (TrieNodes). Peer: {Session.Node.ClientId}");
         }
 
@@ -277,7 +277,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 requestQueue,
                 msg,
                 TransferSpeedType.SnapRanges,
-                static (_) => $"{nameof(TIn)}",
+                static (request) => request.ToString(),
                 token);
         }
 

@@ -71,7 +71,7 @@ public partial class EngineModuleTests
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
         Keccak blockHash = new("0xb1b3b07ef3832bd409a04fdea9bf2bfa83d7af0f537ff25f4a3d2eb632ebfb0f");
-        var expectedPayload = chain.JsonSerializer.Serialize(new ExecutionPayload
+        string? expectedPayload = chain.JsonSerializer.Serialize(new ExecutionPayload
         {
             BaseFeePerGas = 0,
             BlockHash = blockHash,
@@ -126,6 +126,13 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public void ForkchoiceV1_ToString_returns_correct_results()
+    {
+        ForkchoiceStateV1 forkchoiceState = new(TestItem.KeccakA, TestItem.KeccakF, TestItem.KeccakC);
+        forkchoiceState.ToString().Should().Be("ForkchoiceState: (HeadBlockHash: 0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760, SafeBlockHash: 0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72, FinalizedBlockHash: 0xe61d9a3d3848fb2cdd9a2ab61e2f21a10ea431275aed628a0557f9dee697c37a)");
+    }
+
+    [Test]
     public async Task engine_forkchoiceUpdatedV1_with_payload_attributes_should_create_block_on_top_of_genesis_and_not_change_head()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
@@ -160,7 +167,7 @@ public partial class EngineModuleTests
     protected virtual Keccak ExpectedBlockHash => new("0x3accc4186d73f4826acf1a8da3f7c696f16c3863e4f76b1315d65daa88fe28ff");
 
     [Test]
-    public async Task getPayloadBodiesV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_skip_unknown_hashes()
+    public async Task getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -173,9 +180,116 @@ public partial class EngineModuleTests
         chain.AddTransactions(txs);
         ExecutionPayload executionPayloadV12 = await BuildAndSendNewBlockV1(rpc, chain, true);
         Keccak?[] blockHashes = { executionPayloadV11.BlockHash, TestItem.KeccakA, executionPayloadV12.BlockHash };
-        ExecutionPayloadBodyV1Result[] payloadBodies = rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
-        ExecutionPayloadBodyV1Result[] expected = { new(Array.Empty<Transaction>()), new(txs) };
+        ExecutionPayloadBodyV1Result?[] payloadBodies = rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
+        ExecutionPayloadBodyV1Result?[] expected = { new(Array.Empty<Transaction>()), null, new(txs) };
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+    }
+
+    [Test]
+    public async Task getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_nil_for_unknown_indexes()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        ExecutionPayload executionPayloadV11 = await SendNewBlockV1(rpc, chain);
+
+        PrivateKey from = TestItem.PrivateKeyA;
+        Address to = TestItem.AddressB;
+        Transaction[] txs = BuildTransactions(chain, executionPayloadV11.BlockHash, from, to, 3, 0, out _, out _);
+        chain.AddTransactions(txs);
+        ExecutionPayload executionPayloadV12 = await BuildAndSendNewBlockV1(rpc, chain, true);
+
+        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(executionPayloadV12.BlockHash!,
+            executionPayloadV12.BlockHash!, executionPayloadV12.BlockHash!));
+
+        ExecutionPayloadBodyV1Result?[] payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 3).Result.Data;
+        ExecutionPayloadBodyV1Result?[] expected = { new(Array.Empty<Transaction>()), new(txs), null };
+        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+    }
+
+    [Test]
+    public async Task getPayloadBodiesByRangeV1_empty_response()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        ExecutionPayloadBodyV1Result?[] payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 0).Result.Data;
+        ExecutionPayloadBodyV1Result?[] expected = { };
+        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+    }
+
+    [Test]
+    public async Task getPayloadBodiesByRangeV1_should_fail_when_too_many_payloads_requested()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> result = rpc.engine_getPayloadBodiesByRangeV1(0, 1025);
+        result.Result.ErrorCode.Should().Be(-32005);
+    }
+
+    [Test]
+    public async Task getPayloadBodiesByRangeV1_should_return_canonical()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        ExecutionPayload executionPayloadV11 = await SendNewBlockV1(rpc, chain);
+
+        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(executionPayloadV11.BlockHash!,
+            executionPayloadV11.BlockHash!, executionPayloadV11.BlockHash!));
+
+        Block head = chain.BlockTree.Head!;
+
+        PrivateKey from = TestItem.PrivateKeyA;
+
+        // First branch
+        {
+            Transaction[] txsA =
+                BuildTransactions(chain, executionPayloadV11.BlockHash!, from, TestItem.AddressA, 1, 0, out _, out _);
+            chain.AddTransactions(txsA);
+
+            ExecutionPayload executionPayloadV12A = await BuildAndGetPayloadResult(rpc, chain,
+                head.Hash!, head.Hash!, head.Hash!, 1001, Keccak.Zero, Address.Zero);
+
+            ResultWrapper<PayloadStatusV1> executePayloadResultA =
+                await rpc.engine_newPayloadV1(executionPayloadV12A);
+            executePayloadResultA.Data.Status.Should().Be(PayloadStatus.Valid);
+
+            (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(executionPayloadV12A.BlockHash!,
+                    head.Hash!, head.Hash!))).Data.PayloadStatus.Status.Should()
+                .Be(PayloadStatus.Valid);
+
+            ExecutionPayloadBodyV1Result?[] payloadBodiesA = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
+            ExecutionPayloadBodyV1Result?[] expectedA = { new(Array.Empty<Transaction>()), new(txsA), null };
+
+            payloadBodiesA.Should().BeEquivalentTo(expectedA, o => o.WithStrictOrdering());
+        }
+
+        // Second branch
+        {
+            Block? newBlock = Build.A.Block
+                .WithNumber(head.Number + 1)
+                .WithParent(head)
+                .WithNonce(0)
+                .WithDifficulty(0)
+                .WithStateRoot(head.StateRoot!)
+                .WithBeneficiary(Build.An.Address.TestObject)
+                .TestObject;
+
+            (await rpc.engine_newPayloadV1(new ExecutionPayload(newBlock))).Data.Status.Should().Be(PayloadStatus.Valid);
+
+            await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newBlock.Hash!,
+                newBlock.Hash!, newBlock.Hash!));
+
+            ExecutionPayloadBodyV1Result?[] payloadBodiesB = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
+            ExecutionPayloadBodyV1Result?[] expectedB =
+            {
+                    new(Array.Empty<Transaction>()), new(Array.Empty<Transaction>()), null
+                };
+
+            payloadBodiesB.Should().BeEquivalentTo(expectedB, o => o.WithStrictOrdering());
+        }
     }
 
     [Test]
@@ -439,7 +553,7 @@ public partial class EngineModuleTests
     public async Task executePayloadV1_result_is_fail_when_blockchainprocessor_report_exception()
     {
         using MergeTestBlockchain chain = await CreateBaseBlockChain(null, null)
-            .Build(new SingleReleaseSpecProvider(London.Instance, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId));
+            .Build(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         ((TestBlockProcessorInterceptor)chain.BlockProcessor).ExceptionToThrow =
@@ -457,7 +571,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBaseBlockChain()
             .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
-            .Build(new SingleReleaseSpecProvider(London.Instance, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId));
+            .Build(new TestSingleReleaseSpecProvider(London.Instance));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0)
@@ -730,8 +844,7 @@ public partial class EngineModuleTests
                 .TestObject
             )
             .WithGasUsed(21000)
-            // after processing transaction, this state root is wrong
-            .WithStateRoot(head.StateRoot!)
+            .WithStateRoot(head.StateRoot!) // after processing transaction, this state root is wrong
             .TestObject;
 
         chain.ThrottleBlockProcessor(1000); // throttle the block processor enough so that the block processing queue is never empty

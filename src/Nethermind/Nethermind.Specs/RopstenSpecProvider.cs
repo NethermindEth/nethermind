@@ -49,7 +49,7 @@ namespace Nethermind.Specs
         public const long BerlinBlockNumber = 9_812_189;
         public const long LondonBlockNumber = 10_499_401;
 
-        public ulong NetworkId => Core.NetworkId.Ropsten;
+        public ulong NetworkId => Core.BlockchainIds.Ropsten;
         public ulong ChainId => NetworkId;
         public ForkActivation[] TransitionActivations => new ForkActivation[]
         {

@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -171,7 +172,12 @@ namespace Nethermind.Init.Steps
                     try
                     {
                         _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                        TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                        TrieStore noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                        IStateProvider diagStateProvider = new StateProvider(noPruningStore, codeDb, getApi.LogManager)
+                        {
+                            StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
+                        };
+                        TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
                         _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
                     }
                     catch (Exception ex)
@@ -265,7 +271,6 @@ namespace Nethermind.Init.Steps
                 new(txSigner, getApi.Timestamper, txPool, getApi.EthereumEcdsa!);
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer);
 
-            // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
@@ -358,7 +363,6 @@ namespace Nethermind.Init.Steps
                 _api.StorageProvider,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
-                new ValidationWithdrawalProcessor(_api.StateProvider!, _api.LogManager),
                 _api.LogManager);
         }
 

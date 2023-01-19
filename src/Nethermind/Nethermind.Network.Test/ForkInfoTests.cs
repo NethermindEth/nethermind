@@ -71,10 +71,12 @@ namespace Nethermind.Network.Test
         [TestCase(13_772_999, 0ul, "0xb715077d", 13_773_000ul, "Last London")]
         [TestCase(13_773_000, 0ul, "0x20c327fc", 15_050_000ul, "First Arrow Glacier")]
         [TestCase(15_049_999, 0ul, "0x20c327fc", 15_050_000ul, "Last Arrow Glacier")]
-        [TestCase(15_050_000, 0ul, "0xf0afd0e3", 1000000000ul, "First Gray Glacier")]
-        [TestCase(20_000_000, 0ul, "0xf0afd0e3", 1000000000ul, "Future Gray Glacier")]
-        [TestCase(20_005_000, 1000000000ul, "0x857b708a", 0ul, "First Shanghai")]
-        [TestCase(20_006_000, 1000050000ul, "0x857b708a", 0ul, "Future Shanghai")]
+        [TestCase(15_050_000, 0ul, "0xf0afd0e3", 18_000_000ul, "First Gray Glacier")]
+        [TestCase(17_999_999, 0ul, "0xf0afd0e3", 18_000_000ul, "Last Gray Glacier")]
+        [TestCase(18_000_000, 0ul, "0x4fb8a872", 1_668_000_000ul, "First Merge Start")]
+        [TestCase(20_000_000, 0ul, "0x4fb8a872", 1_668_000_000ul, "Last Merge Start")]
+        [TestCase(20_000_000, 1_668_000_000ul, "0xc1fdf181", 0ul, "First Shanghai")]
+        [TestCase(21_000_000, 1_768_000_000ul, "0xc1fdf181", 0ul, "Future Shanghai")]
         public void Fork_id_and_hash_as_expected_with_timestamps(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
         {
             Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, "TimestampForkIdTest.json", "../../../");
@@ -183,7 +185,7 @@ namespace Nethermind.Network.Test
         public void Fork_id_and_hash_as_expected_on_gnosis(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "xdai.json")));
+            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "gnosis.json")));
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
             Test(head, headTimestamp, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
         }
@@ -233,7 +235,7 @@ namespace Nethermind.Network.Test
         {
             byte[] expectedForkHash = Bytes.FromHexString(forkHashHex);
 
-            ForkId forkId = ForkInfo.CalculateForkId(specProvider, head, headTimestamp, genesisHash);
+            ForkId forkId = new ForkInfo(specProvider, genesisHash).GetForkId(head, headTimestamp);
             byte[] forkHash = forkId.ForkHash;
             forkHash.Should().BeEquivalentTo(expectedForkHash, description);
 

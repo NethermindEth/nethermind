@@ -11,7 +11,7 @@ namespace Nethermind.Network.P2P
     {
         public Request(TMsg message)
         {
-            CompletionSource = new TaskCompletionSource<TResult>();
+            CompletionSource = new TaskCompletionSource<TResult>(TaskCreationOptions.RunContinuationsAsynchronously);
             Message = message;
         }
 

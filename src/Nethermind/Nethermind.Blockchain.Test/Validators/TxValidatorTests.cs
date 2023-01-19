@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -10,6 +11,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -40,6 +42,8 @@ namespace Nethermind.Blockchain.Test.Validators
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
+        private static byte CalculateV() => (byte)EthereumEcdsa.CalculateV(TestBlockchainIds.ChainId);
+
         [Test]
         public void Zero_s_is_not_valid()
         {
@@ -60,7 +64,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35 + 1;
+            sigData[64] = (byte)(1 + CalculateV());
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
@@ -87,7 +91,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
@@ -124,7 +128,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
@@ -150,7 +154,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType)
@@ -176,7 +180,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
@@ -200,7 +204,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
@@ -214,6 +218,30 @@ namespace Nethermind.Blockchain.Test.Validators
 
             TxValidator txValidator = new(TestBlockchainIds.ChainId);
             return txValidator.IsWellFormed(tx, London.Instance);
+        }
+
+        [TestCase(true, 1, false)]
+        [TestCase(false, 1, true)]
+        [TestCase(true, -1, true)]
+        [TestCase(false, -1, true)]
+        public void Transaction_with_init_code_above_max_value_is_rejected_when_eip3860Enabled(bool eip3860Enabled, int dataSizeAboveInitCode, bool expectedResult)
+        {
+            IReleaseSpec releaseSpec = eip3860Enabled ? Shanghai.Instance : GrayGlacier.Instance;
+            byte[] initCode = Enumerable.Repeat((byte)0x20, (int)releaseSpec.MaxInitCodeSize + dataSizeAboveInitCode).ToArray();
+            byte[] sigData = new byte[65];
+            sigData[31] = 1; // correct r
+            sigData[63] = 1; // correct s
+            sigData[64] = 27;
+            Signature signature = new(sigData);
+            Transaction tx = Build.A.Transaction
+                .WithSignature(signature)
+                .WithGasLimit(int.MaxValue)
+                .WithChainId(TestBlockchainIds.ChainId)
+                .To(null)
+                .WithData(initCode).TestObject;
+
+            TxValidator txValidator = new(1);
+            txValidator.IsWellFormed(tx, releaseSpec).Should().Be(expectedResult);
         }
 
         [TestCase(TxType.EIP1559, false, ExpectedResult = true)]

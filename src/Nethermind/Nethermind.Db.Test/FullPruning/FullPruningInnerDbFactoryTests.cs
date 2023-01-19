@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -78,7 +78,7 @@ namespace Nethermind.Db.Test.FullPruning
             public TestContext()
             {
                 FileSystem.Path.Combine(Arg.Any<string>(), Arg.Any<string>()).Returns(c => Combine(c[0], c[1]));
-                FileSystem.DirectoryInfo.FromDirectoryName(Path).Returns(Directory);
+                FileSystem.DirectoryInfo.New(Path).Returns(Directory);
                 RocksDbFactory.GetFullDbPath(Arg.Any<RocksDbSettings>()).Returns(c => c.Arg<RocksDbSettings>().DbPath);
             }
         }

@@ -17,7 +17,9 @@ namespace Nethermind.HealthChecks
         public ulong? MaxIntervalWithoutProcessedBlock { get; set; }
 
         public ulong? MaxIntervalWithoutProducedBlock { get; set; }
-
         public int MaxIntervalClRequestTime { get; set; } = 300;
+
+        public float LowStorageSpaceWarningThreshold { get; set; } = 5;
+        public float LowStorageSpaceShutdownThreshold { get; set; } = 1;
     }
 }

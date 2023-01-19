@@ -45,4 +45,12 @@ namespace Nethermind.Specs
 
         public long? DaoBlockNumber { get; }
     }
+
+    public class TestSingleReleaseSpecProvider : SingleReleaseSpecProvider
+    {
+        public TestSingleReleaseSpecProvider(IReleaseSpec releaseSpec)
+            : base(releaseSpec, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId)
+        {
+        }
+    }
 }

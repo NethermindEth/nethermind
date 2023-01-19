@@ -41,7 +41,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 ChainSpec chainSpec = new();
 
                 chainSpec.NetworkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
-                chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpecJson.Params.NetworkId ?? 1;
+                chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
                 chainSpec.Name = chainSpecJson.Name;
                 chainSpec.DataDir = chainSpecJson.DataDir;
                 LoadGenesis(chainSpecJson, chainSpec);
@@ -135,7 +135,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip3607Transition = chainSpecJson.Params.Eip3607Transition,
                 Eip1153TransitionTimestamp = chainSpecJson.Params.Eip1153TransitionTimestamp,
                 Eip3651TransitionTimestamp = chainSpecJson.Params.Eip3651TransitionTimestamp,
-                Eip3675TransitionTimestamp = chainSpecJson.Params.Eip3675TransitionTimestamp,
                 Eip3855TransitionTimestamp = chainSpecJson.Params.Eip3855TransitionTimestamp,
                 Eip3860TransitionTimestamp = chainSpecJson.Params.Eip3860TransitionTimestamp,
                 Eip4895TransitionTimestamp = chainSpecJson.Params.Eip4895TransitionTimestamp,
@@ -195,6 +194,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                 chainSpec.HomesteadBlockNumber = 0;
             }
 
+            IEnumerable<long?> difficultyBombDelaysBlockNumbers = chainSpec.Ethash?.DifficultyBombDelays
+                .Keys
+                .Cast<long?>()
+                .ToArray();
+
             chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
             chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
             chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
@@ -205,19 +209,13 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.ConstantinopleFixBlockNumber =
                 chainSpec.Parameters.Eip1283DisableTransition ?? chainSpec.Parameters.Eip145Transition;
             chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
-            chainSpec.MuirGlacierNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 2 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[2]
-                : null;
-            chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition ?? (long.MaxValue - 1);
-            chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition ?? (long.MaxValue - 1);
-            chainSpec.ArrowGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 4 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[4]
-                : null;
-            chainSpec.GrayGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 5 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[5]
-                : null;
-            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3675TransitionTimestamp ?? (long.MaxValue - 1);
-            chainSpec.ShardingForkTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp ?? (long.MaxValue - 1);
+            chainSpec.MuirGlacierNumber = difficultyBombDelaysBlockNumbers?.Skip(2).FirstOrDefault();
+            chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition;
+            chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
+            chainSpec.ArrowGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(4).FirstOrDefault();
+            chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
+            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
+            chainSpec.ShardingForkTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
 
             // TheMerge parameters
             chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;

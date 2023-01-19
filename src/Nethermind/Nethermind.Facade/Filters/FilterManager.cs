@@ -156,6 +156,20 @@ namespace Nethermind.Blockchain.Filters
             return existingPendingTransactions;
         }
 
+        private void AddReceipts(TxReceipt txReceipt)
+        {
+            if (txReceipt is null)
+            {
+                throw new ArgumentNullException(nameof(txReceipt));
+            }
+
+            IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
+            foreach (LogFilter filter in filters)
+            {
+                StoreLogs(filter, txReceipt, ref _logIndex);
+            }
+        }
+
         private void AddReceipts(params TxReceipt[] txReceipts)
         {
             if (txReceipts is null)

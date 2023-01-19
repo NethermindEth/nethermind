@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -412,7 +412,7 @@ namespace Nethermind.Mev.Source
                     }
                 }
 
-                if (simulations.Count == 0)
+                if (simulations.IsEmpty)
                 {
                     _simulatedBundles.Remove(bundle.BlockNumber, out _);
                 }

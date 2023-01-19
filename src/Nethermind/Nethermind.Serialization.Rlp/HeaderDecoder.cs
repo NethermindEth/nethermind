@@ -76,7 +76,9 @@ namespace Nethermind.Serialization.Rlp
             {
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
-
+            TODO: fix
+            if (decoderContext.ReadNumberOfItemsRemaining(null, 1) > 0 &&
+                decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             int itemsRemaining = decoderContext.ReadNumberOfItemsRemaining(headerCheck);
             if (itemsRemaining >= 1)
             {
@@ -155,7 +157,9 @@ namespace Nethermind.Serialization.Rlp
             {
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
-
+            TODO: Fix
+            if (rlpStream.ReadNumberOfItemsRemaining(null, 1) > 0 &&
+                rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             int itemsRemaining = rlpStream.ReadNumberOfItemsRemaining(headerCheck);
             if (itemsRemaining >= 1)
             {

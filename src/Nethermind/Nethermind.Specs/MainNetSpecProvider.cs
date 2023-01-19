@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -70,7 +69,7 @@ namespace Nethermind.Specs
         public static ForkActivation PragueActivation = (15_050_000, PragueBlockTimestamp);
         public static ForkActivation OsakaActivation = (15_050_000, OsakaBlockTimestamp);
 
-        public ulong NetworkId => Core.NetworkId.Mainnet;
+        public ulong NetworkId => Core.BlockchainIds.Mainnet;
         public ulong ChainId => NetworkId;
 
         public ForkActivation[] TransitionActivations { get; } =
@@ -78,11 +77,9 @@ namespace Nethermind.Specs
             (ForkActivation)HomesteadBlockNumber, (ForkActivation)DaoBlockNumberConst, (ForkActivation)TangerineWhistleBlockNumber, (ForkActivation)SpuriousDragonBlockNumber,
             (ForkActivation)ByzantiumBlockNumber, (ForkActivation)ConstantinopleFixBlockNumber, (ForkActivation)IstanbulBlockNumber, (ForkActivation)MuirGlacierBlockNumber,
             (ForkActivation)BerlinBlockNumber, (ForkActivation)LondonBlockNumber, (ForkActivation)ArrowGlacierBlockNumber, (ForkActivation)GrayGlacierBlockNumber,
-            //(GrayGlacierBlockNumber, ShanghaiBlockTimestamp), (GrayGlacierBlockNumber, ShardingForkBlockTimestamp), (GrayGlacierBlockNumber, CancunBlockTimestamp),
-            //(GrayGlacierBlockNumber, PragueBlockTimestamp), (GrayGlacierBlockNumber, OsakaBlockTimestamp)
+            ShanghaiActivation //, CancunActivation,
+            //PragueActivation, OsakaActivation
         };
-
-        private MainnetSpecProvider() { }
 
         public static readonly MainnetSpecProvider Instance = new();
     }

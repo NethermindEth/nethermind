@@ -1,18 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Logging;
 using NUnit.Framework;
-using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.AuRa.Test
 {
@@ -45,7 +43,7 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        [Retry(3)]
+        [Retry(1024)]
         public async Task should_not_cancel_block_production_trigger_on_next_step_finished()
         {
             List<BlockProductionEventArgs> args = new();

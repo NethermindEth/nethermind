@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.FullPruning
         /// </remarks>
         private long GetPathSize(string path)
         {
-            IEnumerable<IFileInfo> files = _fileSystem.DirectoryInfo.FromDirectoryName(path).EnumerateFiles();
+            IEnumerable<IFileInfo> files = _fileSystem.DirectoryInfo.New(path).EnumerateFiles();
             long size = files.Sum(f => f.Length);
             return size;
         }

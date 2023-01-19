@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,7 +24,7 @@ namespace Nethermind.BeaconNode.OApi.Controllers
             _beaconNode = beaconNode;
         }
 
-        /// <summary>Poll to see if the the beacon node is syncing.</summary>
+        /// <summary>Poll to see if the beacon node is syncing.</summary>
         /// <remarks>
         /// <para>
         /// Requests the beacon node to describe if it's currently syncing or not, and if it is, what block it is up to. This is modelled after the Eth1.0 JSON-RPC eth_syncing call.
