@@ -16,6 +16,10 @@ namespace Nethermind.Core
 
         public void Update(long value)
         {
+            if (UtcEndTime.HasValue)
+            {
+                UtcEndTime = null;
+            }
             if (!UtcStartTime.HasValue)
             {
                 UtcStartTime = _timestamper.UtcNow;
@@ -31,6 +35,10 @@ namespace Nethermind.Core
             {
                 LastMeasurement = _timestamper.UtcNow;
                 LastValue = CurrentValue;
+            }
+            if (UtcEndTime.HasValue)
+            {
+                UtcEndTime = null;
             }
         }
 
