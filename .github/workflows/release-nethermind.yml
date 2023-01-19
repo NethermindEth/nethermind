@@ -255,16 +255,20 @@ jobs:
       run: | 
         chmod +x $SCRIPTS_PATH/publish-ppa.sh
         $SCRIPTS_PATH/publish-ppa.sh
-    - name: Sleep for 1 hour
+    - name: Wait for 1 hour
       run: sleep 3600s
-      shell: bash
-    - uses: actions/setup-python@v4
-    - run: pip install launchpadlib --upgrade
-    - name: Run copy binaries PPA script
+    - name: Install Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.x
+    - name: Install Python dependencies
+      run: pip install launchpadlib --upgrade
+    - name: Prepare package copying
       env: 
-        LP_CREDENTIALS_FILE: /tmp/credentials.txt
+        LP_CREDENTIALS_FILE: /tmp/lp_credentials
       run: |
-        echo ${{secrets.PPA_COPY_TOKEN}} | base64 --decode > /tmp/credentials.txt
-        chmod +x scripts/copy-ppa-packages-to-new-series.sh
-        ./scripts/copy-ppa-packages-to-new-series.sh
+        echo ${{ secrets.PPA_COPY_TOKEN }} | base64 --decode > /tmp/lp_credentials
+        chmod +x $SCRIPTS_PATH/copy-ppa.sh
+        $SCRIPTS_PATH/copy-ppa.sh
+        rm -f /tmp/lp_credentials
 
