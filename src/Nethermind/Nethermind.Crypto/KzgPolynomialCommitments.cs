@@ -18,7 +18,7 @@ namespace Nethermind.Crypto
         private const byte KzgBlobHashVersionV1 = 1;
         private static IntPtr _ckzgSetup = IntPtr.Zero;
 
-        private static readonly ThreadLocal<SHA256> _sha256 = new();
+        private static readonly ThreadLocal<SHA256> _sha256 = new(SHA256.Create);
 
         private static readonly object _inititalizeLock = new();
         public static void Inititalize()
@@ -40,18 +40,15 @@ namespace Nethermind.Crypto
             }
         }
 
-        public static Span<byte> CommitmentToHashV1(ReadOnlySpan<byte> data_kzg)
+        public static bool TryComputeCommitmentV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
         {
-            if (!_sha256.IsValueCreated)
+            if (_sha256.Value!.TryComputeHash(commitment, hashBuffer, out _))
             {
-                SHA256 sha = SHA256.Create();
-                sha.Initialize();
-                _sha256.Value = sha;
+                hashBuffer[0] = KzgBlobHashVersionV1;
+                return true;
             }
 
-            byte[] hash = _sha256.Value.ComputeHash(data_kzg.ToArray());
-            hash[0] = KzgBlobHashVersionV1;
-            return hash;
+            return false;
         }
 
         public static unsafe bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> proof)

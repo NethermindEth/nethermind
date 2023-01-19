@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -41,28 +42,31 @@ namespace Nethermind.Evm.Precompiles
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            static bool IsValid(in ReadOnlyMemory<byte> inputData)
+            {
+                if (inputData.Length != 192)
+                {
+                    return false;
+                }
+
+                ReadOnlySpan<byte> inputDataSpan = inputData.Span;
+                ReadOnlySpan<byte> versionedHash = inputDataSpan[..32];
+                ReadOnlySpan<byte> z = inputDataSpan[32..64];
+                ReadOnlySpan<byte> y = inputDataSpan[64..96];
+                ReadOnlySpan<byte> commitment = inputDataSpan[96..144];
+                ReadOnlySpan<byte> proof = inputDataSpan[144..192];
+                Span<byte> hash = stackalloc byte[32];
+
+                return KzgPolynomialCommitments.TryComputeCommitmentV1(commitment, hash)
+                       && hash.SequenceEqual(versionedHash)
+                       && KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
+            }
+
             Metrics.PointEvaluationPrecompile++;
-            if (inputData.Length != 192)
-            {
-                return (ReadOnlyMemory<byte>.Empty, false);
-            }
-
-            ReadOnlySpan<byte> inputDataSpan = inputData.Span;
-            ReadOnlySpan<byte> versionedHash = inputDataSpan[..32];
-            ReadOnlySpan<byte> z = inputDataSpan[32..64];
-            ReadOnlySpan<byte> y = inputDataSpan[64..96];
-            ReadOnlySpan<byte> commitment = inputDataSpan[96..144];
-            if (!KzgPolynomialCommitments.CommitmentToHashV1(commitment).SequenceEqual(versionedHash))
-            {
-                return (ReadOnlyMemory<byte>.Empty, false);
-            }
-
-            ReadOnlySpan<byte> proof = inputDataSpan[144..192];
-            if (!KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof))
-            {
-                return (ReadOnlyMemory<byte>.Empty, false);
-            }
-            return (PointEvaluationSuccessfulResponse, true);
+            return IsValid(inputData)
+                ? (PointEvaluationSuccessfulResponse, true)
+                : (ReadOnlyMemory<byte>.Empty, false);
         }
     }
 }
