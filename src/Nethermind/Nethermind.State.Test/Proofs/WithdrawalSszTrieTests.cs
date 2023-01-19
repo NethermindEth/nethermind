@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Merkleization;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
+using CoreUInt256 = Nethermind.Int256.UInt256;
 
 namespace Nethermind.Store.Test.Proofs;
 
@@ -67,7 +70,10 @@ public class WithdrawalSszTrieTests
                 AmountInGwei =  03166189940082864718,
             },};
         Merkle.Ize(out UInt256 root, withdrawals);
-        Assert.AreEqual(UInt256.Parse("bd97f65e513f870484e85927510acb291fcfb3e593c05ab7f21f206921264946", System.Globalization.NumberStyles.HexNumber), root);
+        var coreUint = new CoreUInt256(root.S0, root.S1, root.S2, root.S3);
+        var reverseRoot = new Keccak(coreUint.ToHexString(true));
+        var actualRoot = reverseRoot.Bytes.ToArray().Reverse().ToArray().ToHexString();
+        Assert.AreEqual("bd97f65e513f870484e85927510acb291fcfb3e593c05ab7f21f206921264946", actualRoot);
     }
 
 
@@ -87,14 +93,5 @@ public class WithdrawalSszTrieTests
         Assert.AreEqual(new Keccak("0xed9cec6fb8ee22b146059d02c38940cca1dd22a00d0132b000999b983fceff95"),trie.Root);
         // f2c455ad181342d83abbc0dc5a5d9b22f97f84c048c06d1bee7016eb5e37f741 - EthereumJS
         // 0xed9cec6fb8ee22b146059d02c38940cca1dd22a00d0132b000999b983fceff95 - Consensus reference tests https://media.githubusercontent.com/media/ethereum/consensus-spec-tests/v1.3.0-rc.1/tests/mainnet/capella/ssz_static/Withdrawal/ssz_random/case_0/roots.yaml
-    }
-
-    [Test]
-    public void Root_experiment_rlp()
-    {
-        WithdrawalTrie trie = new WithdrawalTrie(new List<Withdrawal>()
-        {
-            new Withdrawal() { Index = 10078475495033652149, ValidatorIndex = 3916426429657093836, Address = new Address("0x7f16ebcc35e62c99c7c545585d37c8a9d09e3a2a"), AmountInGwei = 12260575381911018860 }
-        });
     }
 }
