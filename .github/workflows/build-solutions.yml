@@ -28,9 +28,12 @@ jobs:
         dotnet-version: 7
     - name: Install dependencies
       run: |
-        dotnet restore Benchmarks.sln
         dotnet restore Nethermind.sln
-    - name: Build solutions
-      run: |
-        dotnet build Benchmarks.sln -c ${{ env.BUILD_CONFIG }} --no-restore
-        dotnet build Nethermind.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+        dotnet restore EthereumTests.sln
+        dotnet restore Benchmarks.sln
+    - name: Build Nethermind.sln
+      run: dotnet build Nethermind.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+    - name: Build EthereumTests.sln
+      run: dotnet build EthereumTests.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+    - name: Build Benchmarks.sln
+      run: dotnet build Benchmarks.sln -c ${{ env.BUILD_CONFIG }} --no-restore
