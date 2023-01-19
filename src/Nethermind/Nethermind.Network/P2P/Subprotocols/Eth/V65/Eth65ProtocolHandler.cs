@@ -91,7 +91,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Stopwatch stopwatch = Stopwatch.StartNew();
             using ArrayPoolList<Transaction> txsToSend = new(1024);
             Send(FulfillPooledTransactionsRequest(msg, txsToSend));
-            txsToSend.Dispose();
             stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +

@@ -151,8 +151,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
             Send(new PooledTransactionsMessage(getPooledTransactions.RequestId,
                 FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage, txsToSend)));
-
-            txsToSend.Dispose();
         }
 
         private void Handle(GetReceiptsMessage getReceiptsMessage)
