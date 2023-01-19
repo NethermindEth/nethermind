@@ -90,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
-        protected NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg)
+        public NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg)
         {
             if (msg.Hashes.Count > 4096)
             {

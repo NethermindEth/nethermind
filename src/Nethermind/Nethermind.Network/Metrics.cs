@@ -240,6 +240,12 @@ namespace Nethermind.Network
         [Description("Number of SNAP TrieNodes messages received")]
         public static long SnapTrieNodesReceived { get; set; }
 
+        [Description("Number of GetNodeData messages received via NodeData protocol")]
+        public static long GetNodeDataReceived { get; set; }
+
+        [Description("Number of NodeData messages received via NodeData protocol")]
+        public static long NodeDataReceived { get; set; }
+
         [Description("Number of bytes sent through P2P (TCP).")]
         public static long P2PBytesSent;
 
