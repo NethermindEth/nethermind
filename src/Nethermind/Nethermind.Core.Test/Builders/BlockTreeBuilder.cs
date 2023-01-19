@@ -26,19 +26,19 @@ namespace Nethermind.Core.Test.Builders
     public class BlockTreeBuilder : BuilderBase<BlockTree>
     {
         private readonly Block _genesisBlock;
+        private readonly ISpecProvider _specProvider;
         private IReceiptStorage? _receiptStorage;
-        private ISpecProvider? _specProvider;
         private IEthereumEcdsa? _ecdsa;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
 
         private bool _onlyHeaders;
 
-        public BlockTreeBuilder(ISpecProvider? specProvider)
+        public BlockTreeBuilder(ISpecProvider specProvider)
             : this(Build.A.Block.Genesis.TestObject, specProvider)
         {
         }
 
-        public BlockTreeBuilder(Block genesisBlock, ISpecProvider? specProvider)
+        public BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider)
         {
             BlocksDb = new MemDb();
             HeadersDb = new MemDb();
@@ -124,8 +124,8 @@ namespace Nethermind.Core.Test.Builders
             {
                 Transaction[] transactions = new[]
                 {
-                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject,
-                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject
+                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject,
+                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject
                 };
 
                 currentBlock = Build.A.Block

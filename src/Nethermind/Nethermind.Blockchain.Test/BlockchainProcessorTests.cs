@@ -6,12 +6,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -20,8 +21,8 @@ using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
+using Nethermind.Trie;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -34,8 +35,6 @@ namespace Nethermind.Blockchain.Test
         {
             private ILogManager _logManager = LimboLogs.Instance;
 
-            //            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
-
             private class BlockProcessorMock : IBlockProcessor
             {
                 private ILogger _logger;
@@ -44,9 +43,20 @@ namespace Nethermind.Blockchain.Test
 
                 private HashSet<Keccak> _allowedToFail = new();
 
-                public BlockProcessorMock(ILogManager logManager)
+                private HashSet<Keccak> _rootProcessed = new();
+
+                public BlockProcessorMock(ILogManager logManager, IStateReader stateReader)
                 {
                     _logger = logManager.GetClassLogger();
+                    stateReader.When(it =>
+                            it.RunTreeVisitor(Arg.Any<ITreeVisitor>(), Arg.Any<Keccak>(), Arg.Any<VisitingOptions>()))
+                        .Do((info =>
+                        {
+                            // Simulate state root check
+                            ITreeVisitor visitor = (ITreeVisitor)info[0];
+                            Keccak stateRoot = (Keccak)info[1];
+                            if (!_rootProcessed.Contains(stateRoot)) visitor.VisitMissingNode(stateRoot, new TrieVisitContext());
+                        }));
                 }
 
                 public void Allow(Keccak hash)
@@ -98,6 +108,7 @@ namespace Nethermind.Blockchain.Test
                         }
                         else
                         {
+                            _rootProcessed.Add(suggestedBlocks.Last().StateRoot);
                             BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
                             return suggestedBlocks.ToArray();
                         }
@@ -188,14 +199,12 @@ namespace Nethermind.Blockchain.Test
                 MemDb blockInfoDb = new();
                 MemDb headersDb = new();
 
-                MemDb stateDb = new();
-                Block genesis = Build.A.Block.Genesis.TestObject;
-
+                IStateReader stateReader = Substitute.For<IStateReader>();
 
                 _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-                _blockProcessor = new BlockProcessorMock(_logManager);
+                _blockProcessor = new BlockProcessorMock(_logManager, stateReader);
                 _recoveryStep = new RecoveryStepMock(_logManager);
-                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, new StateReader(new TrieStore(stateDb, LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
+                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
                 _resetEvent = new AutoResetEvent(false);
                 _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -293,6 +302,21 @@ namespace Nethermind.Blockchain.Test
                 return this;
             }
 
+            public ProcessingTestContext SuggestedWithoutProcessingAndMoveToMain(Block block)
+            {
+                AddBlockResult result = _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None);
+                if (result != AddBlockResult.Added)
+                {
+                    Assert.Fail($"Block {block} was expected to be added");
+                }
+
+                _blockTree.UpdateMainChain(new[] { block }, false);
+                _blockProcessor.Allow(block.Hash);
+                _recoveryStep.Allow(block.Hash);
+
+                return this;
+            }
+
             public ProcessingTestContext StartProcessor()
             {
                 _processor.Start();
@@ -386,7 +410,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to become the new head block");
                     _processingTestContext._resetEvent.WaitOne(ProcessingWait);
-                    Assert.AreEqual(_block.Header.Hash, _processingTestContext._blockTree.Head.Hash, "head");
+                    Assert.That(() => _processingTestContext._blockTree.Head.Hash, Is.EqualTo(_block.Header.Hash).After(1000, 100));
                     return _processingTestContext;
                 }
 
@@ -490,6 +514,21 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block2D4).BecomesNewHead()
                 .Suggested(_block3D6.Header)
                 .FullyProcessed(_block4D8).BecomesNewHead();
+        }
+
+        [Test]
+        public async Task Can_process_fast_sync()
+        {
+            BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+            await testBlockchain.BuildSomeBlocks(5);
+
+            When.ProcessingBlocks
+                .FullyProcessed(testBlockchain.BlockTree.FindBlock(0)).BecomesGenesis()
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(1))
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(2))
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(3))
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(4))
+                .FullyProcessed(testBlockchain.BlockTree.FindBlock(5)).BecomesNewHead();
         }
 
         [Test]

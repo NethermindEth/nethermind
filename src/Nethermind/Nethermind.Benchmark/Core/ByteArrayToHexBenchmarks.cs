@@ -19,6 +19,12 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark]
+        public string Improved()
+        {
+            return Bytes.ByteArrayToHexViaLookup32Safe(array, false);
+        }
+
+        [Benchmark]
         public string SafeLookup()
         {
             return Bytes.ByteArrayToHexViaLookup32Safe(array, false);

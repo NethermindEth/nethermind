@@ -180,17 +180,15 @@ namespace Nethermind.Blockchain.Find
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
             int count = 0;
-            while (count < _maxBlockDepth && toBlock.Number >= (fromBlock?.Number ?? long.MaxValue))
+            while (count < _maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
             {
-                foreach (var filterLog in FindLogsInBlock(filter, toBlock, cancellationToken))
+                foreach (var filterLog in FindLogsInBlock(filter, fromBlock, cancellationToken))
                 {
                     yield return filterLog;
                 }
 
-                if (!TryGetParentBlock(toBlock, out toBlock))
-                {
-                    break;
-                }
+                fromBlock = _blockFinder.FindHeader(fromBlock.Number + 1);
+                if (fromBlock is null) break;
 
                 count++;
             }

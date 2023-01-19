@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Benchmark
         [Benchmark(Baseline = true)]
         public string Current()
         {
-            return string.Concat("0x", _scenarios[ScenarioIndex].ToString("x").TrimStart('0'));
+            return _scenarios[ScenarioIndex].ToHexString(true);
         }
     }
 }

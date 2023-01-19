@@ -88,7 +88,6 @@ namespace Nethermind.Blockchain.Test
                 storageProvider,
                 NullReceiptStorage.Instance,
                 new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
-                new ValidationWithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 LimboLogs.Instance);
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,

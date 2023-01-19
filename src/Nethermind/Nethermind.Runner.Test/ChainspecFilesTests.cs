@@ -31,21 +31,21 @@ namespace Nethermind.Runner.Test
         public void different_formats_to_chainspecPath(string chainspecPath, ulong chainId)
         {
             _loader.LoadEmbeddedOrFromFile(chainspecPath, _logger).Should()
-                .Match<ChainSpec>(cs => cs.NetworkId == chainId);
+                .Match<ChainSpec>(cs => cs.ChainId == chainId);
         }
 
         [TestCase("testspec.json", 5UL)]
         public void Chainspec_from_file(string chainspecPath, ulong chainId)
         {
             _loader.LoadEmbeddedOrFromFile(chainspecPath, _logger).Should()
-                .Match<ChainSpec>(cs => cs.NetworkId == chainId);
+                .Match<ChainSpec>(cs => cs.ChainId == chainId);
         }
 
         [TestCase("goerli.json", 5UL)]
         public void ignoring_custom_chainspec_when_embedded_exists(string chainspecPath, ulong chainId)
         {
             _loader.LoadEmbeddedOrFromFile(chainspecPath, _logger).Should()
-                .Match<ChainSpec>(cs => cs.NetworkId == chainId);
+                .Match<ChainSpec>(cs => cs.ChainId == chainId);
         }
 
         [TestCase("chainspec/custom_chainspec_that_does_not_exist.json")]

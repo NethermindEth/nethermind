@@ -42,6 +42,7 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Config;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -304,7 +305,6 @@ namespace Nethermind.Synchronization.Test
                 storageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                new ValidationWithdrawalProcessor(stateProvider, logManager),
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
@@ -329,12 +329,15 @@ namespace Nethermind.Synchronization.Test
                 devStorage,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                new ValidationWithdrawalProcessor(stateProvider, logManager),
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,
                 BlockchainProcessor.Options.NoReceipts);
-            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider);
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 0
+            };
+            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider, blocksConfig);
             TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
             DevBlockProducer producer = new(
                 transactionSelector,

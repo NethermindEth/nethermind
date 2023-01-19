@@ -191,9 +191,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            if (transaction.IsContractCreation && spec.IsEip3860Enabled && transaction.Data.Length > spec.MaxInitCodeSize)
+            if (transaction.IsContractCreation && spec.IsEip3860Enabled && (transaction.DataLength) > spec.MaxInitCodeSize)
             {
-                TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.Data.Length} > {spec.MaxInitCodeSize}");
+                TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.DataLength} > {spec.MaxInitCodeSize}");
                 QuickFail(transaction, block, txTracer, eip658NotEnabled, "eip-3860 - transaction size over max init code size");
                 return;
             }
@@ -333,7 +333,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     : new CodeInfo(machineCode);
 
                 ExecutionType executionType =
-                    transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
+                    transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Transaction;
                 using (EvmState state =
                     new(unspentGas, env, executionType, true, snapshot, false))
                 {

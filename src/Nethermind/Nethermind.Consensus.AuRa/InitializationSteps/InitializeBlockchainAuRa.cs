@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Services;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
@@ -96,7 +97,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
-                new ValidationWithdrawalProcessor(_api.StateProvider, _api.LogManager),
+                new WithdrawalProcessor(_api.StateProvider, _api.LogManager),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter

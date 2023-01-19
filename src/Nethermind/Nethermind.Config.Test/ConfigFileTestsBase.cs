@@ -139,9 +139,7 @@ namespace Nethermind.Config.Test
             foreach (string singleWildcard in configWildcards)
             {
                 string singleWildcardBase = singleWildcard.Replace("^", string.Empty);
-                IEnumerable<string> result = groups.ContainsKey(singleWildcardBase)
-                    ? groups[singleWildcardBase]
-                    : Enumerable.Repeat(singleWildcardBase, 1);
+                IEnumerable<string> result = groups.TryGetValue(singleWildcardBase, out IEnumerable<string>? value) ? value : Enumerable.Repeat(singleWildcardBase, 1);
 
                 if (singleWildcard.StartsWith("^"))
                 {

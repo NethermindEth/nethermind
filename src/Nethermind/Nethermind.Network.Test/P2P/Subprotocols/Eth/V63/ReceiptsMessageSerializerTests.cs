@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -8,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -109,6 +111,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
             serializer.Deserialize(new byte[0]).TxReceipts.Should().HaveCount(0);
+        }
+
+        [Test]
+        public void Deserialize_non_empty_but_bytebuffer_starts_with_empty()
+        {
+            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
+            ReceiptsMessage message = new(data);
+            ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
+
+            IByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1);
+            buffer.WriteByte(Rlp.OfEmptySequence[0]);
+            buffer.ReadByte();
+
+            serializer.Serialize(buffer, message);
+            ReceiptsMessage deserialized = serializer.Deserialize(buffer);
+
+            deserialized.TxReceipts.Length.Should().Be(data.Length);
         }
 
         [Test]

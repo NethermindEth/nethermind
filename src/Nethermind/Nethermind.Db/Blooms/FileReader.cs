@@ -4,33 +4,27 @@
 using System;
 using System.IO;
 
+using Microsoft.Win32.SafeHandles;
+
 namespace Nethermind.Db.Blooms
 {
     public class FileReader : IFileReader
     {
         private readonly int _elementSize;
-        private readonly FileStream _file;
+        private readonly SafeFileHandle _file;
 
         public FileReader(string filePath, int elementSize)
         {
             _elementSize = elementSize;
-            _file = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            _file = File.OpenHandle(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         }
 
         public int Read(long index, Span<byte> element)
         {
-            SeekIndex(index);
-            return _file.Read(element);
+            return RandomAccess.Read(_file, element, GetPosition(index));
         }
 
-        private void SeekIndex(long index)
-        {
-            long seekPosition = index * _elementSize;
-            if (_file.Position != seekPosition)
-            {
-                _file.Position = seekPosition;
-            }
-        }
+        private long GetPosition(long index) => index * _elementSize;
 
         public void Dispose()
         {

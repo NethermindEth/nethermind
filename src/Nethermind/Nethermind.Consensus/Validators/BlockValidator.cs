@@ -60,41 +60,39 @@ public class BlockValidator : IBlockValidator
         {
             if (!_txValidator.IsWellFormed(txs[i], spec))
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid transaction {txs[i].Hash} in block {block.ToString(Block.Format.FullHashAndNumber)}");
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {txs[i].Hash}");
                 return false;
             }
         }
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
-            _logger.Debug($"Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount} in block {block.ToString(Block.Format.FullHashAndNumber)}");
+            _logger.Debug($"{Invalid(block)} Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount}");
             return false;
         }
 
-        Keccak unclesHash = UnclesHash.Calculate(block);
-        if (block.Header.UnclesHash != unclesHash)
+        if (!ValidateUnclesHashMatches(block, out var unclesHash))
         {
-            _logger.Debug($"Uncles hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.UnclesHash}, got {unclesHash}");
+            _logger.Debug($"{Invalid(block)} Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}");
             return false;
         }
 
         if (!_unclesValidator.Validate(block.Header, block.Uncles))
         {
-            _logger.Debug($"Invalid uncles in block {block.ToString(Block.Format.FullHashAndNumber)}");
+            _logger.Debug($"{Invalid(block)} Invalid uncles");
             return false;
         }
 
         bool blockHeaderValid = _headerValidator.Validate(block.Header);
         if (!blockHeaderValid)
         {
-            if (_logger.IsDebug) _logger.Debug($"Invalid header of block {block.ToString(Block.Format.FullHashAndNumber)}");
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid header");
             return false;
         }
 
-        Keccak txRoot = new TxTrie(block.Transactions).RootHash;
-        if (txRoot != block.Header.TxRoot)
+        if (!ValidateTxRootMatchesTxs(block, out Keccak txRoot))
         {
-            if (_logger.IsDebug) _logger.Debug($"Transaction root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.TxRoot}, got {txRoot}");
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
             return false;
         }
 
@@ -177,9 +175,7 @@ public class BlockValidator : IBlockValidator
 
         if (block.Withdrawals is not null)
         {
-            Keccak? withdrawalsRoot = new WithdrawalTrie(block.Withdrawals).RootHash;
-
-            if (withdrawalsRoot != block.Header.WithdrawalsRoot)
+            if (!ValidateWithdrawalsHashMatches(block, out Keccak withdrawalsRoot))
             {
                 error = $"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}";
                 if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
@@ -192,4 +188,31 @@ public class BlockValidator : IBlockValidator
 
         return true;
     }
+
+    public static bool ValidateTxRootMatchesTxs(Block block, out Keccak txRoot)
+    {
+        txRoot = new TxTrie(block.Transactions).RootHash;
+        return txRoot == block.Header.TxRoot;
+    }
+
+    public static bool ValidateUnclesHashMatches(Block block, out Keccak unclesHash)
+    {
+        unclesHash = UnclesHash.Calculate(block);
+
+        return block.Header.UnclesHash == unclesHash;
+    }
+
+    public static bool ValidateWithdrawalsHashMatches(Block block, out Keccak? withdrawalsRoot)
+    {
+        withdrawalsRoot = null;
+        if (block.Withdrawals == null)
+            return block.Header.WithdrawalsRoot == null;
+
+        withdrawalsRoot = new WithdrawalTrie(block.Withdrawals).RootHash;
+
+        return block.Header.WithdrawalsRoot == withdrawalsRoot;
+    }
+
+    private static string Invalid(Block block) =>
+        $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";
 }

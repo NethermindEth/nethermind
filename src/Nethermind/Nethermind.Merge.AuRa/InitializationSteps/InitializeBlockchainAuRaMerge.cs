@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Collections.Generic;
 using Nethermind;
 using Nethermind.Consensus.AuRa;
@@ -24,7 +27,6 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
         protected override BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
         {
             return new AuRaMergeBlockProcessor(
-                _api.PoSSwitcher!,
                 _api.SpecProvider!,
                 _api.BlockValidator!,
                 _api.RewardCalculatorSource!.Get(_api.TransactionProcessor!),
@@ -34,7 +36,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.ReceiptStorage!,
                 _api.LogManager,
                 _api.BlockTree!,
-                new ValidationWithdrawalProcessor(_api.StateProvider!, _api.LogManager),
+                new WithdrawalProcessor(_api.StateProvider!, _api.LogManager),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter

@@ -23,27 +23,6 @@ namespace Nethermind.Blockchain.Test;
 public class GenesisLoaderTests
 {
     [Test]
-    public void Can_load_withdrawals_with_empty_root()
-    {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/shanghai_from_genesis.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
-        IDb stateDb = new MemDb();
-        IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Berlin.Instance);
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
-        StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
-        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        GenesisLoader genesisLoader = new(chainSpec, specProvider, stateProvider, storageProvider,
-            transactionProcessor);
-        Block block = genesisLoader.Load();
-        Assert.AreEqual(Keccak.EmptyTreeHash, block.WithdrawalsRoot);
-        Assert.AreEqual("0x3c8aeea1d582ff43787ac297e08a25c58ee9609ab49139e64e0f7a8a56ba3a46", block.Hash!.ToString());
-    }
-
-    [Test]
     public void Can_load_genesis_with_emtpy_accounts_and_storage()
     {
         AssertBlockHash("0x61b2253366eab37849d21ac066b96c9de133b8c58a9a38652deae1dd7ec22e7b", "Specs/empty_accounts_and_storages.json");
@@ -61,9 +40,22 @@ public class GenesisLoaderTests
         AssertBlockHash("0x62839401df8970ec70785f62e9e9d559b256a9a10b343baf6c064747b094de09", "Specs/hive_zero_balance_test.json");
     }
 
+    [Test]
+    public void Can_load_withdrawals_with_empty_root()
+    {
+        Block block = GetGenesisBlock("Specs/shanghai_from_genesis.json");
+        Assert.AreEqual("0x3c8aeea1d582ff43787ac297e08a25c58ee9609ab49139e64e0f7a8a56ba3a46", block.Hash!.ToString());
+    }
+
     private void AssertBlockHash(string expectedHash, string chainspecFilePath)
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, chainspecFilePath);
+        Block block = GetGenesisBlock(chainspecFilePath);
+        Assert.AreEqual(expectedHash, block.Hash!.ToString());
+    }
+
+    private Block GetGenesisBlock(string chainspecPath)
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, chainspecPath);
         ChainSpec chainSpec = LoadChainSpec(path);
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -76,8 +68,7 @@ public class GenesisLoaderTests
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         GenesisLoader genesisLoader = new(chainSpec, specProvider, stateProvider, storageProvider,
             transactionProcessor);
-        Block block = genesisLoader.Load();
-        Assert.AreEqual(expectedHash, block.Hash!.ToString());
+        return genesisLoader.Load();
     }
 
 

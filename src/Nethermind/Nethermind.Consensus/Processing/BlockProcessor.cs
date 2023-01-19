@@ -52,8 +52,8 @@ namespace Nethermind.Consensus.Processing
             IStorageProvider? storageProvider,
             IReceiptStorage? receiptStorage,
             IWitnessCollector? witnessCollector,
-            IWithdrawalProcessor withdrawalProcessor,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            IWithdrawalProcessor? withdrawalProcessor = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -62,9 +62,10 @@ namespace Nethermind.Consensus.Processing
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
-            _withdrawalProcessor = withdrawalProcessor ?? throw new ArgumentNullException(nameof(withdrawalProcessor));
+            _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
+
 
             _receiptsTracer = new BlockReceiptsTracer();
         }

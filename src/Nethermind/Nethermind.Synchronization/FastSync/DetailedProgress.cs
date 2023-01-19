@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
@@ -48,9 +48,9 @@ namespace Nethermind.Synchronization.FastSync
 
         public DetailedProgress(ulong chainId, byte[] serializedInitialState)
         {
-            if (Known.ChainSize.ContainsKey(chainId))
+            if (Known.ChainSize.TryGetValue(chainId, out Known.SizeInfo value))
             {
-                _chainSizeInfo = Known.ChainSize[chainId];
+                _chainSizeInfo = value;
             }
 
             LoadFromSerialized(serializedInitialState);

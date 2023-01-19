@@ -28,9 +28,7 @@ namespace Nethermind.Core
 
         public BlockHeader[] Uncles { get; }
 
-        public Withdrawal[]? Withdrawals { get; internal set; }
-
-        public static BlockBody Empty { get; } = new();
+        public Withdrawal[]? Withdrawals { get; }
 
         public bool IsEmpty => Transactions.Length == 0 && Uncles.Length == 0 && (Withdrawals?.Length ?? 0) == 0;
     }

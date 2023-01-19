@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Reflection;
 using System.Threading;
@@ -41,7 +41,7 @@ namespace Nethermind.Init.Steps
 
             //Loop over config properties checking mismaches and changing defaults
             //So that on given and current inner configs we would only have same values
-            if (propertyInfos == null) return;
+            if (propertyInfos is null) return;
 
             foreach (PropertyInfo? propertyInfo in propertyInfos)
             {

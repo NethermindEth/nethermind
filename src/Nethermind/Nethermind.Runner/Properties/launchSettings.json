@@ -272,7 +272,7 @@
     },
     "Docker": {
       "commandName": "Docker",
-      "commandLineArgs": "-c goerli -dd /data --JsonRpc.Enabled true --JsonRpc.Host 0.0.0.0"
+      "commandLineArgs": "-c goerli -dd /data --JsonRpc.EngineHost 0.0.0.0 --JsonRpc.EnginePort 8551 --JsonRpc.Host 0.0.0.0"
     },
     "Chiado": {
       "commandName": "Project",
@@ -283,7 +283,7 @@
     },
     "Withdrawals (Devnet)": {
       "commandName": "Project",
-      "commandLineArgs": "-c withdrawals_devnet -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "commandLineArgs": "-c withdrawals_devnet -dd D:\\",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
