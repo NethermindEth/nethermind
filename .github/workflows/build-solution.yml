@@ -1,10 +1,10 @@
 name: Build solutions
 
 on:
-  push:
-    branches: [ 'master' ]
   pull_request:
-    branches: [ 'master' ]
+    branches: [master]
+  push:
+    branches: [master]
 
 defaults:
   run:
@@ -15,27 +15,20 @@ env:
 
 jobs:
   build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
     - name: Check out repository
       uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
-        submodules: recursive
-
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: 7
-
     - name: Install dependencies
       run: |
-        dotnet restore Baseline.sln
-        dotnet restore Cortex.sln
-        dotnet restore Benchmarks.sln 
-
-    - name: Build
+        dotnet restore Benchmarks.sln
+        dotnet restore Nethermind.sln
+    - name: Build solutions
       run: |
-        dotnet build Baseline.sln -c ${{ env.BUILD_CONFIG }} --no-restore
-        dotnet build Cortex.sln -c ${{ env.BUILD_CONFIG }} --no-restore
         dotnet build Benchmarks.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+        dotnet build Nethermind.sln -c ${{ env.BUILD_CONFIG }} --no-restore
