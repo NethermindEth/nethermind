@@ -7,9 +7,9 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Ssz;
+using Nethermind.Serialization.Ssz;
 
-[assembly: InternalsVisibleTo("Nethermind.Ssz.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Serialization.Ssz.Test")]
 
 namespace Nethermind.Merkleization;
 

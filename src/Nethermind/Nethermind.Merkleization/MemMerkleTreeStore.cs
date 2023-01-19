@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Ssz;
+using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merkleization;
 

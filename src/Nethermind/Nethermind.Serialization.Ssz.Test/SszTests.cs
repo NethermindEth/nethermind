@@ -6,7 +6,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using NUnit.Framework;
 
-namespace Nethermind.Ssz.Test
+namespace Nethermind.Serialization.Ssz.Test
 {
     [TestFixture]
     public class SszTests

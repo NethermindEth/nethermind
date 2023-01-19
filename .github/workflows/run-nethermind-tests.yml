@@ -150,10 +150,10 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Nethermind.Mining.Test
       run: dotnet test src/Nethermind/Nethermind.Mining.Test -c ${{ env.BUILD_CONFIG }}
+    - name: Nethermind.Serialization.Ssz.Test
+      run: dotnet test src/Nethermind/Nethermind.Serialization.Ssz.Test -c ${{ env.BUILD_CONFIG }}
     - name: Nethermind.Sockets.Test
       run: dotnet test src/Nethermind/Nethermind.Sockets.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Nethermind.Ssz.Test
-      run: dotnet test src/Nethermind/Nethermind.Ssz.Test -c ${{ env.BUILD_CONFIG }}
     - name: Nethermind.State.Test
       run: dotnet test src/Nethermind/Nethermind.State.Test -c ${{ env.BUILD_CONFIG }}
     - name: Nethermind.Trie.Test

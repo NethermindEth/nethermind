@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Ssz;
+namespace Nethermind.Serialization.Ssz;
 
 public static partial class Ssz
 {

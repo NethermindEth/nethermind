@@ -4,7 +4,7 @@
 using System;
 using System.Security.Cryptography;
 
-namespace Nethermind.Ssz.Test
+namespace Nethermind.Serialization.Ssz.Test
 {
     public static class HashUtility
     {

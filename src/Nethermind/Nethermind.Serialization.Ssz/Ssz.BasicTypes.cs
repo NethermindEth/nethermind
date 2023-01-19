@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Int256;
 
-namespace Nethermind.Ssz;
+namespace Nethermind.Serialization.Ssz;
 
 /// <summary>
 /// https://github.com/ethereum/eth2.0-specs/blob/dev/specs/simple-serialize.md#simpleserialize-ssz

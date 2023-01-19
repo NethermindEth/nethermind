@@ -5,7 +5,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Security.Cryptography;
 using Nethermind.Core;
-using Nethermind.Ssz;
+using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merkleization;
 

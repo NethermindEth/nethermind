@@ -7,7 +7,7 @@ using Nethermind.Int256;
 using Nethermind.Merkleization;
 using NUnit.Framework;
 
-namespace Nethermind.Ssz.Test
+namespace Nethermind.Serialization.Ssz.Test
 {
     public static class UInt256Extensions
     {

@@ -15,7 +15,7 @@ using Nethermind.Merkleization;
 using NUnit.Framework;
 using Shouldly;
 
-namespace Nethermind.Ssz.Test
+namespace Nethermind.Serialization.Ssz.Test
 {
     [TestFixture]
     public class HashTreeRootTests

@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Merkleization;
 using NUnit.Framework;
 
-namespace Nethermind.Ssz.Test
+namespace Nethermind.Serialization.Ssz.Test
 {
     [TestFixture]
     public class MerkleTreeNodeTests

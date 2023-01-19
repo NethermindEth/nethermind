@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Ssz;
+namespace Nethermind.Serialization.Ssz;
 
 public partial class Ssz
 {

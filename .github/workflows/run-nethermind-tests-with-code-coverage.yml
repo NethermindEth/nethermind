@@ -97,24 +97,24 @@ jobs:
       run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Enr.Test
     - name: Nethermind.Overseer.Test
       run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Overseer.Test
-    - name: Nethermind.Secp256k1.Test.Linux
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Secp256k1.Test
     - name: Nethermind.Runner.Test
       run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Runner.Test
-    - name: Nethermind.Synchronization.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Synchronization.Test
+    - name: Nethermind.Secp256k1.Test.Linux
+      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Secp256k1.Test
+    - name: Nethermind.Serialization.Ssz.Test
+      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Serialization.Ssz.Test
+    - name: Nethermind.Sockets.Test
+      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Sockets.Test
     - name: Nethermind.Specs.Test
       run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Specs.Test
     - name: Nethermind.State.Test
       run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.State.Test
+    - name: Nethermind.Synchronization.Test
+      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Synchronization.Test
     - name: Nethermind.Trie.Test
       run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Trie.Test
     - name: Nethermind.TxPool.Test
       run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.TxPool.Test
-    - name: Nethermind.Sockets.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Sockets.Test
-    - name: Nethermind.Ssz.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Ssz.Test
     - name: Nethermind.Wallet.Test
       run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Wallet.Test
     - name: Upload Codecov reports

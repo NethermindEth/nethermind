@@ -5,7 +5,7 @@ using System;
 using System.Collections;
 using System.Runtime.CompilerServices;
 
-namespace Nethermind.Ssz;
+namespace Nethermind.Serialization.Ssz;
 
 public static partial class Ssz
 {
