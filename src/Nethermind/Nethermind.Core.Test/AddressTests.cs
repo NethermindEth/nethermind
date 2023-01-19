@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -175,14 +177,17 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(address, new Address(expectedAddress));
         }
 
-        [Test]
-        public void Is_PointEvaluationPrecompile_properly_activated()
+        [TestCaseSource(nameof(PointEvaluationPrecompileTestCases))]
+        public bool Is_PointEvaluationPrecompile_properly_activated(IReleaseSpec spec) =>
+            new Address("0x0000000000000000000E").IsPrecompile(spec);
+
+        public static IEnumerable PointEvaluationPrecompileTestCases
         {
-            byte[] addressBytes = new byte[20];
-            addressBytes[19] = 0x14;
-            Address address = new(addressBytes);
-            Assert.False(address.IsPrecompile(Shanghai.Instance));
-            Assert.True(address.IsPrecompile(ShardingFork.Instance));
+            get
+            {
+                yield return new TestCaseData(Shanghai.Instance) { ExpectedResult = false, TestName = nameof(Shanghai) };
+                yield return new TestCaseData(ShardingFork.Instance) { ExpectedResult = true, TestName = nameof(ShardingFork) };
+            }
         }
 
         [Test]

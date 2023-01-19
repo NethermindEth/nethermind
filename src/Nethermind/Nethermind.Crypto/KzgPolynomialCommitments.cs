@@ -12,7 +12,7 @@ namespace Nethermind.Crypto
 {
     public static class KzgPolynomialCommitments
     {
-        public static readonly UInt256 BlsModulus = UInt256.Parse("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001", System.Globalization.NumberStyles.HexNumber);
+        public static readonly UInt256 BlsModulus = UInt256.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513", System.Globalization.NumberStyles.Integer);
         public static readonly ulong FieldElementsPerBlob = 4096;
 
         private const byte KzgBlobHashVersionV1 = 1;
