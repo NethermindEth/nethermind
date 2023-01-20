@@ -65,7 +65,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             ManualResetEvent guard = new(false);
             Keccak lastTransaction = TestItem.Keccaks[txIndex - 1];
 
-            TestReceiptColumenDb receiptColumenDb = new TestReceiptColumenDb();
+            TestReceiptColumenDb receiptColumenDb = new();
             context.DbProvider.ReceiptsDb.Returns(receiptColumenDb);
             receiptColumenDb.RemoveFunc = (key) =>
             {
