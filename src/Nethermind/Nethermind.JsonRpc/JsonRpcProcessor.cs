@@ -167,6 +167,7 @@ namespace Nethermind.JsonRpc
                         if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model}");
 
                         JsonRpcResult.Entry result = await HandleSingleRequest(rpcRequest.Model, context);
+                        moveNext = false;
 
                         yield return JsonRpcResult.Single(RecordResponse(result));
                     }
