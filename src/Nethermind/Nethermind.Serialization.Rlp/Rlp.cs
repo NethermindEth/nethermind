@@ -136,7 +136,7 @@ namespace Nethermind.Serialization.Rlp
         public static T[] DecodeArray<T>(RlpStream rlpStream, IRlpStreamDecoder<T>? rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
-            T[] result = new T[rlpStream.ReadNumberOfItemsRemaining(checkPosition)];
+            T[] result = new T[rlpStream.PeekNumberOfItemsRemaining(checkPosition)];
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = rlpDecoder.Decode(rlpStream, rlpBehaviors);
@@ -749,7 +749,7 @@ namespace Nethermind.Serialization.Rlp
                 return Data[Position] >= 192;
             }
 
-            public int ReadNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
+            public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
             {
                 int positionStored = Position;
                 int numberOfItems = 0;
