@@ -7,13 +7,25 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 
 namespace Nethermind.Evm.EOF;
 
 internal static class EvmObjectFormat
 {
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct Worklet
+    {
+        public Worklet(ushort position, ushort stackHeight)
+        {
+            Position = position;
+            StackHeight = stackHeight;
+        }
+        public ushort Position;
+        public ushort StackHeight;
+    }
     private interface IEofVersionHandler
     {
         bool ValidateBody(ReadOnlySpan<byte> code, EofHeader header);
@@ -27,8 +39,6 @@ internal static class EvmObjectFormat
     private const byte VERSION_OFFSET = TWO_BYTE_LENGTH; // magic lenght
 
     private static readonly Dictionary<byte, IEofVersionHandler> _eofVersionHandlers = new();
-    internal static ILogger Logger { get; set; } = NullLogger.Instance;
-
     static EvmObjectFormat()
     {
         _eofVersionHandlers.Add(Eof1.VERSION, new Eof1());
@@ -135,31 +145,26 @@ internal static class EvmObjectFormat
             // we need to be able to parse header + minimum section lenghts
             if (container.Length < MINIMUM_SIZE)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code is too small to be valid code");
                 return false;
             }
 
             if (!container.StartsWith(MAGIC))
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {MAGIC.ToHexString(true)} ");
                 return false;
             }
 
             if (container[VERSION_OFFSET] != VERSION)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Code is not Eof version {VERSION}");
                 return false;
             }
 
             if (container[KIND_TYPE_OFFSET] != KIND_TYPE)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
 
             if (container[KIND_CODE_OFFSET] != KIND_CODE)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
 
@@ -173,19 +178,16 @@ internal static class EvmObjectFormat
 
             if (typeSection.Size < MINIMUM_TYPESECTION_SIZE)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : TypeSection Size must be at least 3, but found {typeSection.Size}");
                 return false;
             }
 
             if (numberOfCodeSections < MINIMUM_NUM_CODE_SECTIONS)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : At least one code section must be present");
                 return false;
             }
 
             if (numberOfCodeSections > MAXIMUM_NUM_CODE_SECTIONS)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : code sections count must not exceed 1024");
                 return false;
             }
 
@@ -200,7 +202,6 @@ internal static class EvmObjectFormat
 
             if (container.Length < requiredSize)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code is too small to be valid code");
                 return false;
             }
 
@@ -217,7 +218,6 @@ internal static class EvmObjectFormat
 
                 if (codeSection.Size == 0)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {codeSection.Size}");
                     return false;
                 }
 
@@ -227,7 +227,6 @@ internal static class EvmObjectFormat
 
             if (container[KIND_DATA_OFFSET + dynamicOffset] != KIND_DATA)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
 
@@ -241,7 +240,6 @@ internal static class EvmObjectFormat
 
             if (container[TERMINATOR_OFFSET + dynamicOffset] != TERMINATOR)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
 
@@ -270,26 +268,22 @@ internal static class EvmObjectFormat
 
             if (contractBody.Length != calculatedCodeLength)
             {
-                if (Logger.IsTrace) Logger.Trace("EIP-3540 : SectionSizes indicated in bundled header are incorrect, or ContainerCode is incomplete");
                 return false;
             }
 
             if (codeSections.Length == 0 || codeSections.Any(section => section.Size == 0))
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {codeSections.Length}");
                 return false;
             }
 
             if (codeSections.Length != (typeSectionSize / MINIMUM_TYPESECTION_SIZE))
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-4750: Code Sections count must match TypeSection count, CodeSection count was {codeSections.Length}, expected {typeSectionSize / MINIMUM_TYPESECTION_SIZE}");
                 return false;
             }
 
             ReadOnlySpan<byte> typesection = container.Slice(typeSectionStart, typeSectionSize);
             if (!ValidateTypeSection(typesection))
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-4750: invalid typesection found");
                 return false;
             }
 
@@ -298,8 +292,12 @@ internal static class EvmObjectFormat
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
                 (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
                 ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
-                if (!ValidateInstructions(code, header) ||
-                    !ValidateStackState(sectionIdx, code, typesection, header))
+                if (!ValidateInstructions(code, header, out ushort jumpsCount))
+                {
+                    return false;
+                }
+
+                if (!ValidateStackState(sectionIdx, code, typesection, jumpsCount))
                 {
                     return false;
                 }
@@ -312,13 +310,11 @@ internal static class EvmObjectFormat
         {
             if (types[SECTION_INPUT_COUNT_OFFSET] != 0 || types[SECTION_OUTPUT_COUNT_OFFSET] != 0)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-4750: first 2 bytes of type section must be 0s");
                 return false;
             }
 
             if (types.Length % MINIMUM_TYPESECTION_SIZE != 0)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-4750: type section length must be a product of {MINIMUM_TYPESECTION_SIZE}");
                 return false;
             }
 
@@ -330,29 +326,26 @@ internal static class EvmObjectFormat
 
                 if (inputCount > INPUTS_MAX)
                 {
-                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many inputs");
                     return false;
                 }
 
                 if (outputCount > OUTPUTS_MAX)
                 {
-                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many outputs");
                     return false;
                 }
 
                 if (maxStackHeight > MAX_STACK_HEIGHT)
                 {
-                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Stack depth too high");
                     return false;
                 }
             }
             return true;
         }
-        bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header)
+        bool ValidateInstructions(ReadOnlySpan<byte> code, in EofHeader header, out ushort jumpsCount)
         {
-            ArrayPool<byte> pool = ArrayPool<byte>.Shared;
-            byte[] codeBitmap = pool.Rent((code.Length / BYTE_BIT_COUNT) + 1);
-            byte[] jumpdests = pool.Rent((code.Length / BYTE_BIT_COUNT) + 1);
+            byte[] codeBitmap = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
+            byte[] jumpdests = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
+            jumpsCount = 1;
             try
             {
                 int pos;
@@ -364,7 +357,6 @@ internal static class EvmObjectFormat
 
                     if (!opcode.IsValid(IsEofContext: true))
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
                         return false;
                     }
 
@@ -372,7 +364,6 @@ internal static class EvmObjectFormat
                     {
                         if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump Argument underflow");
                             return false;
                         }
 
@@ -381,10 +372,10 @@ internal static class EvmObjectFormat
 
                         if (rjumpdest < 0 || rjumpdest >= code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
                             return false;
                         }
 
+                        jumpsCount += opcode is Instruction.RJUMP ? ONE_BYTE_LENGTH : TWO_BYTE_LENGTH;
                         BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, jumpdests, ref rjumpdest);
                         BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
                     }
@@ -393,20 +384,18 @@ internal static class EvmObjectFormat
                     {
                         if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
                             return false;
                         }
 
                         byte count = code[postInstructionByte];
+                        jumpsCount += count;
                         if (count < MINIMUMS_ACCEPTABLE_JUMPT_JUMPTABLE_LENGTH)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
                             return false;
                         }
 
                         if (postInstructionByte + ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : jumpv jumptable underflow");
                             return false;
                         }
 
@@ -417,7 +406,6 @@ internal static class EvmObjectFormat
                             var rjumpdest = offset + immediateValueSize + postInstructionByte;
                             if (rjumpdest < 0 || rjumpdest >= code.Length)
                             {
-                                if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
                                 return false;
                             }
                             BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, jumpdests, ref rjumpdest);
@@ -429,7 +417,6 @@ internal static class EvmObjectFormat
                     {
                         if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4750 : CALLF Argument underflow");
                             return false;
                         }
 
@@ -438,7 +425,6 @@ internal static class EvmObjectFormat
 
                         if (targetSectionId >= header.CodeSections.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4750 : Invalid Section Id");
                             return false;
                         }
                     }
@@ -448,7 +434,6 @@ internal static class EvmObjectFormat
                         int len = opcode - Instruction.PUSH0;
                         if (postInstructionByte + len > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
                             return false;
                         }
                         BitmapHelper.HandleNumbits(len, codeBitmap, ref postInstructionByte);
@@ -458,7 +443,6 @@ internal static class EvmObjectFormat
 
                 if (pos > code.Length)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
                     return false;
                 }
 
@@ -467,17 +451,17 @@ internal static class EvmObjectFormat
             }
             finally
             {
-                pool.Return(codeBitmap);
-                pool.Return(jumpdests);
+                ArrayPool<byte>.Shared.Return(codeBitmap, true);
+                ArrayPool<byte>.Shared.Return(jumpdests, true);
             }
         }
-        public bool ValidateReachableCode(int sectionId, in ReadOnlySpan<byte> code, Dictionary<int, int>.KeyCollection reachedOpcode, in EofHeader? header)
+        public bool ValidateReachableCode(in ReadOnlySpan<byte> code, short[] reachedOpcode)
         {
             for (int i = 0; i < code.Length;)
             {
                 var opcode = (Instruction)code[i];
 
-                if (!reachedOpcode.Contains(i))
+                if (reachedOpcode[i] == 0)
                 {
                     return false;
                 }
@@ -502,130 +486,137 @@ internal static class EvmObjectFormat
             return true;
         }
 
-        public bool ValidateStackState(int sectionId, in ReadOnlySpan<byte> code, in ReadOnlySpan<byte> typesection, in EofHeader? header)
+
+
+        public bool ValidateStackState(int sectionId, in ReadOnlySpan<byte> code, in ReadOnlySpan<byte> typesection, ushort worksetCount)
         {
-            Dictionary<int, int> recordedStackHeight = new();
-            int peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE];
+            static Worklet PopWorklet(Worklet[] workset, ref ushort worksetPointer) => workset[worksetPointer++];
+            static void PushWorklet(Worklet[] workset, ref ushort worksetTop, Worklet worklet) => workset[worksetTop++] = worklet;
+
+            short[] recordedStackHeight = ArrayPool<short>.Shared.Rent(code.Length);
             ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
+            int peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
-            Stack<(int Position, int StackHeigth)> workSet = new();
-            workSet.Push((0, peakStackHeight));
+            ushort worksetTop = 0; ushort worksetPointer = 0;
+            Worklet[] workset = ArrayPool<Worklet>.Shared.Rent(worksetCount + 1);
 
-            while (workSet.TryPop(out var worklet))
+            try
             {
-                (int pos, int stackHeight) = worklet;
-                bool stop = false;
-
-                while (!stop)
+                PushWorklet(workset, ref worksetTop, new Worklet(0, (ushort)peakStackHeight));
+                while (worksetPointer < worksetTop)
                 {
-                    Instruction opcode = (Instruction)code[pos];
-                    (int inputs, int outputs, int immediates) = opcode.StackRequirements();
-                    int posPostInstruction = pos + 1;
-                    if (recordedStackHeight.ContainsKey(pos))
-                    {
-                        if (stackHeight != recordedStackHeight[pos])
-                        {
+                    Worklet worklet = PopWorklet(workset, ref worksetPointer);
+                    bool stop = false;
 
-                            if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Branch joint line has invalid stack height");
+                    while (!stop)
+                    {
+                        Instruction opcode = (Instruction)code[worklet.Position];
+                        (ushort inputs, ushort outputs, ushort immediates) = opcode.StackRequirements();
+                        ushort posPostInstruction = (ushort)(worklet.Position + 1);
+                        if (recordedStackHeight[worklet.Position] != 0)
+                        {
+                            if (worklet.StackHeight != recordedStackHeight[worklet.Position] - 1)
+                            {
+                                return false;
+                            }
+                            break;
+                        }
+                        else
+                        {
+                            recordedStackHeight[worklet.Position] = (short)(worklet.StackHeight + 1);
+                        }
+
+                        if (opcode is Instruction.CALLF)
+                        {
+                            var sectionIndex = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthUInt16();
+                            inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+                            outputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                        }
+
+                        if (worklet.StackHeight < inputs)
+                        {
                             return false;
                         }
-                        break;
-                    }
-                    else
-                    {
-                        recordedStackHeight[pos] = stackHeight;
-                    }
 
-                    if (opcode is Instruction.CALLF)
-                    {
-                        var sectionIndex = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthUInt16();
-                        inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
-                        outputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-                    }
+                        worklet.StackHeight += (ushort)(outputs - inputs);
+                        peakStackHeight = Math.Max(peakStackHeight, worklet.StackHeight);
 
-                    if (stackHeight < inputs)
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack Underflow required {inputs} but found {stackHeight}");
-                        return false;
-                    }
-
-                    stackHeight += outputs - inputs;
-                    peakStackHeight = Math.Max(peakStackHeight, stackHeight);
-
-                    switch (opcode)
-                    {
-                        case Instruction.RJUMP:
-                            {
-                                var offset = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthInt16();
-                                var jumpDestination = posPostInstruction + immediates + offset;
-                                workSet.Push((jumpDestination, stackHeight));
-                                stop = true;
-                                break;
-                            }
-                        case Instruction.RJUMPI:
-                            {
-                                var offset = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthInt16();
-                                var jumpDestination = posPostInstruction + immediates + offset;
-                                workSet.Push((jumpDestination, stackHeight));
-                                posPostInstruction += immediates;
-                                break;
-                            }
-                        case Instruction.RJUMPV:
-                            {
-                                var count = code[posPostInstruction];
-                                immediates = count * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH;
-                                for (short j = 0; j < count; j++)
+                        switch (opcode)
+                        {
+                            case Instruction.RJUMP:
                                 {
-                                    int case_v = posPostInstruction + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH;
-                                    int offset = code.Slice(case_v, TWO_BYTE_LENGTH).ReadEthInt16();
-                                    int jumptDestination = posPostInstruction + immediates + offset;
-                                    workSet.Push((jumptDestination, stackHeight));
+                                    short offset = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthInt16();
+                                    int jumpDestination = posPostInstruction + immediates + offset;
+                                    PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
+                                    stop = true;
+                                    break;
                                 }
-                                posPostInstruction += immediates;
-                                break;
-                            }
-                        default:
-                            {
-                                posPostInstruction += immediates;
-                                break;
-                            }
-                    }
+                            case Instruction.RJUMPI:
+                                {
+                                    var offset = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthInt16();
+                                    var jumpDestination = posPostInstruction + immediates + offset;
+                                    PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
+                                    posPostInstruction += immediates;
+                                    break;
+                                }
+                            case Instruction.RJUMPV:
+                                {
+                                    var count = code[posPostInstruction];
+                                    immediates = (ushort)(count * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH);
+                                    for (short j = 0; j < count; j++)
+                                    {
+                                        int case_v = posPostInstruction + ONE_BYTE_LENGTH + j * TWO_BYTE_LENGTH;
+                                        int offset = code.Slice(case_v, TWO_BYTE_LENGTH).ReadEthInt16();
+                                        int jumpDestination = posPostInstruction + immediates + offset;
+                                        PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
+                                    }
+                                    posPostInstruction += immediates;
+                                    break;
+                                }
+                            default:
+                                {
+                                    posPostInstruction += immediates;
+                                    break;
+                                }
+                        }
 
-                    pos = posPostInstruction;
-                    if (stop) break;
+                        worklet.Position = posPostInstruction;
+                        if (stop) break;
 
-                    if (opcode.IsTerminating())
-                    {
-                        var expectedHeight = opcode is Instruction.RETF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] : stackHeight;
-                        if (expectedHeight != stackHeight)
+                        if (opcode.IsTerminating())
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {stackHeight}");
+                            var expectedHeight = opcode is Instruction.RETF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] : worklet.StackHeight;
+                            if (expectedHeight != worklet.StackHeight)
+                            {
+                                return false;
+                            }
+                            break;
+                        }
+
+                        else if (worklet.Position >= code.Length)
+                        {
                             return false;
                         }
-                        break;
-                    }
-
-                    else if (pos >= code.Length)
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Invalid code, reached end of code without a terminating instruction");
-                        return false;
                     }
                 }
-            }
 
-            if (!ValidateReachableCode(sectionId, code, recordedStackHeight.Keys, in header))
+                if (!ValidateReachableCode(code, recordedStackHeight))
+                {
+                    return false;
+                }
+
+                if (peakStackHeight != suggestedMaxHeight)
+                {
+                    return false;
+                }
+
+                return peakStackHeight <= MAX_STACK_HEIGHT;
+            }
+            finally
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-5450 : bytecode has unreachable segments");
-                return false;
+                ArrayPool<short>.Shared.Return(recordedStackHeight, true);
+                ArrayPool<Worklet>.Shared.Return(workset, true);
             }
-
-            if (peakStackHeight != suggestedMaxHeight)
-            {
-                if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Suggested Max Stack height mismatches with actual Max, expected {suggestedMaxHeight} but found {peakStackHeight}");
-                return false;
-            }
-
-            return peakStackHeight <= MAX_STACK_HEIGHT;
         }
     }
 }
