@@ -9,6 +9,8 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
+[assembly: InternalsVisibleTo("Nethermind.EofParser")]
+
 namespace Nethermind.Evm.EOF;
 
 internal static class EvmObjectFormat
@@ -296,17 +298,8 @@ internal static class EvmObjectFormat
                 SectionHeader sectionHeader = header.CodeSections[sectionIdx];
                 (int codeSectionStartOffset, int codeSectionSize) = sectionHeader;
                 ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
-                if (!ValidateInstructions(code, header))
-                {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-3670 : CodeSection {sectionIdx} contains invalid body");
-                    return false;
-                }
-
-                if (!ValidateStackState(sectionIdx, code, typesection, header))
-                {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-5450 : CodeSection {sectionIdx} create has Invalid stack configuration");
-                    return false;
-                }
+                if (!ValidateInstructions(code, header)) return false;
+                if (!ValidateStackState(sectionIdx, code, typesection, header)) return false;
             }
 
             return true;
