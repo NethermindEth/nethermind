@@ -8,7 +8,8 @@ public class NodeDataMessage : Eth.V63.Messages.NodeDataMessage
     public override int PacketType { get; } = NodeDataMessageCode.NodeData;
     public override string Protocol { get; } = "nodedata";
 
-    public NodeDataMessage(byte[][]? data) : base(data)
+    public NodeDataMessage(byte[][]? data)
+        : base(data)
     {
     }
 }

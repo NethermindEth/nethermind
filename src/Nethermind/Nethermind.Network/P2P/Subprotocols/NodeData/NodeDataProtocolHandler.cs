@@ -73,7 +73,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
                 break;
             case NodeDataMessageCode.NodeData:
                 NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
-                Metrics.Eth66NodeDataReceived++;
+                Metrics.NodeDataReceived++;
                 ReportIn(nodeDataMessage);
                 Handle(nodeDataMessage, size);
                 break;
@@ -89,7 +89,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
     {
         if (msg.Hashes.Count > 4096)
         {
-            throw new EthSyncException("Incoming node data request for more than 4096 nodes");
+            throw new EthSyncException("NODEDATA protocol: Incoming node data request for more than 4096 nodes");
         }
 
         byte[][] nodeData = _syncServer.GetNodeData(msg.Hashes);
@@ -116,11 +116,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 
     private async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
     {
-        if (Logger.IsTrace)
-        {
-            Logger.Trace("Sending node data request:");
-            Logger.Trace($"Keys count: {message.Hashes.Count}");
-        }
+        if (Logger.IsTrace) Logger.Trace($"NODEDATA protocol: Sending node data request with keys count: {message.Hashes.Count}");
 
         Request<GetNodeDataMessage, byte[][]>? request = new(message);
         _nodeDataRequests.Send(request);
