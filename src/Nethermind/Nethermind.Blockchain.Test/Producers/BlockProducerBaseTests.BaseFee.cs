@@ -50,14 +50,14 @@ namespace Nethermind.Blockchain.Test.Producers
                 private async Task<ScenarioBuilder> CreateTestBlockchainAsync(long gasLimit)
                 {
                     await ExecuteAntecedentIfNeeded();
-                    SingleReleaseSpecProvider spec = new(
+                    TestSingleReleaseSpecProvider spec = new(
                         new ReleaseSpec()
                         {
                             IsEip1559Enabled = _eip1559Enabled,
                             Eip1559TransitionBlock = _eip1559TransitionBlock,
                             Eip1559FeeCollector = _eip1559FeeCollector,
                             IsEip155Enabled = true
-                        }, 1);
+                        });
                     BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);
                     _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                         .WithGenesisBlockBuilder(blockBuilder)

@@ -214,7 +214,10 @@ namespace Nethermind.Runner.JsonRpc
                                 }
                                 else
                                 {
-                                    jsonSerializer.Serialize(resultStream, result.Response);
+                                    using (result.Response)
+                                    {
+                                        jsonSerializer.Serialize(resultStream, result.Response);
+                                    }
                                 }
 
                                 if (jsonRpcConfig.BufferResponses)

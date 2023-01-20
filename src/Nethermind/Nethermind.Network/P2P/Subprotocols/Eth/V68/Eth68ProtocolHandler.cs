@@ -7,13 +7,11 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -23,7 +21,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
 public class Eth68ProtocolHandler : Eth67ProtocolHandler
 {
     private readonly IPooledTxsRequestor _pooledTxsRequestor;
-    private readonly TxDecoder _txDecoder = new();
 
     public override string Name => "eth68";
 

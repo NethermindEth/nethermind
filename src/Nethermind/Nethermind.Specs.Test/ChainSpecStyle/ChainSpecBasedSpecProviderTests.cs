@@ -185,6 +185,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(SepoliaSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(0, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(long.MaxValue, provider.GenesisSpec.DifficultyBombDelay);
+            Assert.AreEqual(BlockchainIds.Sepolia, provider.ChainId);
+            Assert.AreEqual(BlockchainIds.Sepolia, provider.NetworkId);
         }
 
         [Test]
@@ -243,6 +245,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             CompareSpecProviders(goerli, provider, forkActivationsToTest);
             Assert.AreEqual(GoerliSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(GoerliSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
+            Assert.AreEqual(BlockchainIds.Goerli, provider.ChainId);
+            Assert.AreEqual(BlockchainIds.Goerli, provider.NetworkId);
         }
 
         [Test]
@@ -306,6 +310,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(11_400_000, provider.GetSpec((ForkActivation)15_050_000).DifficultyBombDelay);
             Assert.AreEqual(11_400_000, provider.GetSpec((ForkActivation)99_414_000).DifficultyBombDelay);
             Assert.AreEqual(MainnetSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
+            Assert.AreEqual(BlockchainIds.Mainnet, provider.ChainId);
+            Assert.AreEqual(BlockchainIds.Mainnet, provider.NetworkId);
         }
 
         private static void CompareSpecProviders(
@@ -386,9 +392,10 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         [Test]
         public void Chain_id_is_set_correctly()
         {
-            ChainSpec chainSpec = new() { Parameters = new ChainParameters(), ChainId = 5 };
+            ChainSpec chainSpec = new() { Parameters = new ChainParameters(), NetworkId = 2, ChainId = 5 };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
+            Assert.AreEqual(2, provider.NetworkId);
             Assert.AreEqual(5, provider.ChainId);
         }
 

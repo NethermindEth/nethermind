@@ -26,9 +26,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public byte[] Improved()
         {
-#pragma warning disable CS0612 // Type or member is obsolete
-            return Bytes.FromHexStringOld(array);
-#pragma warning restore CS0612 // Type or member is obsolete
+            return Bytes.FromHexString(array);
         }
     }
 }

@@ -115,7 +115,7 @@ namespace Nethermind.Core.Test.Blockchain
             Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
             JsonSerializer = new EthereumJsonSerializer();
             SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
-            EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LogManager);
+            EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
             DbProvider = await CreateDbProvider();
             TrieStore = new TrieStore(StateDb, LogManager);
             State = new StateProvider(TrieStore, DbProvider.CodeDb, LogManager);
