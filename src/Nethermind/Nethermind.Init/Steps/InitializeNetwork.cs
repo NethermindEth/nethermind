@@ -202,17 +202,6 @@ public class InitializeNetwork : IStep
 
         bool stateSyncFinished = _api.SyncProgressResolver.FindBestFullState() != 0;
 
-        if (_syncConfig.SnapSync || stateSyncFinished)
-        {
-            // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
-            // no longer available). Eth67 should be added if snap is enabled OR sync is finished
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-
-            // eth68 is disabled for now, as spec has draft status and can change (https://eips.ethereum.org/EIPS/eip-5793)
-            // _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
-        }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
-
         if (_syncConfig.SnapSync && !stateSyncFinished)
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);

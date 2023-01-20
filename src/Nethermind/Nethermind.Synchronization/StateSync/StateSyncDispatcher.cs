@@ -36,10 +36,15 @@ namespace Nethermind.Synchronization.StateSync
             Keccak[]? a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
             Task<byte[][]> task = null;
 
-            // Use GETNODEDATA if possible
+            // Use GETNODEDATA if possible. Firstly via eth66
             if (peer.Node.EthDetails.Equals("eth66"))
             {
                 task = peer.GetNodeData(a, cancellationToken);
+            }
+            // If eth66 is not supported, try dedicated NODEDATA protocol
+            else if (peer.TryGetSatelliteProtocol("nodedata", out INodeDataPeer nodeDataHandler))
+            {
+                task = nodeDataHandler.GetNodeData(a, cancellationToken);
             }
             // GETNODEDATA is not supported so we try with SNAP protocol
             else if (peer.TryGetSatelliteProtocol("snap", out ISnapSyncPeer handler))

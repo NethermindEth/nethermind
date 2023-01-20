@@ -40,7 +40,10 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
     {
-        new(Protocol.Eth, 66)
+        new(Protocol.Eth, 66),
+        new(Protocol.Eth, 67),
+        // new(Protocol.Eth, 68), eth68 is disabled for now, as spec has draft status and can change (https://eips.ethereum.org/EIPS/eip-5793)
+        new(Protocol.NodeData, 1),
     };
 
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }

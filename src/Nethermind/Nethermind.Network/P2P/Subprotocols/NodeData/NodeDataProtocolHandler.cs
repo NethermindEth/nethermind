@@ -2,21 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Blockchain;
-using Nethermind.Core;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.Subprotocols.NodeData;
 
-public class NodeDataProtocolHandler : SyncPeerProtocolHandlerBase
+public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 {
-    private readonly MessageDictionary<GetNodeDataMessage, Eth.V63.Messages.GetNodeDataMessage, byte[][]> _nodeDataRequests;
+    private readonly ISyncServer _syncServer;
+    private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests;
 
     public override string Name => "NodeData";
     protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -29,23 +34,22 @@ public class NodeDataProtocolHandler : SyncPeerProtocolHandlerBase
         INodeStatsManager statsManager,
         ISyncServer syncServer,
         ILogManager logManager)
-        : base(session, serializer, statsManager, syncServer, logManager)
+        : base(session, statsManager, serializer, logManager)
     {
-        _nodeDataRequests = new MessageDictionary<GetNodeDataMessage, Eth.V63.Messages.GetNodeDataMessage, byte[][]>(Send);
+        _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
+        _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
     }
     public override void Init()
     {
         ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
     }
 
-    public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
+    public override void Dispose()
     {
-        throw new NotImplementedException();
     }
-
-    protected override void OnDisposed()
+    public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
     {
-        throw new NotImplementedException();
+        Dispose();
     }
 
     public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
@@ -78,24 +82,49 @@ public class NodeDataProtocolHandler : SyncPeerProtocolHandlerBase
 
     private void Handle(GetNodeDataMessage getNodeDataMessage)
     {
-        Send(new NodeDataMessage(getNodeDataMessage.RequestId,
-            FulfillNodeDataRequest(getNodeDataMessage.EthMessage)));
+        Send(FulfillNodeDataRequest(getNodeDataMessage));
     }
 
-    private Eth.V63.Messages.NodeDataMessage FulfillNodeDataRequest(Eth.V63.Messages.GetNodeDataMessage msg)
+    private NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg)
     {
         if (msg.Hashes.Count > 4096)
         {
             throw new EthSyncException("Incoming node data request for more than 4096 nodes");
         }
 
-        byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes);
+        byte[][] nodeData = _syncServer.GetNodeData(msg.Hashes);
 
-        return new Eth.V63.Messages.NodeDataMessage(nodeData);
+        return new NodeDataMessage(nodeData);
     }
 
     private void Handle(NodeDataMessage msg, int size)
     {
-        _nodeDataRequests.Handle(msg.RequestId, msg.EthMessage.Data, size);
+        _nodeDataRequests.Handle(msg.Data, size);
+    }
+
+    public async Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> keys, CancellationToken token)
+    {
+        if (keys.Count == 0)
+        {
+            return Array.Empty<byte[]>();
+        }
+
+        GetNodeDataMessage msg = new(keys);
+        byte[][] nodeData = await SendRequest(msg, token);
+        return nodeData;
+    }
+
+    private async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
+    {
+        if (Logger.IsTrace)
+        {
+            Logger.Trace("Sending node data request:");
+            Logger.Trace($"Keys count: {message.Hashes.Count}");
+        }
+
+        Request<GetNodeDataMessage, byte[][]>? request = new(message);
+        _nodeDataRequests.Send(request);
+
+        return await HandleResponse(request, TransferSpeedType.NodeData, static (_) => $"{nameof(GetNodeDataMessage)}", token);
     }
 }
