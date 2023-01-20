@@ -16,27 +16,27 @@ public class BlockHeader
 {
     internal BlockHeader() { }
 
-        public BlockHeader(
-            Keccak parentHash,
-            Keccak unclesHash,
-            Address beneficiary,
-            in UInt256 difficulty,
-            long number,
-            long gasLimit,
-            ulong timestamp,
-            byte[] extraData,
-            UInt256? excessDataGas = null)
-        {
-            ParentHash = parentHash;
-            UnclesHash = unclesHash;
-            Beneficiary = beneficiary;
-            Difficulty = difficulty;
-            Number = number;
-            GasLimit = gasLimit;
-            Timestamp = timestamp;
-            ExtraData = extraData;
-            ExcessDataGas = excessDataGas;
-        }
+    public BlockHeader(
+        Keccak parentHash,
+        Keccak unclesHash,
+        Address beneficiary,
+        in UInt256 difficulty,
+        long number,
+        long gasLimit,
+        ulong timestamp,
+        byte[] extraData,
+        UInt256? excessDataGas = null)
+    {
+        ParentHash = parentHash;
+        UnclesHash = unclesHash;
+        Beneficiary = beneficiary;
+        Difficulty = difficulty;
+        Number = number;
+        GasLimit = gasLimit;
+        Timestamp = timestamp;
+        ExtraData = extraData;
+        ExcessDataGas = excessDataGas;
+    }
 
     public WeakReference<BlockHeader>? MaybeParent { get; set; }
     public bool IsGenesis => Number == 0L;
