@@ -51,8 +51,7 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount++;
-                byte[] keyAsArray = key.ToArray();
-                return _db.ContainsKey(keyAsArray) ? _db[keyAsArray] : null;
+                return _db.TryGetValue(key.ToArray(), out byte[] value) ? value : null;
             }
             set
             {
