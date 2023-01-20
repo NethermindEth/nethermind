@@ -97,22 +97,24 @@ namespace Nethermind.TxPool
 
             _headInfo.HeadChanged += OnHeadChange;
 
-            _filterPipeline.Add(new NullHashTxFilter());
-            _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache, _logger));
             _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, logManager));
             _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
+            // This will calculaate the Keccak hash of txns
+            _filterPipeline.Add(new NullHashTxFilter());
+            _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache, _logger)); // needs hash
+            // This will calculate the sender
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
-            _filterPipeline.Add(new LowNonceFilter(_logger)); // has to be after UnknownSenderFilter as it uses sender
-            _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
-            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _transactions, _logger));
-            _filterPipeline.Add(new BalanceTooLowFilter(_headInfo, _transactions, logManager));
-            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_nonces, _logger));
+            _filterPipeline.Add(new LowNonceFilter(_logger)); // needs sender
+            _filterPipeline.Add(new GapNonceFilter(_transactions, _logger)); // needs sender
+            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _transactions, _logger)); // needs sender
+            _filterPipeline.Add(new BalanceTooLowFilter(_headInfo, _transactions, logManager)); // needs sender
+            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_nonces, _logger)); // needs sender
             if (incomingTxFilter is not null)
             {
                 _filterPipeline.Add(incomingTxFilter);
             }
-            _filterPipeline.Add(new DeployedCodeFilter(_specProvider, _accounts));
+            _filterPipeline.Add(new DeployedCodeFilter(_specProvider, _accounts)); // needs sender
 
             ProcessNewHeads();
         }
@@ -255,9 +257,6 @@ namespace Nethermind.TxPool
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
             Metrics.PendingTransactionsReceived++;
-
-            if (tx.Hash is null)
-                return AcceptTxResult.Invalid;
 
             // assign a sequence number to transaction so we can order them by arrival times when
             // gas prices are exactly the same
