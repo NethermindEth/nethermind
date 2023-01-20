@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
@@ -19,11 +20,11 @@ public class NonceManager : INonceManager
         _accounts = accounts;
     }
 
-    public UInt256 ReserveNonce(Address address)
+    public IDisposable ReserveNonce(Address address, out UInt256 nonce)
     {
         AddressNonceManager addressNonceManager =
             _addressNonceManagers.GetOrAdd(address, _ => new AddressNonceManager());
-        return addressNonceManager.ReserveNonce(_accounts.GetAccount(address).Nonce);
+        return addressNonceManager.ReserveNonce(_accounts.GetAccount(address).Nonce, out nonce);
     }
 
     public void TxAccepted(Address address)
@@ -34,37 +35,31 @@ public class NonceManager : INonceManager
         }
     }
 
-    public void TxRejected(Address address)
-    {
-        if (_addressNonceManagers.TryGetValue(address, out AddressNonceManager? addressNonceManager))
-        {
-            addressNonceManager.TxRejected();
-        }
-    }
-
-    public void TxWithNonceReceived(Address address, UInt256 nonce)
+    public IDisposable TxWithNonceReceived(Address address, UInt256 nonce)
     {
         AddressNonceManager addressNonceManager =
             _addressNonceManagers.GetOrAdd(address, _ => new AddressNonceManager());
-        addressNonceManager.TxWithNonceReceived(nonce);
+        return addressNonceManager.TxWithNonceReceived(nonce);
     }
 
     private class AddressNonceManager
     {
-        private HashSet<UInt256> _usedNonces = new();
+        private readonly HashSet<UInt256> _usedNonces = new();
         private UInt256 _reservedNonce;
         private UInt256 _currentNonce;
         private UInt256 _previousAccountNonce;
-        private readonly Mutex _mutex = new();
 
-        public UInt256 ReserveNonce(UInt256 accountNonce)
+        private readonly object _accountLock = new();
+
+        public IDisposable ReserveNonce(UInt256 accountNonce, out UInt256 nonce)
         {
-            _mutex.WaitOne();
-
+            IDisposable locker = new AccountLocker(_accountLock);
             ReleaseNonces(accountNonce);
             _currentNonce = UInt256.Max(_currentNonce, accountNonce);
             _reservedNonce = _currentNonce;
-            return _currentNonce;
+            nonce = _currentNonce;
+
+            return locker;
         }
 
         public void TxAccepted()
@@ -74,14 +69,13 @@ public class NonceManager : INonceManager
             {
                 _currentNonce++;
             }
-
-            _mutex.ReleaseMutex();
         }
 
-        public void TxWithNonceReceived(UInt256 nonce)
+        public IDisposable TxWithNonceReceived(UInt256 nonce)
         {
-            _mutex.WaitOne();
+            IDisposable locker = new AccountLocker(_accountLock);
             _reservedNonce = nonce;
+            return locker;
         }
 
         private void ReleaseNonces(UInt256 accountNonce)
@@ -93,7 +87,30 @@ public class NonceManager : INonceManager
 
             _previousAccountNonce = accountNonce;
         }
+    }
 
-        public void TxRejected() => _mutex.ReleaseMutex();
+    private class AccountLocker : IDisposable
+    {
+        private readonly object _accountLock;
+        private int _disposed;
+
+        public AccountLocker(object accountLock)
+        {
+            _accountLock = accountLock;
+            Monitor.Enter(_accountLock);
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                Monitor.Exit(_accountLock);
+            }
+        }
+
+        ~AccountLocker()
+        {
+            Dispose();
+        }
     }
 }

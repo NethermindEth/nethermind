@@ -49,28 +49,45 @@ public class NonceManagerTests
     [Test]
     public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()
     {
-        var nonceA1 = _nonceManager.ReserveNonce(TestItem.AddressA);
-        _nonceManager.TxAccepted(TestItem.AddressA);
-        var nonceA2 = _nonceManager.ReserveNonce(TestItem.AddressA);
-        _nonceManager.TxRejected(TestItem.AddressA);
-        var nonceA3 = _nonceManager.ReserveNonce(TestItem.AddressA);
-        _nonceManager.TxAccepted(TestItem.AddressA);
-        var nonceB1 = _nonceManager.ReserveNonce(TestItem.AddressB);
-        _nonceManager.TxAccepted(TestItem.AddressB);
-        var nonceB2 = _nonceManager.ReserveNonce(TestItem.AddressB);
-        _nonceManager.TxAccepted(TestItem.AddressB);
-        var nonceB3 = _nonceManager.ReserveNonce(TestItem.AddressB);
-        _nonceManager.TxRejected(TestItem.AddressB);
-        var nonceB4 = _nonceManager.ReserveNonce(TestItem.AddressB);
-        _nonceManager.TxAccepted(TestItem.AddressB);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        {
+            nonce.Should().Be(0);
+            _nonceManager.TxAccepted(TestItem.AddressA);
+        }
 
-        nonceA1.Should().Be(0);
-        nonceA2.Should().Be(1);
-        nonceA3.Should().Be(1);
-        nonceB1.Should().Be(0);
-        nonceB2.Should().Be(1);
-        nonceB3.Should().Be(2);
-        nonceB4.Should().Be(2);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        {
+            nonce.Should().Be(1);
+        }
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        {
+            nonce.Should().Be(1);
+            _nonceManager.TxAccepted(TestItem.AddressA);
+        }
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 nonce))
+        {
+            nonce.Should().Be(0);
+            _nonceManager.TxAccepted(TestItem.AddressB);
+        }
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 nonce))
+        {
+            nonce.Should().Be(1);
+            _nonceManager.TxAccepted(TestItem.AddressB);
+        }
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 nonce))
+        {
+            nonce.Should().Be(2);
+        }
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 nonce))
+        {
+            nonce.Should().Be(2);
+            _nonceManager.TxAccepted(TestItem.AddressB);
+        }
     }
 
     [Test]
@@ -82,13 +99,13 @@ public class NonceManagerTests
 
         var result = Parallel.For(0, reservationsCount, i =>
         {
-            UInt256 nonce = _nonceManager.ReserveNonce(TestItem.AddressA);
+            using IDisposable locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
             _nonceManager.TxAccepted(TestItem.AddressA);
             nonces.Enqueue(nonce);
         });
 
         result.IsCompleted.Should().BeTrue();
-        UInt256 nonce = _nonceManager.ReserveNonce(TestItem.AddressA);
+        using IDisposable locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
         nonces.Enqueue(nonce);
         nonce.Should().Be(new UInt256(reservationsCount));
         nonces.OrderBy(n => n).Should().BeEquivalentTo(Enumerable.Range(0, reservationsCount + 1).Select(i => new UInt256((uint)i)));
@@ -97,48 +114,73 @@ public class NonceManagerTests
     [Test]
     public void ReserveNonce_should_skip_nonce_if_TxWithNonceReceived()
     {
-        _nonceManager.TxWithNonceReceived(TestItem.AddressA, 5);
-        _nonceManager.TxAccepted(TestItem.AddressA);
+        using (_nonceManager.TxWithNonceReceived(TestItem.AddressA, 4))
+        {
+            _nonceManager.TxAccepted(TestItem.AddressA);
+        }
 
-        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(0);
-        _nonceManager.TxAccepted(TestItem.AddressA);
-        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(1);
-        _nonceManager.TxAccepted(TestItem.AddressA);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        {
+            nonce.Should().Be(0);
+            _nonceManager.TxAccepted(TestItem.AddressA);
+        }
 
-        _nonceManager.TxWithNonceReceived(TestItem.AddressA, 2);
-        _nonceManager.TxAccepted(TestItem.AddressA);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        {
+            nonce.Should().Be(1);
+            _nonceManager.TxAccepted(TestItem.AddressA);
+        }
 
-        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(3);
-        _nonceManager.TxAccepted(TestItem.AddressA);
-        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(4);
-        _nonceManager.TxAccepted(TestItem.AddressA);
-        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(6);
-        _nonceManager.TxAccepted(TestItem.AddressA);
+        using (_nonceManager.TxWithNonceReceived(TestItem.AddressA, 2))
+        {
+            _nonceManager.TxAccepted(TestItem.AddressA);
+        }
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        {
+            nonce.Should().Be(3);
+            _nonceManager.TxAccepted(TestItem.AddressA);
+        }
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        {
+            nonce.Should().Be(5);
+            _nonceManager.TxAccepted(TestItem.AddressA);
+        }
     }
 
     [Test]
     public void should_reuse_nonce_if_tx_rejected()
     {
-        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(0);
-        _nonceManager.TxRejected(TestItem.AddressA);
-        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(0);
-        _nonceManager.TxAccepted(TestItem.AddressA);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        {
+            nonce.Should().Be(0);
+        }
 
-        _nonceManager.TxWithNonceReceived(TestItem.AddressA, 2);
-        _nonceManager.TxRejected(TestItem.AddressA);
-        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(1);
-        _nonceManager.TxAccepted(TestItem.AddressA);
-        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(2);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        {
+            nonce.Should().Be(0);
+            _nonceManager.TxAccepted(TestItem.AddressA);
+        }
+
+        using (_nonceManager.TxWithNonceReceived(TestItem.AddressA, 1)) { }
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        {
+            nonce.Should().Be(1);
+            _nonceManager.TxAccepted(TestItem.AddressA);
+        }
     }
 
     [Test]
     [Repeat(10)]
     public void should_lock_on_same_account()
     {
-        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(0);
+        using IDisposable locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
+        nonce.Should().Be(0);
         Task task = Task.Run(() =>
         {
-            _nonceManager.ReserveNonce(TestItem.AddressA);
+            using IDisposable locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 _);
         });
         TimeSpan ts = TimeSpan.FromMilliseconds(1000);
         task.Wait(ts);
@@ -149,10 +191,11 @@ public class NonceManagerTests
     [Repeat(10)]
     public void should_not_lock_on_different_accounts()
     {
-        _nonceManager.ReserveNonce(TestItem.AddressA).Should().Be(0);
+        using IDisposable locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
+        nonce.Should().Be(0);
         Task task = Task.Run(() =>
         {
-            _nonceManager.ReserveNonce(TestItem.AddressB).Should().Be(0);
+            _nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 _);
         });
         TimeSpan ts = TimeSpan.FromMilliseconds(1000);
         task.Wait(ts);

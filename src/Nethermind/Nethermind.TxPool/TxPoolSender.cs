@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
@@ -30,28 +31,51 @@ namespace Nethermind.TxPool
             tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
             if (tx.SenderAddress is null)
                 throw new ArgumentNullException(nameof(tx.SenderAddress));
-            if (manageNonce)
-            {
-                tx.Nonce = _nonceManager.ReserveNonce(tx.SenderAddress);
-                txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
-            }
-            else
-            {
-                _nonceManager.TxWithNonceReceived(tx.SenderAddress, tx.Nonce);
-            }
+
+            AcceptTxResult result = manageNonce
+                ? SubmitTxWithManagedNonce(tx, txHandlingOptions)
+                : SubmitTxWithNonce(tx, txHandlingOptions);
+
+            return new ValueTask<(Keccak, AcceptTxResult?)>((tx.Hash!, result)); // The sealer calculates the hash
+        }
+
+        private AcceptTxResult SubmitTxWithManagedNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
+        {
+            using IDisposable locker = _nonceManager.TxWithNonceReceived(tx.SenderAddress!, tx.Nonce);
+
             _sealer.Seal(tx, txHandlingOptions);
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
 
+
             if (result == AcceptTxResult.Accepted)
             {
-                _nonceManager.TxAccepted(tx.SenderAddress);
-            }
-            else
-            {
-                _nonceManager.TxRejected(tx.SenderAddress);
+                _nonceManager.TxAccepted(tx.SenderAddress!);
             }
 
-            return new ValueTask<(Keccak, AcceptTxResult?)>((tx.Hash!, result)); // The sealer calculates the hash
+            return result;
+        }
+
+        private AcceptTxResult SubmitTxWithNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
+        {
+            using IDisposable locker = _nonceManager.ReserveNonce(tx.SenderAddress!, out UInt256 nonce);
+            txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
+            tx.Nonce = nonce;
+
+            return SubmitTx(tx, txHandlingOptions);
+        }
+
+        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions)
+        {
+            _sealer.Seal(tx, txHandlingOptions);
+            AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
+
+
+            if (result == AcceptTxResult.Accepted)
+            {
+                _nonceManager.TxAccepted(tx.SenderAddress!);
+            }
+
+            return result;
         }
     }
 }
