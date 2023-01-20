@@ -48,6 +48,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(0L, chainSpec.Ethash.Eip100bTransition);
 
             Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual(1, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
             Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
 
             Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"initial base fee value");
@@ -129,7 +130,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/ropsten.json");
             ChainSpec chainSpec = LoadChainSpec(path);
 
-            Assert.AreEqual(3, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual(3, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
             Assert.AreEqual("Ropsten Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
 
@@ -193,7 +194,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpec chainSpec = LoadChainSpec(path);
 
             Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
-            Assert.AreEqual(5, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual(5, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
             Assert.AreEqual("Görli Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual("goerli", chainSpec.DataDir, $"{nameof(chainSpec.DataDir)}");
             Assert.AreEqual(SealEngineType.Clique, chainSpec.SealEngineType, "engine");
@@ -222,7 +223,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpec chainSpec = LoadChainSpec(path);
 
             Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
-            Assert.AreEqual(100, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual(100, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
             Assert.AreEqual("GnosisChain", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
 
@@ -242,7 +243,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpec chainSpec = LoadChainSpec(path);
 
             Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
-            Assert.AreEqual(4, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual(4, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
             Assert.AreEqual("Rinkeby", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.Clique, chainSpec.SealEngineType, "engine");
             Assert.AreEqual((long?)5435345, chainSpec.IstanbulBlockNumber, "istanbul no");
@@ -266,7 +267,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpec chainSpec = LoadChainSpec(path);
 
             Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
-            Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual(1, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
             Assert.AreEqual("Ethereum", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual("ethereum", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.Ethash, chainSpec.SealEngineType, "engine");
@@ -295,7 +296,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpec chainSpec = LoadChainSpec(path);
 
             Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
-            Assert.AreEqual(0x4d, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual(0x4d, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
             Assert.AreEqual("Sokol", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
             Assert.NotNull(chainSpec.AuRa, "AuRa");
@@ -339,7 +340,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/spaceneth.json");
             ChainSpec chainSpec = LoadChainSpec(path);
 
-            Assert.AreEqual(99, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
+            Assert.AreEqual(99, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
             Assert.AreEqual("Spaceneth", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual("spaceneth", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.NethDev, chainSpec.SealEngineType, "engine");

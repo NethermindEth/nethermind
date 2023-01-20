@@ -16,15 +16,18 @@ namespace Nethermind.Specs.Test
         private ForkActivation? _theMergeBlock = null;
         private readonly (ForkActivation Activation, IReleaseSpec Spec)[] _transitions;
 
+        public ulong NetworkId { get; }
         public ulong ChainId { get; }
+
         public ForkActivation[] TransitionActivations { get; }
 
-        public CustomSpecProvider(params (ForkActivation Activation, IReleaseSpec Spec)[] transitions) : this(0, transitions)
+        public CustomSpecProvider(params (ForkActivation Activation, IReleaseSpec Spec)[] transitions) : this(TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId, transitions)
         {
         }
 
-        public CustomSpecProvider(ulong chainId, params (ForkActivation Activation, IReleaseSpec Spec)[] transitions)
+        public CustomSpecProvider(ulong networkId, ulong chainId, params (ForkActivation Activation, IReleaseSpec Spec)[] transitions)
         {
+            NetworkId = networkId;
             ChainId = chainId;
 
             if (transitions.Length == 0)

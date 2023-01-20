@@ -35,12 +35,12 @@ namespace Nethermind.KeyStore
 
         public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
         {
-            return _privateKeys.ContainsKey(address) ? (_privateKeys[address], Result.Success) : (null, Result.Fail("Can't unlock key."));
+            return _privateKeys.TryGetValue(address, out PrivateKey value) ? (value, Result.Success) : (null, Result.Fail("Can't unlock key."));
         }
 
         public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
         {
-            return _privateKeys.ContainsKey(address) ? (new ProtectedPrivateKey(_privateKeys[address]), Result.Success) : (null, Result.Fail("Can't unlock key."));
+            return _privateKeys.TryGetValue(address, out PrivateKey value) ? (new ProtectedPrivateKey(value), Result.Success) : (null, Result.Fail("Can't unlock key."));
         }
 
         public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)

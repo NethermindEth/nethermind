@@ -49,7 +49,7 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount++;
-                return _db.ContainsKey(key) ? _db[key] : null;
+                return _db.TryGetValue(key, out byte[] value) ? value : null;
             }
             set
             {

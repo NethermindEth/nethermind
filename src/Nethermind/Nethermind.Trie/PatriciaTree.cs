@@ -230,7 +230,7 @@ namespace Nethermind.Trie
                             }
                         });
 
-                        if (_commitExceptions.Count > 0)
+                        if (!_commitExceptions.IsEmpty)
                         {
                             throw new AggregateException(_commitExceptions);
                         }

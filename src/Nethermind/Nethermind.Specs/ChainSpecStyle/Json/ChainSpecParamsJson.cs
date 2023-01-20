@@ -14,7 +14,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
     [SuppressMessage("ReSharper", "InconsistentNaming")]
     internal class ChainSpecParamsJson
     {
-        public ulong ChainId { get; set; }
+        public ulong? ChainId { get; set; }
         public ulong? NetworkId { get; set; }
 
         [JsonProperty(PropertyName = "registrar")]
