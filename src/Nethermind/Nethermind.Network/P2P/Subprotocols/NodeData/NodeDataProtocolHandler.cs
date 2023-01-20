@@ -23,7 +23,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
     private readonly ISyncServer _syncServer;
     private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests;
 
-    public override string Name => "NodeData";
+    public override string Name => "nodedata1";
     protected override TimeSpan InitTimeout => Timeouts.Eth;
     public override byte ProtocolVersion => 1;
     public override string ProtocolCode => Protocol.NodeData;
