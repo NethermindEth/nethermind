@@ -14,14 +14,14 @@ namespace Nethermind.Network.Test.P2P
         public void GetHighestVersionOfEthProtocol_ReturnExpectedResult()
         {
             int result = P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
-            Assert.AreEqual(66, result);
+            Assert.AreEqual(67, result);
         }
 
         [Test]
         public void DefaultCapabilitiesToString_ReturnExpectedResult()
         {
             string result = P2PProtocolInfoProvider.DefaultCapabilitiesToString();
-            Assert.AreEqual("eth/66", result);
+            Assert.AreEqual("eth/67,eth/66,nodedata/1", result);
         }
     }
 }
