@@ -9,7 +9,7 @@ using Nethermind.Stats;
 
 namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
-    public abstract class FilterPeerAllocationStrategy<T> : IPeerAllocationStrategy where T : class
+    public abstract class FilterPeerAllocationStrategy : IPeerAllocationStrategy
     {
         private readonly IPeerAllocationStrategy _nextStrategy;
         public bool CanBeReplaced => false;

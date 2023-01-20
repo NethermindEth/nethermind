@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.StateSync
         {
         }
 
-        internal class AllocationStrategy : FilterPeerAllocationStrategy<StateSyncBatch>
+        internal class AllocationStrategy : FilterPeerAllocationStrategy
         {
             public AllocationStrategy(IPeerAllocationStrategy strategy) : base(strategy)
             {

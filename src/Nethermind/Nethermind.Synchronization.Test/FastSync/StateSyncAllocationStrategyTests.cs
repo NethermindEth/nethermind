@@ -26,7 +26,7 @@ public class StateSyncAllocationStrategyTests
     public void Can_allocate_node_with_snap()
     {
         Node node = new(TestItem.PublicKeyA, new IPEndPoint(0, 0));
-        node.AgreedCapability["eth"] = 67;
+        node.EthDetails = "eth67";
         IsNodeAllocated(node, snapProtocolHandler: new object()).Should().BeTrue();
     }
 
@@ -34,16 +34,7 @@ public class StateSyncAllocationStrategyTests
     public void Can_allocate_pre_eth67_node()
     {
         Node node = new(TestItem.PublicKeyA, new IPEndPoint(0, 0));
-        node.AgreedCapability["eth"] = 66;
-        IsNodeAllocated(node).Should().BeTrue();
-    }
-
-    [Test]
-    public void Can_allocated_nethermind_eth_67_no_snap()
-    {
-        Node node = new(TestItem.PublicKeyA, new IPEndPoint(0, 0));
-        node.AgreedCapability["eth"] = 67;
-        node.ClientId = NodeClientType.Nethermind.ToString();
+        node.EthDetails = "eth66";
         IsNodeAllocated(node).Should().BeTrue();
     }
 
@@ -51,7 +42,7 @@ public class StateSyncAllocationStrategyTests
     public void Cannot_allocated_eth67_with_no_snap()
     {
         Node node = new(TestItem.PublicKeyA, new IPEndPoint(0, 0));
-        node.AgreedCapability["eth"] = 67;
+        node.EthDetails = "eth67";
         IsNodeAllocated(node).Should().BeFalse();
     }
 

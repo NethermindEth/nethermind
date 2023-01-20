@@ -83,10 +83,6 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
                 {
                     EthDetails = "eth66",
-                    AgreedCapability =
-                    {
-                        { "eth", 66 }
-                    }
                 };
                 SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, node: node, maxRandomizedLatencyMs: _defaultPeerMaxRandomLatency);
                 mockMutator?.Invoke(mock);

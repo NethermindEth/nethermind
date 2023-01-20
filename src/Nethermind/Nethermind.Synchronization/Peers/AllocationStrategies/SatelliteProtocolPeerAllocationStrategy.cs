@@ -3,7 +3,7 @@
 
 namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
-    public class SatelliteProtocolPeerAllocationStrategy<T> : FilterPeerAllocationStrategy<T> where T : class
+    public class SatelliteProtocolPeerAllocationStrategy<T> : FilterPeerAllocationStrategy where T : class
     {
         private readonly string _protocol;
 

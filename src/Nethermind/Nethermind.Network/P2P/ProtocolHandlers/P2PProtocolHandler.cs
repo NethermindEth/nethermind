@@ -225,23 +225,6 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                 $"capabilities: {string.Join(", ", capabilities)}");
         }
 
-        // Not sure if any client can do multiple same protocol at the same time, but Geth definitely only pick the latest version.
-        Dictionary<string, int> agreedCapabilityWithVersion = new();
-        foreach (Capability agreedCapability in _agreedCapabilities)
-        {
-            if (!agreedCapabilityWithVersion.ContainsKey(agreedCapability.ProtocolCode))
-            {
-                agreedCapabilityWithVersion[agreedCapability.ProtocolCode] = agreedCapability.Version;
-                continue;
-            }
-
-            if (agreedCapabilityWithVersion[agreedCapability.ProtocolCode] < agreedCapability.Version)
-            {
-                agreedCapabilityWithVersion[agreedCapability.ProtocolCode] = agreedCapability.Version;
-            }
-        }
-        Session.Node.AgreedCapability = agreedCapabilityWithVersion;
-
         ReceivedProtocolInitMsg(hello);
 
         P2PProtocolInitializedEventArgs eventArgs = new(this)

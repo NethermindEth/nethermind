@@ -107,30 +107,6 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
-        public void On_hello_with_matching_capability_of_various_version()
-        {
-            P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Wit, 66));
-            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 66));
-            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 69));
-
-            Packet message = CreatePacket(new HelloMessage()
-            {
-                Capabilities = new List<Capability>()
-                {
-                    new(Protocol.Eth, 66),
-                    new(Protocol.Eth, 67),
-                    new(Protocol.Eth, 68)
-                },
-                NodeId = TestItem.PublicKeyA,
-            });
-
-            p2PProtocolHandler.HandleMessage(message);
-            _session.Node.AgreedCapability[Protocol.Eth].Should().Be(67);
-        }
-
-        [Test]
         public void Pongs_to_ping()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();

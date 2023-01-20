@@ -70,7 +70,6 @@ namespace Nethermind.Stats.Model
 
         public string EthDetails { get; set; }
         public long CurrentReputation { get; set; }
-        public Dictionary<string, int> AgreedCapability { get; set; } = new();
 
         public Node(PublicKey id, IPEndPoint address)
         {
