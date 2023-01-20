@@ -65,14 +65,14 @@ namespace Nethermind.Synchronization.SnapSync
                 return new AddAccountRangeResult(AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            int stitchedBytes = StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
             lock (_syncCommit)
             {
                 tree.Commit(blockNumber, skipRoot: true);
             }
 
-            return new AddAccountRangeResult(AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes, syncedAcountBytes, stitchedBytes, tree.GetCommitSize(blockNumber));
+            return new AddAccountRangeResult(AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
         public static AddStorageRangeResult
@@ -105,14 +105,14 @@ namespace Nethermind.Synchronization.SnapSync
                 return new(AddRangeResult.DifferentRootHash, true);
             }
 
-            int stitchedBytes = StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
             lock (_syncCommit)
             {
                 tree.Commit(blockNumber);
             }
 
-            return new(AddRangeResult.OK, moreChildrenToRight, syncedBytes, stitchedBytes, tree.GetCommitSize(blockNumber));
+            return new(AddRangeResult.OK, moreChildrenToRight);
         }
 
         private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak? startingHash, Keccak endHash, Keccak expectedRootHash, byte[][]? proofs = null)
@@ -251,14 +251,13 @@ namespace Nethermind.Synchronization.SnapSync
             return dict;
         }
 
-        private static int StitchBoundaries(IList<TrieNode> sortedBoundaryList, ITrieStore store)
+        private static void StitchBoundaries(IList<TrieNode> sortedBoundaryList, ITrieStore store)
         {
             if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
             {
-                return 0;
+                return;
             }
 
-            int stichesBytesSize = 0;
             for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
             {
                 TrieNode node = sortedBoundaryList[i];
@@ -287,12 +286,8 @@ namespace Nethermind.Synchronization.SnapSync
 
                         node.IsBoundaryProofNode = isBoundaryProofNode;
                     }
-
-                    if (node.IsBoundaryProofNode)
-                        stichesBytesSize += node.FullRlp?.Length ?? 0;
                 }
             }
-            return stichesBytesSize;
         }
 
         private static bool IsChildPersisted(TrieNode node, int childIndex, ITrieStore store)

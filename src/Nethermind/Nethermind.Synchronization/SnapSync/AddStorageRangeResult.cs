@@ -7,17 +7,10 @@ namespace Nethermind.Synchronization.SnapSync
     {
         public AddRangeResult Result { get; private set; }
         public bool MoreChildrenToRight { get; private set; }
-        public long SyncedBytes { get; private set; }
-        public long CommitBytes { get; private set; }
-        public long StichedBytes { get; private set; }
-
-        public AddStorageRangeResult(AddRangeResult result, bool moreChildrenToRight, long syncedBytes = 0, long stichedBytes = 0, long commitBytes = 0)
+        public AddStorageRangeResult(AddRangeResult result, bool moreChildrenToRight)
         {
             Result = result;
             MoreChildrenToRight = moreChildrenToRight;
-            SyncedBytes = syncedBytes;
-            CommitBytes = commitBytes;
-            StichedBytes = stichedBytes;
         }
     }
 }

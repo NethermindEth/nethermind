@@ -90,7 +90,6 @@ namespace Nethermind.Synchronization.SnapSync
 
                 _progressTracker.NextAccountPath = accounts[accounts.Length - 1].Path;
                 _progressTracker.MoreAccountsToRight = helperResult.MoreChildrenToRight;
-                _progressTracker.UpdateStateSyncedBytes(helperResult.SyncedBytes, helperResult.StichedBytes, helperResult.CommitBytes);
             }
             else if (helperResult.Result == AddRangeResult.MissingRootHashInProofs)
             {
@@ -172,7 +171,6 @@ namespace Nethermind.Synchronization.SnapSync
 
                     _progressTracker.EnqueueStorageRange(range);
                 }
-                _progressTracker.UpdateStateSyncedBytes(helperResult.SyncedBytes, helperResult.StichedBytes, helperResult.CommitBytes);
             }
             else if (helperResult.Result == AddRangeResult.MissingRootHashInProofs)
             {
@@ -270,7 +268,6 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
                     _dbProvider.CodeDb.Set(codeHash, code);
-                    _progressTracker.UpdateStateSyncedBytes(code.Length, 0, code.Length);
                 }
             }
 

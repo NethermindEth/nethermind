@@ -32,9 +32,6 @@ namespace Nethermind.Synchronization.SnapSync
         private DateTime _syncStart;
         private long _secondsInSync;
 
-        internal long StateSyncedBytes;
-        internal long StateStichedBytes;
-        internal long StateCommitedBytes;
         internal long StateDbSavedBytes;
 
         private readonly ILogger _logger;
@@ -278,13 +275,6 @@ namespace Nethermind.Synchronization.SnapSync
                 && _activeAccRefreshRequests == 0;
         }
 
-        public void UpdateStateSyncedBytes(long syncedData, long stitchedData, long committedData)
-        {
-            Interlocked.Add(ref StateSyncedBytes, syncedData);
-            Interlocked.Add(ref StateStichedBytes, stitchedData);
-            Interlocked.Add(ref StateCommitedBytes, committedData);
-        }
-
         public void UpdateStateDbSavedBytes(long dbData = 0)
         {
             Interlocked.Add(ref StateDbSavedBytes, dbData);
@@ -320,7 +310,7 @@ namespace Nethermind.Synchronization.SnapSync
             NextAccountPath = Keccak.MaxValue;
             _db.Set(ACC_PROGRESS_KEY, NextAccountPath.Bytes);
 
-            StateRangesFinished?.Invoke(this, new SnapSyncEventArgs(true, StateSyncedBytes));
+            StateRangesFinished?.Invoke(this, new SnapSyncEventArgs(true, StateDbSavedBytes));
         }
 
         private void LogRequest(string reqType)
@@ -331,9 +321,6 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (_logger.IsInfo)
                     _logger.Info($"SNAP - progress of State Ranges (Phase 1 of 2): {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {progress:F2}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}] " +
-                        $"| Synced: {(double)(StateSyncedBytes / 1.MiB()):F2} MB " +
-                        $"| Stitched: {(double)(StateStichedBytes / 1.MiB()):F2} MB " +
-                        $"| Commited: {(double)(StateCommitedBytes / 1.MiB()):F2} MB " +
                         $"| SavedToDb: {(double)(StateDbSavedBytes / 1.MiB()):F2} MB");
             }
 

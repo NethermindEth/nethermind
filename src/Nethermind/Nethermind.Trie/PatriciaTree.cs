@@ -42,18 +42,6 @@ namespace Nethermind.Trie
 
         private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
 
-        private readonly Dictionary<long, long> _commitSizes;
-        private readonly object _commitSizesLock;
-        public long GetCommitSize(long blockNumber)
-        {
-            lock (_commitSizesLock)
-            {
-                long size = _commitSizes[blockNumber];
-                _commitSizes.Remove(blockNumber);
-                return size;
-            }
-        }
-
         public readonly ITrieStore TrieStore;
 
         private readonly bool _parallelBranches;
@@ -132,17 +120,11 @@ namespace Nethermind.Trie
             {
                 _currentCommit = new ConcurrentQueue<NodeCommitInfo>();
                 _commitExceptions = new ConcurrentQueue<Exception>();
-                _commitSizes = new Dictionary<long, long>();
-                _commitSizesLock = new object();
             }
         }
 
         public void Commit(long blockNumber, bool skipRoot = false)
         {
-            lock (_commitSizesLock)
-            {
-                _commitSizes[blockNumber] = 0;
-            }
             if (_currentCommit is null)
             {
                 throw new InvalidAsynchronousStateException(
@@ -156,7 +138,7 @@ namespace Nethermind.Trie
 
             if (RootRef is not null && RootRef.IsDirty)
             {
-                Commit(blockNumber, new NodeCommitInfo(RootRef), skipSelf: skipRoot);
+                Commit(new NodeCommitInfo(RootRef), skipSelf: skipRoot);
                 while (_currentCommit.TryDequeue(out NodeCommitInfo node))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
@@ -172,7 +154,7 @@ namespace Nethermind.Trie
             if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
         }
 
-        private void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
+        private void Commit(NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
         {
             if (_currentCommit is null)
             {
@@ -196,7 +178,7 @@ namespace Nethermind.Trie
                     {
                         if (node.IsChildDirty(i))
                         {
-                            Commit(blockNumber, new NodeCommitInfo(node.GetChild(TrieStore, i)!, node, i));
+                            Commit(new NodeCommitInfo(node.GetChild(TrieStore, i)!, node, i));
                         }
                         else
                         {
@@ -240,7 +222,7 @@ namespace Nethermind.Trie
                         {
                             try
                             {
-                                Commit(blockNumber, nodesToCommit[i]);
+                                Commit(nodesToCommit[i]);
                             }
                             catch (Exception e)
                             {
@@ -257,7 +239,7 @@ namespace Nethermind.Trie
                     {
                         for (int i = 0; i < nodesToCommit.Count; i++)
                         {
-                            Commit(blockNumber, nodesToCommit[i]);
+                            Commit(nodesToCommit[i]);
                         }
                     }
                 }
@@ -272,7 +254,7 @@ namespace Nethermind.Trie
 
                 if (extensionChild.IsDirty)
                 {
-                    Commit(blockNumber, new NodeCommitInfo(extensionChild, node, 0));
+                    Commit(new NodeCommitInfo(extensionChild, node, 0));
                 }
                 else
                 {
@@ -288,10 +270,6 @@ namespace Nethermind.Trie
                 if (!skipSelf)
                 {
                     _currentCommit.Enqueue(nodeCommitInfo);
-                    lock (_commitSizesLock)
-                    {
-                        _commitSizes[blockNumber] += node.FullRlp.Length;
-                    }
                 }
             }
             else
