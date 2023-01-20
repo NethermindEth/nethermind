@@ -9,7 +9,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 {
     public class NewPooledTransactionHashesMessage68 : P2PMessage
     {
-        public const int MaxCount = 1024;
+        // we are able to safely send message with up to 2925 hashes+types+lengths to not exceed message size
+        // of 102400 bytes which is used by Geth and us as max message size. (2925 items message has 102385 bytes)
+        public const int MaxCount = 2048;
 
         public override int PacketType { get; } = Eth68MessageCode.NewPooledTransactionHashes;
         public override string Protocol { get; } = "eth";

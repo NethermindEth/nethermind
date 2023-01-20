@@ -128,6 +128,10 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (Logger.IsDebug) Logger.Debug($"{request} - concurrency limit reached. Peer: {allocatedPeer}");
             }
+            catch (OperationCanceledException)
+            {
+                if (Logger.IsTrace) Logger.Debug($"{request} - Operation was canceled");
+            }
             catch (Exception e)
             {
                 if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e}");

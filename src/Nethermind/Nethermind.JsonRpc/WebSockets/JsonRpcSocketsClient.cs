@@ -50,9 +50,9 @@ namespace Nethermind.JsonRpc.WebSockets
             Closed?.Invoke(this, EventArgs.Empty);
         }
 
-        private static readonly byte[] _jsonOpeningBracket = { Convert.ToByte('{') };
+        private static readonly byte[] _jsonOpeningBracket = { Convert.ToByte('[') };
         private static readonly byte[] _jsonComma = { Convert.ToByte(',') };
-        private static readonly byte[] _jsonClosingBracket = { Convert.ToByte('}') };
+        private static readonly byte[] _jsonClosingBracket = { Convert.ToByte(']') };
 
         public override async Task ProcessAsync(ArraySegment<byte> data)
         {
