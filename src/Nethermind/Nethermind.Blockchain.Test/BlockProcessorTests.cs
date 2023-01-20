@@ -144,7 +144,7 @@ namespace Nethermind.Blockchain.Test
         public async Task Process_long_running_branch(int blocksAmount)
         {
             var address = TestItem.Addresses[0];
-            var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            var spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
             var testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());

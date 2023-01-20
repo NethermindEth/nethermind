@@ -51,7 +51,8 @@ namespace Nethermind.Specs
         public const long BerlinBlockNumber = 8_290_928;
         public const long LondonBlockNumber = 8_897_988;
 
-        public ulong ChainId => Core.ChainId.Rinkeby;
+        public ulong NetworkId => Core.BlockchainIds.Rinkeby;
+        public ulong ChainId => NetworkId;
 
         public ForkActivation[] TransitionActivations { get; } =
         {

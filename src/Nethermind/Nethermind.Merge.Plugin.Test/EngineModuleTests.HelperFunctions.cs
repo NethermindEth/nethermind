@@ -158,7 +158,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         private async Task<TestRpcBlockchain> CreateTestRpc(MergeTestBlockchain chain)
         {
-            SingleReleaseSpecProvider spec = new(London.Instance, 1);
+            TestSingleReleaseSpecProvider spec = new(London.Instance);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .WithBlockFinder(chain.BlockFinder)
                 .Build(spec);
