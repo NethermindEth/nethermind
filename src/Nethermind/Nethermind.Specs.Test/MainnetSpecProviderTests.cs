@@ -40,9 +40,10 @@ namespace Nethermind.Specs.Test
         }
 
         [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp, false)]
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShardingForkBlockTimestamp, true)]
-        public void Shardingfork_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, true)]
+        public void Cancun_eips(long blockNumber, ulong timestamp, bool isEnabled)
         {
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip1153Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4844Enabled.Should().Be(isEnabled);
         }
 

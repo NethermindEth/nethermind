@@ -25,7 +25,7 @@ public class BlockHeader
             long gasLimit,
             ulong timestamp,
             byte[] extraData,
-            UInt256? excessDataGas)
+            UInt256? excessDataGas = null)
         {
             ParentHash = parentHash;
             UnclesHash = unclesHash;

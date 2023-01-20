@@ -80,12 +80,8 @@ namespace Nethermind.Consensus.Validators
             {
                 case TxType.Legacy:
                     return true;
-                case TxType.AccessList:
-                case TxType.EIP1559:
-                case TxType.Blob:
-                    return transaction.ChainId == _chainIdValue;
                 default:
-                    return false;
+                    return transaction.ChainId == _chainIdValue;
             }
         }
 

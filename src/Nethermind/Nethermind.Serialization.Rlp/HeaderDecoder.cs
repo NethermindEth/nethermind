@@ -76,16 +76,15 @@ namespace Nethermind.Serialization.Rlp
             {
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
-            TODO: fix
-            if (decoderContext.ReadNumberOfItemsRemaining(null, 1) > 0 &&
+
+            int itemsRemaining = decoderContext.ReadNumberOfItemsRemaining(null, 1);
+            if (itemsRemaining > 0 &&
                 decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
-            int itemsRemaining = decoderContext.ReadNumberOfItemsRemaining(headerCheck);
-            if (itemsRemaining >= 1)
             {
                 blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
             }
 
-            if (itemsRemaining >= 2)
+            if (itemsRemaining > 1)
             {
                 blockHeader.ExcessDataGas = decoderContext.DecodeUInt256();
             }
@@ -157,16 +156,15 @@ namespace Nethermind.Serialization.Rlp
             {
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
-            TODO: Fix
-            if (rlpStream.ReadNumberOfItemsRemaining(null, 1) > 0 &&
+
+            int itemsRemaining = rlpStream.ReadNumberOfItemsRemaining(null, 1);
+            if (itemsRemaining > 0 &&
                 rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
-            int itemsRemaining = rlpStream.ReadNumberOfItemsRemaining(headerCheck);
-            if (itemsRemaining >= 1)
             {
                 blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
             }
 
-            if (itemsRemaining >= 2)
+            if (itemsRemaining > 1)
             {
                 blockHeader.ExcessDataGas = rlpStream.DecodeUInt256();
             }

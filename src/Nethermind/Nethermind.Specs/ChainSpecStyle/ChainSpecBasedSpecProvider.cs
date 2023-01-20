@@ -204,58 +204,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.ValidateReceipts = ((chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(chainSpec.Parameters.ValidateReceiptsTransition ?? 0, chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
             releaseSpec.Eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559FeeCollector : null;
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
-            releaseSpec.MaximumExtraDataSize = _chainSpec.Parameters.MaximumExtraDataSize;
-            releaseSpec.MinGasLimit = _chainSpec.Parameters.MinGasLimit;
-            releaseSpec.GasLimitBoundDivisor = _chainSpec.Parameters.GasLimitBoundDivisor;
-            releaseSpec.DifficultyBoundDivisor = _chainSpec.Ethash?.DifficultyBoundDivisor ?? 1;
-            releaseSpec.FixedDifficulty = _chainSpec.Ethash?.FixedDifficulty;
-            releaseSpec.MaxCodeSize = _chainSpec.Parameters.MaxCodeSizeTransition > releaseStartBlock ? long.MaxValue : _chainSpec.Parameters.MaxCodeSize;
-            releaseSpec.IsEip2Enabled = (_chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip7Enabled = (_chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock ||
-                                        (_chainSpec.Parameters.Eip7Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip100Enabled = (_chainSpec.Ethash?.Eip100bTransition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip140Enabled = (_chainSpec.Parameters.Eip140Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip145Enabled = (_chainSpec.Parameters.Eip145Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip150Enabled = (_chainSpec.Parameters.Eip150Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip152Enabled = (_chainSpec.Parameters.Eip152Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip155Enabled = (_chainSpec.Parameters.Eip155Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip160Enabled = (_chainSpec.Parameters.Eip160Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip158Enabled = (_chainSpec.Parameters.Eip161abcTransition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip170Enabled = _chainSpec.Parameters.MaxCodeSizeTransition <= releaseStartBlock;
-            releaseSpec.IsEip196Enabled = (_chainSpec.ByzantiumBlockNumber ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip197Enabled = (_chainSpec.ByzantiumBlockNumber ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip198Enabled = (_chainSpec.ByzantiumBlockNumber ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip211Enabled = (_chainSpec.Parameters.Eip211Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip214Enabled = (_chainSpec.Parameters.Eip214Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip658Enabled = (_chainSpec.Parameters.Eip658Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip649Enabled = (_chainSpec.ByzantiumBlockNumber ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip1014Enabled = (_chainSpec.Parameters.Eip1014Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip1052Enabled = (_chainSpec.Parameters.Eip1052Transition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip1108Enabled = (_chainSpec.Parameters.Eip1108Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip1234Enabled = (_chainSpec.ConstantinopleBlockNumber ?? _chainSpec.ConstantinopleFixBlockNumber ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip1283Enabled = (_chainSpec.Parameters.Eip1283Transition ?? long.MaxValue) <= releaseStartBlock && ((_chainSpec.Parameters.Eip1283DisableTransition ?? long.MaxValue) > releaseStartBlock || (_chainSpec.Parameters.Eip1283ReenableTransition ?? long.MaxValue) <= releaseStartBlock);
-            releaseSpec.IsEip1344Enabled = (_chainSpec.Parameters.Eip1344Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip1884Enabled = (_chainSpec.Parameters.Eip1884Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip2028Enabled = (_chainSpec.Parameters.Eip2028Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip2200Enabled = (_chainSpec.Parameters.Eip2200Transition ?? long.MaxValue) <= releaseStartBlock || (_chainSpec.Parameters.Eip1706Transition ?? long.MaxValue) <= releaseStartBlock && releaseSpec.IsEip1283Enabled;
-            releaseSpec.IsEip1559Enabled = (_chainSpec.Parameters.Eip1559Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.Eip1559TransitionBlock = _chainSpec.Parameters.Eip1559Transition ?? long.MaxValue;
-            releaseSpec.Eip4844TransitionTimestamp = _chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue;
-            releaseSpec.IsEip2315Enabled = (_chainSpec.Parameters.Eip2315Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip2537Enabled = (_chainSpec.Parameters.Eip2537Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip2565Enabled = (_chainSpec.Parameters.Eip2565Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip2929Enabled = (_chainSpec.Parameters.Eip2929Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip2930Enabled = (_chainSpec.Parameters.Eip2930Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip3198Enabled = (_chainSpec.Parameters.Eip3198Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip3541Enabled = (_chainSpec.Parameters.Eip3541Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip3529Enabled = (_chainSpec.Parameters.Eip3529Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip3607Enabled = (_chainSpec.Parameters.Eip3607Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip4844Enabled = (_chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.ValidateChainId = (_chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock;
-            releaseSpec.ValidateReceipts = ((_chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(_chainSpec.Parameters.ValidateReceiptsTransition ?? 0, _chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
-            releaseSpec.Eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (_chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock ? _chainSpec.Parameters.Eip1559FeeCollector : null;
-            releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (_chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? _chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
-
+            
             if (chainSpec.Ethash is not null)
             {
                 foreach (KeyValuePair<long, UInt256> blockReward in chainSpec.Ethash.BlockRewards ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())

@@ -264,7 +264,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 .WithSignature(signature).TestObject;
 
             TxValidator txValidator = new(TestBlockchainIds.ChainId);
-            return txValidator.IsWellFormed(tx, ShardingFork.Instance);
+            return txValidator.IsWellFormed(tx, Cancun.Instance);
         }
     }
 }
