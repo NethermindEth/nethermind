@@ -60,6 +60,7 @@ namespace Nethermind.Db
                     Thread.Sleep(_writeDelay);
                 }
 
+                WritesCount++;
                 _db[key.ToArray()] = value;
             }
         }
