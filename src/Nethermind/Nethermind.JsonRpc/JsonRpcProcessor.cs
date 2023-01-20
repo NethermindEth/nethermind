@@ -134,7 +134,16 @@ namespace Nethermind.JsonRpc
                 JsonRpcResult? deserializationFailureResult = null;
                 try
                 {
-                    moveNext = enumerator.MoveNext();
+                    try
+                    {
+                        moveNext = enumerator.MoveNext();
+                    }
+                    catch (Exception)
+                    {
+                        moveNext = false;
+                        throw;
+                    }
+
                 }
                 catch (BadHttpRequestException e)
                 {
@@ -167,7 +176,6 @@ namespace Nethermind.JsonRpc
                         if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model}");
 
                         JsonRpcResult.Entry result = await HandleSingleRequest(rpcRequest.Model, context);
-                        moveNext = false;
 
                         yield return JsonRpcResult.Single(RecordResponse(result));
                     }
