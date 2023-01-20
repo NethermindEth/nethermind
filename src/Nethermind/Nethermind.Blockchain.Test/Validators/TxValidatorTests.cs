@@ -11,6 +11,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -37,9 +38,11 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
+
+        private static byte CalculateV() => (byte)EthereumEcdsa.CalculateV(TestBlockchainIds.ChainId);
 
         [Test]
         public void Zero_s_is_not_valid()
@@ -51,7 +54,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
@@ -61,11 +64,11 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 39;
+            sigData[64] = (byte)(1 + CalculateV());
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
@@ -78,7 +81,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
         }
 
@@ -88,11 +91,11 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 38;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
         }
 
@@ -111,7 +114,7 @@ namespace Nethermind.Blockchain.Test.Validators
             releaseSpec.IsEip155Enabled.Returns(false);
             releaseSpec.ValidateChainId.Returns(validateChainId);
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             txValidator.IsWellFormed(tx, releaseSpec).Should().Be(!validateChainId);
         }
 
@@ -125,17 +128,17 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 38;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
-                .WithChainId(ChainId.Mainnet)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(txType == TxType.AccessList ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()) : null)
                 .WithSignature(signature).TestObject;
 
             tx.Type = txType;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             return txValidator.IsWellFormed(tx, eip2930 ? Berlin.Instance : MuirGlacier.Instance);
         }
 
@@ -151,11 +154,11 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 38;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType)
-                .WithChainId(ChainId.Mainnet)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithMaxPriorityFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
                 .WithMaxFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
                 .WithAccessList(txType == TxType.AccessList || txType == TxType.EIP1559 ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()) : null)
@@ -163,7 +166,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             tx.Type = txType;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             IReleaseSpec releaseSpec = new ReleaseSpec() { IsEip2930Enabled = eip2930, IsEip1559Enabled = eip1559 };
             return txValidator.IsWellFormed(tx, releaseSpec);
         }
@@ -177,7 +180,7 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 38;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
@@ -186,7 +189,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             tx.Type = txType;
 
-            TxValidator txValidator = new(ChainId.Mainnet);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             return txValidator.IsWellFormed(tx, Berlin.Instance);
         }
 
@@ -201,19 +204,19 @@ namespace Nethermind.Blockchain.Test.Validators
             byte[] sigData = new byte[65];
             sigData[31] = 1; // correct r
             sigData[63] = 1; // correct s
-            sigData[64] = 38;
+            sigData[64] = CalculateV();
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction
                 .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
                 .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
                 .WithMaxFeePerGas((UInt256)maxFeePerGas)
                 .WithAccessList(txType == TxType.AccessList ? new AccessList(new Dictionary<Address, IReadOnlySet<UInt256>>()) : null)
-                .WithChainId(ChainId.Mainnet)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithSignature(signature).TestObject;
 
             tx.Type = txType;
 
-            TxValidator txValidator = new(ChainId.Mainnet);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             return txValidator.IsWellFormed(tx, London.Instance);
         }
 
@@ -233,7 +236,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Transaction tx = Build.A.Transaction
                 .WithSignature(signature)
                 .WithGasLimit(int.MaxValue)
-                .WithChainId(ChainId.Mainnet)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .To(null)
                 .WithData(initCode).TestObject;
 

@@ -55,7 +55,7 @@ namespace Ethereum.Test.Base
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
 
-            ISpecProvider specProvider = new CustomSpecProvider(1,
+            ISpecProvider specProvider = new CustomSpecProvider(
                 ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                 ((ForkActivation)1, test.Fork));
 

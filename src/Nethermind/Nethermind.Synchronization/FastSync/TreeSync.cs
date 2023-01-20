@@ -84,7 +84,7 @@ namespace Nethermind.Synchronization.FastSync
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
-            _data = new DetailedProgress(_blockTree.ChainId, progress);
+            _data = new DetailedProgress(_blockTree.NetworkId, progress);
             _pendingItems = new PendingSyncItems();
             _branchProgress = new BranchProgress(0, _logger);
         }
