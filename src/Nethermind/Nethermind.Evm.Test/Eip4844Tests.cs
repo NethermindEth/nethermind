@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Test;
 public class Eip4844Tests : VirtualMachineTestsBase
 {
     protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
-    protected override ulong Timestamp => MainnetSpecProvider.ShardingForkBlockTimestamp;
+    protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
     [TestCase(0, 0, Description = "Should return 0 when no hashes")]
     [TestCase(1, 1, Description = "Should return 0 when out of range")]

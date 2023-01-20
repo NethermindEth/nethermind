@@ -145,7 +145,7 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithValue(value)
-                .WithBlobHashes(blobVersionedHashes)
+                .WithBlobVersionedHashes(blobVersionedHashes)
                 .To(senderRecipientAndMiner.Recipient)
                 .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
