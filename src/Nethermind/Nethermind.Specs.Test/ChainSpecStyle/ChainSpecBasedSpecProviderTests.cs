@@ -668,9 +668,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 r.IsEip3855Enabled = true;
                 r.IsEip3860Enabled = true;
             });
-            TestTransitions((40001L, 1000000024), r => {
-                r.IsEip1153Enabled = true;
-            });
+            TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = true; });
         }
     }
 }
