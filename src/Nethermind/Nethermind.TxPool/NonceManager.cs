@@ -107,10 +107,5 @@ public class NonceManager : INonceManager
                 Monitor.Exit(_accountLock);
             }
         }
-
-        ~AccountLocker()
-        {
-            Dispose();
-        }
     }
 }

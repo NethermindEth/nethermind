@@ -91,6 +91,7 @@ public class NonceManagerTests
     }
 
     [Test]
+    [Repeat(10)]
     public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
     {
         const int reservationsCount = 1000;
