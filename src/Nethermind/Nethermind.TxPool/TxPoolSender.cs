@@ -39,28 +39,17 @@ namespace Nethermind.TxPool
             return new ValueTask<(Keccak, AcceptTxResult?)>((tx.Hash!, result)); // The sealer calculates the hash
         }
 
-        private AcceptTxResult SubmitTxWithManagedNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
+        private AcceptTxResult SubmitTxWithNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             using IDisposable locker = _nonceManager.TxWithNonceReceived(tx.SenderAddress!, tx.Nonce);
-
-            _sealer.Seal(tx, txHandlingOptions);
-            AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
-
-
-            if (result == AcceptTxResult.Accepted)
-            {
-                _nonceManager.TxAccepted(tx.SenderAddress!);
-            }
-
-            return result;
+            return SubmitTx(tx, txHandlingOptions);
         }
 
-        private AcceptTxResult SubmitTxWithNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
+        private AcceptTxResult SubmitTxWithManagedNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             using IDisposable locker = _nonceManager.ReserveNonce(tx.SenderAddress!, out UInt256 nonce);
             txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
             tx.Nonce = nonce;
-
             return SubmitTx(tx, txHandlingOptions);
         }
 
@@ -68,7 +57,6 @@ namespace Nethermind.TxPool
         {
             _sealer.Seal(tx, txHandlingOptions);
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
-
 
             if (result == AcceptTxResult.Accepted)
             {
