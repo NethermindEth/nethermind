@@ -115,6 +115,7 @@ public class HeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)
+            .WithWithdrawalsRoot(Keccak.Zero)
             .WithExcessDataGas(excessDataGas).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
