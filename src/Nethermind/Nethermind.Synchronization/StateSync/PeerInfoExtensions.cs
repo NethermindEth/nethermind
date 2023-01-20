@@ -9,7 +9,7 @@ public static class PeerInfoExtensions
 {
     public static bool CanGetNodeData(this PeerInfo peerInfo)
     {
-        return peerInfo.SyncPeer.Node.EthDetails == "eth66";
+        return peerInfo.SyncPeer.ProtocolVersion < 67;
     }
 
     public static bool CanGetSnapData(this PeerInfo peerInfo)

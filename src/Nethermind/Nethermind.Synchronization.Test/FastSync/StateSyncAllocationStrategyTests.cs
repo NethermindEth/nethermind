@@ -25,36 +25,38 @@ public class StateSyncAllocationStrategyTests
     [Test]
     public void Can_allocate_node_with_snap()
     {
-        Node node = new(TestItem.PublicKeyA, new IPEndPoint(0, 0));
-        node.EthDetails = "eth67";
-        IsNodeAllocated(node, snapProtocolHandler: new object()).Should().BeTrue();
+        IsNodeAllocated(67, true).Should().BeTrue();
     }
 
     [Test]
     public void Can_allocate_pre_eth67_node()
     {
-        Node node = new(TestItem.PublicKeyA, new IPEndPoint(0, 0));
-        node.EthDetails = "eth66";
-        IsNodeAllocated(node).Should().BeTrue();
+        IsNodeAllocated(66, false).Should().BeTrue();
     }
 
     [Test]
     public void Cannot_allocated_eth67_with_no_snap()
     {
-        Node node = new(TestItem.PublicKeyA, new IPEndPoint(0, 0));
-        node.EthDetails = "eth67";
-        IsNodeAllocated(node).Should().BeFalse();
+        IsNodeAllocated(67, false).Should().BeFalse();
     }
 
-    private bool IsNodeAllocated(Node node, object? snapProtocolHandler = null)
+    private bool IsNodeAllocated(int version, bool hasSnap)
     {
+        Node node = new(TestItem.PublicKeyA, new IPEndPoint(0, 0));
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.Node.Returns(node);
+        syncPeer.ProtocolVersion.Returns((byte)version);
         syncPeer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
             x =>
             {
-                x[1] = snapProtocolHandler;
-                return snapProtocolHandler != null;
+                if (hasSnap)
+                {
+                    x[1] = new object();
+                    return true;
+                }
+
+                x[1] = null;
+                return false;
             });
         PeerInfo peerInfo = new PeerInfo(syncPeer);
 
