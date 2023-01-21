@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -55,9 +56,12 @@ namespace Nethermind.Trie
             }
         }
 
-        public byte[] ToBytes()
+        public int ByteLength => Path.Length / 2 + 1;
+
+        public void CopyToSpan(Span<byte> output)
         {
-            byte[] output = new byte[Path.Length / 2 + 1];
+            if (output.Length != ByteLength) throw new ArgumentOutOfRangeException(nameof(output));
+
             output[0] = (byte)(IsLeaf ? 0x20 : 0x000);
             if (Path.Length % 2 != 0)
             {
@@ -71,7 +75,12 @@ namespace Nethermind.Trie
                         ? (byte)(16 * Path[i] + Path[i + 1])
                         : (byte)(16 * Path[i + 1] + Path[i + 2]);
             }
+        }
 
+        public byte[] ToBytes()
+        {
+            byte[] output = new byte[ByteLength];
+            CopyToSpan(output);
             return output;
         }
 
@@ -98,7 +107,26 @@ namespace Nethermind.Trie
 
         public override string ToString()
         {
-            return ToBytes().ToHexString(false);
+            const int StackallocByteThreshold = 256;
+
+            var hexLength = ByteLength;
+
+            byte[]? rentedBuffer = hexLength > StackallocByteThreshold
+                ? ArrayPool<byte>.Shared.Rent(hexLength)
+                : null;
+
+            Span<byte> keyBytes = (rentedBuffer is null
+                ? stackalloc byte[StackallocByteThreshold]
+                : rentedBuffer).Slice(0, hexLength);
+
+                CopyToSpan(keyBytes);
+
+            var result = keyBytes.ToHexString(withZeroX: false);
+            if (rentedBuffer is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rentedBuffer);
+            }
+            return result;
         }
     }
 }

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Nethermind.Core;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -19,6 +20,8 @@ namespace Nethermind.Trie
     {
         private class TrieNodeDecoder
         {
+            const int StackallocByteThreshold = 256;
+
             public byte[] Encode(ITrieNodeResolver tree, TrieNode? item)
             {
                 Metrics.TreeNodeRlpEncodings++;
@@ -36,7 +39,8 @@ namespace Nethermind.Trie
                     _ => throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}")
                 };
             }
-
+            
+            [SkipLocalsInit]
             private static byte[] EncodeExtension(ITrieNodeResolver tree, TrieNode item)
             {
                 Debug.Assert(item.NodeType == NodeType.Extension,
@@ -44,18 +48,35 @@ namespace Nethermind.Trie
                 Debug.Assert(item.Key is not null,
                     "Extension key is null when encoding");
 
-                byte[] keyBytes = item.Key.ToBytes();
                 TrieNode nodeRef = item.GetChild(tree, 0);
                 Debug.Assert(nodeRef is not null,
                     "Extension child is null when encoding.");
 
                 nodeRef.ResolveKey(tree, false);
 
+                HexPrefix hexPrefix = item.Key;
+                int hexLength = hexPrefix.ByteLength;
+
+                byte[]? rentedBuffer = hexLength > StackallocByteThreshold
+                    ? ArrayPool<byte>.Shared.Rent(hexLength)
+                    : null;
+
+                Span<byte> keyBytes = (rentedBuffer is null
+                    ? stackalloc byte[StackallocByteThreshold]
+                    : rentedBuffer).Slice(0, hexLength);
+
+                hexPrefix.CopyToSpan(keyBytes);
+
                 int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new(totalLength);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(keyBytes);
+                if (rentedBuffer is not null)
+                {
+                    ArrayPool<byte>.Shared.Return(rentedBuffer);
+                }
+
                 if (nodeRef.Keccak is null)
                 {
                     // I think it can only happen if we have a short extension to a branch with a short extension as the only child?
@@ -74,6 +95,7 @@ namespace Nethermind.Trie
                 return rlpStream.Data;
             }
 
+            [SkipLocalsInit]
             private static byte[] EncodeLeaf(TrieNode node)
             {
                 if (node.Key is null)
@@ -81,13 +103,31 @@ namespace Nethermind.Trie
                     throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
                 }
 
-                byte[] keyBytes = node.Key.ToBytes();
+                HexPrefix hexPrefix = node.Key;
+                int hexLength = hexPrefix.ByteLength;
+
+                byte[]? rentedBuffer = hexLength > StackallocByteThreshold
+                    ? ArrayPool<byte>.Shared.Rent(hexLength)
+                    : null;
+
+                Span<byte> keyBytes = (rentedBuffer is null
+                    ? stackalloc byte[StackallocByteThreshold]
+                    : rentedBuffer).Slice(0, hexLength);
+
+                hexPrefix.CopyToSpan(keyBytes);
+
                 int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new(totalLength);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(keyBytes);
+                if (rentedBuffer is not null)
+                {
+                    ArrayPool<byte>.Shared.Return(rentedBuffer);
+                }
+
                 rlpStream.Encode(node.Value);
+
                 return rlpStream.Data;
             }
 
