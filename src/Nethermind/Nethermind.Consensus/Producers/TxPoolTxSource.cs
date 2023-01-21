@@ -9,6 +9,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -44,8 +45,8 @@ namespace Nethermind.Consensus.Producers
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             long blockNumber = parent.Number + 1;
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(blockNumber);
-            UInt256 baseFee = BaseFeeCalculator.Calculate(parent, releaseSpec);
+            IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(blockNumber);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(parent, specFor1559);
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing

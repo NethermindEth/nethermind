@@ -24,6 +24,7 @@ using NUnit.Framework;
 using NSubstitute;
 using NUnit.Framework.Constraints;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
+using System.Collections.Generic;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -70,6 +71,22 @@ namespace Nethermind.Merge.Plugin.Test
             _plugin = new MergePlugin();
 
             _consensusPlugin = new();
+        }
+
+        [Test]
+        public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()
+        {
+
+            JsonConfigSource? jsonSource = new("MisconfiguredConfig.cfg");
+            ConfigProvider? configProvider = new();
+            configProvider.AddSource(jsonSource);
+            configProvider.Initialize();
+            IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
+            IMergeConfig mergeConfig = configProvider.GetConfig<IMergeConfig>();
+            Assert.Throws<InvalidConfigurationException>(() =>
+            {
+                MergePlugin.MigrateSecondsPerSlot(blocksConfig, mergeConfig);
+            });
         }
 
         [TestCase(true)]

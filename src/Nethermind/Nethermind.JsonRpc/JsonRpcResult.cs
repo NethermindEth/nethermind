@@ -2,51 +2,58 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 
 namespace Nethermind.JsonRpc
 {
-    public readonly struct JsonRpcResult : IDisposable
+    public readonly struct JsonRpcResult
     {
+        [MemberNotNullWhen(true, nameof(BatchedResponses))]
+        [MemberNotNullWhen(false, nameof(SingleResponse))]
+        [MemberNotNullWhen(false, nameof(Response))]
+        [MemberNotNullWhen(false, nameof(Report))]
         public bool IsCollection { get; }
-        public IReadOnlyList<JsonRpcResponse> Responses { get; }
-        public IReadOnlyList<RpcReport> Reports { get; }
-        public JsonRpcResponse Response { get; }
-        public RpcReport Report { get; }
+        public IJsonRpcBatchResult? BatchedResponses { get; }
+        public Entry? SingleResponse { get; }
+        public JsonRpcResponse? Response => SingleResponse?.Response;
+        public RpcReport? Report => SingleResponse?.Report;
 
-        private JsonRpcResult(IReadOnlyList<JsonRpcResponse> responses, IReadOnlyList<RpcReport> reports)
+        private JsonRpcResult(IJsonRpcBatchResult batchedResponses)
         {
             IsCollection = true;
-            Responses = responses;
-            Reports = reports;
-            Response = null;
-            Report = default;
+            BatchedResponses = batchedResponses;
         }
 
-        private JsonRpcResult(JsonRpcResponse response, RpcReport report)
+        private JsonRpcResult(Entry singleResult)
         {
             IsCollection = false;
-            Responses = null;
-            Reports = null;
-            Response = response;
-            Report = report;
+            SingleResponse = singleResult;
         }
 
         public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
-            => new(response, report);
+            => new(new Entry(response, report));
 
-        public static JsonRpcResult Collection(IReadOnlyList<JsonRpcResponse> responses, IReadOnlyList<RpcReport> reports)
-            => new(responses, reports);
+        public static JsonRpcResult Single(Entry entry)
+            => new(entry);
 
-        public void Dispose()
+        public static JsonRpcResult Collection(IJsonRpcBatchResult responses)
+            => new(responses);
+
+        public readonly struct Entry : IDisposable
         {
-            Response?.Dispose();
-            if (Responses is not null)
+            public JsonRpcResponse Response { get; }
+            public RpcReport Report { get; }
+
+            public Entry(JsonRpcResponse response, RpcReport report)
             {
-                for (var i = 0; i < Responses.Count; i++)
-                {
-                    Responses[i]?.Dispose();
-                }
+                Response = response;
+                Report = report;
+            }
+
+            public void Dispose()
+            {
+                Response?.Dispose();
             }
         }
     }

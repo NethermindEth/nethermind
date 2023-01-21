@@ -90,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetAccountRange:
                     if (!ServingEnabled)
                     {
-                        Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+                        Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
                         if (Logger.IsDebug)
                             Logger.Debug(
                                 $"Peer disconnected because of requesting Snap data (GetAccountRange). Peer: {Session.Node.ClientId}");
@@ -108,7 +108,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetStorageRanges:
                     if (!ServingEnabled)
                     {
-                        Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+                        Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
                         if (Logger.IsDebug)
                             Logger.Debug(
                                 $"Peer disconnected because of requesting Snap data (GetStorageRanges). Peer: {Session.Node.ClientId}");
@@ -126,7 +126,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetByteCodes:
                     if (!ServingEnabled)
                     {
-                        Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+                        Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
                         if (Logger.IsDebug)
                             Logger.Debug(
                                 $"Peer disconnected because of requesting Snap data (GetByteCodes). Peer: {Session.Node.ClientId}");
@@ -144,7 +144,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetTrieNodes:
                     if (!ServingEnabled)
                     {
-                        Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+                        Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
                         if (Logger.IsDebug)
                             Logger.Debug(
                                 $"Peer disconnected because of requesting Snap data (GetTrieNodes). Peer: {Session.Node.ClientId}");

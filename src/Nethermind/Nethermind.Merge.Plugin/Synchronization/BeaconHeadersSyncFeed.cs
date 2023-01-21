@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -75,7 +76,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     private Keccak ExpectedPivotHash => _pivot.PivotParentHash ?? _pivot.PivotHash ?? Keccak.Zero;
 
-    public override void InitializeFeed()
+    protected override void ResetPivot()
     {
         _chainMerged = false;
 
@@ -113,7 +114,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     {
         HeadersSyncProgressReport.Update(_pivotNumber - HeadersDestinationNumber + 1);
         HeadersSyncProgressReport.MarkEnd();
-        _dependencies.Clear(); // there may be some dependencies from wrong branches
+        ClearDependencies(); // there may be some dependencies from wrong branches
         _pending.Clear(); // there may be pending wrong branches
         _sent.Clear(); // we my still be waiting for some bad branches
         HeadersSyncQueueReport.Update(0L);
@@ -125,7 +126,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         if (_pivotNumber != ExpectedPivotNumber)
         {
             // Pivot changed during the sync. Need to reset the states
-            PostFinishCleanUp();
             InitializeFeed();
         }
 

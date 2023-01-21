@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Benchmark
     {
         public static byte[] ByteCode { get; set; }
 
-        private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.IstanbulBlockNumber);
+        private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
         private IVirtualMachine _virtualMachine;

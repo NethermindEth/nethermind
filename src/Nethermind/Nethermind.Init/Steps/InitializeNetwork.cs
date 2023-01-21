@@ -172,7 +172,7 @@ public class InitializeNetwork : IStep
 
         _api.DisposeStack.Push(_api.Synchronizer);
 
-        _api.SyncServer = new SyncServer(
+        ISyncServer syncServer = _api.SyncServer = new SyncServer(
             _api.TrieStore!,
             _api.DbProvider.CodeDb,
             _api.BlockTree!,
@@ -188,8 +188,8 @@ public class InitializeNetwork : IStep
             _api.LogManager,
             cht);
 
-        _ = _api.SyncServer.BuildCHT();
-        _api.DisposeStack.Push(_api.SyncServer);
+        _ = syncServer.BuildCHT();
+        _api.DisposeStack.Push(syncServer);
 
         InitDiscovery();
         if (cancellationToken.IsCancellationRequested)
@@ -519,9 +519,10 @@ public class InitializeNetwork : IStep
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree!, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);
+        ISyncServer syncServer = _api.SyncServer!;
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
-            _api.SyncServer!,
+            syncServer,
             _api.SnapServer,
             _api.TxPool,
             pooledTxsRequestor,
@@ -531,7 +532,7 @@ public class InitializeNetwork : IStep
             _api.NodeStatsManager,
             protocolValidator,
             peerStorage,
-            _api.SpecProvider!,
+            new ForkInfo(_api.SpecProvider!, syncServer.Genesis.Hash!),
             _api.GossipPolicy,
             _api.LogManager);
 

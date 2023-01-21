@@ -5,10 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -118,7 +117,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             {
                 Transaction[] currentBlockTransactions = currentBlock.Transactions;
                 int txFromCurrentBlock = 0;
-                bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Number).IsEip1559Enabled;
+                bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Header).IsEip1559Enabled;
                 UInt256 baseFee = currentBlock.BaseFeePerGas;
                 IEnumerable<UInt256> effectiveGasPrices = currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
                         .Select(tx => calculateGasFromTransaction(tx, eip1559Enabled, baseFee))

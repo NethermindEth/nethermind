@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
@@ -60,7 +62,18 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <summary>
         /// Responses received from peers but waiting in a queue for some other requests to be handled first
         /// </summary>
-        protected readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new();
+        private readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new();
+        // Stop gap method to reduce allocations from non-struct enumerator
+        // https://github.com/dotnet/runtime/pull/38296
+
+        /// <summary>
+        /// Its a lock to block every processing if needed in order to reset the whole state.
+        /// </summary>
+        private readonly ReaderWriterLockSlim _resetLock = new();
+
+        private IEnumerator<KeyValuePair<long, HeadersSyncBatch>>? _enumerator;
+        private ulong _memoryEstimate;
+        private long _headersEstimate;
 
         protected virtual BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedHeader;
 
@@ -71,12 +84,80 @@ namespace Nethermind.Synchronization.FastBlocks
         protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) == 1;
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
 
-        private long HeadersInQueue => _dependencies.Sum(hd => hd.Value.Response?.Length ?? 0);
+        private long HeadersInQueue
+        {
+            get
+            {
+                var headersEstimate = Volatile.Read(ref _headersEstimate);
+                if (headersEstimate < 0)
+                {
+                    headersEstimate = CalculateHeadersInQueue();
+                    Volatile.Write(ref _headersEstimate, headersEstimate);
+                }
 
-        private ulong MemoryInQueue => (ulong)_dependencies
-            .Sum(d => (d.Value.Response ?? Array.Empty<BlockHeader>()).Sum(h =>
-                // ReSharper disable once ConvertClosureToMethodGroup
-                MemorySizeEstimator.EstimateSize(h)));
+                return headersEstimate;
+            }
+        }
+
+        private long CalculateHeadersInQueue()
+        {
+            // Reuse the enumerator
+            var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _dependencies.GetEnumerator();
+
+            long count = 0;
+            while (enumerator.MoveNext())
+            {
+                count += enumerator.Current.Value.Response?.Length ?? 0;
+            }
+
+            // Stop gap method to reduce allocations from non-struct enumerator
+            // https://github.com/dotnet/runtime/pull/38296
+            enumerator.Reset();
+            _enumerator = enumerator;
+
+            return count;
+        }
+
+        private ulong MemoryInQueue
+        {
+            get
+            {
+                var memoryEstimate = Volatile.Read(ref _memoryEstimate);
+                if (memoryEstimate == ulong.MaxValue)
+                {
+                    memoryEstimate = CalculateMemoryInQueue();
+                    Volatile.Write(ref _memoryEstimate, memoryEstimate);
+                }
+
+                return memoryEstimate;
+            }
+        }
+
+        private ulong CalculateMemoryInQueue()
+        {
+            // Reuse the enumerator
+            var enumerator = Interlocked.Exchange(ref _enumerator, null) ?? _dependencies.GetEnumerator();
+
+            ulong amount = 0;
+            while (enumerator.MoveNext())
+            {
+                var responses = enumerator.Current.Value.Response;
+                if (responses is not null)
+                {
+                    foreach (var response in responses)
+                    {
+                        amount += (ulong)MemorySizeEstimator.EstimateSize(response);
+                    }
+                }
+            }
+
+            // Stop gap method to reduce allocations from non-struct enumerator
+            // https://github.com/dotnet/runtime/pull/38296
+            enumerator.Reset();
+            _enumerator = enumerator;
+
+            return amount;
+        }
 
         public HeadersSyncFeed(
             ISyncModeSelector syncModeSelector,
@@ -104,23 +185,40 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
-            _pivotNumber = _syncConfig.PivotNumberParsed;
-
-            bool useSyncPivot = _blockTree.LowestInsertedHeader is null || _blockTree.LowestInsertedHeader.Number > _pivotNumber;
-            BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
-            long startNumber = useSyncPivot ? _pivotNumber : lowestInserted.Number;
-            Keccak startHeaderHash = useSyncPivot ? _syncConfig.PivotHashParsed : lowestInserted.Hash;
-            UInt256? startTotalDifficulty = useSyncPivot ? syncConfig.PivotTotalDifficultyParsed : lowestInserted?.TotalDifficulty;
-
-            _nextHeaderHash = startHeaderHash;
-            _nextHeaderDiff = startTotalDifficulty;
-
-            _lowestRequestedHeaderNumber = startNumber + 1;
-
             _historicalOverrides.TryGetValue(_blockTree.ChainId, out _expectedDifficultyOverride);
         }
 
-        protected virtual bool StartingFeedCondition() => _syncConfig.FastBlocks;
+        public override void InitializeFeed()
+        {
+            _resetLock.EnterWriteLock();
+            try
+            {
+                PostFinishCleanUp();
+                ResetPivot();
+            }
+            finally
+            {
+                _resetLock.ExitWriteLock();
+            }
+
+            base.InitializeFeed();
+        }
+
+        protected virtual void ResetPivot()
+        {
+            _pivotNumber = _syncConfig.PivotNumberParsed;
+            _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
+            _nextHeaderHash = _syncConfig.PivotHashParsed;
+            _nextHeaderDiff = _syncConfig.PivotTotalDifficultyParsed;
+
+            // Resume logic
+            BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
+            if (lowestInserted != null && lowestInserted!.Number < _pivotNumber)
+            {
+                SetExpectedNextHeaderToParent(lowestInserted);
+                _lowestRequestedHeaderNumber = lowestInserted.Number;
+            }
+        }
 
         protected override SyncMode ActivationSyncModes { get; }
             = SyncMode.FastHeaders & ~SyncMode.FastBlocks;
@@ -158,11 +256,17 @@ namespace Nethermind.Synchronization.FastBlocks
             PostFinishCleanUp();
         }
 
+        protected void ClearDependencies()
+        {
+            _dependencies.Clear();
+            MarkDirty();
+        }
+
         protected virtual void PostFinishCleanUp()
         {
             HeadersSyncProgressReport.Update(_pivotNumber);
             HeadersSyncProgressReport.MarkEnd();
-            _dependencies.Clear(); // there may be some dependencies from wrong branches
+            ClearDependencies(); // there may be some dependencies from wrong branches
             _pending.Clear(); // there may be pending wrong branches
             _sent.Clear(); // we my still be waiting for some bad branches
             HeadersSyncQueueReport.Update(0L);
@@ -174,6 +278,7 @@ namespace Nethermind.Synchronization.FastBlocks
             long? lowest = LowestInsertedBlockHeader?.Number;
             while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
             {
+                MarkDirty();
                 InsertHeaders(dependentBatch!);
                 lowest = LowestInsertedBlockHeader?.Number;
                 cancellationToken.ThrowIfCancellationRequested();
@@ -182,34 +287,42 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {
-            HandleDependentBatches(cancellationToken);
+            _resetLock.EnterReadLock();
+            try
+            {
+                HandleDependentBatches(cancellationToken);
 
-            if (_pending.TryDequeue(out HeadersSyncBatch? batch))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Dequeue batch {batch}");
-                batch!.MarkRetry();
-            }
-            else if (ShouldBuildANewBatch())
-            {
-                batch = BuildNewBatch();
-                if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
-            }
-
-            if (batch is not null)
-            {
-                _sent.TryAdd(batch, _dummyObject);
-                if (batch.StartNumber >= (LowestInsertedBlockHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
+                if (_pending.TryDequeue(out HeadersSyncBatch? batch))
                 {
-                    batch.Prioritized = true;
+                    if (_logger.IsTrace) _logger.Trace($"Dequeue batch {batch}");
+                    batch!.MarkRetry();
+                }
+                else if (ShouldBuildANewBatch())
+                {
+                    batch = BuildNewBatch();
+                    if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
-                LogStateOnPrepare();
-            }
+                if (batch is not null)
+                {
+                    _sent.TryAdd(batch, _dummyObject);
+                    if (batch.StartNumber >= (LowestInsertedBlockHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
+                    {
+                        batch.Prioritized = true;
+                    }
 
-            return Task.FromResult(batch);
+                    LogStateOnPrepare();
+                }
+
+                return Task.FromResult(batch);
+            }
+            finally
+            {
+                _resetLock.ExitReadLock();
+            }
         }
 
-        protected virtual HeadersSyncBatch BuildNewBatch()
+        private HeadersSyncBatch BuildNewBatch()
         {
             HeadersSyncBatch batch = new();
             batch.MinNumber = _lowestRequestedHeaderNumber - 1;
@@ -263,33 +376,47 @@ namespace Nethermind.Synchronization.FastBlocks
                 return SyncResponseHandlingResult.InternalError;
             }
 
-            if ((batch.Response?.Length ?? 0) == 0)
-            {
-                batch.MarkHandlingStart();
-                if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                _pending.Enqueue(batch);
-                batch.MarkHandlingEnd();
-                return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
-            }
-
+            _resetLock.EnterReadLock();
             try
             {
-                if (batch.RequestSize == 0)
+                if (!_sent.ContainsKey(batch))
                 {
-                    return SyncResponseHandlingResult.OK; // 1
+                    if (_logger.IsDebug) _logger.Debug("Ignoring batch not in sent record");
+                    return SyncResponseHandlingResult.Ignored;
                 }
 
-                lock (_handlerLock)
+                if ((batch.Response?.Length ?? 0) == 0)
                 {
                     batch.MarkHandlingStart();
-                    int added = InsertHeaders(batch);
-                    return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
+                    if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
+                    _pending.Enqueue(batch);
+                    batch.MarkHandlingEnd();
+                    return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
+                }
+
+                try
+                {
+                    if (batch.RequestSize == 0)
+                    {
+                        return SyncResponseHandlingResult.OK; // 1
+                    }
+
+                    lock (_handlerLock)
+                    {
+                        batch.MarkHandlingStart();
+                        int added = InsertHeaders(batch);
+                        return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
+                    }
+                }
+                finally
+                {
+                    batch.MarkHandlingEnd();
+                    _sent.TryRemove(batch, out _);
                 }
             }
             finally
             {
-                batch.MarkHandlingEnd();
-                _sent.TryRemove(batch, out _);
+                _resetLock.ExitReadLock();
             }
         }
 
@@ -339,6 +466,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     _syncPeerPool.ReportBreachOfProtocol(
                         batch.ResponseSourcePeer,
+                        InitiateDisconnectReason.HeaderResponseTooLong,
                         $"response too long ({batch.Response.Length})");
                 }
 
@@ -364,6 +492,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         _syncPeerPool.ReportBreachOfProtocol(
                             batch.ResponseSourcePeer,
+                            InitiateDisconnectReason.InconsistentHeaderBatch,
                             "inconsistent headers batch");
                     }
 
@@ -380,7 +509,10 @@ namespace Nethermind.Synchronization.FastBlocks
                         if (batch.ResponseSourcePeer is not null)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID hash");
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "first hash inconsistent with request");
+                            _syncPeerPool.ReportBreachOfProtocol(
+                                batch.ResponseSourcePeer,
+                                InitiateDisconnectReason.UnexpectedHeaderHash,
+                                "first hash inconsistent with request");
                         }
 
                         break;
@@ -396,6 +528,7 @@ namespace Nethermind.Synchronization.FastBlocks
                             {
                                 _syncPeerPool.ReportBreachOfProtocol(
                                     batch.ResponseSourcePeer,
+                                    InitiateDisconnectReason.HeaderBatchOnDifferentBranch,
                                     "headers - different branch");
                             }
 
@@ -409,6 +542,7 @@ namespace Nethermind.Synchronization.FastBlocks
                             {
                                 _syncPeerPool.ReportBreachOfProtocol(
                                     batch.ResponseSourcePeer,
+                                    InitiateDisconnectReason.HeaderBatchOnDifferentBranch,
                                     "headers - different branch");
                             }
 
@@ -437,6 +571,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
                         _dependencies[header.Number] = dependentBatch;
+                        MarkDirty();
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
 
                         // but we cannot do anything with it yet
@@ -450,7 +585,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         if (batch.ResponseSourcePeer is not null)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID inconsistent");
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "headers - response not matching request");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.UnexpectedParentHeader, "headers - response not matching request");
                         }
 
                         break;
@@ -464,7 +599,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (batch.ResponseSourcePeer is not null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID bad block");
-                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, $"invalid header {header.ToString(BlockHeader.Format.Short)}");
+                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidHeader, $"invalid header {header.ToString(BlockHeader.Format.Short)}");
                     }
 
                     break;
@@ -529,6 +664,12 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
         }
 
+        private void MarkDirty()
+        {
+            Volatile.Write(ref _headersEstimate, -1);
+            Volatile.Write(ref _memoryEstimate, ulong.MaxValue);
+        }
+
         protected readonly IDictionary<long, ulong>? _expectedDifficultyOverride;
 
         private AddBlockResult InsertHeader(BlockHeader header)
@@ -546,19 +687,24 @@ namespace Nethermind.Synchronization.FastBlocks
             AddBlockResult insertOutcome = _blockTree.Insert(header);
             if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
             {
-                ulong nextHeaderDiff = 0;
-                _nextHeaderHash = header.ParentHash!;
-                if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
-                {
-                    _nextHeaderDiff = nextHeaderDiff;
-                }
-                else
-                {
-                    _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
-                }
+                SetExpectedNextHeaderToParent(header);
             }
 
             return insertOutcome;
+        }
+
+        private void SetExpectedNextHeaderToParent(BlockHeader header)
+        {
+            ulong nextHeaderDiff = 0;
+            _nextHeaderHash = header.ParentHash!;
+            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
+            {
+                _nextHeaderDiff = nextHeaderDiff;
+            }
+            else
+            {
+                _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
+            }
         }
     }
 }

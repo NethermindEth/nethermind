@@ -40,9 +40,6 @@
         <Content Include="..\Chains\hive.json" CopyToOutputDirectory="PreserveNewest">
             <Link>Chains\hive.json</Link>
         </Content>
-        <Content Include="..\Chains\ndmlocal.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\ndmlocal.json</Link>
-        </Content>
         <Content Include="..\Chains\poacore.json" CopyToOutputDirectory="PreserveNewest">
             <Link>Chains\poacore.json</Link>
         </Content>
@@ -61,8 +58,8 @@
         <Content Include="..\Chains\volta.json" CopyToOutputDirectory="PreserveNewest">
             <Link>Chains\volta.json</Link>
         </Content>
-        <Content Include="..\Chains\xdai.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\xdai.json</Link>
+        <Content Include="..\Chains\gnosis.json" CopyToOutputDirectory="PreserveNewest">
+            <Link>Chains\gnosis.json</Link>
         </Content>
 
         <Content Include="..\Nethermind.Runner\configs\*.cfg" Link="configs\%(RecursiveDir)%(Filename)%(Extension)">

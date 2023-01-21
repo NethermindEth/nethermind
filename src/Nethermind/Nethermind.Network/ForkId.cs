@@ -8,7 +8,7 @@ namespace Nethermind.Network
 {
     public readonly struct ForkId : IEquatable<ForkId>
     {
-        public ForkId(byte[] forkHash, long next)
+        public ForkId(byte[] forkHash, ulong next)
         {
             ForkHash = forkHash;
             Next = next;
@@ -16,7 +16,7 @@ namespace Nethermind.Network
 
         public byte[] ForkHash { get; }
 
-        public long Next { get; }
+        public ulong Next { get; }
 
         public bool Equals(ForkId other)
         {
