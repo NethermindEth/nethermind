@@ -14,7 +14,7 @@ public interface IMiningConfig : IConfig
     bool Enabled { get; set; }
 
     [ConfigItem(
-        Description = "Deprecated since v1.14.6. Please use BlocksConfig.TargetBlockGasLimit. " +
+        Description = "Deprecated since v1.14.6. Please use Blocks.TargetBlockGasLimit. " +
                       "Values you set here are forwarded to it. " +
                       "Conflicting values will cause Exceptions. " +
                       "Block gas limit that the block producer should try to reach in the fastest " +
@@ -24,7 +24,7 @@ public interface IMiningConfig : IConfig
     long? TargetBlockGasLimit { get; set; }
 
     [ConfigItem(
-        Description = "Deprecated since v1.14.6. Please use BlocksConfig.MinGasPrice " +
+        Description = "Deprecated since v1.14.6. Please use Blocks.MinGasPrice " +
                       "Values you set here are forwarded to it. " +
                       "Conflicting values will cause Exceptions. " +
                       "Minimum gas premium for transactions accepted by the block producer. " +
@@ -33,7 +33,7 @@ public interface IMiningConfig : IConfig
     UInt256 MinGasPrice { get; set; }
 
     [ConfigItem(
-        Description = "Deprecated since v1.14.6. Please use BlocksConfig.RandomizedBlocks " +
+        Description = "Deprecated since v1.14.6. Please use Blocks.RandomizedBlocks " +
                       "Values you set here are forwarded to it. " +
                       "Conflicting values will cause Exceptions. " +
                       "Only used in NethDev. Setting this to true will change the difficulty " +
@@ -41,7 +41,7 @@ public interface IMiningConfig : IConfig
         DefaultValue = "false")]
     bool RandomizedBlocks { get; set; }
 
-    [ConfigItem(Description = "Deprecated since v1.14.6. Please use BlocksConfig.ExtraData" +
+    [ConfigItem(Description = "Deprecated since v1.14.6. Please use Blocks.ExtraData" +
                               "Values you set here are forwarded to it. " +
                               "Conflicting values will cause Exceptions. " +
                               "Block header extra data. 32-bytes shall be extra data max length.",

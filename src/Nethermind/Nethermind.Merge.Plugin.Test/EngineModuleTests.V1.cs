@@ -553,7 +553,7 @@ public partial class EngineModuleTests
     public async Task executePayloadV1_result_is_fail_when_blockchainprocessor_report_exception()
     {
         using MergeTestBlockchain chain = await CreateBaseBlockChain(null, null)
-            .Build(new SingleReleaseSpecProvider(London.Instance, 1));
+            .Build(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         ((TestBlockProcessorInterceptor)chain.BlockProcessor).ExceptionToThrow =
@@ -571,7 +571,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBaseBlockChain()
             .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
-            .Build(new SingleReleaseSpecProvider(London.Instance, 1));
+            .Build(new TestSingleReleaseSpecProvider(London.Instance));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0)
