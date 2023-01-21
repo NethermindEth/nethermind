@@ -22,7 +22,7 @@
         <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="7.0.0" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="7.0.0" />
         <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="7.0.0" />
-        <PackageReference Include="System.IO.Abstractions" Version="19.1.1" />
+        <PackageReference Include="System.IO.Abstractions" Version="19.1.5" />
     </ItemGroup>
     
 
