@@ -531,7 +531,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public int ReadNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
+        public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
         {
             int positionStored = Position;
             int numberOfItems = 0;
@@ -919,7 +919,7 @@ namespace Nethermind.Serialization.Rlp
             T defaultElement = default(T))
         {
             int positionCheck = ReadSequenceLength() + Position;
-            int count = ReadNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
             T[] result = new T[count];
             for (int i = 0; i < result.Length; i++)
             {

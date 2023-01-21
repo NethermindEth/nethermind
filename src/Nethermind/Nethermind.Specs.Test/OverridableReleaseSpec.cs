@@ -112,6 +112,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip3529Enabled => _spec.IsEip3529Enabled;
 
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
+        public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
         public bool IsEip3607Enabled { get; set; }
 
         public bool IsEip158IgnoredAccount(Address address)
@@ -131,6 +132,19 @@ namespace Nethermind.Specs.Test
         {
             get => _overridenEip1559FeeCollector ?? _spec.Eip1559FeeCollector;
             set => _overridenEip1559FeeCollector = value;
+        }
+
+        private ulong? _overridenEip4844TransitionTimeStamp;
+        public ulong Eip4844TransitionTimestamp
+        {
+            get
+            {
+                return _overridenEip4844TransitionTimeStamp ?? _spec.Eip4844TransitionTimestamp;
+            }
+            set
+            {
+                _overridenEip4844TransitionTimeStamp = value;
+            }
         }
 
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;

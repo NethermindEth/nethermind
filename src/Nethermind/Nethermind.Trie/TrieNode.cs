@@ -265,7 +265,7 @@ namespace Nethermind.Trie
                 _rlpStream.ReadSequenceLength();
 
                 // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-                int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining(null, 3);
+                int numberOfItems = _rlpStream.PeekNumberOfItemsRemaining(null, 3);
 
                 if (numberOfItems > 2)
                 {
