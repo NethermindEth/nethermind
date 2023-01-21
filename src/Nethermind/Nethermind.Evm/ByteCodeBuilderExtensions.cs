@@ -1,15 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections;
-using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
-using Org.BouncyCastle.Asn1.Mozilla;
 
 namespace Nethermind.Evm
 {
@@ -92,6 +85,8 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.SELFBALANCE);
         public static Prepare BASEFEE(this Prepare @this)
             => @this.Op(Instruction.BASEFEE);
+        public static Prepare DATAHASH(this Prepare @this)
+            => @this.Op(Instruction.DATAHASH);
         public static Prepare POP(this Prepare @this)
             => @this.Op(Instruction.POP);
         public static Prepare PC(this Prepare @this)
