@@ -18,8 +18,8 @@ public class PointEvaluationPrecompileTests
     public void Test_PointEvaluationPrecompile(string testName, byte[] input, bool expectedResult, long expectedGasSpent, byte[] expectedOutput)
     {
         IPrecompile precompile = PointEvaluationPrecompile.Instance;
-        (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, ShardingFork.Instance);
-        long gasSpent = precompile.DataGasCost(input, ShardingFork.Instance) + precompile.BaseGasCost(ShardingFork.Instance);
+        (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, Cancun.Instance);
+        long gasSpent = precompile.DataGasCost(input, Cancun.Instance) + precompile.BaseGasCost(Cancun.Instance);
 
         output.ToArray().Should().BeEquivalentTo(expectedOutput, testName);
         success.Should().Be(expectedResult, testName);

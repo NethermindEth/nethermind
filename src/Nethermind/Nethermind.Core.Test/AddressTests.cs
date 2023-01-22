@@ -186,7 +186,7 @@ namespace Nethermind.Core.Test
             get
             {
                 yield return new TestCaseData(Shanghai.Instance) { ExpectedResult = false, TestName = nameof(Shanghai) };
-                yield return new TestCaseData(ShardingFork.Instance) { ExpectedResult = true, TestName = nameof(ShardingFork) };
+                yield return new TestCaseData(Cancun.Instance) { ExpectedResult = true, TestName = nameof(Cancun) };
             }
         }
 
