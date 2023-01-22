@@ -270,6 +270,7 @@ namespace Nethermind.Init.Steps
             TxSealer nonceReservingTxSealer =
                 new(txSigner, getApi.Timestamper);
             INonceManager nonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
+            setApi.NonceManager = nonceManager;
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
 
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();

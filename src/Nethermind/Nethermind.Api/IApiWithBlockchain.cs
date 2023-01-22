@@ -65,6 +65,7 @@ namespace Nethermind.Api
         ITransactionProcessor? TransactionProcessor { get; set; }
         ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }
+        INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         IWitnessCollector? WitnessCollector { get; set; }
