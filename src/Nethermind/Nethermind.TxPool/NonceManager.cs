@@ -49,7 +49,7 @@ public class NonceManager : INonceManager
         private UInt256 _currentNonce;
         private UInt256 _previousAccountNonce;
 
-        private readonly object _accountLock = new();
+        private readonly SemaphoreSlim _accountLock = new(1);
 
         public IDisposable ReserveNonce(UInt256 accountNonce, out UInt256 nonce)
         {
@@ -91,21 +91,35 @@ public class NonceManager : INonceManager
 
     private class AccountLocker : IDisposable
     {
-        private readonly object _accountLock;
+        private readonly SemaphoreSlim _accountLock;
         private int _disposed;
 
-        public AccountLocker(object accountLock)
+        public AccountLocker(SemaphoreSlim accountLock)
         {
             _accountLock = accountLock;
-            Monitor.Enter(_accountLock);
+            _accountLock.Wait();
         }
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
             {
-                Monitor.Exit(_accountLock);
+                if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                {
+                    _accountLock.Release();
+                }
             }
+        }
+
+        ~AccountLocker()
+        {
+            Dispose(true);
         }
     }
 }
