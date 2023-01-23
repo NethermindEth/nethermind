@@ -14,12 +14,27 @@ BODY=$(printf \
 
 echo "Drafting release $GIT_TAG"
 
-RELEASE_ID=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
-  -X POST \
-  --fail-with-body \
+RELEASE_ID=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$GIT_TAG \
+  -X GET \
   -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
-  -d "$BODY" | jq -r '.id')
+  -H "Authorization: Bearer $GITHUB_TOKEN" | jq -r '.id')
+
+if [ "$RELEASE_ID" == "null" ]
+then
+  RELEASE_ID=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
+    -X POST \
+    --fail-with-body \
+    -H "Accept: application/vnd.github+json" \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -d "$BODY" | jq -r '.id')
+else
+  curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID \
+    -X PATCH \
+    --fail-with-body \
+    -H "Accept: application/vnd.github+json" \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -d "$BODY"
+fi
 
 cd $PACKAGE_PATH
 
