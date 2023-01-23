@@ -2,29 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
 {
     public static class HexPrefix
     {
-        // public long MemorySize
-        // {
-        //     get
-        //     {
-        //         long unaligned = MemorySizes.SmallObjectOverhead +
-        //                         MemorySizes.Align(MemorySizes.ArrayOverhead + Path.Length) +
-        //                         1;
-        //         return MemorySizes.Align(unaligned);
-        //     }
-        // }
+        public static int ByteLength(byte[] path) => path.Length / 2 + 1;
 
-        public static byte[] ToBytes(byte[] path, bool isLeaf)
+        public static void CopyToSpan(byte[] path, bool isLeaf, Span<byte> output)
         {
-            byte[] output = new byte[path.Length / 2 + 1];
+            if (output.Length != ByteLength(path)) throw new ArgumentOutOfRangeException(nameof(output));
+
             output[0] = (byte)(isLeaf ? 0x20 : 0x000);
             if (path.Length % 2 != 0)
             {
@@ -38,6 +26,13 @@ namespace Nethermind.Trie
                         ? (byte)(16 * path[i] + path[i + 1])
                         : (byte)(16 * path[i + 1] + path[i + 2]);
             }
+        }
+
+        public static byte[] ToBytes(byte[] path, bool isLeaf)
+        {
+            byte[] output = new byte[path.Length / 2 + 1];
+
+            CopyToSpan(path, isLeaf, output);
 
             return output;
         }
