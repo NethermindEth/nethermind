@@ -136,7 +136,7 @@ namespace Nethermind.JsonRpc.WebSockets
                             _jsonRpcLocalStats.ReportCall(entry.Report);
 
                             // We reached the limit and don't want to responded to more request in the batch
-                            if (singleResponseSize > _maxBatchResponseBodySize)
+                            if (!_jsonRpcContext.IsAuthenticated && singleResponseSize > _maxBatchResponseBodySize)
                             {
                                 enumerator.IsStopped = true;
                             }

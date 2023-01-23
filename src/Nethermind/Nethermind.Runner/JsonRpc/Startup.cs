@@ -163,7 +163,8 @@ namespace Nethermind.Runner.JsonRpc
                     using CountingTextReader request = new(new StreamReader(ctx.Request.Body, Encoding.UTF8));
                     try
                     {
-                        await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http(jsonRpcUrl)))
+                        JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
+                        await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
                         {
                             Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
 
@@ -197,7 +198,7 @@ namespace Nethermind.Runner.JsonRpc
                                                 jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to responded to more request in the batch
-                                                if (responseSize > jsonRpcConfig.MaxBatchResponseBodySize)
+                                                if (!jsonRpcContext.IsAuthenticated && responseSize > jsonRpcConfig.MaxBatchResponseBodySize)
                                                 {
                                                     enumerator.IsStopped = true;
                                                 }
