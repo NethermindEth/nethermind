@@ -91,7 +91,7 @@ public class MultipleUnsignedOperations
             CodeInfo = new CodeInfo(_bytecode.Concat(_bytecode).Concat(_bytecode).Concat(_bytecode).ToArray()),
             Value = 0,
             TransferValue = 0,
-            TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0)
+            TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0, null)
         };
 
         _evmState = new EvmState(100_000_000L, _environment, ExecutionType.Transaction, true, _worldState.TakeSnapshot(), false);
