@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -21,52 +8,51 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles
+namespace Nethermind.Evm.Precompiles;
+
+public class PointEvaluationPrecompile : IPrecompile
 {
-    public class PointEvaluationPrecompile : IPrecompile
+    public static readonly IPrecompile Instance = new PointEvaluationPrecompile();
+
+    private static readonly ReadOnlyMemory<byte> PointEvaluationSuccessfulResponse =
+                                                    BitConverter.GetBytes((long)KzgPolynomialCommitments.FieldElementsPerBlob)
+                                            .Concat(KzgPolynomialCommitments.BlsModulus.ToLittleEndian())
+                                            .ToArray();
+
+    static PointEvaluationPrecompile() => KzgPolynomialCommitments.Inititalize();
+
+    public Address Address { get; } = Address.FromNumber(0x14);
+
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;
+
+    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+
+    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        public static readonly IPrecompile Instance = new PointEvaluationPrecompile();
-
-        private static readonly ReadOnlyMemory<byte> PointEvaluationSuccessfulResponse =
-                                                        BitConverter.GetBytes((long)KzgPolynomialCommitments.FieldElementsPerBlob)
-                                                .Concat(KzgPolynomialCommitments.BlsModulus.ToLittleEndian())
-                                                .ToArray();
-
-        static PointEvaluationPrecompile() => KzgPolynomialCommitments.Inititalize();
-
-        public Address Address { get; } = Address.FromNumber(0x14);
-
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;
-
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
-
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static bool IsValid(in ReadOnlyMemory<byte> inputData)
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            static bool IsValid(in ReadOnlyMemory<byte> inputData)
+            if (inputData.Length != 192)
             {
-                if (inputData.Length != 192)
-                {
-                    return false;
-                }
-
-                ReadOnlySpan<byte> inputDataSpan = inputData.Span;
-                ReadOnlySpan<byte> versionedHash = inputDataSpan[..32];
-                ReadOnlySpan<byte> z = inputDataSpan[32..64];
-                ReadOnlySpan<byte> y = inputDataSpan[64..96];
-                ReadOnlySpan<byte> commitment = inputDataSpan[96..144];
-                ReadOnlySpan<byte> proof = inputDataSpan[144..192];
-                Span<byte> hash = stackalloc byte[32];
-
-                return KzgPolynomialCommitments.TryComputeCommitmentV1(commitment, hash)
-                       && hash.SequenceEqual(versionedHash)
-                       && KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
+                return false;
             }
 
-            Metrics.PointEvaluationPrecompile++;
-            return IsValid(inputData)
-                ? (PointEvaluationSuccessfulResponse, true)
-                : (ReadOnlyMemory<byte>.Empty, false);
+            ReadOnlySpan<byte> inputDataSpan = inputData.Span;
+            ReadOnlySpan<byte> versionedHash = inputDataSpan[..32];
+            ReadOnlySpan<byte> z = inputDataSpan[32..64];
+            ReadOnlySpan<byte> y = inputDataSpan[64..96];
+            ReadOnlySpan<byte> commitment = inputDataSpan[96..144];
+            ReadOnlySpan<byte> proof = inputDataSpan[144..192];
+            Span<byte> hash = stackalloc byte[32];
+
+            return KzgPolynomialCommitments.TryComputeCommitmentV1(commitment, hash)
+                   && hash.SequenceEqual(versionedHash)
+                   && KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
         }
+
+        Metrics.PointEvaluationPrecompile++;
+        return IsValid(inputData)
+            ? (PointEvaluationSuccessfulResponse, true)
+            : (ReadOnlyMemory<byte>.Empty, false);
     }
 }

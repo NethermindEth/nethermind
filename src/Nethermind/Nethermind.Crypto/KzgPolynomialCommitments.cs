@@ -5,7 +5,6 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
-using Nethermind.Crypto.Properties;
 using Nethermind.Int256;
 
 namespace Nethermind.Crypto
@@ -29,14 +28,16 @@ namespace Nethermind.Crypto
                 {
                     return;
                 }
-                string tmpFilename = Path.GetTempFileName();
-                using FileStream tmpFileStream = new(tmpFilename, FileMode.OpenOrCreate, FileAccess.Write);
-                using TextWriter tmpFileWriter = new StreamWriter(tmpFileStream);
-                tmpFileWriter.Write(Resources.kzg_trusted_setup);
-                tmpFileWriter.Close();
-                tmpFileStream.Close();
-                _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(tmpFilename);
-                File.Delete(tmpFilename);
+
+                string trustedSetupTextFileLocation =
+                    Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
+                                 string.Empty, "kzg_trusted_setup.txt");
+                _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
+
+                if (_ckzgSetup == IntPtr.Zero)
+                {
+                    throw new InvalidOperationException("Unable to load trusted setup");
+                }
             }
         }
 
