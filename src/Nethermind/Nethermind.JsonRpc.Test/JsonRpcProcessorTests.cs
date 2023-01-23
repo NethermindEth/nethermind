@@ -254,8 +254,9 @@ namespace Nethermind.JsonRpc.Test
         public async Task Will_return_error_when_batch_request_is_too_large()
         {
             StringBuilder request = new();
+            int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
             request.Append("[");
-            for (int i = 0; i < 101; i++)
+            for (int i = 0; i < maxBatchSize + 1; i++)
             {
                 if (i != 0) request.Append(",");
                 request.Append(
