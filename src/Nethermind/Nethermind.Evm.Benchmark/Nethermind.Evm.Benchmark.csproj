@@ -10,8 +10,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="BenchmarkDotNet" Version="0.13.2" />
-      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.0.0" />
+      <PackageReference Include="BenchmarkDotNet" Version="0.13.4" />
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.1.0" />
     </ItemGroup>
 
     <ItemGroup>

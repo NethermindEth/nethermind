@@ -67,6 +67,7 @@ namespace Nethermind.Core.Test.Blockchain
             set => _blockFinder = value;
         }
 
+        public ILogFinder LogFinder { get; private set; } = null!;
         public IJsonSerializer JsonSerializer { get; set; } = null!;
         public IStateProvider State { get; set; } = null!;
         public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
@@ -171,6 +172,10 @@ namespace Nethermind.Core.Test.Blockchain
             PoSSwitcher = NoPoS.Instance;
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
             SealEngine = new SealEngine(sealer, Always.Valid);
+
+            BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
+            ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance), SpecProvider);
+            LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
             BlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
