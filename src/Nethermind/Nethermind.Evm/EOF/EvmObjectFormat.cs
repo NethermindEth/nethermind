@@ -484,7 +484,8 @@ internal static class EvmObjectFormat
                 }
 
                 bool result = !BitmapHelper.CheckCollision(codeBitmap, jumpdests);
-                if(!result) {
+                if (!result)
+                {
                     if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Invalid Jump destination");
                 }
                 return result;
@@ -576,7 +577,7 @@ internal static class EvmObjectFormat
 
                         if (worklet.StackHeight < inputs)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack Underflow required {inputs} but found {stackHeight}");
+                            if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack Underflow required {inputs} but found {worklet.StackHeight}");
                             return false;
                         }
 
@@ -630,7 +631,7 @@ internal static class EvmObjectFormat
                             var expectedHeight = opcode is Instruction.RETF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] : worklet.StackHeight;
                             if (expectedHeight != worklet.StackHeight)
                             {
-                                if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {stackHeight}");
+                                if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {worklet.StackHeight}");
                                 return false;
                             }
                             break;
@@ -657,7 +658,8 @@ internal static class EvmObjectFormat
                 }
 
                 bool result = peakStackHeight <= MAX_STACK_HEIGHT;
-                if(!result) {
+                if (!result)
+                {
                     if (Logger.IsTrace) Logger.Trace($"EIP-5450 : stack overflow exceeded max stack height of {MAX_STACK_HEIGHT} but found {peakStackHeight}");
                     return false;
                 }
