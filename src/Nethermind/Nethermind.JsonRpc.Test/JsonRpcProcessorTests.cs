@@ -19,24 +19,20 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.All)]
     [TestFixture(true)]
     [TestFixture(false)]
     public class JsonRpcProcessorTests
     {
         private readonly bool _returnErrors;
-        private IFileSystem _fileSystem = null!;
-        private JsonRpcContext _context = null!;
         private readonly JsonRpcErrorResponse _errorResponse = new();
-        private JsonRpcProcessor _jsonRpcProcessor = null!;
 
         public JsonRpcProcessorTests(bool returnErrors)
         {
             _returnErrors = returnErrors;
         }
 
-        [SetUp]
-        public void Initialize()
+        private JsonRpcProcessor Initialize(JsonRpcConfig? config = null)
         {
             IJsonRpcService service = Substitute.For<IJsonRpcService>();
             service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>()).Returns(ci => _returnErrors ? new JsonRpcErrorResponse { Id = ci.Arg<JsonRpcRequest>().Id } : new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
@@ -44,15 +40,15 @@ namespace Nethermind.JsonRpc.Test
             service.GetErrorResponse(null!, 0, null!, null!).ReturnsForAnyArgs(_errorResponse);
             service.Converters.Returns(new JsonConverter[] { new AddressConverter() }); // just to test converter loader
 
-            _fileSystem = Substitute.For<IFileSystem>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
 
             /* we enable recorder always to have an easy smoke test for recording
              * and this is fine because recorder is non-critical component
              */
-            JsonRpcConfig configWithRecorder = new() { RpcRecorderState = RpcRecorderState.All };
+            config ??= new JsonRpcConfig();
+            config.RpcRecorderState = RpcRecorderState.All;
 
-            _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), configWithRecorder, _fileSystem, LimboLogs.Instance);
-            _context = new JsonRpcContext(RpcEndpoint.Http);
+            return new JsonRpcProcessor(service, new EthereumJsonSerializer(), config, fileSystem, LimboLogs.Instance);
         }
 
         [Test]
@@ -63,8 +59,8 @@ namespace Nethermind.JsonRpc.Test
             Assert.AreEqual("840b55c4-18b0-431c-be1d-6d22198b53f2", result[0].Response!.Id);
         }
 
-        private ValueTask<List<JsonRpcResult>> ProcessAsync(string request, JsonRpcContext? context = null) =>
-            _jsonRpcProcessor.ProcessAsync(request, context ?? _context).ToListAsync();
+        private ValueTask<List<JsonRpcResult>> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null) =>
+            Initialize(config).ProcessAsync(request, context ?? new JsonRpcContext(RpcEndpoint.Http)).ToListAsync();
 
         [Test]
         public async Task Can_process_non_hex_ids()
@@ -285,9 +281,13 @@ namespace Nethermind.JsonRpc.Test
 
             JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, Array.Empty<string>());
             JsonRpcContext context = new(RpcEndpoint.Http, url: url);
-            IList<JsonRpcResult> result = await ProcessAsync(request.ToString(), context);
-            result.Should().HaveCount(maxBatchSize + 1);
-            result.Should().AllSatisfy(rpcResult => rpcResult.Response.Should().NotBeOfType<JsonRpcErrorResponse>());
+            IList<JsonRpcResult> result = await ProcessAsync(request.ToString(), context, new JsonRpcConfig() { MaxBatchResponseBodySize = 1 });
+            result.Should().HaveCount(1);
+            List<JsonRpcResult.Entry> batchedResults = await result[0].BatchedResponses!.ToListAsync();
+            batchedResults.Should().HaveCount(maxBatchSize + 1);
+            batchedResults.Should().AllSatisfy(rpcResult =>
+                rpcResult.Response.Should().BeOfType(_returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse))
+            );
         }
 
         [Test]
