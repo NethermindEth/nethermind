@@ -14,7 +14,6 @@ namespace Nethermind.Evm.EOF;
 
 internal static class EvmObjectFormat
 {
-
     [StructLayout(LayoutKind.Sequential)]
     struct Worklet
     {
@@ -26,6 +25,7 @@ internal static class EvmObjectFormat
         public ushort Position;
         public ushort StackHeight;
     }
+
     private interface IEofVersionHandler
     {
         bool ValidateBody(ReadOnlySpan<byte> code, EofHeader header);
