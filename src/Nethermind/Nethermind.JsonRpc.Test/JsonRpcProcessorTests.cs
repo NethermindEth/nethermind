@@ -63,7 +63,8 @@ namespace Nethermind.JsonRpc.Test
             Assert.AreEqual("840b55c4-18b0-431c-be1d-6d22198b53f2", result[0].Response!.Id);
         }
 
-        private ValueTask<List<JsonRpcResult>> ProcessAsync(string request) => _jsonRpcProcessor.ProcessAsync(request, _context).ToListAsync();
+        private ValueTask<List<JsonRpcResult>> ProcessAsync(string request, JsonRpcContext? context = null) =>
+            _jsonRpcProcessor.ProcessAsync(request, context ?? _context).ToListAsync();
 
         [Test]
         public async Task Can_process_non_hex_ids()
@@ -266,6 +267,27 @@ namespace Nethermind.JsonRpc.Test
             IList<JsonRpcResult> result = await ProcessAsync(request.ToString());
             result.Should().HaveCount(1);
             result[0].Response.Should().BeAssignableTo<JsonRpcErrorResponse>();
+        }
+
+        [Test]
+        public async Task Will_not_return_error_when_batch_request_is_too_large_but_endpoint_is_authenticated()
+        {
+            StringBuilder request = new();
+            int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
+            request.Append("[");
+            for (int i = 0; i < maxBatchSize + 1; i++)
+            {
+                if (i != 0) request.Append(",");
+                request.Append(
+                    "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+            }
+            request.Append("]");
+
+            JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, Array.Empty<string>());
+            JsonRpcContext context = new(RpcEndpoint.Http, url: url);
+            IList<JsonRpcResult> result = await ProcessAsync(request.ToString(), context);
+            result.Should().HaveCount(maxBatchSize + 1);
+            result.Should().AllSatisfy(rpcResult => rpcResult.Response.Should().NotBeOfType<JsonRpcErrorResponse>());
         }
 
         [Test]
