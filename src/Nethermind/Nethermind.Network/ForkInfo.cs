@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -19,27 +20,34 @@ namespace Nethermind.Network
 {
     public class ForkInfo : IForkInfo
     {
+        private Dictionary<uint, (ForkActivation Activation, ForkId Id)> DictForks { get; }
         private (ForkActivation Activation, ForkId Id)[] Forks { get; }
 
         private IBlockTree _blockTree;
+        private ulong TimstampThreshold => 1438269973ul; // MainnetSpecProvider.ShanghaiBlockTimestamp;
 
         public ForkInfo(ISpecProvider specProvider, Keccak genesisHash, IBlockTree blockTree)
         {
             _blockTree = blockTree;
 
             ForkActivation[] transitionActivations = specProvider.TransitionActivations;
+            DictForks = new();
             Forks = new (ForkActivation Activation, ForkId Id)[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
             uint crc = 0;
             byte[] hash = CalculateHash(ref crc, genesisHash.Bytes);
             // genesis fork activation
-            Forks[0] = ((0, null), new ForkId(hash, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0));
+            (ForkActivation Activation, ForkId Id) toAdd = ((0, null), new ForkId(hash, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0));
+            Forks[0] = toAdd;
+            DictForks.Add(BitConverter.ToUInt32(hash), toAdd);
             for (int index = 0; index < transitionActivations.Length; index++)
             {
                 ForkActivation forkActivation = transitionActivations[index];
                 BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, forkActivation.Activation);
                 hash = CalculateHash(ref crc, blockNumberBytes);
-                Forks[index + 1] = (forkActivation, new ForkId(hash, GetNextActivation(index, transitionActivations)));
+                toAdd = (forkActivation, new ForkId(hash, GetNextActivation(index, transitionActivations)));
+                Forks[index + 1] = toAdd;
+                DictForks.Add(BitConverter.ToUInt32(hash), toAdd);
             }
         }
 
@@ -111,9 +119,9 @@ namespace Nethermind.Network
             {
                 (ForkActivation forkActivation, ForkId forkId) = Forks[i];
                 bool usingTimestamp = (forkId.Next == 0
-                || forkId.Next >= MainnetSpecProvider.ShanghaiBlockTimestamp)
+                || forkId.Next >= TimstampThreshold)
                 && (peerId.Next == 0
-                || peerId.Next >= MainnetSpecProvider.ShanghaiBlockTimestamp);
+                || peerId.Next >= TimstampThreshold);
                 ulong headActivation = (usingTimestamp ? head.Timestamp : (ulong)head.Number);
 
                 // If our head is beyond this fork, continue to the next (we have a dummy
@@ -176,52 +184,37 @@ namespace Nethermind.Network
         {
             BlockHeader? head = _blockTree.Head?.Header;
             if (head == null) return IForkInfo.ValidationResult.Valid;
-            (ForkActivation? foundActivation, ForkId? foundForkId) = (null, null);
-            ForkActivation? nextActivation = null;
-            for (int i = 0; i < Forks.Length; i++)
-            {
-                if (Bytes.AreEqual(Forks[i].Id.ForkHash, peerId.ForkHash))
-                {
-                    foundActivation = Forks[i].Activation;
-                    foundForkId = Forks[i].Id;
-                    if (i < Forks.Length - 1)
-                    {
-                        nextActivation = Forks[i + 1].Activation;
-                    }
-                    break;
-                }
-            }
-            if (foundActivation is null)
+            if (!DictForks.TryGetValue(BitConverter.ToUInt32(peerId.ForkHash), out (ForkActivation Activation, ForkId Id) found))
             {
                 return IForkInfo.ValidationResult.IncompatibleOrStale;
             }
-            bool usingTimestamp = (foundForkId.Value.Next == 0
-                || foundForkId.Value.Next >= MainnetSpecProvider.ShanghaiBlockTimestamp)
+            bool usingTimestamp = (found.Id.Next == 0
+                || found.Id.Next >= TimstampThreshold)
                 && (peerId.Next == 0
-                || peerId.Next >= MainnetSpecProvider.ShanghaiBlockTimestamp);
+                || peerId.Next >= TimstampThreshold);
             ulong headActivation = (usingTimestamp ? head.Timestamp : (ulong)head.Number);
 
             // my approach is to accept all peers except the ones we dont like. which is the oposite of what
             // geth does. they reject all except ones they think are right.
 
-            if (foundForkId.Value.Next != peerId.Next)
+            if (found.Id.Next != peerId.Next)
             {
                 if (peerId.Next == 0
-                    && nextActivation is not null
-                    && headActivation >= nextActivation.Value.Activation)
+                    && found.Id.Next > 0
+                    && headActivation >= found.Id.Next)
                 {
                     return IForkInfo.ValidationResult.RemoteStale;
                 }
                 if (peerId.Next > 0
-                    && headActivation > foundActivation.Value.Activation)
+                    && headActivation > found.Activation.Activation)
                 {
                     if (headActivation >= peerId.Next)
                     {
                         return IForkInfo.ValidationResult.IncompatibleOrStale;
                     }
-                    if (nextActivation is not null
-                        && headActivation >= nextActivation.Value.Activation
-                        && peerId.Next != nextActivation.Value.Activation)
+                    if (found.Id.Next > 0
+                        && headActivation >= found.Id.Next
+                        && peerId.Next != found.Id.Next)
                     {
                         return IForkInfo.ValidationResult.IncompatibleOrStale;
                     }

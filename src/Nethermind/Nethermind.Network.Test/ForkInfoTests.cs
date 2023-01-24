@@ -77,12 +77,10 @@ namespace Nethermind.Network.Test
         [TestCase(13_772_999, 0ul, "0xb715077d", 13_773_000ul, "Last London")]
         [TestCase(13_773_000, 0ul, "0x20c327fc", 15_050_000ul, "First Arrow Glacier")]
         [TestCase(15_049_999, 0ul, "0x20c327fc", 15_050_000ul, "Last Arrow Glacier")]
-        [TestCase(15_050_000, 0ul, "0xf0afd0e3", 18_000_000ul, "First Gray Glacier")]
-        [TestCase(17_999_999, 0ul, "0xf0afd0e3", 18_000_000ul, "Last Gray Glacier")]
-        [TestCase(18_000_000, 0ul, "0x4fb8a872", 1_668_000_000ul, "First Merge Start")]
-        [TestCase(20_000_000, 0ul, "0x4fb8a872", 1_668_000_000ul, "Last Merge Start")]
-        [TestCase(20_000_000, 1_668_000_000ul, "0xc1fdf181", 0ul, "First Shanghai")]
-        [TestCase(21_000_000, 1_768_000_000ul, "0xc1fdf181", 0ul, "Future Shanghai")]
+        [TestCase(15_050_000, 0ul, "0xf0afd0e3", 1_668_000_000ul, "First Gray Glacier")]
+        [TestCase(17_999_999, 0ul, "0xf0afd0e3", 1_668_000_000ul, "Last Gray Glacier")]
+        [TestCase(20_000_000, 1_668_000_000ul, "0x71147644", 0ul, "First Shanghai")]
+        [TestCase(21_000_000, 1_768_000_000ul, "0x71147644", 0ul, "Future Shanghai")]
         public void Fork_id_and_hash_as_expected_with_timestamps(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
         {
             Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, "TimestampForkIdTest.json", "../../../");
@@ -281,89 +279,98 @@ namespace Nethermind.Network.Test
         // Local is mainnet currently in Gray Glacier only (so it's aware of Shanghai), remote announces
         // also Gray Glacier, but it's not yet aware of Shanghai (e.g. non updated node before the fork).
         // In this case we don't know if Shanghai passed yet or not.
-        [TestCase(15050000, 0ul, "0xf0afd0e3", 0ul, IForkInfo.ValidationResult.Valid)]
+        [TestCase(15050000, 0ul, "0xf0afd0e3", 0ul, IForkInfo.ValidationResult.Valid, true)]
 
         // Local is mainnet currently in Gray Glacier only (so it's aware of Shanghai), remote announces
         // also Gray Glacier, and it's also aware of Shanghai (e.g. updated node before the fork). We
         // don't know if Shanghai passed yet (will pass) or not.
-        [TestCase(15050000, 0ul, "0xf0afd0e3", MainnetSpecProvider.ShanghaiBlockTimestamp, IForkInfo.ValidationResult.Valid)]
+        [TestCase(15050000, 0ul, "0xf0afd0e3", 1_668_000_000ul, IForkInfo.ValidationResult.Valid, true)]
 
         // Local is mainnet currently in Gray Glacier only (so it's aware of Shanghai), remote announces
         // also Gray Glacier, and it's also aware of some random fork (e.g. misconfigured Shanghai). As
         // neither forks passed at neither nodes, they may mismatch, but we still connect for now.
-        [TestCase(15050000, 0ul, "0xf0afd0e3", ulong.MaxValue, IForkInfo.ValidationResult.Valid)]
+        [TestCase(15050000, 0ul, "0xf0afd0e3", ulong.MaxValue, IForkInfo.ValidationResult.Valid, true)]
 
         // Local is mainnet exactly on Shanghai, remote announces Gray Glacier + knowledge about Shanghai. Remote
         // is simply out of sync, accept.
-        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0xf0afd0e3", MainnetSpecProvider.ShanghaiBlockTimestamp, IForkInfo.ValidationResult.Valid)]
+        [TestCase(20000000, 1_668_000_000ul, "0xf0afd0e3", 1_668_000_000ul, IForkInfo.ValidationResult.Valid, true)]
 
         // Local is mainnet Shanghai, remote announces Gray Glacier + knowledge about Shanghai. Remote
         // is simply out of sync, accept.
-        [TestCase(20123456, MainnetSpecProvider.ShanghaiBlockTimestamp + 1, "0xf0afd0e3", MainnetSpecProvider.ShanghaiBlockTimestamp, IForkInfo.ValidationResult.Valid)]
+        [TestCase(20123456, 1_668_111_111ul, "0xf0afd0e3", 1_668_000_000ul, IForkInfo.ValidationResult.Valid, true)]
 
         // Local is mainnet Shanghai, remote announces Arrow Glacier + knowledge about Gray Glacier. Remote
         // is definitely out of sync. It may or may not need the Shanghai update, we don't know yet.
-        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0x20c327fc", (ulong)MainnetSpecProvider.GrayGlacierBlockNumber, IForkInfo.ValidationResult.Valid)]
+        [TestCase(20000000, 1_668_000_000ul, "0x20c327fc", 15_050_000ul, IForkInfo.ValidationResult.Valid, true)]
 
         // Local is mainnet Gray Glacier, remote announces Shanghai. Local is out of sync, accept.
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, 0ul, "0x71147644", 0ul, IForkInfo.ValidationResult.Valid)]
+        [TestCase(15_050_000, 0ul, "0x71147644", 0ul, IForkInfo.ValidationResult.Valid, true)]
 
         // Local is mainnet Arrow Glacier, remote announces Gray Glacier, but is not aware of Shanghai. Local
         // out of sync. Local also knows about a future fork, but that is uncertain yet.
-        [TestCase(MainnetSpecProvider.ArrowGlacierBlockNumber, 0ul, "0xf0afd0e3", 0ul, IForkInfo.ValidationResult.Valid)]
+        [TestCase(13_773_000, 0ul, "0xf0afd0e3", 0ul, IForkInfo.ValidationResult.Valid, true)]
 
         // Local is mainnet Shanghai. remote announces Gray Glacier but is not aware of further forks.
         // Remote needs software update.
-        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0xf0afd0e3", 0ul, IForkInfo.ValidationResult.RemoteStale)]
+        [TestCase(20000000, 1_668_000_000ul, "0xf0afd0e3", 0ul, IForkInfo.ValidationResult.RemoteStale, true)]
 
         // Local is mainnet Gray Glacier, and isn't aware of more forks. Remote announces Gray Glacier +
         // 0xffffffff. Local needs software update, reject.
-        // --- needs a custom specProvider ---
+        [TestCase(15_050_000, 0ul, "0x87654321", ulong.MaxValue, IForkInfo.ValidationResult.IncompatibleOrStale)]
 
         // Local is mainnet Gray Glacier, and is aware of Shanghai. Remote announces Shanghai +
         // 0xffffffff. Local needs software update, reject.
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, 0ul, "0x71147644", ulong.MaxValue, IForkInfo.ValidationResult.Valid)]
+        [TestCase(15_050_000, 0ul, "0x98765432", ulong.MaxValue, IForkInfo.ValidationResult.IncompatibleOrStale, true)]
 
         // Local is mainnet Gray Glacier, far in the future. Remote announces Gopherium (non existing fork)
         // at some future timestamp 8888888888, for itself, but past block for local. Local is incompatible.
         //
         // This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
-        // --- needs a custom specProvider ---
+        [TestCase(888888888, 1660000000ul, "0xf0afd0e3", 1660000000ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
 
         // Local is mainnet Gray Glacier. Remote is also in Gray Glacier, but announces Gopherium (non existing
         // fork) at block 7279999, before Shanghai. Local is incompatible.
-        [TestCase(19999999, 1667999999ul, "0xf0afd0e3", 1667999999ul, IForkInfo.ValidationResult.Valid)]
+        [TestCase(19999999, 1667999999ul, "0xf0afd0e3", 1667999999ul, IForkInfo.ValidationResult.IncompatibleOrStale, true)]
 
         //----------------------
         // Timestamp based tests
         //----------------------
 
         // Local is mainnet Shanghai, remote announces the same. No future fork is announced.
-        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0x71147644", 0ul, IForkInfo.ValidationResult.Valid)]
+        [TestCase(20000000, 1_668_000_000ul, "0x71147644", 0ul, IForkInfo.ValidationResult.Valid, true)]
 
         // Local is mainnet Shanghai, remote announces the same. Remote also announces a next fork
         // at time 0xffffffff, but that is uncertain.
-        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0x71147644", ulong.MaxValue, IForkInfo.ValidationResult.Valid)]
+        [TestCase(20000000, 1_668_000_000ul, "0x71147644", ulong.MaxValue, IForkInfo.ValidationResult.Valid, true)]
 
         // Local is mainnet Shanghai, and isn't aware of more forks. Remote announces Shanghai +
         // 0xffffffff. Local needs software update, reject.
-        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0x846271649", 0ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+        [TestCase(20000000, 1_668_000_000ul, "0x846271649", 0ul, IForkInfo.ValidationResult.IncompatibleOrStale, true)]
 
         // Local is mainnet Shanghai, remote is random Shanghai.
-        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0x12345678", 0ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+        [TestCase(20000000, 1_668_000_000ul, "0x12345678", 0ul, IForkInfo.ValidationResult.IncompatibleOrStale, true)]
 
         // Local is mainnet Shanghai, far in the future. Remote announces Gopherium (non existing fork)
         // at some future timestamp 8888888888, for itself, but past block for local. Local is incompatible.
         //
         // This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
-        [TestCase(88888888, 8888888888ul, "0x71147644", 8888888888ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+        [TestCase(88888888, 8888888888ul, "0x71147644", 8888888888ul, IForkInfo.ValidationResult.IncompatibleOrStale, true)]
 
-        public void Test_fork_id_validation_mainnet(long headNumber, ulong headTimestamp, string hash, ulong next, IForkInfo.ValidationResult result)
+        public void Test_fork_id_validation_mainnet(long headNumber, ulong headTimestamp, string hash, ulong next, IForkInfo.ValidationResult result, bool UseTimestampSpec = false)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             Block head = Build.A.Block.WithNumber(headNumber).WithTimestamp(headTimestamp).TestObject;
             blockTree.Head.Returns(head);
-            ForkInfo forkInfo = new(MainnetSpecProvider.Instance, KnownHashes.MainnetGenesis, blockTree);
+
+            ISpecProvider specProvider = MainnetSpecProvider.Instance;
+            if (UseTimestampSpec)
+            {
+                ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+                ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../", "TimestampForkIdTest.json")));
+                specProvider = new ChainSpecBasedSpecProvider(spec);
+            }
+
+            ForkInfo forkInfo = new(specProvider, KnownHashes.MainnetGenesis, blockTree);
 
             forkInfo.ValidateForkId(new ForkId(Bytes.FromHexString(hash), next)).Should().Be(result);
             forkInfo.ValidateForkId2(new ForkId(Bytes.FromHexString(hash), next)).Should().Be(result);
