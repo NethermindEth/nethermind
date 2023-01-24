@@ -24,12 +24,14 @@ namespace Ethereum.HexPrefix.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(HexPrefixTest test)
         {
-            byte[] bytes = Nethermind.Trie.HexPrefix.ToBytes(test.Sequence, test.IsTerm);
+            Nethermind.Trie.HexPrefix result =
+                new Nethermind.Trie.HexPrefix(test.IsTerm, test.Sequence);
+            byte[] bytes = result.ToBytes();
             string resultHex = bytes.ToHexString(false);
             Assert.AreEqual(test.Output, resultHex);
 
-            (byte[] key, bool isLeaf) = Nethermind.Trie.HexPrefix.FromBytes(bytes);
-            byte[] checkBytes = Nethermind.Trie.HexPrefix.ToBytes(key, isLeaf);
+            Nethermind.Trie.HexPrefix check = Nethermind.Trie.HexPrefix.FromBytes(bytes);
+            byte[] checkBytes = check.ToBytes();
             string checkHex = checkBytes.ToHexString(false);
             Assert.AreEqual(test.Output, checkHex);
         }

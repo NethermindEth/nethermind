@@ -65,10 +65,12 @@ namespace Nethermind.Trie
 
         public long? LastSeen { get; set; }
 
-        public byte[]? Key
+        public byte[]? Path => Key?.Path;
+
+        internal HexPrefix? Key
         {
-            get => _data?[0] as byte[];
-            internal set
+            get => _data?[0] as HexPrefix;
+            set
             {
                 if (IsSealed)
                 {
@@ -271,23 +273,24 @@ namespace Nethermind.Trie
                 }
                 else if (numberOfItems == 2)
                 {
-                    (byte[] key, bool isLeaf) = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
+                    HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
+                    bool isExtension = key.IsExtension;
 
                     // a hack to set internally and still verify attempts from the outside
                     // after the code is ready we should just add proper access control for methods from the outside and inside
                     bool isDirtyActual = IsDirty;
                     IsDirty = true;
 
-                    if (isLeaf)
+                    if (isExtension)
+                    {
+                        NodeType = NodeType.Extension;
+                        Key = key;
+                    }
+                    else
                     {
                         NodeType = NodeType.Leaf;
                         Key = key;
                         Value = _rlpStream.DecodeByteArray();
-                    }
-                    else
-                    {
-                        NodeType = NodeType.Extension;
-                        Key = key;
                     }
 
                     IsDirty = isDirtyActual;
@@ -558,7 +561,7 @@ namespace Nethermind.Trie
             return MemorySizes.Align(unaligned);
         }
 
-        public TrieNode CloneWithChangedKey(byte[] key)
+        public TrieNode CloneWithChangedKey(HexPrefix key)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -593,7 +596,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(byte[] key, byte[]? changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(HexPrefix key, byte[]? changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;

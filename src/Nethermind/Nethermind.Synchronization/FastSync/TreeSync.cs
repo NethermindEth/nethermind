@@ -830,9 +830,9 @@ namespace Nethermind.Synchronization.FastSync
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 1);
 
                         // Add nibbles to StateSyncItem.PathNibbles
-                        Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Key!.Length];
+                        Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
                         currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
-                        trieNode.Key!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
+                        trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
 
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
@@ -840,7 +840,7 @@ namespace Nethermind.Synchronization.FastSync
                                 currentStateSyncItem.AccountPathNibbles,
                                 childPath.ToArray(),
                                 nodeDataType,
-                                currentStateSyncItem.Level + trieNode.Key!.Length,
+                                currentStateSyncItem.Level + trieNode.Path!.Length,
                                 CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0))
                             { ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex },
                             dependentItem,
@@ -893,9 +893,9 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             // it's a leaf with a storage, so we need to copy the current path (full 64 nibbles) to StateSyncItem.AccountPathNibbles
                             // and StateSyncItem.PathNibbles will start from null (storage root)
-                            Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Key!.Length];
+                            Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
                             currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
-                            trieNode.Key!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
+                            trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, childPath.ToArray(), null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved)

@@ -14,26 +14,34 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateLeaf(byte[] path, byte[]? value)
+        public static TrieNode CreateLeaf(HexPrefix key, byte[]? value)
         {
+            Debug.Assert(
+                key.IsLeaf,
+                $"{nameof(NodeType.Leaf)} should always be created with a leaf {nameof(HexPrefix)}");
+
             TrieNode node = new(NodeType.Leaf);
-            node.Key = path;
+            node.Key = key;
             node.Value = value;
             return node;
         }
 
-        public static TrieNode CreateExtension(byte[] path)
+        public static TrieNode CreateExtension(HexPrefix key)
         {
             TrieNode node = new(NodeType.Extension);
-            node.Key = path;
+            node.Key = key;
             return node;
         }
 
-        public static TrieNode CreateExtension(byte[] path, TrieNode child)
+        public static TrieNode CreateExtension(HexPrefix key, TrieNode child)
         {
+            Debug.Assert(
+                key.IsExtension,
+                $"{nameof(NodeType.Extension)} should always be created with an extension {nameof(HexPrefix)}");
+
             TrieNode node = new(NodeType.Extension);
             node.SetChild(0, child);
-            node.Key = path;
+            node.Key = key;
             return node;
         }
     }

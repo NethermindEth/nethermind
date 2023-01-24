@@ -19,8 +19,6 @@ namespace Nethermind.Store.Test.SnapSync.Storage
     [TestFixture]
     public class SnapStorageTests
     {
-        private static readonly byte[] EmptyPath = Array.Empty<byte>();
-
         [Test]
         public void AddAccounts_OneLayer_GetRange()
         {
@@ -30,7 +28,7 @@ namespace Nethermind.Store.Test.SnapSync.Storage
             {
                 byte[] accountBytes = TestItem.GenerateIndexedAccountRlp(i);
                 Keccak randomKeccak = TestItem.GetRandomKeccak();
-                TrieNode leaf = TrieNodeFactory.CreateLeaf(EmptyPath, accountBytes);
+                TrieNode leaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true), accountBytes);
 
                 list.Add(randomKeccak, leaf);
             }
@@ -63,7 +61,7 @@ namespace Nethermind.Store.Test.SnapSync.Storage
             {
                 byte[] accountBytes = TestItem.GenerateIndexedAccountRlp(i);
                 Keccak randomKeccak = TestItem.GetRandomKeccak();
-                TrieNode leaf = TrieNodeFactory.CreateLeaf(EmptyPath, accountBytes);
+                TrieNode leaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true), accountBytes);
 
                 list.Add(randomKeccak, leaf);
             }
@@ -78,11 +76,11 @@ namespace Nethermind.Store.Test.SnapSync.Storage
 
             // block 1002
             byte[] updateAccountBytes_1002 = TestItem.GenerateRandomAccountRlp();
-            TrieNode updateAccount_1002 = TrieNodeFactory.CreateLeaf(EmptyPath, updateAccountBytes_1002);
+            TrieNode updateAccount_1002 = TrieNodeFactory.CreateLeaf(new HexPrefix(true), updateAccountBytes_1002);
             storage.AddLeafNode(list.Keys[21], updateAccount_1002, 1002);
 
             byte[] newAccountBytes_1002 = TestItem.GenerateRandomAccountRlp();
-            TrieNode newAccount_1002 = TrieNodeFactory.CreateLeaf(EmptyPath, newAccountBytes_1002);
+            TrieNode newAccount_1002 = TrieNodeFactory.CreateLeaf(new HexPrefix(true), newAccountBytes_1002);
             Keccak newAddress = TestItem.GetRandomKeccak();
             while (newAddress <= list.Keys[21] || newAddress >= list.Keys[22])
             {
