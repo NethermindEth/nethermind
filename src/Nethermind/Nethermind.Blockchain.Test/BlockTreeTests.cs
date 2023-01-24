@@ -1660,6 +1660,17 @@ namespace Nethermind.Blockchain.Test
             suggest.IsCompleted.Should().Be(true);
         }
 
+        [Test]
+        public void SuggestBlock_should_work_with_zero_difficulty()
+        {
+            Block genesisWithZeroDifficulty = Build.A.Block.WithDifficulty(0).WithNumber(0).TestObject;
+            BlockTree blockTree = Build.A.BlockTree(genesisWithZeroDifficulty).OfChainLength(1).TestObject;
+
+            Block block = Build.A.Block.WithDifficulty(0).WithParent(genesisWithZeroDifficulty).TestObject;
+            blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            blockTree.SuggestBlock(Build.A.Block.WithParent(block).WithDifficulty(0).TestObject).Should().Be(AddBlockResult.Added);
+        }
+
         public static IEnumerable<TestCaseData> InvalidBlockTestCases
         {
             get

@@ -227,7 +227,7 @@ namespace Nethermind.Consensus.Validators
         protected virtual bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
         {
             bool totalDifficultyCorrect = true;
-            if (header.IsNonZeroTotalDifficulty())
+            if (header.TotalDifficulty is not null)
             {
                 if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
                 {

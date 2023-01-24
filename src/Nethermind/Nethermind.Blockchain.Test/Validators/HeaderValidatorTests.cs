@@ -267,18 +267,30 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [TestCase(0)]
-        [TestCase(null)]
-        public void When_total_difficulty_0_or_null_we_should_skip_total_difficulty_validation(long? totalDifficulty)
+        [Test]
+        public void When_total_difficulty_null_we_should_skip_total_difficulty_validation()
         {
             _block.Header.Difficulty = 1;
-            _block.Header.TotalDifficulty = totalDifficulty is null ? null : (UInt256)totalDifficulty;
+            _block.Header.TotalDifficulty = null;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
 
             HeaderValidator validator = new HeaderValidator(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(_testLogger));
             bool result = validator.Validate(_block.Header);
             Assert.True(result);
+        }
+
+        [Test]
+        public void When_total_difficulty_zero_we_should_NOT_skip_total_difficulty_validation()
+        {
+            _block.Header.Difficulty = 1;
+            _block.Header.TotalDifficulty = 0;
+            _block.Header.SealEngineType = SealEngineType.None;
+            _block.Header.Hash = _block.CalculateHash();
+
+            HeaderValidator validator = new HeaderValidator(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(_testLogger));
+            bool result = validator.Validate(_block.Header);
+            Assert.False(result);
         }
 
         [Test]
