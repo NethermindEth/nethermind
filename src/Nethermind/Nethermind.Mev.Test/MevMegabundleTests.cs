@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
 using Nethermind.Core;
@@ -27,7 +27,7 @@ namespace Nethermind.Mev.Test
                     return tx;
                 }
 
-                EthereumEcdsa ecdsa = new(ChainId.Mainnet, LimboLogs.Instance);
+                EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet, LimboLogs.Instance);
 
                 BundleTransaction tx = BuildTransaction(TestItem.PrivateKeyB);
                 BundleTransaction revertingTx = BuildTransaction(TestItem.PrivateKeyA, true);

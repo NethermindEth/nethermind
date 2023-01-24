@@ -25,9 +25,9 @@ public class Eth67ProtocolHandler : Eth66ProtocolHandler
         ITxPool txPool,
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
-        ISpecProvider specProvider,
+        ForkInfo forkInfo,
         ILogManager logManager)
-        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, specProvider, logManager)
+        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager)
     {
     }
 

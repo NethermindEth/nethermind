@@ -8,8 +8,21 @@ namespace Nethermind.Core.Caching
         void Clear();
         TValue? Get(TKey key);
         bool TryGet(TKey key, out TValue? value);
-        void Set(TKey key, TValue val);
-        void Delete(TKey key);
+
+        /// <summary>
+        /// Sets value in the cache.
+        /// </summary>
+        /// <param name="key"></param>
+        /// <param name="val"></param>
+        /// <returns>True if key didn't exist in the cache, otherwise false.</returns>
+        bool Set(TKey key, TValue val);
+
+        /// <summary>
+        /// Delete key from cache.
+        /// </summary>
+        /// <param name="key"></param>
+        /// <returns>True if key existed in the cache, otherwise false.</returns>
+        bool Delete(TKey key);
         bool Contains(TKey key);
     }
 }

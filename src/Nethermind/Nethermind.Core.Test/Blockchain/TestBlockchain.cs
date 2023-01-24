@@ -15,6 +15,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -37,6 +38,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Config;
 
 namespace Nethermind.Core.Test.Blockchain
 {
@@ -64,6 +66,7 @@ namespace Nethermind.Core.Test.Blockchain
             set => _blockFinder = value;
         }
 
+        public ILogFinder LogFinder { get; private set; } = null!;
         public IJsonSerializer JsonSerializer { get; set; } = null!;
         public IStateProvider State { get; set; } = null!;
         public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
@@ -113,7 +116,7 @@ namespace Nethermind.Core.Test.Blockchain
             Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
             JsonSerializer = new EthereumJsonSerializer();
             SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
-            EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LogManager);
+            EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
             DbProvider = await CreateDbProvider();
             TrieStore = new TrieStore(StateDb, LogManager);
             State = new StateProvider(TrieStore, DbProvider.CodeDb, LogManager);
@@ -163,6 +166,10 @@ namespace Nethermind.Core.Test.Blockchain
             PoSSwitcher = NoPoS.Instance;
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
             SealEngine = new SealEngine(sealer, Always.Valid);
+
+            BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
+            ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance), SpecProvider);
+            LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
             BlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -259,7 +266,7 @@ namespace Nethermind.Core.Test.Blockchain
         protected virtual TxPool.TxPool CreateTxPool() =>
             new(
                 EthereumEcdsa,
-                new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
                 new TxPoolConfig(),
                 new TxValidator(SpecProvider.ChainId),
                 LogManager,
@@ -267,8 +274,12 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected virtual TxPoolTxSource CreateTxPoolTxSource()
         {
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 0
+            };
             ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance,
-                SpecProvider);
+                SpecProvider, blocksConfig);
             return new TxPoolTxSource(TxPool, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
         }
 

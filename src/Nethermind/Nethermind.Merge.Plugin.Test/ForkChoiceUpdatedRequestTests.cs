@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 

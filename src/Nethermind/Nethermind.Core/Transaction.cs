@@ -30,6 +30,7 @@ namespace Nethermind.Core
         public UInt256 MaxFeePerGas => IsEip1559 ? DecodedMaxFeePerGas : GasPrice;
         public bool IsEip1559 => Type == TxType.EIP1559;
         public bool IsEip2930 => Type == TxType.AccessList;
+        public bool IsEip4844 => Type == TxType.Blob;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
@@ -43,7 +44,16 @@ namespace Nethermind.Core
         public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
 
+        public int DataLength => Data?.Length ?? 0;
+
         public AccessList? AccessList { get; set; } // eip2930
+        public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+        public byte[][]? BlobVersionedHashes { get; set; } // eip4844
+
+        // Network form of blob transaction fields
+        public byte[][]? BlobKzgs { get; set; }
+        public byte[][]? Blobs { get; set; }
+        public byte[]? Proof { get; set; }
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
@@ -56,6 +66,15 @@ namespace Nethermind.Core
         /// </summary>
         /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
+
+        private int? _size = null;
+        /// <summary>
+        /// Encoded transaction length
+        /// </summary>
+        public int GetLength(ITransactionSizeCalculator sizeCalculator)
+        {
+            return _size ??= sizeCalculator.GetLength(this);
+        }
 
         public string ToShortString()
         {
@@ -89,6 +108,10 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
 
+            if (IsEip4844)
+            {
+                builder.AppendLine($"{indent}BlobVersionedHashes: {BlobVersionedHashes?.Length}");
+            }
 
             return builder.ToString();
         }
@@ -102,7 +125,16 @@ namespace Nethermind.Core
     public class GeneratedTransaction : Transaction { }
 
     /// <summary>
-    /// System transaction that is to be executed by the node without including in the block. 
+    /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
     public class SystemTransaction : Transaction { }
+
+    /// <summary>
+    /// Used inside Transaction::GetSize to calculate encoded transaction size
+    /// </summary>
+    /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
+    public interface ITransactionSizeCalculator
+    {
+        int GetLength(Transaction tx);
+    }
 }

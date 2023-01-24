@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Utils;
 using Nethermind.Logging;
@@ -25,10 +26,10 @@ namespace Nethermind.JsonRpc
         private JsonSerializer _traceSerializer;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly ILogger _logger;
+        private readonly JsonSerializer _obsoleteBasicJsonSerializer = new();
         private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly Recorder _recorder;
-        private readonly IdConverter _idConverter = new();
 
         public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
         {
@@ -72,67 +73,50 @@ namespace Nethermind.JsonRpc
         {
             IEnumerable<JToken> parsedJson = JTokenUtils.ParseMulticontent(json);
 
-            List<(JsonRpcRequest Model, List<JsonRpcRequest> Collection)> list = new();
             foreach (JToken token in parsedJson)
             {
                 if (token is JArray array)
                 {
-                    yield return (null, array.Select(JTokenToJsonRpcRequest).ToList());
+                    foreach (JToken tokenElement in array)
+                    {
+                        UpdateParams(tokenElement);
+                    }
+
+                    yield return (null, array.ToObject<List<JsonRpcRequest>>(_obsoleteBasicJsonSerializer));
                 }
                 else
                 {
-                    yield return (JTokenToJsonRpcRequest(token), null);
+                    UpdateParams(token);
+                    yield return (token.ToObject<JsonRpcRequest>(_obsoleteBasicJsonSerializer), null);
                 }
             }
         }
 
-        /// <summary>
-        /// Manually convert JToken to JsonRpcRequests as the param inside JsonRpcRequests is a JToken. If we use
-        /// a JTokenReader, it would iterate through the JSON which is a waste of time, as we already have a JToken.
-        /// </summary>
-        /// <param name="token"></param>
-        /// <returns></returns>
-        private JsonRpcRequest JTokenToJsonRpcRequest(JToken token)
+        private void UpdateParams(JToken token)
         {
-            JsonRpcRequest jsonRpcRequest = new();
-
-            JToken? jsonRpcField = token["jsonrpc"] ?? token["JsonRpc"];
-            if (jsonRpcField != null)
+            var paramsToken = token.SelectToken("params");
+            if (paramsToken is null)
             {
-                jsonRpcRequest.JsonRpc = jsonRpcField.Value<string>();
-            }
-
-            JToken? methodField = token["method"] ?? token["Method"];
-            if (methodField != null)
-            {
-                jsonRpcRequest.Method = methodField.Value<string>();
-            }
-
-            JToken? idField = token["id"] ?? token["Id"];
-            if (idField != null)
-            {
-                // Not sure what is the logic here.. not gonna unuse the IdConverter
-                JTokenReader reader = new(idField);
-                if (reader.Read())
+                paramsToken = token.SelectToken("Params");
+                if (paramsToken is null)
                 {
-                    jsonRpcRequest.Id = _idConverter.ReadJson(reader, null, null, null);
+                    return;
                 }
             }
 
-            JToken? paramsField = token["params"] ?? token["Params"];
-            if (paramsField != null)
+            if (paramsToken is JValue)
             {
-                if (paramsField is JArray asArray)
-                {
-                    jsonRpcRequest.Params = asArray.ToArray();
-                }
-                else
-                {
-                    throw new JsonSerializationException($"Params is expected to be an array. Got {paramsField.Type}");
-                }
+                return; // null
             }
 
-            return jsonRpcRequest;
+            JArray arrayToken = (JArray)paramsToken;
+            for (int i = 0; i < arrayToken.Count; i++)
+            {
+                if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
+                {
+                    arrayToken[i].Replace(JToken.Parse(_jsonSerializer.Serialize(arrayToken[i].Value<object>().ToString())));
+                }
+            }
         }
 
         public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(TextReader request, JsonRpcContext context)
@@ -162,10 +146,11 @@ namespace Nethermind.JsonRpc
                 {
                     Metrics.JsonRpcRequestDeserializationFailures++;
                     if (_logger.IsError) _logger.Error($"Error during parsing/validation.", ex);
-                    JsonRpcResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
+                    JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
                     TraceResult(response);
                     stopwatch.Stop();
-                    deserializationFailureResult = RecordResponse(JsonRpcResult.Single(response, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
+                    deserializationFailureResult = JsonRpcResult.Single(
+                        RecordResponse(response, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
                 }
 
                 if (deserializationFailureResult.HasValue)
@@ -181,65 +166,25 @@ namespace Nethermind.JsonRpc
                     {
                         if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model}");
 
-                        Metrics.JsonRpcRequests++;
-                        JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(rpcRequest.Model, context);
-                        JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
-                        bool isSuccess = localErrorResponse is null;
-                        if (!isSuccess)
-                        {
-                            if (_logger.IsWarn) _logger.Warn($"Error when handling {rpcRequest.Model} | {_jsonSerializer.Serialize(localErrorResponse)}");
-                            Metrics.JsonRpcErrors++;
-                        }
-                        else
-                        {
-                            if (_logger.IsDebug) _logger.Debug($"Responded to {rpcRequest.Model}");
-                            Metrics.JsonRpcSuccesses++;
-                        }
+                        JsonRpcResult.Entry result = await HandleSingleRequest(rpcRequest.Model, context);
 
-                        TraceResult(response);
-                        stopwatch.Stop();
-                        if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Model} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-                        yield return RecordResponse(JsonRpcResult.Single(response, new RpcReport(rpcRequest.Model.Method, stopwatch.ElapsedMicroseconds(), isSuccess)));
+                        yield return JsonRpcResult.Single(RecordResponse(result));
                     }
 
                     if (rpcRequest.Collection is not null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"{rpcRequest.Collection.Count} JSON RPC requests");
 
-                        var responses = new List<JsonRpcResponse>(rpcRequest.Collection.Count);
-                        var reports = new List<RpcReport>(rpcRequest.Collection.Count);
-                        int requestIndex = 0;
-                        Stopwatch singleRequestWatch = new();
-                        for (var index = 0; index < rpcRequest.Collection.Count; index++)
+                        if (!context.IsAuthenticated && rpcRequest.Collection.Count > _jsonRpcConfig.MaxBatchSize)
                         {
-                            JsonRpcRequest jsonRpcRequest = rpcRequest.Collection[index];
-                            singleRequestWatch.Restart();
+                            JsonRpcErrorResponse? response = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
 
-                            Metrics.JsonRpcRequests++;
-                            JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest, context);
-                            JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
-                            bool isSuccess = localErrorResponse is null;
-                            if (!isSuccess)
-                            {
-                                if (_logger.IsWarn) _logger.Warn($"Error when handling {jsonRpcRequest} | {_jsonSerializer.Serialize(localErrorResponse)}");
-                                Metrics.JsonRpcErrors++;
-                            }
-                            else
-                            {
-                                if (_logger.IsDebug) _logger.Debug($"Responded to {jsonRpcRequest}");
-                                Metrics.JsonRpcSuccesses++;
-                            }
-
-                            singleRequestWatch.Stop();
-                            if (_logger.IsDebug) _logger.Debug($"  {++requestIndex}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest} handled after {singleRequestWatch.Elapsed.TotalMilliseconds}");
-                            responses.Add(response);
-                            reports.Add(new RpcReport(jsonRpcRequest.Method, singleRequestWatch.ElapsedMicroseconds(), isSuccess));
+                            yield return JsonRpcResult.Single(RecordResponse(response, RpcReport.Error));
+                            continue;
                         }
 
-                        TraceResult(responses);
                         stopwatch.Stop();
-                        if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Collection.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-                        yield return RecordResponse(JsonRpcResult.Collection(responses, reports));
+                        yield return JsonRpcResult.Collection(new JsonRpcBatchResult((e, c) => IterateRequest(rpcRequest.Collection, context, e).GetAsyncEnumerator(c)));
                     }
 
                     if (rpcRequest.Model is null && rpcRequest.Collection is null)
@@ -249,13 +194,74 @@ namespace Nethermind.JsonRpc
                         TraceResult(errorResponse);
                         stopwatch.Stop();
                         if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-                        yield return RecordResponse(JsonRpcResult.Single(errorResponse, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
+                        yield return JsonRpcResult.Single(RecordResponse(errorResponse, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
                     }
                 }
             } while (moveNext);
         }
 
-        private JsonRpcResult RecordResponse(JsonRpcResult result)
+        private async IAsyncEnumerable<JsonRpcResult.Entry> IterateRequest(
+            List<JsonRpcRequest> requests,
+            JsonRpcContext context,
+            JsonRpcBatchResultAsyncEnumerator enumerator)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            int requestIndex = 0;
+            for (int index = 0; index < requests.Count; index++)
+            {
+                JsonRpcRequest jsonRpcRequest = requests[index];
+
+                JsonRpcResult.Entry response = enumerator.IsStopped
+                    ? new JsonRpcResult.Entry(
+                        _jsonRpcService.GetErrorResponse(
+                            jsonRpcRequest.Method,
+                            ErrorCodes.LimitExceeded,
+                            $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB()}KB exceeded",
+                            jsonRpcRequest.Id),
+                        RpcReport.Error)
+                    : await HandleSingleRequest(jsonRpcRequest, context);
+
+                if (_logger.IsDebug) _logger.Debug($"  {++requestIndex}/{requests.Count} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
+                TraceResult(response);
+                yield return RecordResponse(response);
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"  {requests.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        private async Task<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
+        {
+            Metrics.JsonRpcRequests++;
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(request, context);
+            JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
+            bool isSuccess = localErrorResponse is null;
+            if (!isSuccess)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {_jsonSerializer.Serialize(localErrorResponse)}");
+                Metrics.JsonRpcErrors++;
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Responded to {request}");
+                Metrics.JsonRpcSuccesses++;
+            }
+
+            stopwatch.Stop();
+            if (_logger.IsDebug) _logger.Debug($"  {request} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+
+            if (_logger.IsDebug) _logger.Debug($"  {request} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            JsonRpcResult.Entry result = new(response, new RpcReport(request.Method, stopwatch.ElapsedMicroseconds(), isSuccess));
+            TraceResult(result);
+            return result;
+        }
+
+        private JsonRpcResult.Entry RecordResponse(JsonRpcResponse response, RpcReport report) =>
+            RecordResponse(new JsonRpcResult.Entry(response, report));
+
+        private JsonRpcResult.Entry RecordResponse(JsonRpcResult.Entry result)
         {
             if ((_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Response) != 0)
             {
@@ -277,7 +283,7 @@ namespace Nethermind.JsonRpc
             return request;
         }
 
-        private void TraceResult(JsonRpcResponse response)
+        private void TraceResult(JsonRpcResult.Entry response)
         {
             if (_logger.IsTrace)
             {
@@ -290,14 +296,14 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private void TraceResult(List<JsonRpcResponse> responses)
+        private void TraceResult(JsonRpcErrorResponse response)
         {
             if (_logger.IsTrace)
             {
                 StringBuilder builder = new();
                 using StringWriter stringWriter = new(builder);
                 using JsonTextWriter jsonWriter = new(stringWriter);
-                _traceSerializer.Serialize(jsonWriter, responses);
+                _traceSerializer.Serialize(jsonWriter, response);
 
                 _logger.Trace($"Sending JSON RPC response: {builder}");
             }

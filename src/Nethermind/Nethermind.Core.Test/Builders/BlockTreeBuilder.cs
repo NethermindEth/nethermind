@@ -19,25 +19,26 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Test.Builders
 {
     public class BlockTreeBuilder : BuilderBase<BlockTree>
     {
         private readonly Block _genesisBlock;
+        private readonly ISpecProvider _specProvider;
         private IReceiptStorage? _receiptStorage;
-        private ISpecProvider? _specProvider;
         private IEthereumEcdsa? _ecdsa;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
 
         private bool _onlyHeaders;
 
-        public BlockTreeBuilder()
-            : this(Build.A.Block.Genesis.TestObject)
+        public BlockTreeBuilder(ISpecProvider specProvider)
+            : this(Build.A.Block.Genesis.TestObject, specProvider)
         {
         }
 
-        public BlockTreeBuilder(Block genesisBlock, ISpecProvider? specProvider = null)
+        public BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider)
         {
             BlocksDb = new MemDb();
             HeadersDb = new MemDb();
@@ -47,8 +48,9 @@ namespace Nethermind.Core.Test.Builders
             // so we automatically include in all tests my questionable decision of storing Head block header at 00...
             BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             _genesisBlock = genesisBlock;
+            _specProvider = specProvider;
             ChainLevelInfoRepository = new ChainLevelInfoRepository(BlockInfoDb);
-            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, specProvider ?? MainnetSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, specProvider, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
         }
 
         public MemDb BlocksDb { get; set; }
@@ -122,8 +124,8 @@ namespace Nethermind.Core.Test.Builders
             {
                 Transaction[] transactions = new[]
                 {
-                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject,
-                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject
+                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject,
+                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject
                 };
 
                 currentBlock = Build.A.Block
@@ -154,7 +156,7 @@ namespace Nethermind.Core.Test.Builders
 
                 currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
                 TxReceipt[] txReceipts = receipts.ToArray();
-                currentBlock.Header.ReceiptsRoot = new ReceiptTrie(_specProvider.GetSpec(currentBlock.Number), txReceipts).RootHash;
+                currentBlock.Header.ReceiptsRoot = new ReceiptTrie(_specProvider.GetSpec(currentBlock.Header), txReceipts).RootHash;
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {
@@ -240,10 +242,9 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider, Func<Block, Transaction, IEnumerable<LogEntry>>? logsForBlockBuilder = null)
+        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, Func<Block, Transaction, IEnumerable<LogEntry>>? logsForBlockBuilder = null)
         {
-            _specProvider = specProvider;
-            _ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(TestObjectInternal.ChainId, LimboLogs.Instance);
             _receiptStorage = receiptStorage;
             _logCreationFunction = logsForBlockBuilder;
             return this;

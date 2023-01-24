@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -149,28 +148,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private void Handle(GetAccountRangeMessage msg)
         {
             Metrics.SnapGetAccountRangeReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
             if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (AccountRange). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetStorageRangeMessage getStorageRangesMessage)
         {
             Metrics.SnapGetStorageRangesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
             if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (StorageRange). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetByteCodesMessage getByteCodesMessage)
         {
             Metrics.SnapGetByteCodesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
             if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (ByteCodes). Peer: {Session.Node.ClientId}");
         }
 
         private void Handle(GetTrieNodesMessage getTrieNodesMessage)
         {
             Metrics.SnapGetTrieNodesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.UselessPeer, DisconnectMessage);
+            Session.InitiateDisconnect(InitiateDisconnectReason.SnapServerNotImplemented, DisconnectMessage);
             if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (TrieNodes). Peer: {Session.Node.ClientId}");
         }
 
@@ -211,7 +210,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return new SlotsAndProofs() { PathsAndSlots = response.Slots, Proofs = response.Proofs };
         }
 
-        public async Task<byte[][]> GetByteCodes(Keccak[] codeHashes, CancellationToken token)
+        public async Task<byte[][]> GetByteCodes(IReadOnlyList<Keccak> codeHashes, CancellationToken token)
         {
             var request = new GetByteCodesMessage()
             {
@@ -277,7 +276,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 requestQueue,
                 msg,
                 TransferSpeedType.SnapRanges,
-                static (_) => $"{nameof(TIn)}",
+                static (request) => request.ToString(),
                 token);
         }
 

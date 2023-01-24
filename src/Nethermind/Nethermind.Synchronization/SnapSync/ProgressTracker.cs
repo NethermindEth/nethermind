@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             SnapSyncBatch request = new();
 
-            if (AccountsToRefresh.Count > 0)
+            if (!AccountsToRefresh.IsEmpty)
             {
                 Interlocked.Increment(ref _activeAccRefreshRequests);
 
@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 return (request, false);
             }
-            else if (StoragesToRetrieve.Count > 0)
+            else if (!StoragesToRetrieve.IsEmpty)
             {
                 Interlocked.Increment(ref _activeStorageRequests);
 
@@ -158,7 +158,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 return (request, false);
             }
-            else if (CodesToRetrieve.Count > 0)
+            else if (!CodesToRetrieve.IsEmpty)
             {
                 Interlocked.Increment(ref _activeCodeRequests);
 
@@ -265,10 +265,10 @@ namespace Nethermind.Synchronization.SnapSync
         public bool IsSnapGetRangesFinished()
         {
             return !MoreAccountsToRight
-                && StoragesToRetrieve.Count == 0
-                && NextSlotRange.Count == 0
-                && CodesToRetrieve.Count == 0
-                && AccountsToRefresh.Count == 0
+                && StoragesToRetrieve.IsEmpty
+                && NextSlotRange.IsEmpty
+                && CodesToRetrieve.IsEmpty
+                && AccountsToRefresh.IsEmpty
                 && _activeAccountRequests == 0
                 && _activeStorageRequests == 0
                 && _activeCodeRequests == 0

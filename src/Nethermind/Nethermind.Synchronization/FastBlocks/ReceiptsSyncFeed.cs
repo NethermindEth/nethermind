@@ -10,8 +10,10 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
@@ -68,6 +70,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in receipts sync");
 
+            ResetSyncStatusList();
+        }
+
+        private void ResetSyncStatusList()
+        {
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
@@ -94,6 +101,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (ShouldFinish)
                 {
+                    ResetSyncStatusList();
                     Finish();
                     PostFinishCleanUp();
                 }
@@ -170,7 +178,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    IReleaseSpec releaseSpec = _specProvider.GetSpec(blockInfo.BlockNumber);
+                    // BlockInfo has no timestamp
+                    IReceiptSpec releaseSpec = _specProvider.GetReceiptSpec(blockInfo.BlockNumber);
                     preparedReceipts = receipts.GetReceiptsRoot(releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot
                         ? null
                         : receipts;
@@ -235,7 +244,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         if (batch.ResponseSourcePeer is not null)
                         {
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or uncles root");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidReceiptRoot, "invalid tx or uncles root");
                         }
 
                         _syncStatusList.MarkUnknown(blockInfo.BlockNumber);

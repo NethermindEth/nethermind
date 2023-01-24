@@ -586,7 +586,7 @@ namespace Nethermind.Evm
         }
 
         [SkipLocalsInit]
-        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             bool isTrace = _logger.IsTrace;
             bool traceOpcodes = _txTracer.IsTracingInstructions;
@@ -1720,6 +1720,32 @@ namespace Nethermind.Evm
                             stack.PushUInt256(in baseFee);
                             break;
                         }
+                    case Instruction.DATAHASH:
+                        {
+                            if (!spec.IsEip4844Enabled)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
+
+                            if (!UpdateGas(GasCostOf.DataHash, ref gasAvailable))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            stack.PopUInt256(out UInt256 blobIndex);
+
+                            if (txCtx.BlobVersionedHashes is not null && blobIndex < txCtx.BlobVersionedHashes.Length)
+                            {
+                                stack.PushBytes(txCtx.BlobVersionedHashes[blobIndex.u0]);
+                            }
+                            else
+                            {
+                                stack.PushZero();
+                            }
+                            break;
+                        }
                     case Instruction.POP:
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
@@ -2353,7 +2379,18 @@ namespace Nethermind.Evm
                                 salt = stack.PopBytes();
                             }
 
+                            //EIP-3860
+                            if (spec.IsEip3860Enabled)
+                            {
+                                if (initCodeLength > spec.MaxInitCodeSize)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+                            }
+
                             long gasCost = GasCostOf.Create +
+                                (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
                                 (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
 
                             if (!UpdateGas(gasCost, ref gasAvailable))
@@ -2363,25 +2400,6 @@ namespace Nethermind.Evm
                             }
 
                             UpdateMemoryCost(in memoryPositionOfInitCode, initCodeLength);
-
-                            //EIP-3860
-                            if (spec.IsEip3860Enabled)
-                            {
-                                if (initCodeLength > spec.MaxInitCodeSize)
-                                {
-                                    _returnDataBuffer = Array.Empty<byte>();
-                                    stack.PushZero();
-                                    break;
-                                }
-                                else
-                                {
-                                    if (!UpdateGas(GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength), ref gasAvailable))
-                                    {
-                                        EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                        return CallResult.OutOfGasException;
-                                    }
-                                }
-                            }
 
                             // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
                             if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients

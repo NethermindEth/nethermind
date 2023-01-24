@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -14,6 +14,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -299,6 +300,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,
+                    new WithdrawalProcessor(State, LogManager),
                     PermissionBasedTxFilter);
             }
 

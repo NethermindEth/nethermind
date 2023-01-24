@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO.Abstractions;
@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 GetFile(200)
             };
             fileSystem.Directory.Exists(path).Returns(true);
-            fileSystem.DirectoryInfo.FromDirectoryName(path).EnumerateFiles().Returns(files);
+            fileSystem.DirectoryInfo.New(path).EnumerateFiles().Returns(files);
 
             bool triggered = false;
 

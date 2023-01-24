@@ -124,7 +124,7 @@ namespace Nethermind.Baseline.Test
 
         private async Task<(TestRpcBlockchain TestRpc, BaselineModule BaselineModule)> InitializeTestRpc(Address address)
         {
-            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId);
             BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(10000000000);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest<BaseLineTreeReorgTestBlockChain>(SealEngineType.NethDev)
                 .WithGenesisBlockBuilder(blockBuilder)
@@ -154,7 +154,7 @@ namespace Nethermind.Baseline.Test
             protected override TxPool.TxPool CreateTxPool() =>
                 new(
                     EthereumEcdsa,
-                    new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
+                    new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
                     new TxPoolConfig(),
                     new TxValidator(SpecProvider.ChainId),
                     LimboLogs.Instance,

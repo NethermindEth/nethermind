@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -76,7 +76,7 @@ namespace Nethermind.Db.FullPruning
         {
             // gets path to non-index DB.
             string fullPath = _rocksDbFactory.GetFullDbPath(new RocksDbSettings(string.Empty, path));
-            IDirectoryInfo directory = _fileSystem.DirectoryInfo.FromDirectoryName(fullPath);
+            IDirectoryInfo directory = _fileSystem.DirectoryInfo.New(fullPath);
             if (directory.Exists)
             {
                 if (directory.EnumerateFiles().Any())

@@ -87,6 +87,12 @@ namespace Nethermind.Network.Test.Builders
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)));
         }
 
+        public SerializationBuilder WithEth68()
+        {
+            return WithEth66()
+                .With(new Network.P2P.Subprotocols.Eth.V68.Messages.NewPooledTransactionHashesMessageSerializer());
+        }
+
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {
             Ecdsa ecdsa = new();

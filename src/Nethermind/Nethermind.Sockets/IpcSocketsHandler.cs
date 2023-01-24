@@ -19,7 +19,7 @@ namespace Nethermind.Sockets
             _socket = socket;
         }
 
-        public Task SendRawAsync(ArraySegment<byte> data) =>
+        public Task SendRawAsync(ArraySegment<byte> data, bool endOfMessage) =>
             !_socket.Connected
                 ? Task.CompletedTask
                 : _socket.SendAsync(data, SocketFlags.None);

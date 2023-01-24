@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
 using System.Collections.Generic;
@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// Code hashes to retrieve the code for
         /// </summary>
-        public Keccak[] Hashes { get; set; }
+        public IReadOnlyList<Keccak> Hashes { get; set; }
 
         /// <summary>
         /// Soft limit at which to stop returning data

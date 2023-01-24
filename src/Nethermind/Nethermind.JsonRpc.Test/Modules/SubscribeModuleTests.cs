@@ -391,7 +391,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 jsonRpcResult.TryDequeue(out var result);
 
-                ((BlockForRpc)((JsonRpcSubscriptionResponse)result.Response).Params.Result).Difficulty.Should().Be((UInt256)i);
+                ((BlockForRpc)((JsonRpcSubscriptionResponse)result.Response!).Params.Result).Difficulty.Should().Be((UInt256)i);
             }
         }
 
@@ -454,7 +454,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string _);
 
             jsonRpcResults.Count.Should().Be(0);
         }
@@ -475,7 +475,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId);
 
             jsonRpcResults.Count.Should().Be(3);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
@@ -513,7 +513,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId);
 
             jsonRpcResults.Count.Should().Be(5);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
@@ -789,6 +789,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NewHeadSubscription_with_baseFeePerGas_test()
         {
+            _specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong>()).IsEip1559Enabled.Returns(true);
+            _specProvider.GetSpec(Arg.Any<BlockHeader>()).IsEip1559Enabled.Returns(true);
             _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
             Block block = Build.A.Block.Genesis.WithTotalDifficulty(0L).WithBaseFeePerGas(10000).TestObject;
             BlockReplacementEventArgs blockReplacementEventArgs = new(block);
@@ -883,7 +885,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SyncingSubscription syncingSubscription = GetSyncingSubscription(10042, 10024);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(10045).TestObject;
-            Block block = new(blockHeader, BlockBody.Empty);
+            Block block = new(blockHeader);
             BlockEventArgs blockEventArgs = new(block);
             _blockTree.FindBestSuggestedHeader().Returns(blockHeader);
 
@@ -915,7 +917,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SyncingSubscription syncingSubscription = GetSyncingSubscription(10042, 10024);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(10030).TestObject;
-            Block block = new(blockHeader, BlockBody.Empty);
+            Block block = new(blockHeader);
             BlockEventArgs blockEventArgs = new(block);
             _blockTree.FindBestSuggestedHeader().Returns(blockHeader);
 
@@ -950,7 +952,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SyncingSubscription syncingSubscription = GetSyncingSubscription(10042, 10040);
 
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(10099).TestObject;
-            Block block = new(blockHeader, BlockBody.Empty);
+            Block block = new(blockHeader);
             BlockEventArgs blockEventArgs = new(block);
             _blockTree.FindBestSuggestedHeader().Returns(blockHeader);
 

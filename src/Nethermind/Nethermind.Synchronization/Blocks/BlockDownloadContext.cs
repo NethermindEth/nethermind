@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 else
                 {
-                    Blocks[i - 1] = new Block(header, BlockBody.Empty);
+                    Blocks[i - 1] = new Block(header);
                 }
             }
         }
@@ -125,7 +125,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
         {
-            Keccak receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Number), blockReceipts).RootHash;
+            Keccak receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Header), blockReceipts).RootHash;
 
             if (receiptsRoot != block.ReceiptsRoot)
             {

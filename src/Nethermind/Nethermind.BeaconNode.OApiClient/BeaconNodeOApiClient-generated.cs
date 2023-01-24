@@ -121,7 +121,7 @@ namespace Nethermind.BeaconNode.OApiClient
             }
         }
     
-        /// <summary>Poll to see if the the beacon node is syncing.</summary>
+        /// <summary>Poll to see if the beacon node is syncing.</summary>
         /// <returns>Request successful</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
         public System.Threading.Tasks.Task<Response> SyncingAsync()
@@ -130,7 +130,7 @@ namespace Nethermind.BeaconNode.OApiClient
         }
     
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
-        /// <summary>Poll to see if the the beacon node is syncing.</summary>
+        /// <summary>Poll to see if the beacon node is syncing.</summary>
         /// <returns>Request successful</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
         public async System.Threading.Tasks.Task<Response> SyncingAsync(System.Threading.CancellationToken cancellationToken)

@@ -47,7 +47,7 @@ paths:
     get:
       tags:
         - MinimalSet
-      summary: "Poll to see if the the beacon node is syncing."
+      summary: "Poll to see if the beacon node is syncing."
       description: "Requests the beacon node to describe if it's currently syncing or not, and if it is, what block it is up to. This is modelled after the Eth1.0 JSON-RPC eth_syncing call.."
       responses:
         200:

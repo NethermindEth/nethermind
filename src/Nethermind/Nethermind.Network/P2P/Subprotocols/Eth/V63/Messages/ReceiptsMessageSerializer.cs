@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 
@@ -30,7 +31,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         b.Select(
                             n => n is null
                                 ? Rlp.OfEmptySequence
-                                : _decoder.Encode(n, _specProvider.GetSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
+                                // for TxReceipt there is no timestamp, as such, we are using IReceiptSpec. wonder how we can metigate this later if future EIPs affecting this are added.
+                                : _decoder.Encode(n, _specProvider.GetReceiptSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             rlpStream.Encode(rlp);
@@ -38,7 +40,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            if (byteBuffer.Array.Length == 0 || byteBuffer.Array.First() == Rlp.OfEmptySequence[0]) return new ReceiptsMessage(null);
+            if (byteBuffer.ReadableBytes == 0)
+            {
+                return ReceiptsMessage.Empty;
+            }
+
+            if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptySequence[0])
+            {
+                byteBuffer.ReadByte();
+                return ReceiptsMessage.Empty;
+            }
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
@@ -75,7 +86,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         }
                         else
                         {
-                            contentLength += Rlp.LengthOfSequence(_decoder.GetLength(txReceipt, _specProvider.GetSpec(txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None));
+                            // same as above comment. TxReceipt has no timestamp
+                            contentLength += Rlp.LengthOfSequence(_decoder.GetLength(txReceipt, _specProvider.GetSpec((ForkActivation)txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None));
                         }
                     }
                 }

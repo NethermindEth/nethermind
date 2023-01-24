@@ -26,7 +26,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public byte[] Improved()
         {
-            return Bytes.FromHexStringOld(array);
+            return Bytes.FromHexString(array);
         }
     }
 }

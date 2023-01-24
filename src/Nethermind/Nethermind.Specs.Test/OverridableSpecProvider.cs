@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -34,8 +34,9 @@ namespace Nethermind.Specs.Test
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
+        public ulong NetworkId => _specProvider.NetworkId;
         public ulong ChainId => _specProvider.ChainId;
 
-        public ForkActivation[] TransitionBlocks => _specProvider.TransitionBlocks;
+        public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;
     }
 }

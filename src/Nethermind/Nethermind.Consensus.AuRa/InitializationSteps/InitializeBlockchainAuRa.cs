@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Services;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
@@ -19,6 +20,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -95,6 +97,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
+                new WithdrawalProcessor(_api.StateProvider, _api.LogManager),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter
@@ -198,7 +201,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             _auRaStepCalculator = auRaStepCalculator;
         }
 
-        // private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
+        // private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() =>
         //     _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(
         //         _api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 

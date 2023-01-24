@@ -282,7 +282,13 @@ namespace Nethermind.Consensus.Processing
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-                        _stats.UpdateStats(block, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
+
+                        bool readOnlyChain = blockRef.ProcessingOptions.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+                        if (!readOnlyChain)
+                        {
+                            _stats.UpdateStats(block, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
+                        }
+
                         BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                     }
                 }
@@ -333,7 +339,9 @@ namespace Nethermind.Consensus.Processing
 
             if (!shouldProcess)
             {
-                if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
+                if (_logger.IsDebug)
+                    _logger.Debug(
+                        $"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
                 return null;
             }
 
@@ -366,8 +374,8 @@ namespace Nethermind.Consensus.Processing
                 _blockTree.UpdateMainChain(processingBranch.Blocks, true);
             }
 
-            bool notReadOnlyChain = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-            if (notReadOnlyChain)
+            bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            if (!readonlyChain)
             {
                 Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
@@ -380,9 +388,8 @@ namespace Nethermind.Consensus.Processing
                 Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
 
-            if (!notReadOnlyChain)
+            if (!readonlyChain)
             {
-
                 _stats.UpdateStats(lastProcessed, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
             }
 
@@ -494,7 +501,7 @@ namespace Nethermind.Consensus.Processing
             List<Block> blocksToProcess = processingBranch.BlocksToProcess;
             if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
             {
-                processingBranch.Blocks.Clear();
+                processingBranch.Blocks.Clear(); // TODO: investigate why if we clear it all we need to collect and iterate on all the blocks in PrepareProcessingBranch?
                 blocksToProcess.Add(suggestedBlock);
             }
             else
@@ -511,6 +518,20 @@ namespace Nethermind.Consensus.Processing
                     }
 
                     blocksToProcess.Add(block);
+                }
+
+                if (!blocksToProcess[0].IsGenesis)
+                {
+                    BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None);
+                    if (parentOfFirstBlock == null)
+                    {
+                        throw new InvalidOperationException("Attempted to process a disconnected blockchain");
+                    }
+
+                    if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
+                    {
+                        throw new InvalidOperationException("Attempted to process a blockchain without having starting state");
+                    }
                 }
             }
 
@@ -532,9 +553,15 @@ namespace Nethermind.Consensus.Processing
             bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
 
             Block toBeProcessed = suggestedBlock;
+            long iterations = 0;
             do
             {
-                blocksToBeAddedToMain.Add(toBeProcessed);
+                iterations++;
+                if (!options.ContainsFlag(ProcessingOptions.ForceProcessing))
+                {
+                    blocksToBeAddedToMain.Add(toBeProcessed);
+                }
+
                 if (_logger.IsTrace)
                     _logger.Trace(
                         $"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
@@ -581,7 +608,7 @@ namespace Nethermind.Consensus.Processing
                     // If we hit this condition, it means that something is wrong in MultiSyncModeSelector.
                     // MultiSyncModeSelector switched to full sync when it shouldn't
                     // In this case, it is better to stop searching for more blocks and failed during the processing than trying to build a branch up to the genesis point
-                    if (blocksToBeAddedToMain.Count > MaxBlocksDuringFastSyncTransition)
+                    if (iterations > MaxBlocksDuringFastSyncTransition)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Too long branch to be processed during fast sync transition. Current block to be processed {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
                         break;
@@ -610,6 +637,7 @@ namespace Nethermind.Consensus.Processing
                 if (_logger.IsTrace)
                     _logger.Trace(
                         $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
+
             } while (preMergeFinishBranchingCondition);
 
             if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)

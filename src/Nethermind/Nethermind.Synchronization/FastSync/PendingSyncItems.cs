@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Synchronization.FastSync
 {
@@ -164,7 +165,7 @@ namespace Nethermind.Synchronization.FastSync
             List<StateSyncItem> requestItems = new(length);
 
             // Codes have priority over State Nodes
-            if (CodeItems.Count > 0)
+            if (!CodeItems.IsEmpty)
             {
                 int codeMaxCount = Math.Min(length, CodeItems.Count);
 
@@ -198,6 +199,7 @@ namespace Nethermind.Synchronization.FastSync
             return requestItems;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public string RecalculatePriorities()
         {
             Stopwatch stopwatch = Stopwatch.StartNew();

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain.Find;
@@ -38,13 +38,16 @@ namespace Nethermind.Blockchain.Spec
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
+        public ulong NetworkId => _specProvider.NetworkId;
+
         public ulong ChainId => _specProvider.ChainId;
 
-        public ForkActivation[] TransitionBlocks => _specProvider.TransitionBlocks;
+        public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;
 
         public IReleaseSpec GetCurrentHeadSpec()
         {
-            long headerNumber = _blockFinder.FindBestSuggestedHeader()?.Number ?? 0;
+            BlockHeader? header = _blockFinder.FindBestSuggestedHeader();
+            long headerNumber = header?.Number ?? 0;
 
             // we are fine with potential concurrency issue here, that the spec will change
             // between this if and getting actual header spec
@@ -62,7 +65,9 @@ namespace Nethermind.Blockchain.Spec
             lock (_lock)
             {
                 _lastHeader = headerNumber;
-                return _headerSpec = GetSpec(headerNumber);
+                if (header is not null)
+                    return _headerSpec = _specProvider.GetSpec(header);
+                return _headerSpec = GetSpec((ForkActivation)headerNumber);
             }
         }
     }

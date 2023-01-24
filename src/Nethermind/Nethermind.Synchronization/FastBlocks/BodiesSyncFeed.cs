@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
@@ -59,6 +60,11 @@ namespace Nethermind.Synchronization.FastBlocks
             _barrier = _barrier = _syncConfig.AncientBodiesBarrierCalc;
             if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
 
+            ResetSyncStatusList();
+        }
+
+        private void ResetSyncStatusList()
+        {
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
@@ -78,6 +84,7 @@ namespace Nethermind.Synchronization.FastBlocks
             bool shouldFinish = !shouldDownloadBodies || allBodiesDownloaded;
             if (shouldFinish)
             {
+                ResetSyncStatusList();
                 Finish();
                 PostFinishCleanUp();
 
@@ -188,7 +195,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         if (batch.ResponseSourcePeer is not null)
                         {
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or uncles root");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
                         }
 
                         _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
