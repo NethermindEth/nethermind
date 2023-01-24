@@ -21,13 +21,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Catalyst": {
-      "commandName": "Project",
-      "commandLineArgs": "-c catalyst -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true --Merge.BlockAuthorAccount 0x1000000000000000000000000000000000000000",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Eip4844 Local Trace": {
       "commandName": "Project",
       "commandLineArgs": "-c eip4844_local -dd %NETHERMIND_DATA_DIR% --log TRACE",

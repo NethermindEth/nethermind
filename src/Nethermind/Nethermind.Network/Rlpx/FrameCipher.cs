@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+
+using Nethermind.Crypto;
+
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Modes;
@@ -20,7 +23,7 @@ namespace Nethermind.Network.Rlpx
 
         public FrameCipher(byte[] aesKey)
         {
-            AesEngine aes = new();
+            IBlockCipher aes = AesEngineX86Intrinsic.IsSupported ? new AesEngineX86Intrinsic() : new AesEngine();
 
             Debug.Assert(aesKey.Length == KeySize, $"AES key expected to be {KeySize} bytes long");
 
