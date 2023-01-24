@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Int256;
 
 namespace Nethermind.Crypto
@@ -19,30 +20,48 @@ namespace Nethermind.Crypto
 
         private static readonly ThreadLocal<SHA256> _sha256 = new(SHA256.Create);
 
-        private static readonly object _inititalizeLock = new();
-        public static void Inititalize()
+        private static Task? _initializeTask = null;
+
+        public static Task Initialize()
         {
-            lock (_inititalizeLock)
+            if (_ckzgSetup != IntPtr.Zero)
             {
-                if (_ckzgSetup != IntPtr.Zero)
-                {
-                    return;
-                }
+                return Task.CompletedTask;
+            }
 
-                string trustedSetupTextFileLocation =
-                    Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
-                                 string.Empty, "kzg_trusted_setup.txt");
-                _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
+            Task? initializeTask = _initializeTask;
+            if (initializeTask is not null)
+            {
+                return initializeTask;
+            }
 
+            Task task = Task.Run(() =>
+            {
                 if (_ckzgSetup == IntPtr.Zero)
                 {
-                    throw new InvalidOperationException("Unable to load trusted setup");
+                    string trustedSetupTextFileLocation =
+                        Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
+                                     string.Empty, "kzg_trusted_setup.txt");
+
+                    _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
+
+                    if (_ckzgSetup == IntPtr.Zero)
+                    {
+                        throw new InvalidOperationException("Unable to load trusted setup");
+                    }
+
+                    _initializeTask = null;
                 }
-            }
+            });
+
+            return _initializeTask = task;
+
         }
 
         public static bool TryComputeCommitmentV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
         {
+            Initialize().Wait();
+
             if (_sha256.Value!.TryComputeHash(commitment, hashBuffer, out _))
             {
                 hashBuffer[0] = KzgBlobHashVersionV1;
@@ -54,6 +73,8 @@ namespace Nethermind.Crypto
 
         public static unsafe bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> proof)
         {
+            Initialize().Wait();
+
             fixed (byte* commitmentPtr = commitment, zPtr = z, yPtr = y, proofPtr = proof)
             {
                 return Ckzg.Ckzg.VerifyKzgProof(commitmentPtr, zPtr, yPtr, proofPtr, _ckzgSetup) == 0;

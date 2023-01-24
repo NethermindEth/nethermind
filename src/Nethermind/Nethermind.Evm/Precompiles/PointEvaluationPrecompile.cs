@@ -19,8 +19,6 @@ public class PointEvaluationPrecompile : IPrecompile
                                             .Concat(KzgPolynomialCommitments.BlsModulus.ToLittleEndian())
                                             .ToArray();
 
-    static PointEvaluationPrecompile() => KzgPolynomialCommitments.Inititalize();
-
     public Address Address { get; } = Address.FromNumber(0x14);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;

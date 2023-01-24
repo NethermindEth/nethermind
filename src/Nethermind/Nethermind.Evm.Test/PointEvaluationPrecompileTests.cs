@@ -33,7 +33,7 @@ public class PointEvaluationPrecompileTests
         get
         {
             TestCaseData AddExpectedResult(TestCaseData t, bool expectedResult) =>
-                new(t.Arguments) { TestName = t.TestName, ExpectedResult = expectedResult };
+                new(t.Arguments) { TestName = t.TestName + " - output", ExpectedResult = expectedResult };
 
             foreach (TestCaseData test in ValidTestCases)
             {
