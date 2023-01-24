@@ -40,14 +40,11 @@ namespace Nethermind.Consensus.Validators
                    ValidateChainId(transaction) &&
                    Validate1559GasFields(transaction, releaseSpec) &&
                    Validate3860Rules(transaction, releaseSpec) &&
+                   Validate3860Rules(transaction, releaseSpec) &&
                    Validate4844Fields(transaction);
         }
 
-        private bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec)
-        {
-            bool aboveInitCode = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled && transaction.DataLength > releaseSpec.MaxInitCodeSize;
-            return !aboveInitCode;
-        }
+        private bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) => !transaction.IsAboveInitCode(releaseSpec);
 
         private bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec)
         {
