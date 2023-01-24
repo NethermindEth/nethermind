@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
@@ -22,6 +23,18 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     public Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId);
+
+    [JsonRpcMethod(
+        Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes);
+
+    [JsonRpcMethod(
+        Description = "Returns an array of execution payload bodies for the provided number range",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByRangeV1(long start, long count);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",

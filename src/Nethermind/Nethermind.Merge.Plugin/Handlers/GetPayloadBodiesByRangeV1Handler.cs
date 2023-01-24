@@ -33,10 +33,13 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
         }
 
         var payloadBodies = new ExecutionPayloadBodyV1Result?[count];
+
         for (int i = 0; i < count; i++)
         {
             Block? block = _blockTree.FindBlock(start + i);
-            payloadBodies[i] = block is not null ? new ExecutionPayloadBodyV1Result(block.Transactions) : null;
+            payloadBodies[i] = block is null
+                ? null
+                : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals);
         }
 
         return ResultWrapper<ExecutionPayloadBodyV1Result?[]>.Success(payloadBodies);

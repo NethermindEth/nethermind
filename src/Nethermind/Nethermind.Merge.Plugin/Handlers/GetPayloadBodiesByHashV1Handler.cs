@@ -29,7 +29,9 @@ public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<Keccak[], Execution
         {
             Block? block = _blockTree.FindBlock(blockHashes[i]);
 
-            payloadBodies[i] = block is not null ? new ExecutionPayloadBodyV1Result(block.Transactions) : null;
+            payloadBodies[i] = block is null
+                ? null
+                : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals);
         }
 
         return Task.FromResult(ResultWrapper<ExecutionPayloadBodyV1Result?[]>.Success(payloadBodies));

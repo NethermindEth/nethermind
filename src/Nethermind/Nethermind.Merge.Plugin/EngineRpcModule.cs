@@ -45,14 +45,4 @@ public partial class EngineRpcModule : IEngineRpcModule
     }
 
     public ResultWrapper<ExecutionStatusResult> engine_executionStatus() => _executionStatusHandler.Handle();
-
-    public async Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes)
-    {
-        return await _executionGetPayloadBodiesByHashV1Handler.HandleAsync(blockHashes);
-    }
-
-    public async Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByRangeV1(long start, long count)
-    {
-        return await _executionGetPayloadBodiesByRangeV1Handler.Handle(start, count);
-    }
 }
