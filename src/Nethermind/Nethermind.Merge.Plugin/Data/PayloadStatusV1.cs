@@ -35,7 +35,7 @@ namespace Nethermind.Merge.Plugin.Data
         public Keccak? LatestValidHash { get; set; }
 
         /// <summary>
-        /// Message providing additional details on the validation error if the payload is classified as <see cref="PayloadStatus.Invalid"/> or <see cref="PayloadStatus.InvalidBlockHash"/>.
+        /// Message providing additional details on the validation error if the payload is classified as <see cref="PayloadStatus.Invalid"/>.
         /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string? ValidationError { get; set; }
