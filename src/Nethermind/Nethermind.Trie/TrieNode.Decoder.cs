@@ -44,7 +44,7 @@ namespace Nethermind.Trie
                 Debug.Assert(item.Key is not null,
                     "Extension key is null when encoding");
 
-                byte[] keyBytes = item.Key.ToBytes();
+                byte[] keyBytes = HexPrefix.ToBytes(item.Key, false);
                 TrieNode nodeRef = item.GetChild(tree, 0);
                 Debug.Assert(nodeRef is not null,
                     "Extension child is null when encoding.");
@@ -81,7 +81,7 @@ namespace Nethermind.Trie
                     throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
                 }
 
-                byte[] keyBytes = node.Key.ToBytes();
+                byte[] keyBytes = HexPrefix.ToBytes(node.Key, true);
                 int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new(totalLength);
