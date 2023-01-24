@@ -349,7 +349,7 @@ public partial class EngineModuleTests
             new(txs, withdrawals),
             null
         };
-        
+
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
     }
 
@@ -360,7 +360,7 @@ public partial class EngineModuleTests
         var rpc = CreateEngineModule(chain);
         var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 0).Result.Data;
         var expected = Array.Empty<ExecutionPayloadBodyV1Result?>();
-        
+
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
     }
 
@@ -390,13 +390,13 @@ public partial class EngineModuleTests
         {
             var txsA = BuildTransactions(
                 chain, executionPayloadV11.BlockHash!, TestItem.PrivateKeyA, TestItem.AddressA, 1, 0, out _, out _);
-            
+
             chain.AddTransactions(txsA);
-            
+
             var executionPayloadV22A = await BuildAndGetPayloadResultV2(
                 rpc, chain, head.Hash!, head.Hash!, head.Hash!, 1001, Keccak.Zero, Address.Zero, withdrawals);
             var executePayloadResultA = await rpc.engine_newPayloadV2(executionPayloadV22A);
-            
+
             executePayloadResultA.Data.Status.Should().Be(PayloadStatus.Valid);
 
             var fcuResult = await rpc.engine_forkchoiceUpdatedV2(
@@ -428,9 +428,9 @@ public partial class EngineModuleTests
                 .TestObject;
 
             var fcuResult = await rpc.engine_newPayloadV2(new ExecutionPayload(newBlock));
-            
+
             fcuResult.Data.Status.Should().Be(PayloadStatus.Valid);
-            
+
             await rpc.engine_forkchoiceUpdatedV2(
                 new ForkchoiceStateV1(newBlock.Hash!, newBlock.Hash!, newBlock.Hash!));
 
