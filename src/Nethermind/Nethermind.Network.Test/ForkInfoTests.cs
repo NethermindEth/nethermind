@@ -205,6 +205,9 @@ namespace Nethermind.Network.Test
             Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
         }
 
+        //  Local is mainnet Gray Glacier, remote announces the same. No future fork is announced.
+        [TestCase(15050000, 0ul, "0xf0afd0e3", 0ul, IForkInfo.ValidationResult.Valid)]
+
         // Local is mainnet Petersburg, remote announces the same. No future fork is announced.
         [TestCase(7987396, 0ul, "0x668db0af", 0ul, IForkInfo.ValidationResult.Valid)]
 
@@ -270,6 +273,91 @@ namespace Nethermind.Network.Test
         // Local is mainnet Byzantium. Remote is also in Byzantium, but announces Gopherium (non existing
         // fork) at block 7279999, before Petersburg. Local is incompatible.
         [TestCase(7279999, 0ul, "0xa00bc324", 7279999ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+
+		//------------------------------------
+		// Block to timestamp transition tests
+		//------------------------------------
+
+        // Local is mainnet currently in Gray Glacier only (so it's aware of Shanghai), remote announces
+		// also Gray Glacier, but it's not yet aware of Shanghai (e.g. non updated node before the fork).
+		// In this case we don't know if Shanghai passed yet or not.
+        [TestCase(15050000, 0ul, "0xf0afd0e3", 0ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet currently in Gray Glacier only (so it's aware of Shanghai), remote announces
+		// also Gray Glacier, and it's also aware of Shanghai (e.g. updated node before the fork). We
+		// don't know if Shanghai passed yet (will pass) or not.
+        [TestCase(15050000, 0ul, "0xf0afd0e3", MainnetSpecProvider.ShanghaiBlockTimestamp, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet currently in Gray Glacier only (so it's aware of Shanghai), remote announces
+		// also Gray Glacier, and it's also aware of some random fork (e.g. misconfigured Shanghai). As
+		// neither forks passed at neither nodes, they may mismatch, but we still connect for now.
+        [TestCase(15050000, 0ul, "0xf0afd0e3", ulong.MaxValue, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet exactly on Shanghai, remote announces Gray Glacier + knowledge about Shanghai. Remote
+		// is simply out of sync, accept.
+        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0xf0afd0e3", MainnetSpecProvider.ShanghaiBlockTimestamp, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Shanghai, remote announces Gray Glacier + knowledge about Shanghai. Remote
+		// is simply out of sync, accept.
+        [TestCase(20123456, MainnetSpecProvider.ShanghaiBlockTimestamp + 1, "0xf0afd0e3", MainnetSpecProvider.ShanghaiBlockTimestamp, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Shanghai, remote announces Arrow Glacier + knowledge about Gray Glacier. Remote
+		// is definitely out of sync. It may or may not need the Shanghai update, we don't know yet.
+        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0x20c327fc", (ulong)MainnetSpecProvider.GrayGlacierBlockNumber, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Gray Glacier, remote announces Shanghai. Local is out of sync, accept.
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, 0ul, "0x71147644", 0ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Arrow Glacier, remote announces Gray Glacier, but is not aware of Shanghai. Local
+		// out of sync. Local also knows about a future fork, but that is uncertain yet.
+        [TestCase(MainnetSpecProvider.ArrowGlacierBlockNumber, 0ul, "0xf0afd0e3", 0ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Shanghai. remote announces Gray Glacier but is not aware of further forks.
+		// Remote needs software update.
+        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0xf0afd0e3", 0ul, IForkInfo.ValidationResult.RemoteStale)]
+
+        // Local is mainnet Gray Glacier, and isn't aware of more forks. Remote announces Gray Glacier +
+		// 0xffffffff. Local needs software update, reject.
+        // --- needs a custom specProvider ---
+        
+        // Local is mainnet Gray Glacier, and is aware of Shanghai. Remote announces Shanghai +
+		// 0xffffffff. Local needs software update, reject.
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, 0ul, "0x71147644", ulong.MaxValue, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Gray Glacier, far in the future. Remote announces Gopherium (non existing fork)
+		// at some future timestamp 8888888888, for itself, but past block for local. Local is incompatible.
+		//
+		// This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
+        // --- needs a custom specProvider ---
+
+        // Local is mainnet Gray Glacier. Remote is also in Gray Glacier, but announces Gopherium (non existing
+		// fork) at block 7279999, before Shanghai. Local is incompatible.
+        [TestCase(19999999, 1667999999ul, "0xf0afd0e3", 1667999999ul, IForkInfo.ValidationResult.Valid)]
+
+        //----------------------
+		// Timestamp based tests
+		//----------------------
+
+        // Local is mainnet Shanghai, remote announces the same. No future fork is announced.
+        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0x71147644", 0ul, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Shanghai, remote announces the same. Remote also announces a next fork
+		// at time 0xffffffff, but that is uncertain.
+        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0x71147644", ulong.MaxValue, IForkInfo.ValidationResult.Valid)]
+
+        // Local is mainnet Shanghai, and isn't aware of more forks. Remote announces Shanghai +
+		// 0xffffffff. Local needs software update, reject.
+        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0x846271649", 0ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+
+        // Local is mainnet Shanghai, remote is random Shanghai.
+        [TestCase(20000000, MainnetSpecProvider.ShanghaiBlockTimestamp, "0x12345678", 0ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+
+        // Local is mainnet Shanghai, far in the future. Remote announces Gopherium (non existing fork)
+		// at some future timestamp 8888888888, for itself, but past block for local. Local is incompatible.
+		//
+		// This case detects non-upgraded nodes with majority hash power (typical Ropsten mess).
+        [TestCase(88888888, 8888888888ul, "0x71147644", 8888888888ul, IForkInfo.ValidationResult.IncompatibleOrStale)]
+
         public void Test_fork_id_validation_mainnet(long headNumber, ulong headTimestamp, string hash, ulong next, IForkInfo.ValidationResult result)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();

@@ -13,6 +13,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 
 namespace Nethermind.Network
 {
@@ -109,7 +110,10 @@ namespace Nethermind.Network
             for (int i = 0; i < Forks.Length; i++)
             {
                 (ForkActivation forkActivation, ForkId forkId) = Forks[i];
-                bool usingTimestamp = forkActivation.Timestamp != null;
+                bool usingTimestamp = (forkId.Next == 0
+                || forkId.Next >= MainnetSpecProvider.ShanghaiBlockTimestamp)
+                && (peerId.Next == 0
+                || peerId.Next >= MainnetSpecProvider.ShanghaiBlockTimestamp);
                 ulong headActivation = (usingTimestamp ? head.Timestamp : (ulong)head.Number);
 
                 // If our head is beyond this fork, continue to the next (we have a dummy
@@ -191,7 +195,10 @@ namespace Nethermind.Network
             {
                 return IForkInfo.ValidationResult.IncompatibleOrStale;
             }
-            bool usingTimestamp = foundActivation.Value.Timestamp is not null;
+            bool usingTimestamp = (foundForkId.Value.Next == 0
+                || foundForkId.Value.Next >= MainnetSpecProvider.ShanghaiBlockTimestamp)
+                && (peerId.Next == 0
+                || peerId.Next >= MainnetSpecProvider.ShanghaiBlockTimestamp);
             ulong headActivation = (usingTimestamp ? head.Timestamp : (ulong)head.Number);
 
             // my approach is to accept all peers except the ones we dont like. which is the oposite of what
@@ -201,7 +208,7 @@ namespace Nethermind.Network
             {
                 if (peerId.Next == 0
                     && nextActivation is not null
-                    && headActivation > nextActivation.Value.Activation)
+                    && headActivation >= nextActivation.Value.Activation)
                 {
                     return IForkInfo.ValidationResult.RemoteStale;
                 }
