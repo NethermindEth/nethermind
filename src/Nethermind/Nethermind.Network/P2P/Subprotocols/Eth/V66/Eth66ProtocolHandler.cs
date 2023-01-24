@@ -8,7 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
@@ -147,9 +147,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private void Handle(GetPooledTransactionsMessage getPooledTransactions)
         {
-            V65.Messages.PooledTransactionsMessage pooledTransactionsMessage =
-                FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage);
-            Send(new PooledTransactionsMessage(getPooledTransactions.RequestId, pooledTransactionsMessage));
+            using ArrayPoolList<Transaction> txsToSend = new(1024);
+
+            Send(new PooledTransactionsMessage(getPooledTransactions.RequestId,
+                FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage, txsToSend)));
         }
 
         private void Handle(GetReceiptsMessage getReceiptsMessage)

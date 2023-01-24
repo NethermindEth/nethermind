@@ -30,7 +30,8 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
             DefaultDifficulty, 0,
             4_000_000,
             1_000_000,
-            new byte[] { 1, 2, 3 });
+            new byte[] { 1, 2, 3 },
+            null);
         TestObjectInternal.Bloom = Bloom.Empty;
         TestObjectInternal.MixHash = Keccak.Compute("mix_hash");
         TestObjectInternal.Nonce = 1000;
@@ -175,6 +176,12 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
     {
         TestObjectInternal.WithdrawalsRoot = root;
 
+        return this;
+    }
+
+    public BlockHeaderBuilder WithExcessDataGas(UInt256? excessDataGas)
+    {
+        TestObjectInternal.ExcessDataGas = excessDataGas;
         return this;
     }
 }

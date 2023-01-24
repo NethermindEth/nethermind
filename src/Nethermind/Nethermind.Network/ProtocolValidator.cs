@@ -137,9 +137,9 @@ namespace Nethermind.Network
             return p2PVersion == 4 || p2PVersion == 5;
         }
 
-        private bool ValidateChainId(ulong chainId)
+        private bool ValidateNetworkId(ulong networkId)
         {
-            return chainId == _blockTree.ChainId;
+            return networkId == _blockTree.NetworkId;
         }
     }
 }

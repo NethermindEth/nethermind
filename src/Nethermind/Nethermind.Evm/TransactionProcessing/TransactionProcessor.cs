@@ -321,7 +321,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 recipientOrNull = recipient;
 
                 ExecutionEnvironment env = new();
-                env.TxExecutionContext = new TxExecutionContext(block, caller, effectiveGasPrice);
+                env.TxExecutionContext = new TxExecutionContext(block, caller, effectiveGasPrice, transaction.BlobVersionedHashes);
                 env.Value = value;
                 env.TransferValue = value;
                 env.Caller = caller;
