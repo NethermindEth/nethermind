@@ -15,7 +15,7 @@ public enum InitiateDisconnectReason : byte
 
     SnapServerNotImplemented,
     IncompatibleP2PVersion,
-    InvalidChainId,
+    InvalidNetworkId,
     InvalidGenesis,
     MissingForkId,
     InvalidForkId,
@@ -63,7 +63,7 @@ public static class InitiateDisconnectReasonExtension
                 return DisconnectReason.UselessPeer;
             case InitiateDisconnectReason.IncompatibleP2PVersion:
                 return DisconnectReason.IncompatibleP2PVersion;
-            case InitiateDisconnectReason.InvalidChainId:
+            case InitiateDisconnectReason.InvalidNetworkId:
                 return DisconnectReason.UselessPeer;
             case InitiateDisconnectReason.InvalidGenesis:
             case InitiateDisconnectReason.MissingForkId:

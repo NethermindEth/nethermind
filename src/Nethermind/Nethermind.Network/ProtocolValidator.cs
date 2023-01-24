@@ -71,16 +71,16 @@ namespace Nethermind.Network
         private bool ValidateEthProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
         {
             SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs)eventArgs;
-            if (!ValidateChainId(syncPeerArgs.ChainId))
+            if (!ValidateNetworkId(syncPeerArgs.NetworkId))
             {
                 if (_logger.IsTrace)
                     _logger.Trace(
-                        $"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName(syncPeerArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
-                _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
-                Disconnect(session, InitiateDisconnectReason.InvalidChainId, $"invalid chain id - {syncPeerArgs.ChainId}");
+                        $"Initiating disconnect with peer: {session.RemoteNodeId}, different networkId: {BlockchainIds.GetBlockchainName(syncPeerArgs.NetworkId)}, our chainId: {BlockchainIds.GetBlockchainName(_blockTree.NetworkId)}");
+                _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.NetworkId);
+                Disconnect(session, InitiateDisconnectReason.InvalidNetworkId, $"invalid chain id - {syncPeerArgs.NetworkId}");
                 if (session.Node.IsStatic && _logger.IsWarn)
                     _logger.Warn(
-                        $"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {InitiateDisconnectReason.InvalidChainId} (invalid chain id - {syncPeerArgs.ChainId})");
+                        $"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {InitiateDisconnectReason.InvalidNetworkId} (invalid chain id - {syncPeerArgs.NetworkId})");
                 return false;
             }
 
