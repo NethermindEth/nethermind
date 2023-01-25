@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -21,6 +22,8 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using NSubstitute;
+using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -355,8 +358,7 @@ public partial class EngineModuleTests
         var expected = new ExecutionPayloadBodyV1Result?[]
         {
             new(Array.Empty<Transaction>(), null),
-            new(txs, withdrawals),
-            null
+            new(txs, withdrawals)
         };
 
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
@@ -417,8 +419,7 @@ public partial class EngineModuleTests
             var expected = new ExecutionPayloadBodyV1Result?[]
             {
                 new(Array.Empty<Transaction>(), withdrawals),
-                new(txsA, withdrawals),
-                null
+                new(txsA, withdrawals)
             };
 
             payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
@@ -447,12 +448,29 @@ public partial class EngineModuleTests
             var expected = new ExecutionPayloadBodyV1Result?[]
             {
                 new(Array.Empty<Transaction>(), withdrawals),
-                new(Array.Empty<Transaction>(), withdrawals),
-                null
+                new(Array.Empty<Transaction>(), withdrawals)
             };
 
             payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
         }
+    }
+
+    [TestCaseSource(nameof(PayloadBodiesByRangeTestCases))]
+    public async Task getPayloadBodiesByRangeV1_should_trim_trailing_null_bodies(
+        (Func<CallInfo, Block?> Impl,
+        IEnumerable<ExecutionPayloadBodyV1Result?> Outcome) input)
+    {
+        var blockTree = Substitute.For<IBlockTree>();
+
+        blockTree.FindBlock(Arg.Any<long>()).Returns(input.Impl);
+
+        using var chain = await CreateShanghaiBlockChain();
+        chain.BlockTree = blockTree;
+
+        var rpc = CreateEngineModule(chain);
+        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 5).Result.Data;
+
+        payloadBodies.Should().BeEquivalentTo(input.Outcome);
     }
 
     [Test]
@@ -773,5 +791,29 @@ public partial class EngineModuleTests
         yield return (London.Instance, Array.Empty<Withdrawal>(), false);
         yield return (Shanghai.Instance, Array.Empty<Withdrawal>(), true);
         yield return (London.Instance, new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth }, false);
+    }
+
+    protected static IEnumerable<(
+        Func<CallInfo, Block?>,
+        IEnumerable<ExecutionPayloadBodyV1Result?>
+        )> PayloadBodiesByRangeTestCases()
+    {
+        var block = Build.A.Block.TestObject;
+        var result = new ExecutionPayloadBodyV1Result(Array.Empty<Transaction>(), null);
+
+        yield return (
+            new Func<CallInfo, Block?>(i => null),
+            new ExecutionPayloadBodyV1Result?[] { null, null, null, null, null }
+        );
+
+        yield return (
+            new Func<CallInfo, Block?>(i => i.ArgAt<long>(0) % 2 == 0 ? null : block),
+            new[] { null, result, null, result }
+        );
+
+        yield return (
+            new Func<CallInfo, Block?>(i => block),
+            Enumerable.Repeat(result, 5)
+        );
     }
 }

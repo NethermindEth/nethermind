@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -11,7 +12,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result?[]>
+public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>>
 {
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
@@ -22,10 +23,10 @@ public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<Keccak[], Execution
         _logger = logManager.GetClassLogger();
     }
 
-    public Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> HandleAsync(Keccak[] blockHashes)
+    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> HandleAsync(IList<Keccak> blockHashes)
     {
-        var payloadBodies = new ExecutionPayloadBodyV1Result?[blockHashes.Length];
-        for (int i = 0; i < blockHashes.Length; ++i)
+        var payloadBodies = new ExecutionPayloadBodyV1Result?[blockHashes.Count];
+        for (int i = 0; i < blockHashes.Count; i++)
         {
             Block? block = _blockTree.FindBlock(blockHashes[i]);
 
@@ -34,6 +35,6 @@ public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<Keccak[], Execution
                 : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals);
         }
 
-        return Task.FromResult(ResultWrapper<ExecutionPayloadBodyV1Result?[]>.Success(payloadBodies));
+        return Task.FromResult(ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(payloadBodies));
     }
 }
