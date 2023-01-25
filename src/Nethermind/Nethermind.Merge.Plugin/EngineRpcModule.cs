@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -14,6 +16,7 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
+    private static IEnumerable<string>? _capabilities;
     private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
     private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result?[]> _executionGetPayloadBodiesByHashV1Handler;
     private readonly IGetPayloadBodiesByRangeV1Handler _executionGetPayloadBodiesByRangeV1Handler;
@@ -45,6 +48,16 @@ public partial class EngineRpcModule : IEngineRpcModule
     }
 
     public ResultWrapper<ExecutionStatusResult> engine_executionStatus() => _executionStatusHandler.Handle();
+
+    public ResultWrapper<IEnumerable<string>> engine_getCapabilities()
+    {
+        _capabilities ??= typeof(IEngineRpcModule).GetMethods()
+            .Select(m => m.Name)
+            .Where(m => !m.Equals(nameof(engine_getCapabilities), StringComparison.Ordinal))
+            .Order();
+
+        return ResultWrapper<IEnumerable<string>>.Success(_capabilities);
+    }
 
     public async Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes)
     {

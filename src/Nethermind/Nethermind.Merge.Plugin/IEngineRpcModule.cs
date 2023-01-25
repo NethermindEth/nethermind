@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -18,6 +19,12 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<ExecutionStatusResult> engine_executionStatus();
+
+    [JsonRpcMethod(
+        Description = "Returns the currently supported list of Engine API methods.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<IEnumerable<string>> engine_getCapabilities();
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the list of provided block hashes.",

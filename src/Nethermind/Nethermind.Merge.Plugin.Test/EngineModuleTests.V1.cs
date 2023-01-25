@@ -1661,6 +1661,22 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task Should_return_capabilities()
+    {
+        using var chain = await CreateBlockChain();
+        var rpcModule = CreateEngineModule(chain);
+
+        var expected = typeof(IEngineRpcModule).GetMethods()
+            .Select(m => m.Name)
+            .Where(m => !m.Equals(nameof(IEngineRpcModule.engine_getCapabilities), StringComparison.Ordinal))
+            .Order();
+
+        var result = rpcModule.engine_getCapabilities();
+
+        result.Data.Should().BeEquivalentTo(expected);
+    }
+
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(
         IEngineRpcModule rpc, MergeTestBlockchain chain, Keccak headBlockHash, Keccak finalizedBlockHash,
         Keccak safeBlockHash,
