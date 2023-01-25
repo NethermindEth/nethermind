@@ -76,6 +76,25 @@ namespace Ethereum.Test.Base
             }
         }
 
+        private void SetHeaderDecoderTransitionInfo(BlockchainTest test)
+        {
+            HeaderDecoder.Eip1559TransitionBlock = long.MaxValue;
+            HeaderDecoder.WithdrawalTimestamp = ulong.MaxValue;
+            if (test.Network == London.Instance || test.Network == GrayGlacier.Instance)
+            {
+                HeaderDecoder.Eip1559TransitionBlock = 0;
+            }
+            if (test.NetworkAfterTransition == Shanghai.Instance)
+            {
+                HeaderDecoder.Eip1559TransitionBlock = 1;
+                HeaderDecoder.WithdrawalTimestamp = test.TransitionInfo!.Timestamp!.Value;
+            }
+            else if (test.NetworkAfterTransition == London.Instance || test.NetworkAfterTransition == GrayGlacier.Instance)
+            {
+                HeaderDecoder.Eip1559TransitionBlock = test.TransitionInfo!.BlockNumber;
+            }
+        }
+
         protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null)
         {
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
@@ -90,7 +109,7 @@ namespace Ethereum.Test.Base
                 specProvider = new CustomSpecProvider(
                     ((ForkActivation)0, Frontier.Instance),
                     ((ForkActivation)1, test.Network),
-                    ((ForkActivation)test.TransitionBlockNumber, test.NetworkAfterTransition));
+                    ((test.TransitionInfo.BlockNumber, test.TransitionInfo.Timestamp), test.NetworkAfterTransition));
             }
             else
             {
@@ -104,11 +123,15 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            bool isNetworkAfterTransitionLondon = test.NetworkAfterTransition == London.Instance;
-            HeaderDecoder.Eip1559TransitionBlock = isNetworkAfterTransitionLondon ? test.TransitionBlockNumber : long.MaxValue;
+            SetHeaderDecoderTransitionInfo(test);
 
             DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
+            if (test.Network == GrayGlacier.Instance)
+            {
+                rewardCalculator = NoBlockRewards.Instance;
+                specProvider.UpdateMergeTransitionInfo(0, 0);
+            }
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
 
@@ -161,48 +184,7 @@ namespace Ethereum.Test.Base
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
-            List<(Block Block, string ExpectedException)> correctRlp = new();
-            for (int i = 0; i < test.Blocks.Length; i++)
-            {
-                try
-                {
-                    TestBlockJson testBlockJson = test.Blocks[i];
-                    var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
-                    Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
-                    suggestedBlock.Header.SealEngineType = test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
-
-                    Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash, "hash of the block");
-                    for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
-                    {
-                        Assert.AreEqual(new Keccak(testBlockJson.UncleHeaders[uncleIndex].Hash), suggestedBlock.Uncles[uncleIndex].Hash, "hash of the uncle");
-                    }
-
-                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
-                }
-                catch (Exception)
-                {
-                    _logger?.Info($"Invalid RLP ({i})");
-                }
-            }
-
-            if (correctRlp.Count == 0)
-            {
-                EthereumTestResult result;
-                if (test.GenesisBlockHeader is null)
-                {
-                    result = new EthereumTestResult(test.Name, "Genesis block header missing in the test spec.");
-                }
-                else if (!new Keccak(test.GenesisBlockHeader.Hash).Equals(test.LastBlockHash))
-                {
-                    result = new EthereumTestResult(test.Name, "Genesis hash mismatch");
-                }
-                else
-                {
-                    result = new EthereumTestResult(test.Name, null, true);
-                }
-
-                return result;
-            }
+            List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test);
 
             if (test.GenesisRlp == null)
             {
@@ -239,7 +221,7 @@ namespace Ethereum.Test.Base
 
                     if (correctRlp[i].Block.Hash == null)
                     {
-                        throw new Exception($"null hash in {test.Name} block {i}");
+                        Assert.Fail($"null hash in {test.Name} block {i}");
                     }
 
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
@@ -265,11 +247,6 @@ namespace Ethereum.Test.Base
             stopwatch?.Stop();
 
             List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
-            //            if (differences.Any())
-            //            {
-            //                BlockTrace blockTrace = blockchainProcessor.TraceBlock(blockTree.BestSuggested.Hash);
-            //                _logger.Info(new UnforgivingJsonSerializer().Serialize(blockTrace, true));
-            //            }
 
             Assert.Zero(differences.Count, "differences");
 
@@ -279,6 +256,61 @@ namespace Ethereum.Test.Base
                 null,
                 differences.Count == 0
             );
+        }
+
+        private List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test)
+        {
+            List<(Block Block, string ExpectedException)> correctRlp = new();
+            for (int i = 0; i < test.Blocks.Length; i++)
+            {
+                TestBlockJson testBlockJson = test.Blocks[i];
+                try
+                {
+                    var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
+                    Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
+                    suggestedBlock.Header.SealEngineType =
+                        test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
+
+                    if (testBlockJson.BlockHeader is not null)
+                    {
+                        Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash,
+                            "hash of the block");
+
+
+                        for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
+                        {
+                            Assert.AreEqual(new Keccak(testBlockJson.UncleHeaders[uncleIndex].Hash),
+                                suggestedBlock.Uncles[uncleIndex].Hash, "hash of the uncle");
+                        }
+
+                        correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
+                    }
+                }
+                catch (RlpException e)
+                {
+                    if (testBlockJson.ExpectedException is null)
+                    {
+                        Assert.Fail($"Invalid RLP ({i}) {e}");
+                    }
+                    else
+                    {
+                        // TODO: Sometimes testBlockJson.ExpectedException is not RLP related exception. In this situation we should fail
+                        _logger.Info($"Expected invalid RLP ({i})");
+                    }
+                }
+                catch (Exception e)
+                {
+                    Assert.Fail($"Unknown exception ({i}) {e}");
+                }
+            }
+
+            if (correctRlp.Count == 0)
+            {
+                Assert.NotNull(test.GenesisBlockHeader);
+                Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), test.LastBlockHash);
+            }
+
+            return correctRlp;
         }
 
         private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)

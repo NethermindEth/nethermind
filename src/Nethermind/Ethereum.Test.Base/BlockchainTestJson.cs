@@ -17,7 +17,7 @@ namespace Ethereum.Test.Base
         public string? Network { get; set; }
         public IReleaseSpec? EthereumNetwork { get; set; }
         public IReleaseSpec? EthereumNetworkAfterTransition { get; set; }
-        public int TransitionBlockNumber { get; set; }
+        public TransitionInfo TransitionInfo { get; set; }
         public string? LastBlockHash { get; set; }
         public string? GenesisRlp { get; set; }
 
@@ -31,5 +31,11 @@ namespace Ethereum.Test.Base
 
         public string? SealEngine { get; set; }
         public string? LoadFailure { get; set; }
+    }
+
+    public class TransitionInfo
+    {
+        public int BlockNumber = 0;
+        public ulong? Timestamp;
     }
 }

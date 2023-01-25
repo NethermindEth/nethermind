@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -53,6 +54,25 @@ namespace Ethereum.Test.Base
                 "Shanghai" => Shanghai.Instance,
                 _ => throw new NotSupportedException()
             };
+        }
+
+        private static TransitionInfo ParseTransitionInfo(string transitionInfo)
+        {
+            const string timestampPrefix = "Time";
+            const char kSuffix = 'k';
+            if (!transitionInfo.StartsWith(timestampPrefix))
+            {
+                return new TransitionInfo { BlockNumber = int.Parse(transitionInfo) };
+            }
+
+            transitionInfo = transitionInfo.Remove(0, timestampPrefix.Length);
+            if (!transitionInfo.EndsWith(kSuffix))
+            {
+                return new TransitionInfo { Timestamp = ulong.Parse(transitionInfo) };
+            }
+
+            transitionInfo = transitionInfo.RemoveEnd(kSuffix);
+            return new TransitionInfo { Timestamp = ulong.Parse(transitionInfo) * 1000 };
         }
 
         public static BlockHeader Convert(TestBlockHeaderJson? headerJson)
@@ -227,7 +247,7 @@ namespace Ethereum.Test.Base
             test.Name = name;
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
-            test.TransitionBlockNumber = testJson.TransitionBlockNumber;
+            test.TransitionInfo = testJson.TransitionInfo;
             test.LastBlockHash = new Keccak(testJson.LastBlockHash);
             test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
@@ -289,7 +309,7 @@ namespace Ethereum.Test.Base
                 testSpec.EthereumNetwork = ParseSpec(networks[0]);
                 if (transitionInfo.Length > 1)
                 {
-                    testSpec.TransitionBlockNumber = int.Parse(transitionInfo[1]);
+                    testSpec.TransitionInfo = ParseTransitionInfo(transitionInfo[1]);
                     testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
                 }
 
