@@ -302,26 +302,35 @@ public partial class EngineModuleTests
         ResultWrapper<GetPayloadV2Result?> responseFirst = await rpc.engine_getPayloadV2(payloadId);
         responseFirst.Should().NotBeNull();
         responseFirst.Result.ResultType.Should().Be(ResultType.Failure);
-        responseFirst.ErrorCode.Should().Be(-38001);
+        responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
     public async Task getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(
         IList<Withdrawal> withdrawals)
     {
-        using MergeTestBlockchain chain = await CreateShanghaiBlockChain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        using var chain = await CreateShanghaiBlockChain();
+        var rpc = CreateEngineModule(chain);
+        var executionPayloadV21 = await SendNewBlockV2(rpc, chain, withdrawals);
+        var txs = BuildTransactions(
+            chain, executionPayloadV21.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
 
-        ExecutionPayload executionPayloadV21 = await SendNewBlockV2(rpc, chain, withdrawals);
-
-        PrivateKey from = TestItem.PrivateKeyA;
-        Address to = TestItem.AddressB;
-        Transaction[] txs = BuildTransactions(chain, executionPayloadV21.BlockHash, from, to, 3, 0, out _, out _);
         chain.AddTransactions(txs);
-        ExecutionPayload executionPayloadV22 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
-        Keccak[] blockHashes = { executionPayloadV21.BlockHash, TestItem.KeccakA, executionPayloadV22.BlockHash };
-        ExecutionPayloadBodyV1Result?[] payloadBodies = rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
-        ExecutionPayloadBodyV1Result?[] expected = { new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals) };
+
+        var executionPayloadV22 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
+        var blockHashes = new Keccak[]
+        {
+            executionPayloadV21.BlockHash, TestItem.KeccakA,
+            executionPayloadV22.BlockHash
+        };
+        var payloadBodies = rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
+        var expected = new ExecutionPayloadBodyV1Result?[]
+        {
+            new(Array.Empty<Transaction>(), withdrawals),
+            null,
+            new(txs, withdrawals)
+        };
+
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
     }
 

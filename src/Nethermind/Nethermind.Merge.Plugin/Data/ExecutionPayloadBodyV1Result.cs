@@ -23,22 +23,11 @@ public class ExecutionPayloadBodyV1Result
         }
 
         Transactions = t;
-
-        if (withdrawals is not null)
-        {
-            var w = new byte[withdrawals.Count][];
-
-            for (int i = 0, count = w.Length; i < count; i++)
-            {
-                w[i] = Rlp.Encode(withdrawals[i]).Bytes;
-            }
-
-            Withdrawals = w;
-        }
+        Withdrawals = withdrawals;
     }
 
     public IList<IList<byte>> Transactions { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    public IList<IList<byte>>? Withdrawals { get; set; }
+    public IList<Withdrawal>? Withdrawals { get; set; }
 }
