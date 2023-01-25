@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Crypto
 {
@@ -22,7 +23,7 @@ namespace Nethermind.Crypto
 
         private static Task? _initializeTask = null;
 
-        public static Task Initialize()
+        public static Task Initialize(ILogger? logger = null)
         {
             if (_ckzgSetup != IntPtr.Zero)
             {
@@ -43,6 +44,7 @@ namespace Nethermind.Crypto
                         Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
                                      string.Empty, "kzg_trusted_setup.txt");
 
+                    if (logger?.IsInfo == true) logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
                     _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
 
                     if (_ckzgSetup == IntPtr.Zero)

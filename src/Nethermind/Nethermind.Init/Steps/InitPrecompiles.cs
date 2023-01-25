@@ -23,13 +23,14 @@ public class InitPrecompiles : IStep
     {
         if (_api.SpecProvider!.GetSpec(long.MaxValue, ulong.MaxValue).IsEip4844Enabled)
         {
+            ILogger logger = _api.LogManager.GetClassLogger<InitPrecompiles>();
+
             try
             {
-                await KzgPolynomialCommitments.Initialize();
+                await KzgPolynomialCommitments.Initialize(logger);
             }
             catch (Exception e)
             {
-                ILogger logger = _api.LogManager.GetClassLogger<InitPrecompiles>();
                 if (logger.IsError) logger.Error($"Couldn't initialize {nameof(KzgPolynomialCommitments)} precompile", e);
                 throw;
             }
