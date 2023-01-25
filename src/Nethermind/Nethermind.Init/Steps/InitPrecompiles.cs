@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps;
 
@@ -17,8 +19,20 @@ public class InitPrecompiles : IStep
         _api = api;
     }
 
-    public Task Execute(CancellationToken cancellationToken) =>
-        _api.SpecProvider!.GetSpec(long.MaxValue, ulong.MaxValue).IsEip4844Enabled
-            ? KzgPolynomialCommitments.Initialize()
-            : Task.CompletedTask;
+    public async Task Execute(CancellationToken cancellationToken)
+    {
+        if (_api.SpecProvider!.GetSpec(long.MaxValue, ulong.MaxValue).IsEip4844Enabled)
+        {
+            try
+            {
+                await KzgPolynomialCommitments.Initialize();
+            }
+            catch (Exception e)
+            {
+                ILogger logger = _api.LogManager.GetClassLogger<InitPrecompiles>();
+                if (logger.IsError) logger.Error($"Couldn't initialize {nameof(KzgPolynomialCommitments)} precompile", e);
+                throw;
+            }
+        }
+    }
 }
