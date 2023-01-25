@@ -23,7 +23,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    public Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId);
+    Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId);
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
