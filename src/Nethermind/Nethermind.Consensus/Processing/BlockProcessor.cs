@@ -241,12 +241,11 @@ namespace Nethermind.Consensus.Processing
 
             block.Header.StateRoot = _stateProvider.StateRoot;
 
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
 
-            if (releaseSpec.IsEip4844Enabled)
+            if (spec.IsEip4844Enabled)
             {
                 block.Header.ExcessDataGas = Evm.IntrinsicGasCalculator.CalculateExcessDataGas(block.Header.ParentExcessDataGas,
-                    block.GetTransactions().Sum(x => x.BlobVersionedHashes?.Length ?? 0), releaseSpec);
+                    block.GetTransactions().Sum(x => x.BlobVersionedHashes?.Length ?? 0), spec);
             }
 
             block.Header.Hash = block.Header.CalculateHash();
