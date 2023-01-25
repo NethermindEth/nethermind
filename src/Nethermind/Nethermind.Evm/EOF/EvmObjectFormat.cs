@@ -39,10 +39,11 @@ internal static class EvmObjectFormat
     /// <param name="container">Machine code to be checked</param>
     /// <returns></returns>
     public static bool IsEof(ReadOnlySpan<byte> container) => container.StartsWith(MAGIC);
+    public static bool IsEofn(ReadOnlySpan<byte> container, byte version) => container.Length >= MAGIC.Length + 1 && container.StartsWith(MAGIC) && container[MAGIC.Length] == version;
 
     public static bool IsValidEof(ReadOnlySpan<byte> container, out EofHeader? header)
     {
-        if (container.Length >= VERSION_OFFSET
+        if (container.Length > VERSION_OFFSET
             && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
             && handler.TryParseEofHeader(container, out header))
         {
@@ -60,14 +61,14 @@ internal static class EvmObjectFormat
     public static bool TryExtractHeader(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
     {
         header = null;
-        return container.Length >= VERSION_OFFSET
+        return container.Length > VERSION_OFFSET
                && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
                && handler.TryParseEofHeader(container, out header);
     }
 
     public static byte GetCodeVersion(ReadOnlySpan<byte> container)
     {
-        return container.Length < VERSION_OFFSET
+        return container.Length <= VERSION_OFFSET
             ? byte.MinValue
             : container[VERSION_OFFSET];
     }
