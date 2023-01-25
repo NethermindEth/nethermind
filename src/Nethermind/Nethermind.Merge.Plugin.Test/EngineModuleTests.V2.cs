@@ -311,17 +311,17 @@ public partial class EngineModuleTests
     {
         using var chain = await CreateShanghaiBlockChain();
         var rpc = CreateEngineModule(chain);
-        var executionPayloadV21 = await SendNewBlockV2(rpc, chain, withdrawals);
+        var executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
         var txs = BuildTransactions(
-            chain, executionPayloadV21.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
+            chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
 
         chain.AddTransactions(txs);
 
-        var executionPayloadV22 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
+        var executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
         var blockHashes = new Keccak[]
         {
-            executionPayloadV21.BlockHash, TestItem.KeccakA,
-            executionPayloadV22.BlockHash
+            executionPayload1.BlockHash, TestItem.KeccakA,
+            executionPayload2.BlockHash
         };
         var payloadBodies = rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
         var expected = new ExecutionPayloadBodyV1Result?[]
@@ -340,16 +340,16 @@ public partial class EngineModuleTests
     {
         using var chain = await CreateShanghaiBlockChain();
         var rpc = CreateEngineModule(chain);
-        var executionPayloadV21 = await SendNewBlockV2(rpc, chain, withdrawals);
+        var executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
         var txs = BuildTransactions(
-            chain, executionPayloadV21.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
+            chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
 
         chain.AddTransactions(txs);
 
-        var executionPayloadV22 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
+        var executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
 
-        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayloadV22.BlockHash!,
-            executionPayloadV22.BlockHash!, executionPayloadV22.BlockHash!));
+        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload2.BlockHash!,
+            executionPayload2.BlockHash!, executionPayload2.BlockHash!));
 
         var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 3).Result.Data;
         var expected = new ExecutionPayloadBodyV1Result?[]
@@ -388,40 +388,40 @@ public partial class EngineModuleTests
     {
         using var chain = await CreateShanghaiBlockChain();
         var rpc = CreateEngineModule(chain);
-        var executionPayloadV11 = await SendNewBlockV2(rpc, chain, withdrawals);
+        var executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
 
-        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayloadV11.BlockHash!,
-            executionPayloadV11.BlockHash!, executionPayloadV11.BlockHash!));
+        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload1.BlockHash!,
+            executionPayload1.BlockHash!, executionPayload1.BlockHash!));
 
         var head = chain.BlockTree.Head!;
 
         // First branch
         {
             var txsA = BuildTransactions(
-                chain, executionPayloadV11.BlockHash!, TestItem.PrivateKeyA, TestItem.AddressA, 1, 0, out _, out _);
+                chain, executionPayload1.BlockHash!, TestItem.PrivateKeyA, TestItem.AddressA, 1, 0, out _, out _);
 
             chain.AddTransactions(txsA);
 
-            var executionPayloadV22A = await BuildAndGetPayloadResultV2(
+            var executionPayload2 = await BuildAndGetPayloadResultV2(
                 rpc, chain, head.Hash!, head.Hash!, head.Hash!, 1001, Keccak.Zero, Address.Zero, withdrawals);
-            var executePayloadResultA = await rpc.engine_newPayloadV2(executionPayloadV22A);
+            var execResult = await rpc.engine_newPayloadV2(executionPayload2);
 
-            executePayloadResultA.Data.Status.Should().Be(PayloadStatus.Valid);
+            execResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
             var fcuResult = await rpc.engine_forkchoiceUpdatedV2(
-                new ForkchoiceStateV1(executionPayloadV22A.BlockHash!, head.Hash!, head.Hash!));
+                new ForkchoiceStateV1(executionPayload2.BlockHash!, head.Hash!, head.Hash!));
 
             fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
-            var payloadBodiesA = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
-            var expectedA = new ExecutionPayloadBodyV1Result?[]
+            var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
+            var expected = new ExecutionPayloadBodyV1Result?[]
             {
                 new(Array.Empty<Transaction>(), withdrawals),
                 new(txsA, withdrawals),
                 null
             };
 
-            payloadBodiesA.Should().BeEquivalentTo(expectedA, o => o.WithStrictOrdering());
+            payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
         }
 
         // Second branch
@@ -443,15 +443,15 @@ public partial class EngineModuleTests
             await rpc.engine_forkchoiceUpdatedV2(
                 new ForkchoiceStateV1(newBlock.Hash!, newBlock.Hash!, newBlock.Hash!));
 
-            var payloadBodiesB = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
-            var expectedB = new ExecutionPayloadBodyV1Result?[]
+            var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
+            var expected = new ExecutionPayloadBodyV1Result?[]
             {
                 new(Array.Empty<Transaction>(), withdrawals),
                 new(Array.Empty<Transaction>(), withdrawals),
                 null
             };
 
-            payloadBodiesB.Should().BeEquivalentTo(expectedB, o => o.WithStrictOrdering());
+            payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
         }
     }
 
