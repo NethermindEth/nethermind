@@ -23,7 +23,7 @@ namespace Nethermind.Core.Test.Encoding
 
                 if ((encodeBehaviors & RlpBehaviors.Eip658Receipts) != 0)
                 {
-                    receiptBuilder.WithState(null);
+                    receiptBuilder.WithState(null!);
                 }
                 else
                 {
@@ -32,7 +32,7 @@ namespace Nethermind.Core.Test.Encoding
 
                 if (!encodeWithTxHash)
                 {
-                    receiptBuilder.WithTransactionHash(null);
+                    receiptBuilder.WithTransactionHash(null!);
                 }
 
                 if (!withError)

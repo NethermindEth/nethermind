@@ -21,7 +21,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Does_send_on_active_channel()
         {
-            IByteBuffer serialized = PooledByteBufferAllocator.Default.Buffer(2);
+            IByteBuffer serialized = UnpooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
             serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
             serialized.SafeRelease();
@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Does_not_try_to_send_on_inactive_channel()
         {
-            IByteBuffer serialized = PooledByteBufferAllocator.Default.Buffer(2);
+            IByteBuffer serialized = UnpooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
             serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
             serialized.SafeRelease();
@@ -59,7 +59,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public async Task Send_after_delay_if_specified()
         {
-            IByteBuffer serialized = PooledByteBufferAllocator.Default.Buffer(2);
+            IByteBuffer serialized = UnpooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
             serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
             serialized.SafeRelease();

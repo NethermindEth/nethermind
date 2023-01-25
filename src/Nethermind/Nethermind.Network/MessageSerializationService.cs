@@ -3,49 +3,41 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
-using Nethermind.Network.P2P.Subprotocols.Les;
 
 namespace Nethermind.Network
 {
     public class MessageSerializationService : IMessageSerializationService
     {
-        private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _zeroSerializers = new();
+        private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _zeroSerializers = new ConcurrentDictionary<RuntimeTypeHandle, object>();
 
         public T Deserialize<T>(byte[] bytes) where T : MessageBase
         {
-            if (TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
-            {
-                IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(bytes.Length);
-                byteBuffer.WriteBytes(bytes);
-                try
-                {
-                    return zeroMessageSerializer.Deserialize(byteBuffer);
-                }
-                finally
-                {
-                    byteBuffer.SafeRelease();
-                }
-            }
+            if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+                throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
 
-            throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
+            IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(bytes.Length);
+            byteBuffer.WriteBytes(bytes);
+            try
+            {
+                return zeroMessageSerializer.Deserialize(byteBuffer);
+            }
+            finally
+            {
+                byteBuffer.SafeRelease();
+            }
 
         }
 
         public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
         {
-            if (TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
-            {
-                return zeroMessageSerializer.Deserialize(buffer);
-            }
+            if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+                throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
 
-            throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
-
+            return zeroMessageSerializer.Deserialize(buffer);
         }
 
         public void Register(Assembly assembly)
@@ -88,6 +80,9 @@ namespace Nethermind.Network
 
         public IByteBuffer ZeroSerialize<T>(T message, ByteBufferAllocator allocator = ByteBufferAllocator.PooledByteBufferAllocator) where T : MessageBase
         {
+            if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+                throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
+
             void WriteAdaptivePacketType(in IByteBuffer buffer)
             {
                 if (message is P2PMessage p2PMessage)
@@ -97,42 +92,28 @@ namespace Nethermind.Network
             }
 
             int p2pMessageLength = (message is P2PMessage ? sizeof(int) : 0);
-            IByteBuffer byteBuffer;
-            if (TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+            int length = zeroMessageSerializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer
+                ? zeroInnerMessageSerializer.GetLength(message, out _) + p2pMessageLength
+                : 64;
+
+            IByteBuffer byteBuffer = allocator switch
             {
+                ByteBufferAllocator.UnpooledByteBufferAllocator => UnpooledByteBufferAllocator.Default.Buffer(length),
+                ByteBufferAllocator.PooledByteBufferAllocator => PooledByteBufferAllocator.Default.Buffer(length),
+                _ => throw new ArgumentOutOfRangeException(nameof(allocator), allocator, null)
+            };
 
-                switch (allocator)
-                {
-                    case ByteBufferAllocator.UnpooledByteBufferAllocator:
-                        byteBuffer = UnpooledByteBufferAllocator.Default.Buffer(
-                            zeroMessageSerializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializerU
-                                ? zeroInnerMessageSerializerU.GetLength(message, out _) + p2pMessageLength
-                                : 64);
-                        break;
-                    case ByteBufferAllocator.PooledByteBufferAllocator:
-                        byteBuffer = PooledByteBufferAllocator.Default.Buffer(
-                            zeroMessageSerializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializerP
-                                ? zeroInnerMessageSerializerP.GetLength(message, out _) + p2pMessageLength
-                                : 64);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(allocator), allocator, null);
-                }
-
-                try
-                {
-                    WriteAdaptivePacketType(byteBuffer);
-                    zeroMessageSerializer.Serialize(byteBuffer, message);
-                    return byteBuffer;
-                }
-                catch (Exception)
-                {
-                    byteBuffer.SafeRelease();
-                    throw;
-                }
-
+            try
+            {
+                WriteAdaptivePacketType(byteBuffer);
+                zeroMessageSerializer.Serialize(byteBuffer, message);
+                return byteBuffer;
             }
-            throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
+            catch (Exception)
+            {
+                byteBuffer.SafeRelease();
+                throw;
+            }
         }
 
         private bool TryGetZeroSerializer<T>(out IZeroMessageSerializer<T> serializer) where T : MessageBase
@@ -140,7 +121,7 @@ namespace Nethermind.Network
             RuntimeTypeHandle typeHandle = typeof(T).TypeHandle;
             if (!_zeroSerializers.TryGetValue(typeHandle, out object serializerObject))
             {
-                serializer = null;
+                serializer = null!;
                 return false;
             }
 
