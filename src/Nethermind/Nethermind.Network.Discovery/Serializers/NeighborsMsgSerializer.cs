@@ -66,7 +66,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         return rlpStream.DecodeArray(ctx =>
         {
             int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
-            int count = ctx.ReadNumberOfItemsRemaining(lastPosition);
+            int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
 
             ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan();
             IPEndPoint address = GetAddress(ip, ctx.DecodeInt());

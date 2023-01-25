@@ -4,6 +4,7 @@
 using System;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {

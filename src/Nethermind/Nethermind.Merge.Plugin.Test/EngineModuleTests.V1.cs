@@ -517,7 +517,7 @@ public partial class EngineModuleTests
         getPayloadResult.BlockHash = TestItem.KeccakC;
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Invalid);
     }
 
     [Test]
@@ -553,7 +553,7 @@ public partial class EngineModuleTests
     public async Task executePayloadV1_result_is_fail_when_blockchainprocessor_report_exception()
     {
         using MergeTestBlockchain chain = await CreateBaseBlockChain(null, null)
-            .Build(new SingleReleaseSpecProvider(London.Instance, 1));
+            .Build(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         ((TestBlockProcessorInterceptor)chain.BlockProcessor).ExceptionToThrow =
@@ -571,7 +571,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBaseBlockChain()
             .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
-            .Build(new SingleReleaseSpecProvider(London.Instance, 1));
+            .Build(new TestSingleReleaseSpecProvider(London.Instance));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0)
@@ -1064,7 +1064,7 @@ public partial class EngineModuleTests
         resultWrapper2.Data.Status.Should().Be(PayloadStatus.Valid);
         executionPayload.ParentHash = executionPayload.BlockHash!;
         ResultWrapper<PayloadStatusV1> invalidBlockRequest = await rpc.engine_newPayloadV1(executionPayload);
-        invalidBlockRequest.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
+        invalidBlockRequest.Data.Status.Should().Be(PayloadStatus.Invalid);
     }
 
     [TestCase(30)]

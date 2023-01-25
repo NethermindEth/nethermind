@@ -165,7 +165,7 @@ namespace Nethermind.Synchronization.FastSync
             List<StateSyncItem> requestItems = new(length);
 
             // Codes have priority over State Nodes
-            if (CodeItems.Count > 0)
+            if (!CodeItems.IsEmpty)
             {
                 int codeMaxCount = Math.Min(length, CodeItems.Count);
 

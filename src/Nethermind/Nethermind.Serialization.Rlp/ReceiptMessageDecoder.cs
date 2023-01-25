@@ -51,7 +51,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
-            int numberOfReceipts = rlpStream.ReadNumberOfItemsRemaining(lastCheck);
+            int numberOfReceipts = rlpStream.PeekNumberOfItemsRemaining(lastCheck);
             LogEntry[] entries = new LogEntry[numberOfReceipts];
             for (int i = 0; i < numberOfReceipts; i++)
             {

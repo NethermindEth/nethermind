@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (300, 1) } },
                     Transactions =
@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (400, 1) } },
                     Transactions =
@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Test
 
                 ProperTransactionsSelectedTestCase balanceCheckWithGasPremium = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
                     AccountStates = { { TestItem.AddressA, (400, 1) } },
                     Transactions =
@@ -182,10 +182,7 @@ namespace Nethermind.Blockchain.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
-            IReleaseSpec spec = new ReleaseSpec()
-            {
-                IsEip1559Enabled = testCase.Eip1559Enabled
-            };
+            IReleaseSpec spec = testCase.ReleaseSpec;
             specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong?>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
@@ -233,7 +230,7 @@ namespace Nethermind.Blockchain.Test
         public List<Transaction> ExpectedSelectedTransactions { get; } = new();
         public UInt256 MinGasPriceForMining { get; set; } = 1;
 
-        public bool Eip1559Enabled { get; set; }
+        public IReleaseSpec ReleaseSpec { get; set; }
 
         public UInt256 BaseFee { get; set; }
 
@@ -250,13 +247,14 @@ namespace Nethermind.Blockchain.Test
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).WithValue(10)
                         .WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
                 },
-                GasLimit = 10000000
+                GasLimit = 10000000,
+                ReleaseSpec = Berlin.Instance
             };
 
         public static ProperTransactionsSelectedTestCase Eip1559DefaultLegacyTransactions =>
             new()
             {
-                Eip1559Enabled = true,
+                ReleaseSpec = London.Instance,
                 BaseFee = 1.GWei(),
                 AccountStates = { { TestItem.AddressA, (1000, 1) } },
                 Transactions =
@@ -274,7 +272,7 @@ namespace Nethermind.Blockchain.Test
         public static ProperTransactionsSelectedTestCase Eip1559Default =>
             new()
             {
-                Eip1559Enabled = true,
+                ReleaseSpec = London.Instance,
                 BaseFee = 1.GWei(),
                 AccountStates = { { TestItem.AddressA, (1000, 1) } },
                 Transactions =

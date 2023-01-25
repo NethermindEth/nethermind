@@ -174,7 +174,7 @@ namespace Ethereum.Transaction.Test
 
             bool useChainId = transaction.Signature.V > 28UL;
 
-            TxValidator validator = new(useChainId ? ChainId.Mainnet : 0UL);
+            TxValidator validator = new(useChainId ? BlockchainIds.Mainnet : 0UL);
 
             if (validTest != null)
             {
@@ -189,7 +189,7 @@ namespace Ethereum.Transaction.Test
                 Signature expectedSignature = new(validTest.R, validTest.S, validTest.V);
                 Assert.AreEqual(expectedSignature, transaction.Signature, "signature");
 
-                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? ChainId.Mainnet : 0UL, LimboLogs.Instance);
+                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? BlockchainIds.Mainnet : 0UL, LimboLogs.Instance);
                 bool verified = ecdsa.Verify(
                     validTest.Sender,
                     transaction);

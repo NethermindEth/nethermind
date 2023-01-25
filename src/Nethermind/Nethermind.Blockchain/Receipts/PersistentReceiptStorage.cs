@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -172,9 +173,10 @@ namespace Nethermind.Blockchain.Receipts
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(block.Header);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
-            RlpStream stream = new RlpStream(StorageDecoder.GetLength(txReceipts, behaviors));
-            StorageDecoder.Encode(stream, txReceipts, behaviors);
-            _blocksDb.Set(block.Hash!, stream.Data);
+            using (NettyRlpStream stream = StorageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
+            {
+                _blocksDb.Set(block.Hash!, stream.AsSpan());
+            }
 
             if (blockNumber < MigratedBlockNumber)
             {

@@ -31,6 +31,7 @@ using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.AuRa.Test.Validators
 {
@@ -492,8 +493,8 @@ namespace Nethermind.AuRa.Test.Validators
                     blockNumber = test.Current.BlockNumber + i;
                 }
 
-                if (hashSeeds.ContainsKey(blockNumber))
-                    hashSeeds[blockNumber]++;
+                if (hashSeeds.TryGetValue(blockNumber, out int value))
+                    value++;
                 else
                     hashSeeds[blockNumber] = 0;
 
@@ -551,8 +552,8 @@ namespace Nethermind.AuRa.Test.Validators
 
             Address validators = TestItem.Addresses[initialValidatorsIndex * 10];
             InMemoryReceiptStorage inMemoryReceiptStorage = new();
-            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().WithTransactions(inMemoryReceiptStorage,
-                    RopstenSpecProvider.Instance, delegate (Block block, Transaction transaction)
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(RopstenSpecProvider.Instance)
+                .WithTransactions(inMemoryReceiptStorage, delegate (Block block, Transaction transaction)
                     {
                         byte i = 0;
                         return new[]

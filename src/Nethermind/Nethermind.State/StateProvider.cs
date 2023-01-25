@@ -79,9 +79,9 @@ namespace Nethermind.State
 
         public bool AccountExists(Address address)
         {
-            if (_intraBlockCache.ContainsKey(address))
+            if (_intraBlockCache.TryGetValue(address, out Stack<int> value))
             {
-                return _changes[_intraBlockCache[address].Peek()]!.ChangeType != ChangeType.Delete;
+                return _changes[value.Peek()]!.ChangeType != ChangeType.Delete;
             }
 
             return GetAndAddToCache(address) is not null;
@@ -670,9 +670,9 @@ namespace Nethermind.State
 
         private Account? GetThroughCache(Address address)
         {
-            if (_intraBlockCache.ContainsKey(address))
+            if (_intraBlockCache.TryGetValue(address, out Stack<int> value))
             {
-                return _changes[_intraBlockCache[address].Peek()]!.Account;
+                return _changes[value.Peek()]!.Account;
             }
 
             Account account = GetAndAddToCache(address);

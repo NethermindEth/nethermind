@@ -28,7 +28,7 @@ namespace Nethermind.Core.Test.Encoding
             yield return (Build.A.Transaction
                 .WithData(new byte[] { 1, 2, 3 })
                 .WithType(TxType.AccessList)
-                .WithChainId(1)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
                     new AccessList(
                         new Dictionary<Address, IReadOnlySet<UInt256>>
@@ -40,7 +40,7 @@ namespace Nethermind.Core.Test.Encoding
                 .WithData(new byte[] { 1, 2, 3 })
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(30)
-                .WithChainId(1)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
                     new AccessList(
                         new Dictionary<Address, IReadOnlySet<UInt256>>
@@ -69,7 +69,7 @@ namespace Nethermind.Core.Test.Encoding
             _txDecoder.Encode(rlpStream, testCase.Tx);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(rlpStream);
-            decoded!.SenderAddress = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance).RecoverAddress(decoded);
+            decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
         }
@@ -84,7 +84,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
-            decoded!.SenderAddress = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance).RecoverAddress(decoded);
+            decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
         }

@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
+using Nethermind.Serialization.Rlp;
 using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nethermind.Network.Rlpx.Handshake

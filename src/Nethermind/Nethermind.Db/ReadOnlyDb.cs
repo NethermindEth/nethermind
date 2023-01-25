@@ -90,6 +90,15 @@ namespace Nethermind.Db
         }
 
         public Span<byte> GetSpan(byte[] key) => this[key].AsSpan();
+        public void PutSpan(byte[] keyBytes, ReadOnlySpan<byte> value)
+        {
+            if (!_createInMemWriteStore)
+            {
+                throw new InvalidOperationException($"This {nameof(ReadOnlyDb)} did not expect any writes.");
+            }
+
+            _memDb[keyBytes] = value.ToArray();
+        }
 
         public void DangerousReleaseMemory(in Span<byte> span) { }
     }

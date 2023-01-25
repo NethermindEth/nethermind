@@ -5,6 +5,7 @@
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P
