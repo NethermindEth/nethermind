@@ -24,12 +24,14 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
 using Newtonsoft.Json;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -1666,7 +1668,6 @@ public partial class EngineModuleTests
     {
         using var chain = await CreateBlockChain();
         var rpcModule = CreateEngineModule(chain);
-
         var expected = new[]
         {
             "engine_exchangeTransitionConfigurationV1",
@@ -1684,6 +1685,22 @@ public partial class EngineModuleTests
         var result = await rpcModule.engine_exchangeCapabilities(expected);
 
         result.Data.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public async Task Should_warn_for_missing_capabilities()
+    {
+        using var chain = await CreateBlockChain();
+        chain.LogManager = Substitute.For<ILogManager>();
+        chain.LogManager.GetClassLogger().IsWarn.Returns(true);
+
+        var rpcModule = CreateEngineModule(chain);
+        var unsupportedMethod = "unsupportedMethod";
+
+        var result = await rpcModule.engine_exchangeCapabilities(new[] { unsupportedMethod });
+
+        chain.LogManager.GetClassLogger().Received().Warn(
+            Arg.Is<string>(a => a.Contains(unsupportedMethod, StringComparison.Ordinal)));
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(
