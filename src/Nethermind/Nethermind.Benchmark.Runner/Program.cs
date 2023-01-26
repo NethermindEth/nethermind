@@ -35,7 +35,7 @@ namespace Nethermind.Benchmark.Runner
 
         static void Main(string[] args)
         {
-            IConfig config = new DashboardConfig(Enumerable.Empty<string>(), Job.MediumRun.WithRuntime(CoreRuntime.Core60));
+            IConfig config = new DashboardConfig(Enumerable.Empty<string>(), Job.MediumRun.WithRuntime(CoreRuntime.Core70));
             List<Assembly> assemblies = new List<Assembly>();
 
 
@@ -67,7 +67,7 @@ namespace Nethermind.Benchmark.Runner
 
         private static void ExecuteFullBenchmark(IEnumerable<string> filters)
         {
-            var config = new DashboardConfig(filters, Job.MediumRun.WithRuntime(CoreRuntime.Core60));
+            var config = new DashboardConfig(filters, Job.MediumRun.WithRuntime(CoreRuntime.Core70));
 
             Assembly[] assemblies =
             {
@@ -94,7 +94,7 @@ namespace Nethermind.Benchmark.Runner
 
         private static void ExecutePrecompilesBytecodeBenchmark(IEnumerable<string> filters)
         {
-            var config = new NoOutputConfig(filters, Job.ShortRun.WithRuntime(CoreRuntime.Core60));
+            var config = new NoOutputConfig(filters, Job.ShortRun.WithRuntime(CoreRuntime.Core70));
 
             var firstLine = true;
             var summary = BenchmarkRunner.Run<PrecompilesBytecodeBenchmark>(config);
@@ -136,7 +136,7 @@ namespace Nethermind.Benchmark.Runner
                 typeof(Nethermind.Precompiles.Benchmark.Sha256Benchmark),
             };
 
-            var config = new NoOutputConfig(filters, Job.ShortRun.WithRuntime(CoreRuntime.Core60));
+            var config = new NoOutputConfig(filters, Job.ShortRun.WithRuntime(CoreRuntime.Core70));
 
             var firstLine = true;
             foreach (var bType in benchmarkTypes)
@@ -158,14 +158,15 @@ namespace Nethermind.Benchmark.Runner
                     var parameterJson = Newtonsoft.Json.JsonConvert.SerializeObject(report.BenchmarkCase.Parameters.Items[0].Value);
                     dynamic parameter = Newtonsoft.Json.JsonConvert.DeserializeObject(parameterJson);
 
-                    long gasCost = parameter.GasCost;
+                    long? gasCost = parameter.GasCost;
                     string testName = parameter.Name;
 
                     // if gas is missing try to extract from the file name
-                    if (gasCost == 0 && testName.EndsWith(".csv"))
+                    if ((gasCost ?? 0) == 0 && testName.EndsWith(".csv"))
                     {
                         var gasCostString = testName.Substring(0, testName.Length - 4).Split('_').Last();
-                        long.TryParse(gasCostString, out gasCost);
+                        long.TryParse(gasCostString, out var gasCostInternal);
+                        gasCost = gasCostInternal;
                     }
 
                     var memAllocPerOp = report.GcStats.GetBytesAllocatedPerOperation(report.BenchmarkCase);
