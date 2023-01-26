@@ -7,15 +7,25 @@
 
     <ItemGroup>
       <PackageReference Include="BenchmarkDotNet" Version="0.13.4" />
+      <PackageReference Include="CommandLineParser" Version="2.9.1" />
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Benchmark.Bytecode\Nethermind.Benchmark.Bytecode.csproj" />
       <ProjectReference Include="..\Nethermind.Benchmark\Nethermind.Benchmark.csproj" />
       <ProjectReference Include="..\Nethermind.EthereumTests.Benchmark\Nethermind.EthereumTests.Benchmark.csproj" />
       <ProjectReference Include="..\Nethermind.Evm.Benchmark\Nethermind.Evm.Benchmark.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc.Benchmark\Nethermind.JsonRpc.Benchmark.csproj" />
       <ProjectReference Include="..\Nethermind.Network.Benchmark\Nethermind.Network.Benchmark.csproj" />
       <ProjectReference Include="..\Nethermind.Precompiles.Benchmark\Nethermind.Precompiles.Benchmark.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Content Include="..\..\tests\bytecodes\precompiles\*.*">
+        <Link>bytecodes\precompiles\%(RecursiveDir)%(FileName)%(Extension)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
     </ItemGroup>
 
 </Project>
