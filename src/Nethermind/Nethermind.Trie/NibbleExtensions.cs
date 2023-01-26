@@ -31,6 +31,7 @@ namespace Nethermind.Trie
             }
         }
 
+        //Possible to be removed (0 references)
         public static Nibble[] FromHexString(string hexString)
         {
             if (hexString is null)
