@@ -225,13 +225,14 @@ namespace Ethereum.Test.Base
                     }
 
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
+                    correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
                     if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block))
                     {
                         blockTree.SuggestBlock(correctRlp[i].Block);
                     }
                     else
                     {
-                        Console.WriteLine("Invalid block");
+                        _logger.Info("Invalid block");
                     }
                 }
                 catch (InvalidBlockException)
@@ -239,7 +240,7 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Info(ex.ToString());
+                    _logger.Info(ex.ToString());
                 }
             }
 
@@ -286,7 +287,7 @@ namespace Ethereum.Test.Base
                         correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
                     }
                 }
-                catch (RlpException e)
+                catch (Exception e) when (e is RlpException || e is IndexOutOfRangeException)
                 {
                     if (testBlockJson.ExpectedException is null)
                     {
