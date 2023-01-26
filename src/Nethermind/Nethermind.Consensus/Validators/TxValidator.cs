@@ -100,8 +100,6 @@ namespace Nethermind.Consensus.Validators
 
         private static bool Validate4844Fields(Transaction transaction)
         {
-            const int maxBlobsPerTransaction = 4;
-
             if (transaction.Type != TxType.Blob)
             {
                 return true;
@@ -109,14 +107,19 @@ namespace Nethermind.Consensus.Validators
 
             if (transaction.MaxFeePerDataGas is null ||
                 transaction.BlobVersionedHashes is null ||
-                transaction.BlobVersionedHashes?.Length > maxBlobsPerTransaction)
+                transaction.BlobVersionedHashes?.Length > Eip4844Constants.MaxBlobsPerTransaction)
             {
                 return false;
             }
 
             // Validate network form
-            if (transaction.BlobKzgs is not null)
+            if (transaction.Blobs is not null || transaction.BlobKzgs is not null || transaction.BlobProofs is not null)
             {
+                if (transaction.BlobKzgs is null)
+                {
+                    return false;
+                }
+
                 Span<byte> hash = stackalloc byte[32];
                 Span<byte> commitements = transaction.BlobKzgs;
                 for (int i = 0, n = 0;
@@ -130,10 +133,7 @@ namespace Nethermind.Consensus.Validators
                         return false;
                     }
                 }
-            }
 
-            if (transaction.Blobs is not null || transaction.BlobKzgs is not null || transaction.BlobProofs is not null)
-            {
                 return KzgPolynomialCommitments.AreProofsValid(transaction.Blobs!,
                     transaction.BlobKzgs!, transaction.BlobProofs!);
             }

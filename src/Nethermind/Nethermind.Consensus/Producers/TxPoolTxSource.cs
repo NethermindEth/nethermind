@@ -76,14 +76,14 @@ namespace Nethermind.Consensus.Producers
                 {
                     if (tx.Type == TxType.Blob)
                     {
-                        if ((blobsCounter + tx.BlobVersionedHashes.Length) > 4)
+                        if ((blobsCounter + tx.BlobVersionedHashes?.Length ?? 0) > Eip4844Constants.MaxBlobsPerBlock)
                         {
                             if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, no more blob space.");
                             continue;
                         }
                         else
                         {
-                            blobsCounter += tx.BlobVersionedHashes.Length;
+                            blobsCounter += tx.BlobVersionedHashes?.Length ?? 0;
                             if (_logger.IsTrace) _logger.Trace($"Including blob tx {tx.ToShortString()}, total blobs included: {blobsCounter}.");
                         }
                     }
