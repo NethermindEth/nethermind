@@ -141,6 +141,11 @@ namespace Nethermind.Evm.TransactionProcessing
             bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
 
+            if (UInt256.MaxValue == block.ParentExcessDataGas && spec.IsEip4844Enabled)
+            {
+                throw new InvalidOperationException();
+            }
+
             if (!notSystemTransaction)
             {
                 spec = new SystemTransactionReleaseSpec(spec);
@@ -177,10 +182,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 TraceLogInvalidTx(transaction, "SENDER_IS_CONTRACT");
                 QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender has deployed code");
                 return;
-            }
-            if (UInt256.MaxValue == block.ParentExcessDataGas && spec.IsEip4844Enabled)
-            {
-                throw new InvalidOperationException();
             }
 
             if (!noValidation && transaction.Nonce >= ulong.MaxValue - 1)
@@ -256,13 +257,13 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             UInt256 blobsGasCost = IntrinsicGasCalculator.CalculateBlobsGasCost(transaction, block.ParentExcessDataGas, spec);
-            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : ((ulong)gasLimit * effectiveGasPrice + blobsGasCost);
+            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : ((ulong)gasLimit * effectiveGasPrice);
 
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
                 if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value + blobsGasCost > senderBalance ||
-                                      senderReservedGasPayment + value > senderBalance))
+                                      senderReservedGasPayment + value + blobsGasCost > senderBalance))
                 {
                     TraceLogInvalidTx(transaction,
                         $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
@@ -271,7 +272,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree() &&
-                    senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
+                    senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value + blobsGasCost)
                 {
                     TraceLogInvalidTx(transaction,
                         $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
@@ -510,6 +511,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>(), stateRoot);
                 }
             }
+            _stateProvider.SubtractFromBalance(caller, blobsGasCost, spec);
         }
 
         private void PrepareAccountForContractDeployment(Address contractAddress, IReleaseSpec spec)
