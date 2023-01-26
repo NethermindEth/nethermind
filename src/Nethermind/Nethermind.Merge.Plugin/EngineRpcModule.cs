@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -17,7 +15,8 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    private static IEnumerable<string>? _capabilities;
+
+    private readonly IAsyncHandler<IEnumerable<string>, IEnumerable<string>> _capabilitiesHandler;
     private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
     private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result?[]> _executionGetPayloadBodiesByHashV1Handler;
     private readonly IGetPayloadBodiesByRangeV1Handler _executionGetPayloadBodiesByRangeV1Handler;
@@ -33,9 +32,11 @@ public partial class EngineRpcModule : IEngineRpcModule
         IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result?[]> executionGetPayloadBodiesByHashV1Handler,
         IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
+        IAsyncHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         ISpecProvider specProvider,
         ILogManager logManager)
     {
+        _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));
         _getPayloadHandlerV1 = getPayloadHandlerV1;
         _getPayloadHandlerV2 = getPayloadHandlerV2;
         _newPayloadV1Handler = newPayloadV1Handler;
@@ -48,56 +49,14 @@ public partial class EngineRpcModule : IEngineRpcModule
         _logger = logManager.GetClassLogger();
     }
 
-    public async Task<ResultWrapper<IEnumerable<string>>> engine_exchangeCapabilities(IEnumerable<string> methods)
-    {
-        ArgumentNullException.ThrowIfNull(methods);
-
-        if (await _locker.WaitAsync(1_000))
-        {
-            var watch = Stopwatch.StartNew();
-
-            try
-            {
-                _capabilities ??= typeof(IEngineRpcModule).GetMethods()
-                    .Select(m => m.Name)
-                    .Where(m => !m.Equals(nameof(engine_exchangeCapabilities), StringComparison.Ordinal))
-                    .Order();
-
-                var unsupported = methods.Except(_capabilities);
-
-                if (unsupported.Any())
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Unsupported capabilities: {string.Join(", ", unsupported)}");
-                }
-
-                return ResultWrapper<IEnumerable<string>>.Success(_capabilities);
-            }
-            finally
-            {
-                watch.Stop();
-
-                Metrics.ForkchoiceUpdedExecutionTime = watch.ElapsedMilliseconds;
-
-                _locker.Release();
-            }
-        }
-        else
-        {
-            if (_logger.IsWarn) _logger.Warn($"{nameof(engine_exchangeCapabilities)} timed out");
-
-            return ResultWrapper<IEnumerable<string>>.Fail("Timed out", ErrorCodes.Timeout);
-        }
-    }
+    public Task<ResultWrapper<IEnumerable<string>>> engine_exchangeCapabilities(IEnumerable<string> methods)
+        => _capabilitiesHandler.HandleAsync(methods);
 
     public ResultWrapper<ExecutionStatusResult> engine_executionStatus() => _executionStatusHandler.Handle();
 
-    public async Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes)
-    {
-        return await _executionGetPayloadBodiesByHashV1Handler.HandleAsync(blockHashes);
-    }
+    public Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes)
+        => _executionGetPayloadBodiesByHashV1Handler.HandleAsync(blockHashes);
 
-    public async Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByRangeV1(long start, long count)
-    {
-        return await _executionGetPayloadBodiesByRangeV1Handler.Handle(start, count);
-    }
+    public Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByRangeV1(long start, long count)
+        => _executionGetPayloadBodiesByRangeV1Handler.Handle(start, count);
 }

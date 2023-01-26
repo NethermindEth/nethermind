@@ -1695,12 +1695,14 @@ public partial class EngineModuleTests
         chain.LogManager.GetClassLogger().IsWarn.Returns(true);
 
         var rpcModule = CreateEngineModule(chain);
-        var unsupportedMethod = "unsupportedMethod";
+        var list = new[] { "missing" };
 
-        var result = await rpcModule.engine_exchangeCapabilities(new[] { unsupportedMethod });
+        var result = await rpcModule.engine_exchangeCapabilities(list);
 
-        chain.LogManager.GetClassLogger().Received().Warn(
-            Arg.Is<string>(a => a.Contains(unsupportedMethod, StringComparison.Ordinal)));
+        chain.LogManager.GetClassLogger().Received(2).Warn(
+            Arg.Is<string>(a =>
+                a.Contains(result.Data.First(), StringComparison.Ordinal) ||
+                a.Contains(list.First(), StringComparison.Ordinal)));
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(
