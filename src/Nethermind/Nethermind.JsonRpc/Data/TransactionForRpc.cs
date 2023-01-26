@@ -44,7 +44,7 @@ public class TransactionForRpc
         if (signature is not null)
         {
 
-            YParity = (transaction.IsEip1559 || transaction.IsEip2930) ? signature.RecoveryId : null;
+            YParity = transaction.IsEip2930 ? signature.RecoveryId : null;
             R = new UInt256(signature.R, true);
             S = new UInt256(signature.S, true);
             V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;

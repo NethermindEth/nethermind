@@ -31,9 +31,9 @@ namespace Nethermind.Core
         public UInt256 MaxPriorityFeePerGas => GasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => IsEip1559 ? DecodedMaxFeePerGas : GasPrice;
-        public bool IsEip1559 => Type == TxType.EIP1559 || Type == TxType.Blob;
-        public bool IsEip2930 => Type == TxType.AccessList;
-        public bool IsEip4844 => Type == TxType.Blob;
+        public bool IsEip1559 => Type >= TxType.EIP1559;
+        public bool IsEip2930 => Type >= TxType.AccessList;
+        public bool IsEip4844 => Type >= TxType.Blob;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
