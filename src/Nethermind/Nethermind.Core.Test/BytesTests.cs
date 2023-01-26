@@ -38,11 +38,17 @@ namespace Nethermind.Core.Test
         [TestCase("0x123", 1)]
         [TestCase("0x0123", 1)]
         [TestCase("123", 1)]
-        [TestCase("0123", 1)]
+        [TestCase("0123", 1)]        
         public void FromHexString(string hexString, byte expectedResult)
         {
             byte[] bytes = Bytes.FromHexString(hexString);
             Assert.AreEqual(bytes[0], expectedResult, "new");
+        }
+
+        [TestCase(null)]
+        public void FromHexStringThrows(string hexString)
+        {
+            Assert.That(() => Bytes.FromHexString(hexString), Throws.TypeOf<ArgumentNullException>());
         }
 
         [TestCase("0x07", "0x7", true, true)]
