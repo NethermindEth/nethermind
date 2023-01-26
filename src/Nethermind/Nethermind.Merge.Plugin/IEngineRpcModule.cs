@@ -14,17 +14,17 @@ namespace Nethermind.Merge.Plugin;
 public partial interface IEngineRpcModule : IRpcModule
 {
     [JsonRpcMethod(
+        Description = "Returns the currently supported list of Engine API methods.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<IEnumerable<string>>> engine_exchangeCapabilities(IEnumerable<string> methods);
+
+    [JsonRpcMethod(
         Description =
             "Responds with information on the state of the execution client to either engine_consensusStatus or any other call if consistency failure has occurred.",
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<ExecutionStatusResult> engine_executionStatus();
-
-    [JsonRpcMethod(
-        Description = "Returns the currently supported list of Engine API methods.",
-        IsSharable = true,
-        IsImplemented = true)]
-    ResultWrapper<IEnumerable<string>> engine_getCapabilities();
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the list of provided block hashes.",

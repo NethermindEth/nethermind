@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -47,17 +48,48 @@ public partial class EngineRpcModule : IEngineRpcModule
         _logger = logManager.GetClassLogger();
     }
 
-    public ResultWrapper<ExecutionStatusResult> engine_executionStatus() => _executionStatusHandler.Handle();
-
-    public ResultWrapper<IEnumerable<string>> engine_getCapabilities()
+    public async Task<ResultWrapper<IEnumerable<string>>> engine_exchangeCapabilities(IEnumerable<string> methods)
     {
-        _capabilities ??= typeof(IEngineRpcModule).GetMethods()
-            .Select(m => m.Name)
-            .Where(m => !m.Equals(nameof(engine_getCapabilities), StringComparison.Ordinal))
-            .Order();
+        ArgumentNullException.ThrowIfNull(methods);
 
-        return ResultWrapper<IEnumerable<string>>.Success(_capabilities);
+        if (await _locker.WaitAsync(1_000))
+        {
+            var watch = Stopwatch.StartNew();
+
+            try
+            {
+                _capabilities ??= typeof(IEngineRpcModule).GetMethods()
+                    .Select(m => m.Name)
+                    .Where(m => !m.Equals(nameof(engine_exchangeCapabilities), StringComparison.Ordinal))
+                    .Order();
+
+                var unsupported = methods.Except(_capabilities);
+
+                if (unsupported.Any())
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Unsupported capabilities: {string.Join(", ", unsupported)}");
+                }
+
+                return ResultWrapper<IEnumerable<string>>.Success(_capabilities);
+            }
+            finally
+            {
+                watch.Stop();
+
+                Metrics.ForkchoiceUpdedExecutionTime = watch.ElapsedMilliseconds;
+
+                _locker.Release();
+            }
+        }
+        else
+        {
+            if (_logger.IsWarn) _logger.Warn($"{nameof(engine_exchangeCapabilities)} timed out");
+
+            return ResultWrapper<IEnumerable<string>>.Fail("Timed out", ErrorCodes.Timeout);
+        }
     }
+
+    public ResultWrapper<ExecutionStatusResult> engine_executionStatus() => _executionStatusHandler.Handle();
 
     public async Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes)
     {

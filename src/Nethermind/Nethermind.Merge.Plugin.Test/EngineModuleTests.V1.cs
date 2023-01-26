@@ -1667,12 +1667,21 @@ public partial class EngineModuleTests
         using var chain = await CreateBlockChain();
         var rpcModule = CreateEngineModule(chain);
 
-        var expected = typeof(IEngineRpcModule).GetMethods()
-            .Select(m => m.Name)
-            .Where(m => !m.Equals(nameof(IEngineRpcModule.engine_getCapabilities), StringComparison.Ordinal))
-            .Order();
+        var expected = new[]
+        {
+            "engine_exchangeTransitionConfigurationV1",
+            "engine_executionStatus",
+            "engine_forkchoiceUpdatedV1",
+            "engine_forkchoiceUpdatedV2",
+            "engine_getPayloadBodiesByHashV1",
+            "engine_getPayloadBodiesByRangeV1",
+            "engine_getPayloadV1",
+            "engine_getPayloadV2",
+            "engine_newPayloadV1",
+            "engine_newPayloadV2"
+        };
 
-        var result = rpcModule.engine_getCapabilities();
+        var result = await rpcModule.engine_exchangeCapabilities(expected);
 
         result.Data.Should().BeEquivalentTo(expected);
     }
