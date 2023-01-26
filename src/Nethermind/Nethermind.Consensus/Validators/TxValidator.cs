@@ -117,7 +117,7 @@ namespace Nethermind.Consensus.Validators
 
         private bool Validate4844Fields(Transaction transaction)
         {
-            const int maxBlobsPerTransaction = 2;
+            const int maxBlobsPerTransaction = 4;
 
             if (transaction.Type != TxType.Blob)
             {
