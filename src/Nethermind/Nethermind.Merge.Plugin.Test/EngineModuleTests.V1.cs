@@ -1686,12 +1686,18 @@ public partial class EngineModuleTests
         chain.LogManager.GetClassLogger().IsWarn.Returns(true);
 
         var rpcModule = CreateEngineModule(chain);
-        var list = new[] { "missing" };
+        var list = new[]
+        {
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)
+        };
 
         var result = await rpcModule.engine_exchangeCapabilities(list);
 
         chain.LogManager.GetClassLogger().Received().Warn(
-            Arg.Is<string>(a => a.Contains(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), StringComparison.Ordinal)));
+            Arg.Is<string>(a =>
+                a.Contains(nameof(IEngineRpcModule.engine_getPayloadV1), StringComparison.Ordinal) &&
+                !a.Contains(nameof(IEngineRpcModule.engine_getPayloadV2), StringComparison.Ordinal)));
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(
