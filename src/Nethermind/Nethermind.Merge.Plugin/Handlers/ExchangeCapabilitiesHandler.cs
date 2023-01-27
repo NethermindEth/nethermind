@@ -29,16 +29,21 @@ public class ExchangeCapabilitiesHandler : IAsyncHandler<IEnumerable<string>, IE
         {
             var spec = specProvider.GetSpec((long.MaxValue, ulong.MaxValue));
 
+            #region The Merge
             _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = true;
             _capabilities[nameof(IEngineRpcModule.engine_executionStatus)] = true;
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = true;
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = true;
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = true;
+            #endregion
+
+            #region Shanghai
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)] = spec.WithdrawalsEnabled;
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1)] = spec.WithdrawalsEnabled;
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = true;
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV2)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = true;
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV2)] = spec.WithdrawalsEnabled;
+            #endregion
         }
     }
 
