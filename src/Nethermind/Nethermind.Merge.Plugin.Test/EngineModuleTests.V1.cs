@@ -1668,19 +1668,10 @@ public partial class EngineModuleTests
     {
         using var chain = await CreateBlockChain();
         var rpcModule = CreateEngineModule(chain);
-        var expected = new[]
-        {
-            "engine_exchangeTransitionConfigurationV1",
-            "engine_executionStatus",
-            "engine_forkchoiceUpdatedV1",
-            "engine_forkchoiceUpdatedV2",
-            "engine_getPayloadBodiesByHashV1",
-            "engine_getPayloadBodiesByRangeV1",
-            "engine_getPayloadV1",
-            "engine_getPayloadV2",
-            "engine_newPayloadV1",
-            "engine_newPayloadV2"
-        };
+        var expected = typeof(IEngineRpcModule).GetMethods()
+            .Select(m => m.Name)
+            .Where(m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
+            .Order();
 
         var result = await rpcModule.engine_exchangeCapabilities(expected);
 
@@ -1699,10 +1690,8 @@ public partial class EngineModuleTests
 
         var result = await rpcModule.engine_exchangeCapabilities(list);
 
-        chain.LogManager.GetClassLogger().Received(2).Warn(
-            Arg.Is<string>(a =>
-                a.Contains(result.Data.First(), StringComparison.Ordinal) ||
-                a.Contains(list.First(), StringComparison.Ordinal)));
+        chain.LogManager.GetClassLogger().Received().Warn(
+            Arg.Is<string>(a => a.Contains(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), StringComparison.Ordinal)));
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(

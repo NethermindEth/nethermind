@@ -100,7 +100,7 @@ public partial class EngineModuleTests
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
-            new ExchangeCapabilitiesHandler(chain.LogManager),
+            new ExchangeCapabilitiesHandler(chain.SpecProvider, chain.LogManager),
             chain.SpecProvider,
             chain.LogManager);
     }
