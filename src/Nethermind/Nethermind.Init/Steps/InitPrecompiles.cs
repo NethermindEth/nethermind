@@ -21,7 +21,7 @@ public class InitPrecompiles : IStep
 
     public async Task Execute(CancellationToken cancellationToken)
     {
-        if (_api.SpecProvider!.GetSpec(long.MaxValue, ulong.MaxValue).IsEip4844Enabled)
+        if (_api.SpecProvider!.GetFinalSpec().IsEip4844Enabled)
         {
             ILogger logger = _api.LogManager.GetClassLogger<InitPrecompiles>();
 
