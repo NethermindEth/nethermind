@@ -24,12 +24,14 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
 using Newtonsoft.Json;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -1659,6 +1661,43 @@ public partial class EngineModuleTests
                          currentBlockHash == forkChoiceState3.SafeBlockHash ||
                          currentBlockHash == forkChoiceState3.FinalizedBlockHash);
         }
+    }
+
+    [Test]
+    public async Task Should_return_capabilities()
+    {
+        using var chain = await CreateBlockChain();
+        var rpcModule = CreateEngineModule(chain);
+        var expected = typeof(IEngineRpcModule).GetMethods()
+            .Select(m => m.Name)
+            .Where(m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
+            .Order();
+
+        var result = await rpcModule.engine_exchangeCapabilities(expected);
+
+        result.Data.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public async Task Should_warn_for_missing_capabilities()
+    {
+        using var chain = await CreateBlockChain();
+        chain.LogManager = Substitute.For<ILogManager>();
+        chain.LogManager.GetClassLogger().IsWarn.Returns(true);
+
+        var rpcModule = CreateEngineModule(chain);
+        var list = new[]
+        {
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)
+        };
+
+        var result = await rpcModule.engine_exchangeCapabilities(list);
+
+        chain.LogManager.GetClassLogger().Received().Warn(
+            Arg.Is<string>(a =>
+                a.Contains(nameof(IEngineRpcModule.engine_getPayloadV1), StringComparison.Ordinal) &&
+                !a.Contains(nameof(IEngineRpcModule.engine_getPayloadV2), StringComparison.Ordinal)));
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(
