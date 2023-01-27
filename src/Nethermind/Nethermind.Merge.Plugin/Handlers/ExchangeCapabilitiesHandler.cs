@@ -27,7 +27,7 @@ public class ExchangeCapabilitiesHandler : IAsyncHandler<IEnumerable<string>, IE
 
     public async Task<ResultWrapper<IEnumerable<string>>> HandleAsync(IEnumerable<string> methods)
     {
-        var task = Task.Run(() => CheckCapabilitiesAsync(methods));
+        var task = Task.Run(() => CheckCapabilities(methods));
 
         try
         {
@@ -43,7 +43,7 @@ public class ExchangeCapabilitiesHandler : IAsyncHandler<IEnumerable<string>, IE
         }
     }
 
-    private void CheckCapabilitiesAsync(IEnumerable<string> methods)
+    private void CheckCapabilities(IEnumerable<string> methods)
     {
         _capabilities ??= typeof(IEngineRpcModule).GetMethods()
             .Select(m => m.Name)
