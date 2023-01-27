@@ -202,14 +202,23 @@ namespace Nethermind.Core2
             {
                 throw new ArgumentNullException($"{nameof(hexString)}");
             }
+            ReadOnlySpan<char> spanned;
 
-            if (hexString.StartsWith("0x"))
-                hexString = hexString.Substring(2);
-            if (hexString.Length % 2 != 0)
+            if (hexString[0] == '0' && hexString[1] == 'x')
             {
-                hexString = "0" + hexString;
+                if (hexString.Length % 2 != 0)
+                    hexString = hexString.Insert(2, "0");
+
+                spanned = hexString.AsSpan(2);
             }
-            return Convert.FromHexString(hexString);
+            else
+            {
+                if (hexString.Length % 2 != 0)
+                    hexString = hexString.Insert(0, "0");
+                spanned = hexString.AsSpan();
+            }
+
+            return Convert.FromHexString(spanned);
         }
     }
 }
