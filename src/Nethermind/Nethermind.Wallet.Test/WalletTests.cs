@@ -52,20 +52,20 @@ namespace Nethermind.Wallet.Test
                             break;
                         }
                     case WalletType.ProtectedKeyStore:
-                    {
-                        IKeyStoreConfig config = new KeyStoreConfig();
-                        config.KeyStoreDirectory = _keyStorePath.Path;
-                        ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
-                        ProtectedKeyStoreWallet wallet = new ProtectedKeyStoreWallet(
-                            new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
-                            new ProtectedPrivateKeyFactory(config.KeyStoreDirectory, new CryptoRandom(), Timestamper.Default),
-                            Timestamper.Default,
-                            LimboLogs.Instance);
-                        wallet.SetupTestAccounts(3);
+                        {
+                            IKeyStoreConfig config = new KeyStoreConfig();
+                            config.KeyStoreDirectory = _keyStorePath.Path;
+                            ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
+                            ProtectedKeyStoreWallet wallet = new ProtectedKeyStoreWallet(
+                                new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
+                                new ProtectedPrivateKeyFactory(config.KeyStoreDirectory, new CryptoRandom(), Timestamper.Default),
+                                Timestamper.Default,
+                                LimboLogs.Instance);
+                            wallet.SetupTestAccounts(3);
 
-                        Wallet = wallet;
-                        break;
-                    }
+                            Wallet = wallet;
+                            break;
+                        }
                     default:
                         throw new ArgumentOutOfRangeException(nameof(walletType), walletType, null);
                 }

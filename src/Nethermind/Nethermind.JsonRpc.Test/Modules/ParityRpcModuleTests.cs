@@ -352,7 +352,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ConnectedPeers.Returns(new List<Peer> { new(new Node(TestItem.PublicKeyA, "111.1.1.1", 11111, true)) });
 
             IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }), MainnetSpecProvider.Instance, peerManager);
+                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, string.Empty), MainnetSpecProvider.Instance, peerManager);
 
             string serialized = RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":1,\"max\":0,\"peers\":[]},\"id\":67}";
@@ -380,7 +380,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPeerManager peerManager = Substitute.For<IPeerManager>();
 
             IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }), MainnetSpecProvider.Instance, peerManager);
+                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, string.Empty), MainnetSpecProvider.Instance, peerManager);
             string serialized = RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":0,\"max\":0,\"peers\":[]},\"id\":67}";
             Assert.AreEqual(expectedResult, serialized);
