@@ -1,27 +1,32 @@
-name: Build Solution
+name: Build solutions
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ 'master' ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ 'master' ]
 
 defaults:
   run:
     working-directory: src/Nethermind
-    
+
+env:
+  BUILD_CONFIG: release
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - name: Check out repository
+      uses: actions/checkout@v3
       with:
+        fetch-depth: 0
         submodules: recursive
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v1
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: 6.0.x
+        dotnet-version: 7
 
     - name: Install dependencies
       run: |
@@ -31,6 +36,6 @@ jobs:
 
     - name: Build
       run: |
-        dotnet build --configuration Release --no-restore Baseline.sln
-        dotnet build --configuration Release --no-restore Cortex.sln
-        dotnet build --configuration Release --no-restore Benchmarks.sln
+        dotnet build Baseline.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+        dotnet build Cortex.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+        dotnet build Benchmarks.sln -c ${{ env.BUILD_CONFIG }} --no-restore

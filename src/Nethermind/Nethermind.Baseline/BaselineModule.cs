@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -117,7 +104,7 @@ namespace Nethermind.Baseline
             var txData = _abiEncoder.Encode(
                 AbiEncodingStyle.IncludeSignature,
                 ContractMerkleTree.InsertLeavesAbiSig,
-                new object[] {hashes});
+                new object[] { hashes });
 
             Transaction tx = new Transaction();
             tx.Value = 0;
@@ -194,7 +181,7 @@ namespace Nethermind.Baseline
             {
                 if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint) leafIndex));
+                    result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint)leafIndex));
                 }
                 else
                 {
@@ -205,7 +192,7 @@ namespace Nethermind.Baseline
                     }
                     else
                     {
-                        var leaf = _baselineTreeHelper.GetHistoricalLeaf(tree, (uint) leafIndex, searchResult.Object.Number);
+                        var leaf = _baselineTreeHelper.GetHistoricalLeaf(tree, (uint)leafIndex, searchResult.Object.Number);
                         result = ResultWrapper<BaselineTreeNode>.Success(leaf);
                     }
                 }
@@ -281,7 +268,7 @@ namespace Nethermind.Baseline
             }
             else
             {
-                var indexes = leafIndexes.Select(i => (uint) i).ToArray();
+                var indexes = leafIndexes.Select(i => (uint)i).ToArray();
                 if (blockParameter == null)
                 {
                     result = ResultWrapper<BaselineTreeNode[]>.Success(
@@ -436,7 +423,7 @@ namespace Nethermind.Baseline
             {
                 if (blockParameter == null)
                 {
-                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex));
+                    result = ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint)leafIndex));
                 }
                 else
                 {
@@ -448,7 +435,7 @@ namespace Nethermind.Baseline
                     else
                     {
                         var historicalTree = _baselineTreeHelper.CreateHistoricalTree(contractAddress, searchResult.Object.Number);
-                        result = ResultWrapper<BaselineTreeNode[]>.Success(historicalTree!.GetProof((uint) leafIndex));
+                        result = ResultWrapper<BaselineTreeNode[]>.Success(historicalTree!.GetProof((uint)leafIndex));
                     }
                 }
             }
@@ -557,7 +544,7 @@ namespace Nethermind.Baseline
 
         private BaselineMetadata _metadata;
 
-        private byte[] _metadataKey = {0};
+        private byte[] _metadataKey = { 0 };
 
         private ConcurrentDictionary<Address, BaselineTree> _baselineTrees
             = new ConcurrentDictionary<Address, BaselineTree>();
@@ -706,7 +693,7 @@ namespace Nethermind.Baseline
                         _disposableStack.Push(tracker);
                     }
                 }
-                
+
                 _trackingOverrides.TryAdd(trackedTree, false);
             }
             else
@@ -716,9 +703,9 @@ namespace Nethermind.Baseline
 
             return treeAdded;
         }
-        
+
         private ConcurrentDictionary<Address, bool> _trackingOverrides = new();
-        
+
         private bool TryRemoveTree(Address trackedTree)
         {
             if (_logger.IsWarn) _logger.Warn("Tree untracking has no effect for the moment.");
@@ -727,7 +714,7 @@ namespace Nethermind.Baseline
             // TODO: review if we can drop old databases on untracking
             // TODO: all these todos are fine for now if we do nothing on untrack
             // TODO: the only problem now is if we track, untrack, track again
-            
+
             return true;
         }
 

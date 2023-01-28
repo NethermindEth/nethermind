@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -41,7 +28,7 @@ namespace Nethermind.Consensus.Clique
 
         public bool ProduceBlock(Keccak parentHash)
         {
-            if (_cliqueBlockProducer == null)
+            if (_cliqueBlockProducer is null)
             {
                 return false;
             }
@@ -52,7 +39,7 @@ namespace Nethermind.Consensus.Clique
 
         public void CastVote(Address signer, bool vote)
         {
-            if (_cliqueBlockProducer == null)
+            if (_cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
@@ -62,7 +49,7 @@ namespace Nethermind.Consensus.Clique
 
         public void UncastVote(Address signer)
         {
-            if (_cliqueBlockProducer == null)
+            if (_cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
@@ -155,20 +142,20 @@ namespace Nethermind.Consensus.Clique
         {
             return ResultWrapper<string[]>.Success(GetSignersAnnotated(hash).ToArray());
         }
-        
+
         public ResultWrapper<Address?> clique_getBlockSigner(Keccak? hash)
         {
             if (hash is null)
             {
-                return ResultWrapper<Address>.Fail($"Hash parameter cannot be null");    
+                return ResultWrapper<Address>.Fail($"Hash parameter cannot be null");
             }
-            
+
             BlockHeader? header = _blockTree.FindHeader(hash);
-            if (header == null)
+            if (header is null)
             {
-                return ResultWrapper<Address>.Fail($"Could not find block with hash {hash}");    
+                return ResultWrapper<Address>.Fail($"Could not find block with hash {hash}");
             }
-            
+
             header.Author ??= _snapshotManager.GetBlockSealer(header);
             return ResultWrapper<Address>.Success(header.Author);
         }

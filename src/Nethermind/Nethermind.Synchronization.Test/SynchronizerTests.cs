@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -115,7 +102,7 @@ namespace Nethermind.Synchronization.Test
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
 
-            public void Disconnect(DisconnectReason reason, string details)
+            public void Disconnect(InitiateDisconnectReason reason, string details)
             {
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
@@ -182,7 +169,7 @@ namespace Nethermind.Synchronization.Test
             {
                 if (_causeTimeoutOnInit)
                 {
-                    // Console.WriteLine("RESPONDING TO GET HEAD BLOCK HEADER WITH EXCEPTION");
+                    Console.WriteLine("RESPONDING TO GET HEAD BLOCK HEADER WITH EXCEPTION");
                     await Task.FromException<BlockHeader>(new TimeoutException());
                 }
 
@@ -193,17 +180,17 @@ namespace Nethermind.Synchronization.Test
                 }
                 catch (Exception)
                 {
-                    // Console.WriteLine("RESPONDING TO GET HEAD BLOCK HEADER EXCEPTION");
+                    Console.WriteLine("RESPONDING TO GET HEAD BLOCK HEADER EXCEPTION");
                     throw;
                 }
 
-                // Console.WriteLine($"RESPONDING TO GET HEAD BLOCK HEADER WITH RESULT {header.Number}");
+                Console.WriteLine($"RESPONDING TO GET HEAD BLOCK HEADER WITH RESULT {header.Number}");
                 return header;
             }
 
-            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+            public void NotifyOfNewBlock(Block block, SendBlockMode mode)
             {
-                if (priority == SendBlockPriority.High)
+                if (mode == SendBlockMode.FullBlock)
                     ReceivedBlocks.Push(block);
             }
 
@@ -232,7 +219,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     block = Build.A.Block.WithDifficulty(1000000).WithParent(block)
                         .WithTotalDifficulty(block.TotalDifficulty + 1000000)
-                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] {branchIndex}).TestObject;
+                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] { branchIndex }).TestObject;
                     Blocks.Add(block);
                 }
 
@@ -246,7 +233,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
                         .WithTotalDifficulty(block.TotalDifficulty + 2000000)
-                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] {branchIndex}).TestObject;
+                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] { branchIndex }).TestObject;
                     Blocks.Add(block);
                 }
 
@@ -291,7 +278,7 @@ namespace Nethermind.Synchronization.Test
 
             private ISyncPeerPool SyncPeerPool { get; }
 
-//            ILogManager _logManager = LimboLogs.Instance;
+            //            ILogManager _logManager = LimboLogs.Instance;
             ILogManager _logManager = LimboLogs.Instance;
 
             private ILogger _logger;
@@ -318,27 +305,28 @@ namespace Nethermind.Synchronization.Test
                 MemDb blockInfoDb = new();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb,
                     new ChainLevelInfoRepository(blockInfoDb),
-                    new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
+                    new TestSingleReleaseSpecProvider(Constantinople.Instance), NullBloomStorage.Instance, _logManager);
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 NodeStatsManager stats = new(timerFactory, _logManager);
 
-                MergeConfig? mergeConfig = new() {Enabled = true };
+                MergeConfig? mergeConfig = new() { };
                 if (WithTTD(synchronizerType))
                 {
                     mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString();
                 }
                 IBlockCacheService blockCacheService = new BlockCacheService();
-                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), _logManager);
+                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new TestSingleReleaseSpecProvider(Constantinople.Instance), _logManager);
                 IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, _logManager);
 
                 ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
                 SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
+                TrieStore trieStore = new(stateDb, LimboLogs.Instance);
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
-                    new TrieStore(stateDb, LimboLogs.Instance),
+                    trieStore,
                     progressTracker,
                     syncConfig,
                     _logManager);
@@ -361,7 +349,7 @@ namespace Nethermind.Synchronization.Test
 
                 MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool,
                     syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
-                Pivot pivot = new (syncConfig);
+                Pivot pivot = new(syncConfig);
 
                 IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
                 IBlockDownloaderFactory blockDownloaderFactory;
@@ -433,7 +421,7 @@ namespace Nethermind.Synchronization.Test
                 }
 
                 SyncServer = new SyncServer(
-                    stateDb,
+                    trieStore,
                     codeDb,
                     BlockTree,
                     NullReceiptStorage.Instance,
@@ -561,7 +549,7 @@ namespace Nethermind.Synchronization.Test
 
             public SyncingContext AfterPeerIsAdded(ISyncPeer syncPeer)
             {
-                ((SyncPeerMock) syncPeer).Disconnected += (s, e) => SyncPeerPool.RemovePeer(syncPeer);
+                ((SyncPeerMock)syncPeer).Disconnected += (s, e) => SyncPeerPool.RemovePeer(syncPeer);
 
                 _logger.Info($"PEER ADDED {syncPeer.ClientId}");
                 _peers.TryAdd(syncPeer.ClientId, syncPeer);
@@ -744,7 +732,7 @@ namespace Nethermind.Synchronization.Test
                 .AfterNewBlockMessage(peerA.HeadBlock, peerA)
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Wait().Stop();
 
-            // Console.WriteLine("why?");
+            Console.WriteLine("why?");
         }
 
         [Test, Retry(3)]

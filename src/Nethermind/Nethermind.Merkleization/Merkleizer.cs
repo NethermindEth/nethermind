@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -29,17 +16,17 @@ namespace Nethermind.Merkleization
     {
         public bool IsKthBitSet(int k)
         {
-            return (_filled & ((ulong) 1 << k)) != 0;
+            return (_filled & ((ulong)1 << k)) != 0;
         }
 
         public void SetKthBit(int k)
         {
-            _filled |= (ulong) 1 << k;
+            _filled |= (ulong)1 << k;
         }
 
         public void UnsetKthBit(int k)
         {
-            _filled &= ~((ulong) 1 << k);
+            _filled &= ~((ulong)1 << k);
         }
 
         private Span<UInt256> _chunks;
@@ -453,7 +440,7 @@ namespace Nethermind.Merkleization
             Merkle.Ize(out _chunks[^1], value);
             Feed(_chunks[^1]);
         }
-        
+
         public void Feed(Ref<DepositData> value)
         {
             if (value.Root is null)
@@ -462,7 +449,7 @@ namespace Nethermind.Merkleization
                 {
                     return;
                 }
-                
+
                 Merkle.Ize(out _chunks[^1], value);
                 value.Root = new Root(_chunks[^1]);
                 Feed(_chunks[^1]);
@@ -616,7 +603,7 @@ namespace Nethermind.Merkleization
             CalculateRoot(out UInt256 result);
             return result;
         }
-        
+
         public void CalculateRoot(out UInt256 root)
         {
             int lowestSet = 0;

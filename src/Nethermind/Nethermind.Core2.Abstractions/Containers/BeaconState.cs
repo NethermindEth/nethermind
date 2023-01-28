@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
 using System.Collections.Generic;
@@ -114,11 +101,11 @@ namespace Nethermind.Core2.Containers
             // Default/empty values:
             _validators = new List<Validator>();
             _balances = new List<Gwei>();
-            _blockRoots = Enumerable.Repeat(Root.Zero, (int) slotsPerHistoricalRoot).ToArray();
-            _stateRoots = Enumerable.Repeat(Root.Zero, (int) slotsPerHistoricalRoot).ToArray();
+            _blockRoots = Enumerable.Repeat(Root.Zero, (int)slotsPerHistoricalRoot).ToArray();
+            _stateRoots = Enumerable.Repeat(Root.Zero, (int)slotsPerHistoricalRoot).ToArray();
             _historicalRoots = new List<Root>();
             //_randaoMixes = Enumerable.Repeat(Bytes32.Zero, (int)epochsPerHistoricalVector).ToArray();
-            _slashings = Enumerable.Repeat(Gwei.Zero, (int) epochsPerSlashingsVector).ToArray();
+            _slashings = Enumerable.Repeat(Gwei.Zero, (int)epochsPerSlashingsVector).ToArray();
             _previousEpochAttestations = new List<PendingAttestation>();
             _currentEpochAttestations = new List<PendingAttestation>();
             JustificationBits = new BitArray(justificationBitsLength);
@@ -237,7 +224,7 @@ namespace Nethermind.Core2.Containers
 
         public void IncreaseSlot()
         {
-            Slot = (Slot) (Slot + 1UL);
+            Slot = (Slot)(Slot + 1UL);
         }
 
         public void JustificationBitsShift()
@@ -248,7 +235,7 @@ namespace Nethermind.Core2.Containers
         }
 
         public void SetBalance(ValidatorIndex validatorIndex, Gwei balance) =>
-            _balances[(int) validatorIndex] = balance;
+            _balances[(int)validatorIndex] = balance;
 
         public void SetBlockRoot(Slot index, Root blockRoot) => _blockRoots[index] = blockRoot;
 

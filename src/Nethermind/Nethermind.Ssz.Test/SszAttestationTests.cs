@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -41,7 +28,7 @@ namespace Nethermind.Ssz.Test
             // Arrange
             Attestation attestation = new Attestation(
                 new BitArray(new[] {
-                    true, false, false, false, false, true, false, false, 
+                    true, false, false, false, false, true, false, false,
                     true, true, false}),
                 new AttestationData(
                     new Slot(2 * 8 + 5),
@@ -50,24 +37,24 @@ namespace Nethermind.Ssz.Test
                     new Checkpoint(
                         new Epoch(1),
                         new Root(Enumerable.Repeat((byte)0x34, 32).ToArray())
-                    ), 
+                    ),
                     new Checkpoint(
                         new Epoch(2),
                         new Root(Enumerable.Repeat((byte)0x56, 32).ToArray())
                     )
                 ),
-                new BlsSignature(Enumerable.Repeat((byte) 0xef, 96).ToArray()));
-            
+                new BlsSignature(Enumerable.Repeat((byte)0xef, 96).ToArray()));
+
             // Act
             Span<byte> encoded = new byte[Ssz.AttestationLength(attestation)];
             Ssz.Encode(encoded, attestation);
-            
+
             // Assert
-            
+
             // Bitlist is little endian
             // true, false, false, false, false, true, false, false, = 0b 0010 0001 = 0x 21
             // true, true, false}), = 0b 0000 0011, add sentinel bit (so we know only 3 bits used) -> 0b 0000 1011 = 0x 0b
-            
+
             string expectedHex =
                 // static
                 "e4000000" + // aggregation dynamic offset 4 + 8+8+32+(8+32)+(8+32) + 96 = 228 = 0xe4
@@ -81,7 +68,7 @@ namespace Nethermind.Ssz.Test
                 "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef" +
                 // dynamic part
                 "210b";
-            
+
             encoded.ToHexString().ShouldBe(expectedHex);
         }
 
@@ -103,10 +90,10 @@ namespace Nethermind.Ssz.Test
                 // dynamic part
                 "210b";
             byte[] bytes = Bytes.FromHexString(hex);
-            
+
             // Act
             Attestation attestation = Ssz.DecodeAttestation(bytes);
-            
+
             // Assert
             attestation.Data.Slot.ShouldBe(new Slot(21));
             attestation.Data.Target.Epoch.ShouldBe(new Epoch(2));

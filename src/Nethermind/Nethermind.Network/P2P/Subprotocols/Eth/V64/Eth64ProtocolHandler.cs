@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Consensus;
@@ -32,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
     /// </summary>
     public class Eth64ProtocolHandler : Eth63ProtocolHandler
     {
-        private readonly ISpecProvider _specProvider;
+        private readonly ForkInfo _forkInfo;
 
         public Eth64ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -40,21 +27,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
             ISyncServer syncServer,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
-            ISpecProvider specProvider,
+            ForkInfo forkInfo,
             ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager)
         {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
         }
-        
+
         public override string Name => "eth64";
-        
+
         public override byte ProtocolVersion => 64;
 
         protected override void EnrichStatusMessage(StatusMessage statusMessage)
         {
             base.EnrichStatusMessage(statusMessage);
-            statusMessage.ForkId =
-                ForkInfo.CalculateForkId(_specProvider, SyncServer.Head.Number, SyncServer.Genesis.Hash);
+            statusMessage.ForkId = _forkInfo.GetForkId(SyncServer.Head!.Number, SyncServer.Head.Timestamp);
         }
     }
 }

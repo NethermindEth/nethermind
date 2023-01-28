@@ -1,23 +1,13 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+
+using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -34,7 +24,7 @@ namespace Nethermind.Network.Rlpx
         private readonly KeccakDigest _ingressMac;
         private readonly KeccakDigest _egressMacCopy;
         private readonly KeccakDigest _ingressMacCopy;
-        private readonly AesEngine _aesEngine;
+        private readonly IBlockCipher _aesEngine;
         private readonly byte[] _macSecret;
 
         public FrameMacProcessor(PublicKey remoteNodeId, EncryptionSecrets secrets)
@@ -42,9 +32,9 @@ namespace Nethermind.Network.Rlpx
             _remoteNodeId = remoteNodeId;
             _macSecret = secrets.MacSecret;
             _egressMac = secrets.EgressMac;
-            _egressMacCopy = (KeccakDigest) _egressMac.Copy();
+            _egressMacCopy = (KeccakDigest)_egressMac.Copy();
             _ingressMac = secrets.IngressMac;
-            _ingressMacCopy = (KeccakDigest) _ingressMac.Copy();
+            _ingressMacCopy = (KeccakDigest)_ingressMac.Copy();
             _aesEngine = MakeMacCipher();
             _checkMacBuffer = new byte[_ingressMac.GetDigestSize()];
             _addMacBuffer = new byte[_ingressMac.GetDigestSize()];
@@ -52,9 +42,9 @@ namespace Nethermind.Network.Rlpx
             _egressAesBlockBuffer = new byte[_ingressMac.GetDigestSize()];
         }
 
-        private AesEngine MakeMacCipher()
+        private IBlockCipher MakeMacCipher()
         {
-            AesEngine aesFastEngine = new();
+            IBlockCipher aesFastEngine = AesEngineX86Intrinsic.IsSupported ? new AesEngineX86Intrinsic() : new AesEngine();
             aesFastEngine.Init(true, new KeyParameter(_macSecret));
             return aesFastEngine;
         }
@@ -127,7 +117,7 @@ namespace Nethermind.Network.Rlpx
             {
                 DoFinalNoReset(_ingressMac, _ingressMacCopy, _checkMacBuffer, 0); // frame MAC seed
             }
-            
+
             byte[] aesBlock = _ingressAesBlockBuffer;
             DoFinalNoReset(_ingressMac, _ingressMacCopy, aesBlock, 0);
 

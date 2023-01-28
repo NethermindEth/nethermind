@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics;
@@ -27,13 +14,13 @@ namespace Nethermind.Core.Crypto
         public fixed byte Bytes[Size];
 
         public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
-        
+
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
         public static readonly ValueKeccak OfAnEmptyString = InternalCompute(new byte[] { });
-        
-        
+
+
         [DebuggerStepThrough]
         public static ValueKeccak Compute(ReadOnlySpan<byte> input)
         {
@@ -48,7 +35,7 @@ namespace Nethermind.Core.Crypto
             KeccakHash.ComputeHashBytesToSpan(input, output);
             return result;
         }
-        
+
         private static ValueKeccak InternalCompute(byte[] input)
         {
             ValueKeccak result = new();
@@ -68,7 +55,7 @@ namespace Nethermind.Core.Crypto
             MemorySizes.SmallObjectOverhead +
             MemorySizes.RefSize +
             MemorySizes.ArrayOverhead +
-            Size - 
+            Size -
             MemorySizes.SmallObjectFreeDataSize;
 
         /// <returns>
@@ -105,8 +92,7 @@ namespace Nethermind.Core.Crypto
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes",
-                    nameof(bytes));
+                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
             }
 
             Bytes = bytes;
@@ -116,7 +102,7 @@ namespace Nethermind.Core.Crypto
         {
             return ToString(true);
         }
-        
+
         public string ToShortString(bool withZeroX = true)
         {
             string hash = Bytes.ToHexString(withZeroX);
@@ -178,12 +164,12 @@ namespace Nethermind.Core.Crypto
 
         public int CompareTo(Keccak? other)
         {
-            return Extensions.Bytes.Comparer.Compare(Bytes, other?.Bytes);  
-        } 
+            return Extensions.Bytes.Comparer.Compare(Bytes, other?.Bytes);
+        }
 
         public override bool Equals(object? obj)
         {
-            return obj?.GetType() == typeof(Keccak) && Equals((Keccak) obj);
+            return obj?.GetType() == typeof(Keccak) && Equals((Keccak)obj);
         }
 
         public override int GetHashCode()
@@ -233,7 +219,7 @@ namespace Nethermind.Core.Crypto
 
         public KeccakStructRef ToStructRef() => new(Bytes);
     }
-    
+
     public ref struct KeccakStructRef
     {
         public const int Size = 32;
@@ -256,7 +242,7 @@ namespace Nethermind.Core.Crypto
         {
             return ToString(true);
         }
-        
+
         public string ToShortString(bool withZeroX = true)
         {
             string hash = Bytes.ToHexString(withZeroX);
@@ -323,12 +309,12 @@ namespace Nethermind.Core.Crypto
 
             return Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
         }
-        
+
         public bool Equals(KeccakStructRef other) => Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
 
         public override bool Equals(object? obj)
         {
-            return obj?.GetType() == typeof(Keccak) && Equals((Keccak) obj);
+            return obj?.GetType() == typeof(Keccak) && Equals((Keccak)obj);
         }
 
         public override int GetHashCode()
@@ -345,7 +331,7 @@ namespace Nethermind.Core.Crypto
 
             return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
-        
+
         public static bool operator ==(Keccak? a, KeccakStructRef b)
         {
             if (ReferenceEquals(a, null))
@@ -355,7 +341,7 @@ namespace Nethermind.Core.Crypto
 
             return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
-        
+
         public static bool operator ==(KeccakStructRef a, KeccakStructRef b)
         {
             return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
@@ -365,12 +351,12 @@ namespace Nethermind.Core.Crypto
         {
             return !(a == b);
         }
-        
+
         public static bool operator !=(Keccak a, KeccakStructRef b)
         {
             return !(a == b);
-        } 
-        
+        }
+
         public static bool operator !=(KeccakStructRef a, KeccakStructRef b)
         {
             return !(a == b);

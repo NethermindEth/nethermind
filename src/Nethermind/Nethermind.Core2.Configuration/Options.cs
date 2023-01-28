@@ -1,4 +1,7 @@
-﻿using Microsoft.Extensions.Options;
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Microsoft.Extensions.Options;
 
 namespace Nethermind.Core2.Configuration
 {
@@ -9,7 +12,7 @@ namespace Nethermind.Core2.Configuration
         {
             return new StaticOptionsMonitor<T>(options);
         }
-        
+
         public static IOptionsMonitor<T> Default<T>()
             where T : class, new()
         {

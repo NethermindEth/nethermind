@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -20,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.AspNetCore.Connections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -79,7 +67,7 @@ namespace Nethermind.Synchronization.Test
 
             public bool DisconnectRequested { get; set; }
 
-            public void Disconnect(DisconnectReason reason, string details)
+            public void Disconnect(InitiateDisconnectReason reason, string details)
             {
                 DisconnectRequested = true;
             }
@@ -120,7 +108,7 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(Build.A.BlockHeader.TestObject);
             }
 
-            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+            public void NotifyOfNewBlock(Block block, SendBlockMode mode)
             {
             }
 
@@ -191,6 +179,19 @@ namespace Nethermind.Synchronization.Test
             Assert.True(peers.Any(p => p.DisconnectRequested));
         }
 
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        public async Task Will_disconnect_when_refresh_exception_is_not_cancelled(bool isExceptionOperationCanceled, bool isDisconnectRequested)
+        {
+            await using Context ctx = new();
+            var peers = await SetupPeers(ctx, 25);
+            var peer = peers[0];
+
+            var refreshException = isExceptionOperationCanceled ? new OperationCanceledException() : new Exception();
+            ctx.Pool.ReportRefreshFailed(peer, "test with cancellation", refreshException);
+            peer.DisconnectRequested.Should().Be(isDisconnectRequested);
+        }
+
         [TestCase(0)]
         [TestCase(10)]
         [TestCase(24)]
@@ -199,7 +200,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 25;
             const int priorityPeersMaxCount = 25;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
             var peers = await SetupPeers(ctx, peersMaxCount);
 
             // setting priority to all peers except one - peers[number]
@@ -221,7 +222,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 25;
             const int priorityPeersMaxCount = 25;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
             var peers = await SetupPeers(ctx, peersMaxCount);
 
             foreach (SimpleSyncPeerMock peer in peers)
@@ -239,7 +240,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 1;
             const int priorityPeersMaxCount = 1;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
 
             SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = true };
             ctx.Pool.Start();
@@ -257,7 +258,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 1;
             const int priorityPeersMaxCount = 1;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
 
             SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = false };
             ctx.Pool.Start();
@@ -374,7 +375,7 @@ namespace Nethermind.Synchronization.Test
         {
 
             Node node = new(publicKey, "127.0.0.1", 30303);
-            NodeStatsLight stats = new (node);
+            NodeStatsLight stats = new(node);
             stats.AddTransferSpeedCaptureEvent(TransferSpeedType.Headers, transferSpeed);
 
             ctx.Stats.GetOrAdd(Arg.Is<Node>(n => n.Id == publicKey)).Returns(stats);
@@ -584,7 +585,7 @@ namespace Nethermind.Synchronization.Test
             await using Context ctx = new();
             var peers = await SetupPeers(ctx, 3);
             var peerInfo = ctx.Pool.InitializedPeers.First();
-            ctx.Pool.ReportBreachOfProtocol(peerInfo, "issue details");
+            ctx.Pool.ReportBreachOfProtocol(peerInfo, InitiateDisconnectReason.Other, "issue details");
 
             Assert.True(((SimpleSyncPeerMock)peerInfo.SyncPeer).DisconnectRequested);
         }
@@ -697,7 +698,7 @@ namespace Nethermind.Synchronization.Test
             await Task.WhenAll(allocationTasks);
 
             var allocations = allocationTasks.Select(t => t.Result).ToArray();
-            var successfulAllocations = allocations.Where(r => r.Current != null).ToArray();
+            var successfulAllocations = allocations.Where(r => r.Current is not null).ToArray();
 
             // we had only two peers and 3 borrow calls so only two are successful
             Assert.AreEqual(2, successfulAllocations.Length);
@@ -725,13 +726,13 @@ namespace Nethermind.Synchronization.Test
             if (allocation.HasPeer)
             {
                 int workTime = _workRandomDelay.Next(1000);
-                // Console.WriteLine($"{desc} will work for {workTime} ms");
+                Console.WriteLine($"{desc} will work for {workTime} ms");
                 await Task.Delay(workTime);
-                // Console.WriteLine($"{desc} finished work after {workTime} ms");
+                Console.WriteLine($"{desc} finished work after {workTime} ms");
             }
 
             ctx.Pool.Free(allocation);
-            // Console.WriteLine($"{desc} freed allocation");
+            Console.WriteLine($"{desc} freed allocation");
         }
 
         [Test, Retry(3)]
@@ -761,12 +762,12 @@ namespace Nethermind.Synchronization.Test
                     task.ContinueWith(t =>
 #pragma warning restore 4014
                     {
-                        // Console.WriteLine($"{iterationsLocal} Decrement on {t.IsCompleted}");
+                        Console.WriteLine($"{iterationsLocal} Decrement on {t.IsCompleted}");
                         Interlocked.Decrement(ref _pendingRequests);
                     });
                 }
 
-                // Console.WriteLine(iterations + " " + failures + " " + ctx.Pool.ReplaceableAllocations.Count() + " " + _pendingRequests);
+                Console.WriteLine(iterations + " " + failures + " " + ctx.Pool.ReplaceableAllocations.Count() + " " + _pendingRequests);
                 await Task.Delay(10);
             } while (iterations-- > 0 || _pendingRequests > 0);
 

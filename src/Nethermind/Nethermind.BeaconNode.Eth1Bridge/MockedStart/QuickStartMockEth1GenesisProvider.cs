@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
@@ -105,7 +92,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
             return privateKeySpan.ToArray();
         }
-        
+
         public Task<Eth1GenesisData> GetEth1GenesisDataAsync(CancellationToken cancellationToken)
         {
             QuickStartParameters quickStartParameters = _quickStartParameterOptions.CurrentValue;
@@ -120,21 +107,21 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
             // Fixed amount
             Gwei amount = gweiValues.MaximumEffectiveBalance;
-            
+
             for (ulong validatorIndex = 0uL; validatorIndex < quickStartParameters.ValidatorCount; validatorIndex++)
             {
                 DepositData depositData = BuildAndSignDepositData(
                     validatorIndex,
                     amount,
                     signatureDomains);
-                
+
                 _depositStore.Place(depositData);
             }
 
             ulong eth1Timestamp = quickStartParameters.Eth1Timestamp;
             if (eth1Timestamp == 0)
             {
-                eth1Timestamp = quickStartParameters.GenesisTime - (ulong) (1.5 * timeParameters.MinimumGenesisDelay);
+                eth1Timestamp = quickStartParameters.GenesisTime - (ulong)(1.5 * timeParameters.MinimumGenesisDelay);
             }
             else
             {
@@ -177,7 +164,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             {
                 PrivateKey = privateKey
             };
-                
+
             using BLS bls = BLS.Create(blsParameters);
             byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
             bls.TryExportBlsPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
@@ -186,7 +173,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             // Withdrawal Credentials
             Bytes32 withdrawalCredentials = _crypto.Hash(publicKey.AsSpan());
             withdrawalCredentials.Unwrap()[0] = initialValues.BlsWithdrawalPrefix;
-            
+
             // Build deposit data
             DepositData depositData = new DepositData(publicKey, withdrawalCredentials, amount, BlsSignature.Zero);
 
@@ -204,11 +191,11 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
             BlsSignature depositDataSignature = new BlsSignature(signatureBytes);
             depositData.SetSignature(depositDataSignature);
-            
+
             if (_logger.IsEnabled(LogLevel.Debug))
                 LogDebug.QuickStartAddValidator(_logger, validatorIndex, publicKey.ToString().Substring(0, 12),
                     null);
-            
+
             return depositData;
         }
     }

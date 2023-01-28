@@ -1,12 +1,12 @@
-﻿using System;
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Hive
 {
@@ -41,38 +41,16 @@ namespace Nethermind.Hive
             return Task.CompletedTask;
         }
 
-        public Task InitNetworkProtocol()
+        public async Task InitNetworkProtocol()
         {
             if (Enabled)
             {
-                if (_api.SyncPeerPool == null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
-
-                _api.SyncPeerPool.PeerRefreshed += OnPeerRefreshed;
-            }
-
-            return Task.CompletedTask;
-        }
-
-        private void OnPeerRefreshed(object? sender, PeerHeadRefreshedEventArgs e)
-        {
-            BlockHeader header = e.Header;
-            if (header.UnclesHash == Keccak.OfAnEmptySequenceRlp && header.TxRoot == Keccak.EmptyTreeHash)
-            {
-                Block block = new(header, new BlockBody());
-                _api.BlockTree!.SuggestBlock(block);
-            }
-        }
-
-        public async Task InitRpcModules()
-        {
-            if (Enabled)
-            {
-                if (_api.BlockTree == null) throw new ArgumentNullException(nameof(_api.BlockTree));
-                if (_api.BlockProcessingQueue == null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-                if (_api.ConfigProvider == null) throw new ArgumentNullException(nameof(_api.ConfigProvider));
-                if (_api.LogManager == null) throw new ArgumentNullException(nameof(_api.LogManager));
-                if (_api.FileSystem == null) throw new ArgumentNullException(nameof(_api.FileSystem));
-                if (_api.BlockValidator == null) throw new ArgumentNullException(nameof(_api.BlockValidator));
+                if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
+                if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+                if (_api.ConfigProvider is null) throw new ArgumentNullException(nameof(_api.ConfigProvider));
+                if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
+                if (_api.FileSystem is null) throw new ArgumentNullException(nameof(_api.FileSystem));
+                if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
 
                 HiveRunner hiveRunner = new(
                     _api.BlockTree,
@@ -87,10 +65,11 @@ namespace Nethermind.Hive
 
                 await hiveRunner.Start(_disposeCancellationToken.Token);
             }
-            else
-            {
-                if (_logger.IsInfo) _logger.Info("Skipping Hive plugin");
-            }
+        }
+
+        public Task InitRpcModules()
+        {
+            return Task.CompletedTask;
         }
 
         private bool Enabled { get; set; }

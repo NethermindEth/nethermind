@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Net;
 using System;
 using System.Collections.Generic;
@@ -19,10 +22,10 @@ namespace Nethermind.HealthChecks.Test
             string description = "description";
 
             IIPResolver ipResolver = Substitute.For<IIPResolver>();
-            byte[] ip = {1, 2, 3, 4};
+            byte[] ip = { 1, 2, 3, 4 };
             ipResolver.ExternalIp.Returns(new IPAddress(ip));
 
-            IMetricsConfig metricsConfig = new MetricsConfig(){NodeName = "nodeName"};
+            IMetricsConfig metricsConfig = new MetricsConfig() { NodeName = "nodeName" };
 
             string hostname = "hostname";
 

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Crypto.Bls;
@@ -7,8 +10,8 @@ namespace Nethermind.Crypto
 {
     public static class LibResolver
     {
-        private static int _done;        
-        
+        private static int _done;
+
         public static void Setup()
         {
             if (Interlocked.CompareExchange(ref _done, 1, 0) == 0)

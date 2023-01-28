@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -26,7 +13,7 @@ namespace Nethermind.Db
         protected IRocksDbFactory RocksDbFactory { get; }
         protected IMemDbFactory MemDbFactory { get; }
         protected bool PersistedDb => _dbProvider.DbMode == DbModeHint.Persisted;
-        
+
         private readonly List<Action> _registrations = new();
 
         protected RocksDbInitializer(IDbProvider? dbProvider, IRocksDbFactory? rocksDbFactory, IMemDbFactory? memDbFactory)
@@ -47,16 +34,16 @@ namespace Nethermind.Db
             _registrations.Add(Action);
         }
 
-        protected void RegisterDb(RocksDbSettings settings) => 
+        protected void RegisterDb(RocksDbSettings settings) =>
             AddRegisterAction(settings.DbName, () => CreateDb(settings));
-        
+
         protected void RegisterColumnsDb<T>(RocksDbSettings settings) where T : struct, Enum =>
             AddRegisterAction(settings.DbName, () => CreateColumnDb<T>(settings));
-        
+
         private void AddRegisterAction(string dbName, Func<IDb> dbCreation) =>
             _registrations.Add(() => _dbProvider.RegisterDb(dbName, dbCreation()));
 
-        private IDb CreateDb(RocksDbSettings settings) => 
+        private IDb CreateDb(RocksDbSettings settings) =>
             PersistedDb ? RocksDbFactory.CreateDb(settings) : MemDbFactory.CreateDb(settings.DbName);
 
         private IDb CreateColumnDb<T>(RocksDbSettings settings) where T : struct, Enum =>
@@ -81,9 +68,6 @@ namespace Nethermind.Db
             await Task.WhenAll(allInitializers);
         }
 
-        protected static string GetTitleDbName(string dbName)
-        {
-            return char.ToUpper(dbName[0]) + dbName.Substring(1);
-        }
+        protected static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName.Substring(1);
     }
 }

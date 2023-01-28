@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -47,35 +34,26 @@ namespace Nethermind.Network
             switch (protocol)
             {
                 case Protocol.P2P:
-                    P2PProtocolInitializedEventArgs args = (P2PProtocolInitializedEventArgs) eventArgs;
+                    P2PProtocolInitializedEventArgs args = (P2PProtocolInitializedEventArgs)eventArgs;
                     if (!ValidateP2PVersion(args.P2PVersion))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, incorrect P2PVersion: {args.P2PVersion}");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.P2PVersion);
-                        Disconnect(session, DisconnectReason.IncompatibleP2PVersion, $"p2p.{args.P2PVersion}");
+                        Disconnect(session, InitiateDisconnectReason.IncompatibleP2PVersion, $"p2p.{args.P2PVersion}");
                         if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.IncompatibleP2PVersion}");
-                        return false;
-                    }
-
-                    if (!ValidateCapabilities(args.Capabilities))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, no Eth62 capability, supported capabilities: [{string.Join(",", args.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"))}]");
-                        _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.Capabilities);
-                        Disconnect(session, DisconnectReason.UselessPeer, "capabilities");
-                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (capabilities)");
                         return false;
                     }
 
                     break;
                 case Protocol.Eth:
                 case Protocol.Les:
-                    SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs) eventArgs;
-                    if (!ValidateChainId(syncPeerArgs.ChainId))
+                    SyncPeerProtocolInitializedEventArgs syncPeerArgs = (SyncPeerProtocolInitializedEventArgs)eventArgs;
+                    if (!ValidateNetworkId(syncPeerArgs.NetworkId))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName(syncPeerArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
-                        _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
-                        Disconnect(session, DisconnectReason.UselessPeer, $"invalid chain id - {syncPeerArgs.ChainId}");
-                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (invalid chain id - {syncPeerArgs.ChainId})");
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different network id: {BlockchainIds.GetBlockchainName(syncPeerArgs.NetworkId)}, our network id: {BlockchainIds.GetBlockchainName(_blockTree.NetworkId)}");
+                        _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.NetworkId);
+                        Disconnect(session, InitiateDisconnectReason.InvalidChainId, $"invalid network id - {syncPeerArgs.NetworkId}");
+                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (invalid network id - {syncPeerArgs.NetworkId})");
                         return false;
                     }
 
@@ -83,18 +61,18 @@ namespace Nethermind.Network
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.DifferentGenesis);
-                        Disconnect(session, DisconnectReason.BreachOfProtocol, "invalid genesis");
+                        Disconnect(session, InitiateDisconnectReason.InvalidGenesis, "invalid genesis");
                         if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.BreachOfProtocol} (invalid genesis)");
                         return false;
                     }
-                    
+
                     break;
             }
-            
+
             return true;
         }
 
-        private void Disconnect(ISession session, DisconnectReason reason, string details)
+        private void Disconnect(ISession session, InitiateDisconnectReason reason, string details)
         {
             session.InitiateDisconnect(reason, details);
         }
@@ -104,22 +82,9 @@ namespace Nethermind.Network
             return p2PVersion == 4 || p2PVersion == 5;
         }
 
-        private static bool ValidateCapabilities(IEnumerable<Capability> capabilities)
+        private bool ValidateNetworkId(ulong networkId)
         {
-            // TODO: this is duplicated from P2PProtocolHandler.HandleHello. One should probably be removed
-            return capabilities.Any(x =>
-                // x.ProtocolCode == Protocol.Les ||
-                x.ProtocolCode == Protocol.Eth && (
-                    x.Version == 62 || 
-                    x.Version == 63 || 
-                    x.Version == 64 || 
-                    x.Version == 65 ||
-                    x.Version == 66));
-        }
-
-        private bool ValidateChainId(ulong chainId)
-        {
-            return chainId == _blockTree.ChainId;
+            return networkId == _blockTree.NetworkId;
         }
     }
 }

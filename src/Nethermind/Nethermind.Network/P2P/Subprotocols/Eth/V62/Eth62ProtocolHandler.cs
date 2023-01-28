@@ -1,26 +1,13 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -39,6 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly TxFloodController _floodController;
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
+        private readonly LruKeyCache<Keccak> _lastBlockNotificationCache = new(10, "LastBlockNotificationCache");
 
         public Eth62ProtocolHandler(
             ISession session,
@@ -81,14 +69,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             if (Logger.IsTrace) Logger.Trace($"{Name} subprotocol initializing with {Node:c}");
 
-            if (SyncServer.Head == null)
+            if (SyncServer.Head is null)
             {
                 throw new InvalidOperationException($"Cannot initialize {Name} without the head block set");
             }
 
             BlockHeader head = SyncServer.Head;
             StatusMessage statusMessage = new();
-            statusMessage.ChainId = SyncServer.ChainId;
+            statusMessage.NetworkId = SyncServer.NetworkId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
             statusMessage.BestHash = head.Hash!;
@@ -115,10 +103,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 {
                     const string postFinalized = $"NewBlock message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.";
                     ReportIn(postFinalized);
-                    Disconnect(DisconnectReason.BreachOfProtocol, postFinalized);
+                    Disconnect(InitiateDisconnectReason.GossipingInPoS, postFinalized);
                     return false;
                 }
-                
+
                 if (_gossipPolicy.ShouldDiscardBlocks)
                 {
                     const string postTransition = $"NewBlock message received after TERMINAL_TOTAL_DIFFICULTY PoS block. Ignoring Message.";
@@ -128,18 +116,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                 return true;
             }
-            
+
             int packetType = message.PacketType;
             if (!_statusReceived && packetType != Eth62MessageCode.Status)
             {
-                throw new SubprotocolException(
-                    $"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
+                throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
             }
 
             int size = message.Content.ReadableBytes;
-            if (Logger.IsTrace)
-                Logger.Trace(
-                    $"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
+            if (Logger.IsTrace) Logger.Trace($"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
 
             switch (packetType)
             {
@@ -233,7 +218,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
             {
-                ChainId = (ulong)status.ChainId,
+                NetworkId = (ulong)status.NetworkId,
                 BestHash = status.BestHash,
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
@@ -241,7 +226,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 TotalDifficulty = status.TotalDifficulty
             };
 
-            Session.IsNetworkIdMatched = SyncServer.ChainId == (ulong)status.ChainId;
+            Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
             ProtocolInitialized?.Invoke(this, eventArgs);
@@ -287,26 +272,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        public override void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+        public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {
             if (!CanGossip || !_gossipPolicy.ShouldGossipBlock(block.Header))
             {
                 return;
             }
 
-            switch (priority)
+            if (_lastBlockNotificationCache.Set(block.Hash))
             {
-                case SendBlockPriority.High:
-                    SendNewBlock(block);
-                    break;
-                case SendBlockPriority.Low:
-                    HintNewBlock(block.Hash, block.Number);
-                    break;
-                default:
-                    Logger.Error(
-                        $"Unknown priority ({priority}) passed to {nameof(NotifyOfNewBlock)} - handling as low priority");
-                    HintNewBlock(block.Hash, block.Number);
-                    break;
+                switch (mode)
+                {
+                    case SendBlockMode.FullBlock:
+                        SendNewBlock(block);
+                        break;
+                    case SendBlockMode.HashOnly:
+                        HintNewBlock(block.Hash, block.Number);
+                        break;
+                    default:
+                        if (Logger.IsError) Logger.Error($"Unknown mode ({mode}) passed to {nameof(NotifyOfNewBlock)} - handling as {nameof(SendBlockMode.HashOnly)} mode");
+                        HintNewBlock(block.Hash, block.Number);
+                        break;
+                }
             }
         }
 
@@ -319,9 +306,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
 
-            NewBlockMessage msg = new();
-            msg.Block = block;
-            msg.TotalDifficulty = block.TotalDifficulty.Value;
+            NewBlockMessage msg = new() { Block = block, TotalDifficulty = block.TotalDifficulty.Value };
 
             Send(msg);
         }

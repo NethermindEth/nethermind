@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Clique;
@@ -46,9 +33,9 @@ namespace Nethermind.Clique.Test
         private readonly Address _signer1 = new("0x7ffc57839b00206d1ad20c69a1981b489f772031");
         private readonly Address _signer2 = new("0xb279182d99e65703f0076e4812653aab85fca0f0");
         private readonly Address _signer3 = new("0x42eb768f2244c8811c63729a21a3569731535f06");
-        
+
         private BlockTree _blockTree;
-        
+
         [OneTimeSetUp]
         public void Setup_chain()
         {
@@ -92,7 +79,7 @@ namespace Nethermind.Clique.Test
             Assert.IsTrue(snapshot.Signers.ContainsKey(_signer2));
             Assert.IsTrue(snapshot.Signers.ContainsKey(_signer3));
         }
-        
+
         [Test]
         public void Can_calculate_clique_header_hash()
         {
@@ -105,25 +92,25 @@ namespace Nethermind.Clique.Test
 
         [Test]
         public void Recognises_signer_turn()
-        {           
+        {
             SnapshotManager snapshotManager = new(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
             Block genesis = CliqueTests.GetRinkebyGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
-            SnapshotManager manager = new(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumEcdsa(ChainId.Goerli, LimboLogs.Instance), LimboLogs.Instance);
+            SnapshotManager manager = new(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumEcdsa(BlockchainIds.Goerli, LimboLogs.Instance), LimboLogs.Instance);
             // Block 1
             Assert.IsTrue(manager.IsInTurn(snapshot, 1, _signer1));
             Assert.IsFalse(manager.IsInTurn(snapshot, 1, _signer2));
             Assert.IsFalse(manager.IsInTurn(snapshot, 1, _signer3));
             // Block 2
-            Assert.IsFalse(manager.IsInTurn(snapshot,2, _signer1));
-            Assert.IsTrue(manager.IsInTurn(snapshot,2, _signer2));
-            Assert.IsFalse(manager.IsInTurn(snapshot,2, _signer3));
+            Assert.IsFalse(manager.IsInTurn(snapshot, 2, _signer1));
+            Assert.IsTrue(manager.IsInTurn(snapshot, 2, _signer2));
+            Assert.IsFalse(manager.IsInTurn(snapshot, 2, _signer3));
             // Block 3
-            Assert.IsFalse(manager.IsInTurn(snapshot,3, _signer1));
-            Assert.IsFalse(manager.IsInTurn(snapshot,3, _signer2));
-            Assert.IsTrue(manager.IsInTurn(snapshot,3, _signer3));
+            Assert.IsFalse(manager.IsInTurn(snapshot, 3, _signer1));
+            Assert.IsFalse(manager.IsInTurn(snapshot, 3, _signer2));
+            Assert.IsTrue(manager.IsInTurn(snapshot, 3, _signer3));
         }
-        
+
         private static BlockHeader BuildCliqueBlock()
         {
             BlockHeader header = Build.A.BlockHeader

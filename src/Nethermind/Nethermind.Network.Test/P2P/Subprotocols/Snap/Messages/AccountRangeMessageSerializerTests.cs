@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Microsoft.VisualStudio.TestPlatform.ObjectModel;
@@ -38,7 +24,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         {
             AccountRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(), 
+                RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = System.Array.Empty<PathWithAccount>(),
                 Proofs = Array.Empty<byte[]>()
             };
@@ -47,7 +33,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             SerializerTester.TestZero(serializer, msg);
         }
-        
+
         [Test]
         public void Roundtrip_Many()
         {
@@ -73,7 +59,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             SerializerTester.TestZero(serializer, msg);
         }
-        
+
         [Test]
         public void Roundtrip_EmptyStorageRoot()
         {
@@ -94,7 +80,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             SerializerTester.TestZero(serializer, msg);
         }
-        
+
         [Test]
         public void Roundtrip_EmptyCode()
         {
@@ -104,10 +90,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 .WithStorageRoot(TestItem.KeccakA)
                 .TestObject;
 
-            AccountRangeMessage msg = new() { 
+            AccountRangeMessage msg = new()
+            {
                 RequestId = MessageConstants.Random.NextLong(),
                 PathsWithAccounts = new[] { new PathWithAccount(TestItem.KeccakB, acc01) },
-                Proofs = new[] {TestItem.RandomDataA, TestItem.RandomDataB}
+                Proofs = new[] { TestItem.RandomDataA, TestItem.RandomDataB }
             };
 
             AccountRangeMessageSerializer serializer = new();

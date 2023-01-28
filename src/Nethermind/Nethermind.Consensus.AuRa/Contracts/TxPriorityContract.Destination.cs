@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -33,16 +19,16 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Local,
             Contract
         }
-        
+
         public struct Destination : IEqualityComparer<Destination>
         {
             public static byte[] FnSignatureEmpty = new byte[4];
 
             public Destination(
-                Address target, 
-                byte[] fnSignature, 
-                UInt256 value, 
-                DestinationSource source = DestinationSource.Contract, 
+                Address target,
+                byte[] fnSignature,
+                UInt256 value,
+                DestinationSource source = DestinationSource.Contract,
                 long blockNumber = 0)
             {
                 Target = target;
@@ -58,18 +44,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
             public long BlockNumber { get; set; }
             public DestinationSource Source { get; set; }
 
-            public static Destination FromAbiTuple(DestinationTuple tuple, long blockNumber) => 
+            public static Destination FromAbiTuple(DestinationTuple tuple, long blockNumber) =>
                 new Destination(tuple.Item1, tuple.Item2, tuple.Item3, DestinationSource.Contract, blockNumber);
 
-            public static implicit operator DestinationTuple(Destination destination) => 
+            public static implicit operator DestinationTuple(Destination destination) =>
                 (destination.Target, destination.FnSignature, destination.Value);
-            
+
             public static implicit operator Destination(Transaction tx) => GetTransactionKey(tx);
 
             public static Destination GetTransactionKey(Transaction tx)
             {
                 byte[] fnSignature = tx.Data?.Length >= 4 ? AbiSignature.GetAddress(tx.Data) : FnSignatureEmpty;
-                return new Destination(tx.To, fnSignature,UInt256.Zero);
+                return new Destination(tx.To, fnSignature, UInt256.Zero);
             }
 
             public bool Equals(Destination x, Destination y) => Equals(x.Target, y.Target) && Equals(x.FnSignature, y.FnSignature);
@@ -82,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public class ValueDestinationMethodComparer : IComparer<Destination>
         {
             public static readonly ValueDestinationMethodComparer Instance = new ValueDestinationMethodComparer();
-            
+
             public int Compare(Destination x, Destination y)
             {
                 // locals have higher priority than non-local values
@@ -92,7 +78,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 // then if value is overridden in later block we want the value from later block
                 targetComparison = y.BlockNumber.CompareTo(x.BlockNumber);
                 if (targetComparison != 0) return targetComparison;
-                
+
                 // we want to sort destinations by priority descending order
                 return y.Value.CompareTo(x.Value);
             }
@@ -110,7 +96,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 return Bytes.Comparer.Compare(x.FnSignature, y.FnSignature);
             }
 
-            public bool Equals(Destination x, Destination y) => 
+            public bool Equals(Destination x, Destination y) =>
                 Equals(x.Target, y.Target) && Bytes.EqualityComparer.Equals(x.FnSignature, y.FnSignature);
 
             public int GetHashCode(Destination obj) => HashCode.Combine(obj.Target, Bytes.EqualityComparer.GetHashCode(obj.FnSignature));
@@ -122,7 +108,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 : base(DistinctDestinationMethodComparer.Instance, ValueDestinationMethodComparer.Instance)
             {
             }
-                    
+
         }
     }
 }

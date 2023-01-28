@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
 using BenchmarkDotNet.Attributes;
@@ -33,10 +20,10 @@ namespace Nethermind.Ssz.Benchmarks
             "202122232425262728292a2b2c2d2e2f");
 
         public static BlsSignature TestSig1 = new BlsSignature(new byte[BlsSignature.Length]);
-        
+
         private BeaconBlockBody _body;
         private byte[] _encoded;
-        
+
         public SszBeaconBlockBodyBenchmark()
         {
             AttestationData data = new AttestationData(
@@ -45,7 +32,7 @@ namespace Nethermind.Ssz.Benchmarks
                 Sha256.RootOfAnEmptyString,
                 new Checkpoint(new Epoch(2), Sha256.RootOfAnEmptyString),
                 new Checkpoint(new Epoch(3), Sha256.RootOfAnEmptyString));
-            
+
             Attestation attestation = new Attestation(
                 new BitArray(new byte[5]),
                 data,
@@ -78,22 +65,22 @@ namespace Nethermind.Ssz.Benchmarks
                 Sha256.RootOfAnEmptyString,
                 9,
                 Sha256.Bytes32OfAnEmptyString);
-            
+
             Attestation[] attestations = new Attestation[3];
             attestations[1] = attestation;
-            
+
             Deposit[] deposits = new Deposit[3];
             deposits[2] = deposit;
-            
+
             Bytes32 graffiti = new Bytes32(new byte[32]);
-            
+
             AttesterSlashing[] attesterSlashings = new AttesterSlashing[3];
             attesterSlashings[0] = slashing;
-            
+
             ProposerSlashing[] proposerSlashings = new ProposerSlashing[10];
 
             BlsSignature randaoReveal = TestSig1;
-            
+
             SignedVoluntaryExit[] signedVoluntaryExits = new SignedVoluntaryExit[11];
 
             _body = new BeaconBlockBody(randaoReveal,
@@ -107,17 +94,17 @@ namespace Nethermind.Ssz.Benchmarks
 
             _encoded = new byte[Ssz.BeaconBlockBodyLength(_body)];
         }
-        
+
         [Benchmark(Baseline = true)]
         public void Current()
         {
             Ssz.Encode(_encoded, _body);
         }
-        
+
         [Benchmark(Baseline = true)]
         public void Cortex()
         {
-            
+
             Ssz.Encode(_encoded, _body);
         }
     }

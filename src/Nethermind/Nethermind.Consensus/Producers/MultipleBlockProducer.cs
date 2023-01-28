@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -52,7 +38,7 @@ namespace Nethermind.Consensus.Producers
                 IBlockProducer blockProducer = _blockProducers[index].BlockProducer;
                 blockProducer.Start();
             }
-            
+
             _blockProductionTrigger.TriggerBlockProduction += OnBlockProduction;
             return Task.CompletedTask;
         }
@@ -60,7 +46,7 @@ namespace Nethermind.Consensus.Producers
         public Task StopAsync()
         {
             _blockProductionTrigger.TriggerBlockProduction -= OnBlockProduction;
-            
+
             IList<Task> stopTasks = new List<Task>();
             for (int index = 0; index < _blockProducers.Length; index++)
             {
@@ -84,9 +70,9 @@ namespace Nethermind.Consensus.Producers
 
             return false;
         }
-        
+
         public event EventHandler<BlockEventArgs>? BlockProduced;
-        
+
         private void OnBlockProduction(object? sender, BlockProductionEventArgs e)
         {
             e.BlockProductionTask = TryProduceBlock(e.ParentHeader, e.CancellationToken);
@@ -100,9 +86,9 @@ namespace Nethermind.Consensus.Producers
                 T blockProducerInfo = _blockProducers[i];
                 produceTasks[i] = blockProducerInfo.BlockProductionTrigger.BuildBlock(parentHeader, cancellationToken, blockProducerInfo.BlockTracer);
             }
-           
+
             IEnumerable<(Block? Block, T BlockProducer)> blocksWithProducers;
-            
+
             try
             {
                 Block?[] blocks = await Task.WhenAll(produceTasks);
@@ -129,7 +115,7 @@ namespace Nethermind.Consensus.Producers
 
             return bestBlock;
         }
-        
+
         public interface IBestBlockPicker
         {
             Block? GetBestBlock(IEnumerable<(Block? Block, T BlockProducerInfo)> blocks);

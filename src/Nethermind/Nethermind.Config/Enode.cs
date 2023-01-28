@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
 using System;
@@ -28,11 +15,12 @@ namespace Nethermind.Config
     {
         private readonly PublicKey _nodeKey;
 
-        public Enode(PublicKey nodeKey, IPAddress hostIp, int port)
+        public Enode(PublicKey nodeKey, IPAddress hostIp, int port, int? discoveryPort = null)
         {
             _nodeKey = nodeKey;
             HostIp = hostIp;
             Port = port;
+            DiscoveryPort = discoveryPort ?? port;
         }
 
         public Enode(string enodeString)
@@ -47,12 +35,35 @@ namespace Nethermind.Config
             string[] enodeParts2 = enodeParts[1].Split('@');
             _nodeKey = new PublicKey(enodeParts2[0].TrimStart('/'));
             string host = enodeParts2[1];
-            if (enodeParts.Length <= 2 || !int.TryParse(enodeParts[2], out int port))
+
+            if (enodeParts.Length != 3)
             {
                 throw GetPortException(host);
-                
             }
-            Port = port;
+
+            string[] portParts = enodeParts[2].Split("?discport=");
+
+            switch (portParts.Length)
+            {
+                case 1:
+                    if (int.TryParse(portParts[0], out int port))
+                    {
+                        Port = port;
+                        DiscoveryPort = port;
+                    }
+                    else throw GetPortException(host);
+                    break;
+                case 2:
+                    if (int.TryParse(portParts[0], out int listeningPort) && int.TryParse(portParts[1], out int discoveryPort))
+                    {
+                        Port = listeningPort;
+                        DiscoveryPort = discoveryPort;
+                    }
+                    else throw GetPortException(host);
+                    break;
+                default:
+                    throw GetPortException(host);
+            }
 
             try
             {
@@ -84,7 +95,10 @@ namespace Nethermind.Config
         public Address Address => _nodeKey.Address;
         public IPAddress HostIp { get; }
         public int Port { get; }
-        public string Info => $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}";
+        public int DiscoveryPort { get; }
+        public string Info => DiscoveryPort == Port
+            ? $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}"
+            : $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}?discport={DiscoveryPort}";
 
         public override string ToString() => Info;
     }

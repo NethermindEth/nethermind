@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Org.BouncyCastle.Crypto;
@@ -49,7 +36,7 @@ namespace Nethermind.Crypto
      * @param hash   hash ing function
      * @param cipher the actual cipher
      */
-        public EthereumIesEngine(IMac mac, IDigest hash,BufferedBlockCipher cipher)
+        public EthereumIesEngine(IMac mac, IDigest hash, BufferedBlockCipher cipher)
         {
             _mac = mac;
             _hash = hash;
@@ -69,13 +56,13 @@ namespace Nethermind.Crypto
             _kdfKey = kdfKey;
             _forEncryption = forEncryption;
             _iv = parameters.GetIV();
-            _iesParameters = (IesParameters) parameters.Parameters;
+            _iesParameters = (IesParameters)parameters.Parameters;
         }
 
         private byte[] EncryptBlock(byte[] input, int inOff, int inLen, byte[] macData)
         {
             // Block cipher mode.
-            byte[] k1 = new byte[((IesWithCipherParameters) _iesParameters).CipherKeySize / 8];
+            byte[] k1 = new byte[((IesWithCipherParameters)_iesParameters).CipherKeySize / 8];
             byte[] k2 = new byte[_iesParameters.MacKeySize / 8];
             byte[] k = _kdfKey;
 
@@ -102,12 +89,12 @@ namespace Nethermind.Crypto
             _mac.Init(new KeyParameter(k2A));
             _mac.BlockUpdate(_iv, 0, _iv.Length);
             _mac.BlockUpdate(c, 0, c.Length);
-            if (p2 != null)
+            if (p2 is not null)
             {
                 _mac.BlockUpdate(p2, 0, p2.Length);
             }
 
-            if (macData != null)
+            if (macData is not null)
             {
                 _mac.BlockUpdate(macData, 0, macData.Length);
             }
@@ -130,12 +117,12 @@ namespace Nethermind.Crypto
             }
 
             // Block cipher mode.
-            byte[] k1 = new byte[((IesWithCipherParameters) _iesParameters).CipherKeySize / 8];
+            byte[] k1 = new byte[((IesWithCipherParameters)_iesParameters).CipherKeySize / 8];
             byte[] k2 = new byte[_iesParameters.MacKeySize / 8];
             byte[] k = _kdfKey;
             Array.Copy(k, 0, k1, 0, k1.Length);
             Array.Copy(k, k1.Length, k2, 0, k2.Length);
-            
+
             _cipher.Init(false, new ParametersWithIV(new KeyParameter(k1), _iv));
 
             byte[] M = new byte[_cipher.GetOutputSize(inLen - _mac.GetMacSize())];
@@ -159,12 +146,12 @@ namespace Nethermind.Crypto
             _mac.BlockUpdate(_iv, 0, _iv.Length);
             _mac.BlockUpdate(inEnc, inOff, inLen - t2.Length);
 
-            if (p2 != null)
+            if (p2 is not null)
             {
                 _mac.BlockUpdate(p2, 0, p2.Length);
             }
 
-            if (macData != null)
+            if (macData is not null)
             {
                 _mac.BlockUpdate(macData, 0, macData.Length);
             }

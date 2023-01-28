@@ -1,4 +1,7 @@
-﻿using System;
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
@@ -11,13 +14,13 @@ namespace Nethermind.Precompiles.Benchmark
         public readonly struct Param
         {
             private static Random _random = new Random(42);
-            
+
             public Param(byte[] bytes)
             {
                 Bytes = bytes;
                 _random.NextBytes(Bytes);
             }
-            
+
             public byte[] Bytes { get; }
 
             public override string ToString()
@@ -25,14 +28,14 @@ namespace Nethermind.Precompiles.Benchmark
                 return $"bytes[{Bytes.Length.ToString().PadLeft(4, '0')}]";
             }
         }
-        
-        public IEnumerable<Param> Inputs 
+
+        public IEnumerable<Param> Inputs
         {
             get
             {
                 for (int i = 0; i <= 512; i += 4)
                 {
-                    yield return new Param(new byte[i]);    
+                    yield return new Param(new byte[i]);
                 }
             }
         }

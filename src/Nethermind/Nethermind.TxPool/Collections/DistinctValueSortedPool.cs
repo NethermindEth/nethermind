@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -28,6 +15,9 @@ namespace Nethermind.TxPool.Collections
     /// <typeparam name="TValue">Type of items that are kept.</typeparam>
     /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
     public abstract class DistinctValueSortedPool<TKey, TValue, TGroupKey> : SortedPool<TKey, TValue, TGroupKey>
+        where TKey : notnull
+        where TValue : notnull
+        where TGroupKey : notnull
     {
         private readonly IComparer<TValue> _comparer;
         private readonly IDictionary<TValue, KeyValuePair<TKey, TValue>> _distinctDictionary;
@@ -44,7 +34,7 @@ namespace Nethermind.TxPool.Collections
             int capacity,
             IComparer<TValue> comparer,
             IEqualityComparer<TValue> distinctComparer,
-            ILogManager logManager) 
+            ILogManager logManager)
             : base(capacity, comparer)
         {
             // ReSharper disable once VirtualMemberCallInConstructor
@@ -61,7 +51,7 @@ namespace Nethermind.TxPool.Collections
             {
                 TryRemove(oldKvp.Key);
             }
-            
+
             base.InsertCore(key, value, groupKey);
 
             _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
@@ -72,8 +62,8 @@ namespace Nethermind.TxPool.Collections
             _distinctDictionary.Remove(value);
             return base.Remove(key, value);
         }
-        
-        protected virtual bool AllowSameKeyReplacement => false; 
+
+        protected virtual bool AllowSameKeyReplacement => false;
 
         protected override bool CanInsert(TKey key, TValue value)
         {
@@ -85,12 +75,12 @@ namespace Nethermind.TxPool.Collections
                 if (isDuplicate)
                 {
                     bool isHigher = _comparer.Compare(value, oldKvp.Value) <= 0;
-                    
+
                     if (_logger.IsTrace && !isHigher)
                     {
                         _logger.Trace($"Cannot insert {nameof(TValue)} {value}, its not distinct and not higher than old {nameof(TValue)} {oldKvp.Value}.");
                     }
-                    
+
                     return isHigher;
                 }
 

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
@@ -60,14 +47,15 @@ namespace Nethermind.Evm.Test
         protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
         protected virtual long BlockNumber => MainnetSpecProvider.ByzantiumBlockNumber;
+        protected virtual ulong Timestamp => 0UL;
         protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
-        protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
+        protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber, Timestamp);
 
         protected virtual ILogManager GetLogManager()
         {
             return LimboLogs.Instance;
         }
-        
+
         [SetUp]
         public virtual void Setup()
         {
@@ -100,26 +88,31 @@ namespace Nethermind.Evm.Test
             return tracer.BuildResult();
         }
 
-        protected TestAllTracerWithOutput Execute(params byte[] code)
+        protected TestAllTracerWithOutput Execute(long blockNumber, ulong timestamp, params byte[] code)
         {
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code, timestamp: timestamp);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
+        }
+
+        protected TestAllTracerWithOutput Execute(params byte[] code)
+        {
+            return Execute(BlockNumber, Timestamp, code);
         }
 
         protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
         protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
         {
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, timestamp: Timestamp);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
 
-        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long blockGasLimit = DefaultBlockGasLimit)
+        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0, byte[][] blobVersionedHashes = null)
         {
-            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code, blockGasLimit: blockGasLimit);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code, blockGasLimit: blockGasLimit, timestamp: timestamp, blobVersionedHashes: blobVersionedHashes);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
@@ -130,8 +123,10 @@ namespace Nethermind.Evm.Test
             long gasLimit,
             byte[] code,
             SenderRecipientAndMiner senderRecipientAndMiner = null,
-            int value = 1, 
-            long blockGasLimit = DefaultBlockGasLimit)
+            int value = 1,
+            long blockGasLimit = DefaultBlockGasLimit,
+            ulong timestamp = 0,
+            byte[][] blobVersionedHashes = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
@@ -150,11 +145,12 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithValue(value)
+                .WithBlobVersionedHashes(blobVersionedHashes)
                 .To(senderRecipientAndMiner.Recipient)
                 .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
 
-            Block block = BuildBlock(blockNumber, senderRecipientAndMiner, transaction, blockGasLimit);
+            Block block = BuildBlock(blockNumber, senderRecipientAndMiner, transaction, blockGasLimit, timestamp);
             return (block, transaction);
         }
 
@@ -204,10 +200,17 @@ namespace Nethermind.Evm.Test
             return BuildBlock(blockNumber, senderRecipientAndMiner, null);
         }
 
-        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction tx, long blockGasLimit = DefaultBlockGasLimit)
+        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner,
+            Transaction tx, long blockGasLimit = DefaultBlockGasLimit,
+            ulong timestamp = 0)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(blockGasLimit).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
+            return Build.A.Block.WithNumber(blockNumber)
+                .WithTransactions(tx is null ? new Transaction[0] : new[] { tx })
+                .WithGasLimit(blockGasLimit)
+                .WithBeneficiary(senderRecipientAndMiner.Miner)
+                .WithTimestamp(timestamp)
+                .TestObject;
         }
 
         protected void AssertGas(TestAllTracerWithOutput receipt, long gas)
@@ -233,10 +236,10 @@ namespace Nethermind.Evm.Test
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
-            byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();  
+            byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();
             Assert.AreEqual(expected, actualValue, "storage");
         }
-        
+
         protected void AssertStorage(UInt256 address, UInt256 expectedValue)
         {
             byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
@@ -246,18 +249,18 @@ namespace Nethermind.Evm.Test
         }
 
         private static int _callIndex = -1;
-        
+
         protected void AssertStorage(StorageCell storageCell, UInt256 expectedValue)
         {
             _callIndex++;
             if (!TestState.AccountExists(storageCell.Address))
             {
-                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[] {0}, $"storage {storageCell}, call {_callIndex}");
+                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[] { 0 }, $"storage {storageCell}, call {_callIndex}");
             }
             else
             {
                 byte[] actualValue = Storage.Get(storageCell);
-                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");    
+                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");
             }
         }
 

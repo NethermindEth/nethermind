@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.JsonRpc
 {
@@ -54,47 +41,42 @@ namespace Nethermind.JsonRpc
         /// Requested resource not found
         /// </summary>
         public const int ResourceNotFound = -32001;
-        
+
         /// <summary>
         /// Requested resource not available
         /// </summary>
         public const int ResourceUnavailable = -32002;
-        
+
         /// <summary>
         /// Transaction creation failed
         /// </summary>
         public const int TransactionRejected = -32010;
-        
+
         /// <summary>
         /// Account locked
         /// </summary>
         public const int AccountLocked = -32020;
-        
+
         /// <summary>
         /// Method is not implemented
         /// </summary>
         public const int MethodNotSupported = -32004;
-        
+
         /// <summary>
         /// Request exceeds defined limit
         /// </summary>
         public const int LimitExceeded = -32005;
 
         /// <summary>
-        /// Version of JSON-RPC protocol is not supported
-        /// </summary>
-        public const int RpcVersionNotSupported = -32015;
-        
-        /// <summary>
         /// 
         /// </summary>
         public const int ExecutionError = -32015;
-         
+
         /// <summary>
         /// Request exceeds defined timeout limit
         /// </summary>
         public const int Timeout = -32016;
-        
+
         /// <summary>
         /// Request exceeds defined timeout limit
         /// </summary>
@@ -104,6 +86,6 @@ namespace Nethermind.JsonRpc
         /// Unknown block error
         /// </summary>
         public const int UnknownBlockError = -39001;
-        
+
     }
 }

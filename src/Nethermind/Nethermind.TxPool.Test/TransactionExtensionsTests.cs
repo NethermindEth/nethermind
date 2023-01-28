@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using FluentAssertions;
@@ -36,11 +22,11 @@ namespace Nethermind.TxPool.Test
             tx.GasLimit = test.GasLimit;
             tx.Value = test.Value;
             tx.DecodedMaxFeePerGas = test.FeeCap;
-        
+
             UInt256 payableGasPrice = tx.CalculateAffordableGasPrice(test.IsEip1559Enabled, test.BaseFee, test.AccountBalance);
             payableGasPrice.Should().Be(test.ExpectedPayableGasPriceResult);
         }
-        
+
         public class TransactionPayableGasPrice
         {
             public int Lp { get; set; }
@@ -51,14 +37,14 @@ namespace Nethermind.TxPool.Test
             public long GasLimit { get; set; }
             public UInt256 Value { get; set; }
             public bool IsEip1559Enabled { get; set; }
-            
+
             public UInt256 AccountBalance { get; set; }
             public UInt256 ExpectedPayableGasPriceResult { get; set; }
-            
+
             public override string ToString() =>
                 $"Lp: {Lp}, ExpectedPayableGasPriceResult: {ExpectedPayableGasPriceResult}";
         }
-        
+
         public static IEnumerable<TransactionPayableGasPrice> TransactionPayableGasPriceCases
         {
             get
@@ -66,69 +52,175 @@ namespace Nethermind.TxPool.Test
                 /* Legacy transactions before 1559 fork:*/
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 1, GasPrice = 10, AccountBalance = 100, ExpectedPayableGasPriceResult = 10
+                    Lp = 1,
+                    GasPrice = 10,
+                    AccountBalance = 100,
+                    ExpectedPayableGasPriceResult = 10
                 };
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 2, GasPrice = 21, GasLimit = 100, AccountBalance = 2100, ExpectedPayableGasPriceResult = 21
+                    Lp = 2,
+                    GasPrice = 21,
+                    GasLimit = 100,
+                    AccountBalance = 2100,
+                    ExpectedPayableGasPriceResult = 21
                 };
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 3, GasPrice = 21, GasLimit = 100, Value = 3, AccountBalance = 2100, ExpectedPayableGasPriceResult = 21
+                    Lp = 3,
+                    GasPrice = 21,
+                    GasLimit = 100,
+                    Value = 3,
+                    AccountBalance = 2100,
+                    ExpectedPayableGasPriceResult = 21
                 };
-                
+
                 /*Legacy after 1559 fork:*/
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 4, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, Value = 5, AccountBalance = 3005, ExpectedPayableGasPriceResult = 10
+                    Lp = 4,
+                    IsEip1559Enabled = true,
+                    GasPrice = 10,
+                    GasLimit = 300,
+                    Value = 5,
+                    AccountBalance = 3005,
+                    ExpectedPayableGasPriceResult = 10
                 };
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 5, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, Value = 5, BaseFee = 500, AccountBalance = 3005, ExpectedPayableGasPriceResult = 10
+                    Lp = 5,
+                    IsEip1559Enabled = true,
+                    GasPrice = 10,
+                    GasLimit = 300,
+                    Value = 5,
+                    BaseFee = 500,
+                    AccountBalance = 3005,
+                    ExpectedPayableGasPriceResult = 10
                 };
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 6, IsEip1559Enabled = true, GasPrice = 10, GasLimit = 300, Value = 5, BaseFee = 5, AccountBalance = 3004, ExpectedPayableGasPriceResult = 10
+                    Lp = 6,
+                    IsEip1559Enabled = true,
+                    GasPrice = 10,
+                    GasLimit = 300,
+                    Value = 5,
+                    BaseFee = 5,
+                    AccountBalance = 3004,
+                    ExpectedPayableGasPriceResult = 10
                 };
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 7, IsEip1559Enabled = true, GasPrice = 0, GasLimit = 300, Value = 0, BaseFee = 5, AccountBalance = 100000, ExpectedPayableGasPriceResult = 0
+                    Lp = 7,
+                    IsEip1559Enabled = true,
+                    GasPrice = 0,
+                    GasLimit = 300,
+                    Value = 0,
+                    BaseFee = 5,
+                    AccountBalance = 100000,
+                    ExpectedPayableGasPriceResult = 0
                 };
-                
+
                 /* Eip1559 transactions before 1559 fork:*/
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 8, Type = TxType.EIP1559, GasPrice = 10, GasLimit = 300, FeeCap = 500, Value = 5, AccountBalance = 3005, ExpectedPayableGasPriceResult = 10
+                    Lp = 8,
+                    Type = TxType.EIP1559,
+                    GasPrice = 10,
+                    GasLimit = 300,
+                    FeeCap = 500,
+                    Value = 5,
+                    AccountBalance = 3005,
+                    ExpectedPayableGasPriceResult = 10
                 };
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 9, Type = TxType.EIP1559, GasPrice = 10, GasLimit = 300, Value = 5, AccountBalance = 3004, ExpectedPayableGasPriceResult = 10
+                    Lp = 9,
+                    Type = TxType.EIP1559,
+                    GasPrice = 10,
+                    GasLimit = 300,
+                    Value = 5,
+                    AccountBalance = 3004,
+                    ExpectedPayableGasPriceResult = 10
                 };
-                
+
                 /* Eip1559 transactions after 1559 fork:*/
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 10, IsEip1559Enabled = true, Type = TxType.EIP1559, GasPrice = 10, GasLimit = 300, FeeCap = 500, Value = 5, BaseFee = 20, AccountBalance = 10000, ExpectedPayableGasPriceResult = 30
+                    Lp = 10,
+                    IsEip1559Enabled = true,
+                    Type = TxType.EIP1559,
+                    GasPrice = 10,
+                    GasLimit = 300,
+                    FeeCap = 500,
+                    Value = 5,
+                    BaseFee = 20,
+                    AccountBalance = 10000,
+                    ExpectedPayableGasPriceResult = 30
                 };
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 11, IsEip1559Enabled = true, Type = TxType.EIP1559, GasPrice = 10, GasLimit = 300, FeeCap = 500, Value = 5, BaseFee = 20, AccountBalance = 2000, ExpectedPayableGasPriceResult = 6
+                    Lp = 11,
+                    IsEip1559Enabled = true,
+                    Type = TxType.EIP1559,
+                    GasPrice = 10,
+                    GasLimit = 300,
+                    FeeCap = 500,
+                    Value = 5,
+                    BaseFee = 20,
+                    AccountBalance = 2000,
+                    ExpectedPayableGasPriceResult = 6
                 };
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 12, IsEip1559Enabled = true, Type = TxType.EIP1559, GasPrice = 10, GasLimit = 300, FeeCap = 500, Value = 5, BaseFee = 20, AccountBalance = 305, ExpectedPayableGasPriceResult = 1
+                    Lp = 12,
+                    IsEip1559Enabled = true,
+                    Type = TxType.EIP1559,
+                    GasPrice = 10,
+                    GasLimit = 300,
+                    FeeCap = 500,
+                    Value = 5,
+                    BaseFee = 20,
+                    AccountBalance = 305,
+                    ExpectedPayableGasPriceResult = 1
                 };
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 13, IsEip1559Enabled = true, Type = TxType.EIP1559, GasPrice = 10, GasLimit = 300, FeeCap = 500, Value = 5, BaseFee = 20, AccountBalance = 304, ExpectedPayableGasPriceResult = 0
+                    Lp = 13,
+                    IsEip1559Enabled = true,
+                    Type = TxType.EIP1559,
+                    GasPrice = 10,
+                    GasLimit = 300,
+                    FeeCap = 500,
+                    Value = 5,
+                    BaseFee = 20,
+                    AccountBalance = 304,
+                    ExpectedPayableGasPriceResult = 0
                 };
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 14, IsEip1559Enabled = true, Type = TxType.EIP1559, GasPrice = 0, GasLimit = 300, FeeCap = 500, Value = 5, BaseFee = 20, AccountBalance = 10000, ExpectedPayableGasPriceResult = 20
+                    Lp = 14,
+                    IsEip1559Enabled = true,
+                    Type = TxType.EIP1559,
+                    GasPrice = 0,
+                    GasLimit = 300,
+                    FeeCap = 500,
+                    Value = 5,
+                    BaseFee = 20,
+                    AccountBalance = 10000,
+                    ExpectedPayableGasPriceResult = 20
                 };
                 yield return new TransactionPayableGasPrice()
                 {
-                    Lp = 15, IsEip1559Enabled = true, Type = TxType.EIP1559, GasPrice = 0, GasLimit = 300, FeeCap = 10, Value = 5, BaseFee = 20, AccountBalance = 10000, ExpectedPayableGasPriceResult = 10
+                    Lp = 15,
+                    IsEip1559Enabled = true,
+                    Type = TxType.EIP1559,
+                    GasPrice = 0,
+                    GasLimit = 300,
+                    FeeCap = 10,
+                    Value = 5,
+                    BaseFee = 20,
+                    AccountBalance = 10000,
+                    ExpectedPayableGasPriceResult = 10
                 };
             }
         }

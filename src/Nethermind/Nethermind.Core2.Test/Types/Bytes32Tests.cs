@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core2.Crypto;
@@ -30,7 +17,7 @@ namespace Nethermind.Core2.Test.Types
             Bytes32 a = new Bytes32(new byte[32]);
             Assert.AreEqual(a, Bytes32.Zero);
         }
-        
+
         [Test]
         public void Same_is_same()
         {
@@ -50,7 +37,7 @@ namespace Nethermind.Core2.Test.Types
             Assert.AreEqual(a.GetHashCode(), b.GetHashCode());
             Assert.AreEqual(a.ToString(), b.ToString());
         }
-        
+
         [Test]
         public void Xor()
         {
@@ -64,7 +51,7 @@ namespace Nethermind.Core2.Test.Types
             var c = a.Xor(b);
             Assert.AreEqual("0xf1c1929d1dc3cae03774ee8a65a8b65408dcaad4585185ebd4662e36ac2354c8", c.ToString());
         }
-        
+
         [Test]
         public void Diff_is_not_same()
         {
@@ -83,7 +70,7 @@ namespace Nethermind.Core2.Test.Types
             Assert.AreNotEqual(a.GetHashCode(), b.GetHashCode());
             Assert.AreNotEqual(a.ToString(), b.ToString());
         }
-        
+
         [Test]
         public void Same_before_and_after()
         {

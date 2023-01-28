@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -86,10 +73,10 @@ namespace Nethermind.HonestValidator
             return new Domain(combined);
         }
 
-//        public async Task ProcessProposerDutiesAsync(ulong time)
-//        {
-//            throw new System.NotSupportedException();
-//        }
+        //        public async Task ProcessProposerDutiesAsync(ulong time)
+        //        {
+        //            throw new System.NotSupportedException();
+        //        }
 
         /// <summary>
         /// Return the epoch number of ``slot``.
@@ -376,7 +363,7 @@ namespace Nethermind.HonestValidator
                             StatusCode.BroadcastButFailedValidation)
                         {
                             throw new Exception(
-                                $"Error response from publish: {(int) publishAttestationResponse.StatusCode} {publishAttestationResponse.StatusCode}.");
+                                $"Error response from publish: {(int)publishAttestationResponse.StatusCode} {publishAttestationResponse.StatusCode}.");
                         }
 
                         bool nodeAccepted = publishAttestationResponse.StatusCode == StatusCode.Success;
@@ -439,7 +426,7 @@ namespace Nethermind.HonestValidator
                             StatusCode.BroadcastButFailedValidation)
                         {
                             throw new Exception(
-                                $"Error response from publish: {(int) publishBlockResponse.StatusCode} {publishBlockResponse.StatusCode}.");
+                                $"Error response from publish: {(int)publishBlockResponse.StatusCode} {publishBlockResponse.StatusCode}.");
                         }
 
                         bool nodeAccepted = publishBlockResponse.StatusCode == StatusCode.Success;
@@ -472,7 +459,7 @@ namespace Nethermind.HonestValidator
                     await _beaconNodeApi.ValidatorDutiesAsync(publicKeys, epoch, cancellationToken);
                 if (validatorDutiesResponse.StatusCode != StatusCode.Success)
                 {
-                    Log.ErrorGettingValidatorDuties(_logger, (int) validatorDutiesResponse.StatusCode,
+                    Log.ErrorGettingValidatorDuties(_logger, (int)validatorDutiesResponse.StatusCode,
                         validatorDutiesResponse.StatusCode, null);
                     return;
                 }
@@ -556,7 +543,7 @@ namespace Nethermind.HonestValidator
                 }
                 else
                 {
-                    Log.ErrorGettingForkVersion(_logger, (int) forkResponse.StatusCode, forkResponse.StatusCode, null);
+                    Log.ErrorGettingForkVersion(_logger, (int)forkResponse.StatusCode, forkResponse.StatusCode, null);
                 }
             }
             catch (Exception ex)
@@ -585,7 +572,7 @@ namespace Nethermind.HonestValidator
                 }
                 else
                 {
-                    Log.ErrorGettingForkVersion(_logger, (int) syncingResponse.StatusCode, syncingResponse.StatusCode,
+                    Log.ErrorGettingForkVersion(_logger, (int)syncingResponse.StatusCode, syncingResponse.StatusCode,
                         null);
                 }
             }

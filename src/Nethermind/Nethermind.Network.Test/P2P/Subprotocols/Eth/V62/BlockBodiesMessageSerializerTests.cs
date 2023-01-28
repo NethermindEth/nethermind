@@ -1,19 +1,8 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -21,31 +10,66 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
+
+[TestFixture, Parallelizable(ParallelScope.All)]
+public class BlockBodiesMessageSerializerTests
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
-    public class BlockBodiesMessageSerializerTests
+    [TestCaseSource(nameof(GetBlockBodyValues))]
+    public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.TestZero(
+        new BlockBodiesMessageSerializer(),
+        new BlockBodiesMessage { Bodies = bodies });
+
+    private static IEnumerable<BlockBody[]> GetBlockBodyValues()
     {
-        [Test]
-        public void Roundtrip()
+        var header = Build.A.BlockHeader.TestObject;
+        var tx = Build.A.Transaction
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA)
+            .TestObject;
+
+        tx.SenderAddress = null;
+
+        // null body
+        yield return new BlockBody[] { null };
+
+        // body with null withdrawals
+        yield return new BlockBody[] { new(new[] { tx }, Array.Empty<BlockHeader>(), null) };
+
+        yield return new BlockBody[]
         {
-            BlockHeader header = Build.A.BlockHeader.TestObject;
-            Address to = Build.An.Address.FromNumber(1).TestObject;
-            Transaction tx = Build.A.Transaction.WithTo(to).SignedAndResolved(new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
-            tx.SenderAddress = null;
-            BlockBodiesMessage message = new();
-            message.Bodies = new [] {new BlockBody(new [] {tx}, new [] {header})};
-            
-            var serializer = new BlockBodiesMessageSerializer();
-            SerializerTester.TestZero(serializer, message);
-        }
-        
-        [Test]
-        public void Roundtrip_with_nulls()
-        {
-            BlockBodiesMessage message = new() {Bodies = new BlockBody[1] {null}};
-            var serializer = new BlockBodiesMessageSerializer();
-            SerializerTester.TestZero(serializer, message);
-        }
+            // body with emtpy withdrawals
+            new(new[] { tx }, new[] { header }, Array.Empty<Withdrawal>()),
+            // body with a single withdrawals
+            new(new[] { tx }, Array.Empty<BlockHeader>(),
+                new[]
+                {
+                    Build.A.Withdrawal
+                        .WithIndex(1)
+                        .WithAmount(1)
+                        .WithRecipient(TestItem.AddressA)
+                        .TestObject
+                }),
+            // body with multiple withdrawals
+            new(new[] { tx }, new[] { header },
+                new[]
+                {
+                    Build.A.Withdrawal
+                        .WithIndex(1)
+                        .WithAmount(1)
+                        .WithRecipient(TestItem.AddressA)
+                        .TestObject,
+                    Build.A.Withdrawal
+                        .WithIndex(2)
+                        .WithAmount(2)
+                        .WithRecipient(TestItem.AddressB)
+                        .TestObject,
+                    Build.A.Withdrawal
+                        .WithIndex(3)
+                        .WithAmount(3)
+                        .WithRecipient(TestItem.AddressC)
+                        .TestObject
+                })
+        };
     }
 }

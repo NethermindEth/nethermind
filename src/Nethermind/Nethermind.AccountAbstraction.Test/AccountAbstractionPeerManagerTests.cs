@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -41,7 +44,7 @@ namespace Nethermind.AccountAbstraction.Test
         private IStateProvider _stateProvider = Substitute.For<IStateProvider>();
         private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
-        private readonly string[] _entryPointContractAddress = {"0x8595dd9e0438640b5e1254f9df579ac12a86865f", "0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e"};
+        private readonly string[] _entryPointContractAddress = { "0x8595dd9e0438640b5e1254f9df579ac12a86865f", "0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e" };
         private static Address _notAnAddress = new("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf");
 
         [Test]
@@ -57,7 +60,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _peerManager.AddPeer(peer);
             }
         }
-        
+
         [Test]
         public void should_delete_peers()
         {
@@ -66,18 +69,18 @@ namespace Nethermind.AccountAbstraction.Test
             AccountAbstractionPeerManager _peerManager =
                 new AccountAbstractionPeerManager(_userOperationPools, _broadcaster, _logger);
             IList<IUserOperationPoolPeer> peers = GetPeers();
-            
+
             foreach (IUserOperationPoolPeer peer in peers)
             {
                 _peerManager.AddPeer(peer);
             }
-            
+
             foreach (IUserOperationPoolPeer peer in peers)
             {
                 _peerManager.RemovePeer(peer.Id);
             }
         }
-        
+
         private IList<IUserOperationPoolPeer> GetPeers(int limit = 100)
         {
             IList<IUserOperationPoolPeer> peers = new List<IUserOperationPoolPeer>();
@@ -93,7 +96,7 @@ namespace Nethermind.AccountAbstraction.Test
         {
             IUserOperationPoolPeer peer = Substitute.For<IUserOperationPoolPeer>();
             peer.Id.Returns(publicKey);
-            
+
             return peer;
         }
 
@@ -105,14 +108,14 @@ namespace Nethermind.AccountAbstraction.Test
                 _userOperationPools[entryPoint] = GenerateUserOperationPool(entryPoint, 100);
             }
         }
-        
-        private UserOperationPool GenerateUserOperationPool(Address entryPoint, int capacity = 10, int perSenderCapacity = 10 )
+
+        private UserOperationPool GenerateUserOperationPool(Address entryPoint, int capacity = 10, int perSenderCapacity = 10)
         {
             IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
             // config.EntryPointContractAddresses.Returns(_entryPointContractAddress);
             config.UserOperationPoolSize.Returns(capacity);
             config.MaximumUserOperationPerSender.Returns(perSenderCapacity);
-            
+
             UserOperationSortedPool userOperationSortedPool =
                 new(capacity, CompareUserOperationsByDecreasingGasPrice.Default, LimboLogs.Instance, config.MaximumUserOperationPerSender);
 
@@ -131,23 +134,23 @@ namespace Nethermind.AccountAbstraction.Test
 
             IPaymasterThrottler paymasterThrottler = Substitute.For<PaymasterThrottler>();
             IUserOperationBroadcaster userOperationBroadcaster = Substitute.For<IUserOperationBroadcaster>();
-            
+
             return new UserOperationPool(
                 config,
                 _blockTree,
-                entryPoint, 
-                NullLogger.Instance, 
-                paymasterThrottler, 
-                _logFinder, 
-                _signer, 
+                entryPoint,
+                NullLogger.Instance,
+                paymasterThrottler,
+                _logFinder,
+                _signer,
                 _stateProvider,
                 _specProvider,
-                Substitute.For<ITimestamper>(), 
-                _simulator, 
+                Substitute.For<ITimestamper>(),
+                _simulator,
                 userOperationSortedPool,
                 userOperationBroadcaster,
-                1);
+                TestBlockchainIds.ChainId);
         }
-        
+
     }
 }

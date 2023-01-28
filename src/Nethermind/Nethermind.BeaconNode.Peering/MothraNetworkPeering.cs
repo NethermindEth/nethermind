@@ -1,4 +1,7 @@
-﻿using System;
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -46,7 +49,7 @@ namespace Nethermind.BeaconNode.Peering
         {
             // TODO: Basic validation before broadcasting, e.g. signature is correct 
 
-            ulong attestationSubnetIndex = (ulong) signedAttestation.Data.Index %
+            ulong attestationSubnetIndex = (ulong)signedAttestation.Data.Index %
                                            _networkingConfigurationOptions.CurrentValue.AttestationSubnetCount;
             // TODO: Maybe cache the subnet topic UTF8 byte values (concurrent dictionary?)
             string topicTemplate = "/eth2/committee_index{0}_beacon_attestation/ssz";

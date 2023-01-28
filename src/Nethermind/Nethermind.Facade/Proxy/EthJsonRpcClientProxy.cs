@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
@@ -41,12 +28,12 @@ namespace Nethermind.Facade.Proxy
         public Task<RpcResult<UInt256?>> eth_getBalance(Address address, BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<UInt256?>(nameof(eth_getBalance), address, MapBlockParameter(blockParameter));
 
-        public Task<RpcResult<UInt256?>> eth_getTransactionCount(Address address, BlockParameterModel blockParameter = null)
-            => _proxy.SendAsync<UInt256?>(nameof(eth_getTransactionCount), address, MapBlockParameter(blockParameter));
+        public Task<RpcResult<UInt256>> eth_getTransactionCount(Address address, BlockParameterModel blockParameter = null)
+            => _proxy.SendAsync<UInt256>(nameof(eth_getTransactionCount), address, MapBlockParameter(blockParameter));
 
         public Task<RpcResult<ReceiptModel>> eth_getTransactionReceipt(Keccak transactionHash)
             => _proxy.SendAsync<ReceiptModel>(nameof(eth_getTransactionReceipt), transactionHash);
-        
+
         public Task<RpcResult<byte[]>> eth_call(CallTransactionModel transaction,
             BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<byte[]>(nameof(eth_call), transaction, MapBlockParameter(blockParameter));
@@ -56,7 +43,7 @@ namespace Nethermind.Facade.Proxy
 
         public Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Keccak transactionHash)
             => _proxy.SendAsync<TransactionModel>(nameof(eth_getTransactionByHash), transactionHash);
-        
+
         public Task<RpcResult<TransactionModel[]>> eth_pendingTransactions()
             => _proxy.SendAsync<TransactionModel[]>(nameof(eth_pendingTransactions));
 
@@ -65,8 +52,8 @@ namespace Nethermind.Facade.Proxy
 
         public Task<RpcResult<Keccak>> eth_sendTransaction(TransactionModel transaction)
             => _proxy.SendAsync<Keccak>(nameof(eth_sendTransaction), transaction);
-        
-        public Task<RpcResult<byte[]>> eth_estimateGas(TransactionModel transaction,  BlockParameterModel blockParameter = null)
+
+        public Task<RpcResult<byte[]>> eth_estimateGas(TransactionModel transaction, BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<byte[]>(nameof(eth_estimateGas), transaction);
 
         public Task<RpcResult<BlockModel<Keccak>>> eth_getBlockByHash(Keccak blockHash,
@@ -77,12 +64,12 @@ namespace Nethermind.Facade.Proxy
             bool returnFullTransactionObjects = false)
             => _proxy.SendAsync<BlockModel<Keccak>>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
                 returnFullTransactionObjects);
-        
+
         public Task<RpcResult<BlockModel<TransactionModel>>> eth_getBlockByNumberWithTransactionDetails(BlockParameterModel blockParameter,
             bool returnFullTransactionObjects = false)
             => _proxy.SendAsync<BlockModel<TransactionModel>>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
                 returnFullTransactionObjects);
-        
+
         public Task<RpcResult<string>> net_version()
             => _proxy.SendAsync<string>(nameof(net_version));
 

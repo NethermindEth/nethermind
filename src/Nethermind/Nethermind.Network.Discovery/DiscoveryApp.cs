@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
 using System.Net.Sockets;
@@ -117,7 +104,7 @@ public class DiscoveryApp : IDiscoveryApp
         StopDiscoveryTimer();
         StopDiscoveryPersistenceTimer();
 
-        if (_storageCommitTask != null)
+        if (_storageCommitTask is not null)
         {
             await _storageCommitTask.ContinueWith(x =>
             {
@@ -283,7 +270,7 @@ public class DiscoveryApp : IDiscoveryApp
             }
 
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node, true);
-            if (manager == null)
+            if (manager is null)
             {
                 if (_logger.IsDebug)
                 {
@@ -390,18 +377,18 @@ public class DiscoveryApp : IDiscoveryApp
     {
         try
         {
-            if (_discoveryHandler != null)
+            if (_discoveryHandler is not null)
             {
                 _discoveryHandler.OnChannelActivated -= OnChannelActivated;
             }
 
-            if (_bindingTask != null)
+            if (_bindingTask is not null)
             {
                 await _bindingTask; // if we are still starting
             }
 
             _logger.Info("Stopping discovery udp channel");
-            if (_channel == null)
+            if (_channel is null)
             {
                 return;
             }
@@ -442,10 +429,10 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
             }
-            
-            Node node = new (bootnode.NodeId, bootnode.Host, bootnode.Port);
+
+            Node node = new(bootnode.NodeId, bootnode.Host, bootnode.Port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            if (manager != null)
+            if (manager is not null)
             {
                 managers.Add(manager);
             }

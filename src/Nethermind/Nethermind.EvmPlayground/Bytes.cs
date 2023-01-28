@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics;
@@ -30,7 +17,7 @@ namespace Nethermind.EvmPlayground
         {
             return ToHexString(bytes, false, false);
         }
-        
+
         public static string ToHexString(this Span<byte> bytes)
         {
             return ToHexString(bytes, false, false);
@@ -40,7 +27,7 @@ namespace Nethermind.EvmPlayground
         {
             return ToHexString(bytes, withZeroX, false);
         }
-        
+
         public static string ToHexString(this Span<byte> bytes, bool withZeroX)
         {
             return ToHexString(bytes, withZeroX, false);
@@ -65,8 +52,8 @@ namespace Nethermind.EvmPlayground
             for (int i = 0; i < bytes.Length; i++)
             {
                 uint val = Lookup32[bytes[i]];
-                char char1 = (char) val;
-                char char2 = (char) (val >> 16);
+                char char1 = (char)val;
+                char char2 = (char)(val >> 16);
 
                 if (leadingZeros <= i * 2) result[2 * i + (withZeroX ? 2 : 0) - leadingZeros] = char1;
 
@@ -84,7 +71,7 @@ namespace Nethermind.EvmPlayground
             for (int i = 0; i < 256; i++)
             {
                 string s = i.ToString(format);
-                result[i] = s[0] + ((uint) s[1] << 16);
+                result[i] = s[0] + ((uint)s[1] << 16);
             }
 
             return result;

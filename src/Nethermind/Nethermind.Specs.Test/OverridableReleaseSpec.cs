@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -36,7 +22,7 @@ namespace Nethermind.Specs.Test
         }
 
         public string Name => "OverridableReleaseSpec";
-        
+
         public long MaximumExtraDataSize => _spec.MaximumExtraDataSize;
 
         public long MaxCodeSize => _spec.MaxCodeSize;
@@ -50,7 +36,7 @@ namespace Nethermind.Specs.Test
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 
         public long DifficultyBoundDivisor => _spec.DifficultyBoundDivisor;
-        
+
         public long? FixedDifficulty => _spec.FixedDifficulty;
 
         public int MaximumUncleCount => _spec.MaximumUncleCount;
@@ -112,20 +98,21 @@ namespace Nethermind.Specs.Test
         public bool IsEip2200Enabled => _spec.IsEip2200Enabled;
 
         public bool IsEip2315Enabled => _spec.IsEip2315Enabled;
-        
+
         public bool IsEip2537Enabled => _spec.IsEip2315Enabled;
-        
+
         public bool IsEip2565Enabled => _spec.IsEip2565Enabled;
 
         public bool IsEip2929Enabled => _spec.IsEip2929Enabled;
-        
+
         public bool IsEip2930Enabled => _spec.IsEip2930Enabled;
 
         public bool IsEip1559Enabled => _spec.IsEip1559Enabled;
         public bool IsEip3198Enabled => _spec.IsEip3198Enabled;
         public bool IsEip3529Enabled => _spec.IsEip3529Enabled;
-        
+
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
+        public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
         public bool IsEip3607Enabled { get; set; }
 
         public bool IsEip158IgnoredAccount(Address address)
@@ -136,17 +123,35 @@ namespace Nethermind.Specs.Test
         private long? _overridenEip1559TransitionBlock;
         public long Eip1559TransitionBlock
         {
+            get => _overridenEip1559TransitionBlock ?? _spec.Eip1559TransitionBlock;
+            set => _overridenEip1559TransitionBlock = value;
+        }
+
+        private Address? _overridenEip1559FeeCollector;
+        public Address? Eip1559FeeCollector
+        {
+            get => _overridenEip1559FeeCollector ?? _spec.Eip1559FeeCollector;
+            set => _overridenEip1559FeeCollector = value;
+        }
+
+        private ulong? _overridenEip4844TransitionTimeStamp;
+        public ulong Eip4844TransitionTimestamp
+        {
             get
             {
-                return _overridenEip1559TransitionBlock ?? _spec.Eip1559TransitionBlock;
+                return _overridenEip4844TransitionTimeStamp ?? _spec.Eip4844TransitionTimestamp;
             }
             set
             {
-                _overridenEip1559TransitionBlock = value;
+                _overridenEip4844TransitionTimeStamp = value;
             }
         }
 
-        public Address? Eip1559FeeCollector => _spec.Eip1559FeeCollector;
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
+        public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
+        public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
+        public bool IsEip3860Enabled => _spec.IsEip3860Enabled;
+        public bool IsEip4895Enabled => _spec.IsEip4895Enabled;
+        public ulong WithdrawalTimestamp => _spec.WithdrawalTimestamp;
     }
 }

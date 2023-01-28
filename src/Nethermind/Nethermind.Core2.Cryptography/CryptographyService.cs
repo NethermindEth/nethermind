@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -60,12 +47,12 @@ namespace Nethermind.Core2.Cryptography
             TimeParameters timeParameters = timeParameterOptions.CurrentValue;
             StateListLengths stateListLengths = stateListLengthOptions.CurrentValue;
             MaxOperationsPerBlock maxOperationsPerBlock = maxOperationsPerBlockOptions.CurrentValue;
-            
+
             BLSParameters blsParameters = new BLSParameters();
             _bls = BLS.Create(blsParameters);
-            
+
             Nethermind.Ssz.Ssz.Init(
-                chainConstants.DepositContractTreeDepth, 
+                chainConstants.DepositContractTreeDepth,
                 chainConstants.JustificationBitsLength,
                 miscellaneousParameters.MaximumValidatorsPerCommittee,
                 timeParameters.SlotsPerEpoch,
@@ -80,9 +67,9 @@ namespace Nethermind.Core2.Cryptography
                 maxOperationsPerBlock.MaximumAttestations,
                 maxOperationsPerBlock.MaximumDeposits,
                 maxOperationsPerBlock.MaximumVoluntaryExits);
-            
+
             Nethermind.Ssz.Ssz.Init(
-                chainConstants.DepositContractTreeDepth, 
+                chainConstants.DepositContractTreeDepth,
                 chainConstants.JustificationBitsLength,
                 miscellaneousParameters.MaximumValidatorsPerCommittee,
                 timeParameters.SlotsPerEpoch,
@@ -98,8 +85,8 @@ namespace Nethermind.Core2.Cryptography
                 maxOperationsPerBlock.MaximumDeposits,
                 maxOperationsPerBlock.MaximumVoluntaryExits);
         }
-        
-        
+
+
         private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
 
         public Func<BLSParameters, BLS> SignatureAlgorithmFactory { get; set; } = blsParameters => BLS.Create(blsParameters);
@@ -205,12 +192,12 @@ namespace Nethermind.Core2.Cryptography
                 maxOperationsPerBlock.MaximumAttesterSlashings, maxOperationsPerBlock.MaximumAttestations,
                 maxOperationsPerBlock.MaximumDeposits, maxOperationsPerBlock.MaximumVoluntaryExits,
                 miscellaneousParameters.MaximumValidatorsPerCommittee);
-            
+
             // TODO: Get this working and switch over block body, beacon block, and state
 
-//            Merkle.Ize(out UInt256 root, beaconBlockBody);
-//            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
-//            return new Hash32(bytes);
+            //            Merkle.Ize(out UInt256 root, beaconBlockBody);
+            //            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+            //            return new Hash32(bytes);
         }
 
         public Root HashTreeRoot(BeaconBlockHeader beaconBlockHeader)
@@ -221,17 +208,17 @@ namespace Nethermind.Core2.Cryptography
         Root ICryptographyService.HashTreeRoot(BeaconState beaconState)
         {
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            TimeParameters timeParameters =  _timeParameterOptions.CurrentValue;
-            StateListLengths stateListLengths =  _stateListLengthOptions.CurrentValue;
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
+            StateListLengths stateListLengths = _stateListLengthOptions.CurrentValue;
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
-            ulong maximumAttestationsPerEpoch = maxOperationsPerBlock.MaximumAttestations * (ulong) timeParameters.SlotsPerEpoch;
+            ulong maximumAttestationsPerEpoch = maxOperationsPerBlock.MaximumAttestations * (ulong)timeParameters.SlotsPerEpoch;
             return beaconState.HashTreeRoot(stateListLengths.HistoricalRootsLimit,
                 timeParameters.SlotsPerEth1VotingPeriod, stateListLengths.ValidatorRegistryLimit,
                 maximumAttestationsPerEpoch, miscellaneousParameters.MaximumValidatorsPerCommittee);
 
-//            Merkle.Ize(out UInt256 root, beaconState);
-//            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
-//            return new Hash32(bytes);
+            //            Merkle.Ize(out UInt256 root, beaconState);
+            //            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+            //            return new Hash32(bytes);
         }
 
         Root ICryptographyService.HashTreeRoot(DepositData depositData)
@@ -254,7 +241,7 @@ namespace Nethermind.Core2.Cryptography
             Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
             return new Root(bytes);
         }
-        
+
         Root ICryptographyService.HashTreeRoot(List<Ref<DepositData>> depositData)
         {
             Merkle.Ize(out UInt256 root, depositData);

@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -46,8 +32,8 @@ namespace Nethermind.Mev.Execution
             _specProvider = specProvider;
             _signer = signer;
         }
-            
-        public TResult ExecuteBundle(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken, UInt256? timestamp = null)
+
+        public TResult ExecuteBundle(MevBundle bundle, BlockHeader parent, CancellationToken cancellationToken, ulong? timestamp = null)
         {
             Block block = BuildBlock(bundle, parent, timestamp);
             TBlockTracer blockTracer = CreateBlockTracer(bundle);
@@ -58,22 +44,22 @@ namespace Nethermind.Mev.Execution
 
         protected abstract TResult BuildResult(MevBundle bundle, TBlockTracer tracer);
 
-        private Block BuildBlock(MevBundle bundle, BlockHeader parent, UInt256? timestamp)
+        private Block BuildBlock(MevBundle bundle, BlockHeader parent, ulong? timestamp)
         {
             BlockHeader header = new(
-                parent.Hash ?? Keccak.OfAnEmptySequenceRlp, 
-                Keccak.OfAnEmptySequenceRlp, 
-                Beneficiary, 
-                parent.Difficulty,  
-                bundle.BlockNumber, 
-                GetGasLimit(parent), 
-                timestamp ?? parent.Timestamp, 
+                parent.Hash ?? Keccak.OfAnEmptySequenceRlp,
+                Keccak.OfAnEmptySequenceRlp,
+                Beneficiary,
+                parent.Difficulty,
+                bundle.BlockNumber,
+                GetGasLimit(parent),
+                timestamp ?? parent.Timestamp,
                 Bytes.Empty)
             {
                 TotalDifficulty = parent.TotalDifficulty + parent.Difficulty
             };
 
-            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header));
             header.Hash = header.CalculateHash();
 
             return new Block(header, bundle.Transactions, Array.Empty<BlockHeader>());
@@ -85,9 +71,9 @@ namespace Nethermind.Mev.Execution
 
         protected abstract TBlockTracer CreateBlockTracer(MevBundle mevBundle);
 
-        protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
+        protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) =>
             ResultWrapper<TResult>.Fail(result.Error ?? string.Empty, ErrorCodes.InvalidInput);
-            
+
 
     }
 }

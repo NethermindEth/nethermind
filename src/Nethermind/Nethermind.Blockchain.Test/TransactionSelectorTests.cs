@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
 using System.Collections.Generic;
@@ -37,6 +24,7 @@ using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -70,22 +58,22 @@ namespace Nethermind.Blockchain.Test
                 allTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     allTransactionsSelected.Transactions.OrderBy(t => t.Nonce));
                 yield return new TestCaseData(allTransactionsSelected).SetName("Legacy transactions: All transactions selected - 0 BaseFee");
-                
+
                 ProperTransactionsSelectedTestCase baseFeeLowerThanGasPrice = ProperTransactionsSelectedTestCase.Eip1559DefaultLegacyTransactions;
                 baseFeeLowerThanGasPrice.BaseFee = 5;
                 baseFeeLowerThanGasPrice.ExpectedSelectedTransactions.AddRange(
                     baseFeeLowerThanGasPrice.Transactions.OrderBy(t => t.Nonce));
                 yield return new TestCaseData(baseFeeLowerThanGasPrice).SetName("Legacy transactions: All transactions selected - BaseFee lower than gas price");
-                
+
                 ProperTransactionsSelectedTestCase baseFeeGreaterThanGasPrice = ProperTransactionsSelectedTestCase.Eip1559DefaultLegacyTransactions;
                 baseFeeGreaterThanGasPrice.BaseFee = 1.GWei();
                 yield return new TestCaseData(baseFeeGreaterThanGasPrice).SetName("Legacy transactions: None transactions selected - BaseFee greater than gas price");
 
                 ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
-                    AccountStates = {{TestItem.AddressA, (300, 1)}},
+                    AccountStates = { { TestItem.AddressA, (300, 1) } },
                     Transactions =
                     {
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2)
@@ -96,11 +84,11 @@ namespace Nethermind.Blockchain.Test
                     GasLimit = 10000000
                 };
                 balanceCheckWithTxValue.ExpectedSelectedTransactions.AddRange(
-                    new[] {1 }.Select(i => balanceCheckWithTxValue.Transactions[i]));
+                    new[] { 1 }.Select(i => balanceCheckWithTxValue.Transactions[i]));
                 yield return new TestCaseData(balanceCheckWithTxValue).SetName("Legacy transactions: one transaction selected because of account balance");
             }
         }
-        
+
         public static IEnumerable Eip1559TestCases
         {
             get
@@ -110,22 +98,22 @@ namespace Nethermind.Blockchain.Test
                 allTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     allTransactionsSelected.Transactions.OrderBy(t => t.Nonce));
                 yield return new TestCaseData(allTransactionsSelected).SetName("EIP1559 transactions: All transactions selected - 0 BaseFee");
-                
+
                 ProperTransactionsSelectedTestCase baseFeeLowerThanGasPrice = ProperTransactionsSelectedTestCase.Eip1559Default;
                 baseFeeLowerThanGasPrice.BaseFee = 5;
                 baseFeeLowerThanGasPrice.ExpectedSelectedTransactions.AddRange(
                     baseFeeLowerThanGasPrice.Transactions.OrderBy(t => t.Nonce));
                 yield return new TestCaseData(baseFeeLowerThanGasPrice).SetName("EIP1559 transactions: All transactions selected - BaseFee lower than gas price");
-                
+
                 ProperTransactionsSelectedTestCase baseFeeGreaterThanGasPrice = ProperTransactionsSelectedTestCase.Eip1559Default;
                 baseFeeGreaterThanGasPrice.BaseFee = 1.GWei();
                 yield return new TestCaseData(baseFeeGreaterThanGasPrice).SetName("EIP1559 transactions: None transactions selected - BaseFee greater than gas price");
-                
+
                 ProperTransactionsSelectedTestCase balanceCheckWithTxValue = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
-                    AccountStates = {{TestItem.AddressA, (400, 1)}},
+                    AccountStates = { { TestItem.AddressA, (400, 1) } },
                     Transactions =
                     {
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2)
@@ -138,12 +126,12 @@ namespace Nethermind.Blockchain.Test
                 balanceCheckWithTxValue.ExpectedSelectedTransactions.AddRange(
                     new[] { 1 }.Select(i => balanceCheckWithTxValue.Transactions[i]));
                 yield return new TestCaseData(balanceCheckWithTxValue).SetName("EIP1559 transactions: one transaction selected because of account balance");
-                
+
                 ProperTransactionsSelectedTestCase balanceCheckWithGasPremium = new()
                 {
-                    Eip1559Enabled = true,
+                    ReleaseSpec = London.Instance,
                     BaseFee = 5,
-                    AccountStates = {{TestItem.AddressA, (400, 1)}},
+                    AccountStates = { { TestItem.AddressA, (400, 1) } },
                     Transactions =
                     {
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2)
@@ -194,24 +182,27 @@ namespace Nethermind.Blockchain.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
-            IReleaseSpec spec = new ReleaseSpec()
-            {
-                IsEip1559Enabled = testCase.Eip1559Enabled
-            };
-            specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
+            IReleaseSpec spec = testCase.ReleaseSpec;
+            specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong?>()).Returns(spec);
+            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(spec);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider =
                 new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
             Dictionary<Address, Transaction[]> transactions = testCase.Transactions
-                .Where(t => t?.SenderAddress != null)
+                .Where(t => t?.SenderAddress is not null)
                 .GroupBy(t => t.SenderAddress)
                 .ToDictionary(
                     g => g.Key,
                     g => g.OrderBy(t => t, comparer).ToArray());
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = testCase.MinGasPriceForMining
+            };
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
-                .WithMinGasPriceFilter(testCase.MinGasPriceForMining, specProvider)
+                .WithMinGasPriceFilter(blocksConfig, specProvider)
                 .WithBaseFeeFilter(specProvider)
                 .Build;
 
@@ -238,15 +229,15 @@ namespace Nethermind.Blockchain.Test
         public long GasLimit { get; set; }
         public List<Transaction> ExpectedSelectedTransactions { get; } = new();
         public UInt256 MinGasPriceForMining { get; set; } = 1;
-        
-        public bool Eip1559Enabled { get; set; }
-        
+
+        public IReleaseSpec ReleaseSpec { get; set; }
+
         public UInt256 BaseFee { get; set; }
 
         public static ProperTransactionsSelectedTestCase Default =>
             new()
             {
-                AccountStates = {{TestItem.AddressA, (1000, 1)}},
+                AccountStates = { { TestItem.AddressA, (1000, 1) } },
                 Transactions =
                 {
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3).WithValue(1)
@@ -256,15 +247,16 @@ namespace Nethermind.Blockchain.Test
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).WithValue(10)
                         .WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
                 },
-                GasLimit = 10000000
+                GasLimit = 10000000,
+                ReleaseSpec = Berlin.Instance
             };
-        
+
         public static ProperTransactionsSelectedTestCase Eip1559DefaultLegacyTransactions =>
             new()
             {
-                Eip1559Enabled = true,
+                ReleaseSpec = London.Instance,
                 BaseFee = 1.GWei(),
-                AccountStates = {{TestItem.AddressA, (1000, 1)}},
+                AccountStates = { { TestItem.AddressA, (1000, 1) } },
                 Transactions =
                 {
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3).WithValue(1)
@@ -276,13 +268,13 @@ namespace Nethermind.Blockchain.Test
                 },
                 GasLimit = 10000000
             };
-        
+
         public static ProperTransactionsSelectedTestCase Eip1559Default =>
             new()
             {
-                Eip1559Enabled = true,
+                ReleaseSpec = London.Instance,
                 BaseFee = 1.GWei(),
-                AccountStates = {{TestItem.AddressA, (1000, 1)}},
+                AccountStates = { { TestItem.AddressA, (1000, 1) } },
                 Transactions =
                 {
                     Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(3).WithValue(1)

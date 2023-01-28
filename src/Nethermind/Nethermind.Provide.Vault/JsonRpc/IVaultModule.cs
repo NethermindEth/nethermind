@@ -1,18 +1,5 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
@@ -22,14 +9,14 @@ using provide.Model.Vault;
 namespace Nethermind.Vault.JsonRpc
 {
     [RpcModule(ModuleType.Vault)]
-    public interface IVaultModule: IRpcModule
+    public interface IVaultModule : IRpcModule
     {
         [JsonRpcMethod(
             Description = "Displays a list of Vaults",
             IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<string[]>> vault_listVaults();
-        
+
         [JsonRpcMethod(
             Description = "Creates a Vault",
             IsSharable = false,
@@ -89,7 +76,7 @@ namespace Nethermind.Vault.JsonRpc
             IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<bool>> vault_verifySignature(string vaultId, string keyId, string message, string signature);
-        
+
         [JsonRpcMethod(
             Description = "Sets the API token used when talking to the Vault Service",
             IsSharable = false,

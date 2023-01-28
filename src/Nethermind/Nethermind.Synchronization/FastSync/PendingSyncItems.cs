@@ -1,25 +1,12 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Synchronization.FastSync
 {
@@ -93,12 +80,12 @@ namespace Nethermind.Synchronization.FastSync
         {
             StateItemsPriority0.TryPeek(out StateSyncItem? node);
 
-            if (node == null)
+            if (node is null)
             {
                 StateItemsPriority1.TryPeek(out node);
             }
 
-            if (node == null)
+            if (node is null)
             {
                 StateItemsPriority2.TryPeek(out node);
             }
@@ -148,9 +135,16 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
+        /// <summary>
+        /// It takes items only from state node queues.
+        /// Codes are taken from the queue separately to support SNAP methods (2 different methods)
+        /// </summary>
+        /// <param name="node"></param>
+        /// <returns></returns>
         private bool TryTake(out StateSyncItem? node)
         {
-            for (int i = 0; i < _allStacks.Length; i++)
+            // index 0 is Codes so we skip it
+            for (int i = 1; i < _allStacks.Length; i++)
             {
                 if (_allStacks[i].TryPop(out node))
                 {
@@ -166,10 +160,30 @@ namespace Nethermind.Synchronization.FastSync
         {
             // the limitation is to prevent an early explosion of request sizes with low level nodes
             // the moment we find the first leaf we will know something more about the tree structure and hence
-            // prevent lot of Stream2 entries to stay in memory for a long time 
+            // prevent lot of Stream2 entries to stay in memory for a long time
             int length = MaxStateLevel == 64 ? maxSize : Math.Max(1, (int)(maxSize * ((decimal)MaxStateLevel / 64) * ((decimal)MaxStateLevel / 64)));
-
             List<StateSyncItem> requestItems = new(length);
+
+            // Codes have priority over State Nodes
+            if (!CodeItems.IsEmpty)
+            {
+                int codeMaxCount = Math.Min(length, CodeItems.Count);
+
+                for (int i = 0; i < codeMaxCount; i++)
+                {
+                    if (CodeItems.TryPop(out var codeItem))
+                    {
+                        requestItems.Add(codeItem!);
+                    }
+                }
+
+                if (requestItems.Count > 0)
+                {
+                    return requestItems;
+                }
+            }
+
+            // Take Stae Nodes if no codes queued up
             for (int i = 0; i < length; i++)
             {
                 if (TryTake(out StateSyncItem? requestItem))
@@ -185,6 +199,7 @@ namespace Nethermind.Synchronization.FastSync
             return requestItems;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public string RecalculatePriorities()
         {
             Stopwatch stopwatch = Stopwatch.StartNew();

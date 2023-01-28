@@ -1,65 +1,59 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 
 namespace Nethermind.JsonRpc
 {
-    public readonly struct JsonRpcResult : IDisposable
+    public readonly struct JsonRpcResult
     {
+        [MemberNotNullWhen(true, nameof(BatchedResponses))]
+        [MemberNotNullWhen(false, nameof(SingleResponse))]
+        [MemberNotNullWhen(false, nameof(Response))]
+        [MemberNotNullWhen(false, nameof(Report))]
         public bool IsCollection { get; }
-        public IReadOnlyList<JsonRpcResponse> Responses { get; }
-        public IReadOnlyList<RpcReport> Reports { get; }
-        public JsonRpcResponse Response { get; }
-        public RpcReport Report { get; }
+        public IJsonRpcBatchResult? BatchedResponses { get; }
+        public Entry? SingleResponse { get; }
+        public JsonRpcResponse? Response => SingleResponse?.Response;
+        public RpcReport? Report => SingleResponse?.Report;
 
-        private JsonRpcResult(IReadOnlyList<JsonRpcResponse> responses, IReadOnlyList<RpcReport> reports)
+        private JsonRpcResult(IJsonRpcBatchResult batchedResponses)
         {
             IsCollection = true;
-            Responses = responses;
-            Reports = reports;
-            Response = null;
-            Report = default;
+            BatchedResponses = batchedResponses;
         }
-        
-        private JsonRpcResult(JsonRpcResponse response, RpcReport report)
+
+        private JsonRpcResult(Entry singleResult)
         {
             IsCollection = false;
-            Responses = null;
-            Reports = null;
-            Response = response;
-            Report = report;
+            SingleResponse = singleResult;
         }
 
         public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
-            => new(response, report);
+            => new(new Entry(response, report));
 
-        public static JsonRpcResult Collection(IReadOnlyList<JsonRpcResponse> responses, IReadOnlyList<RpcReport> reports)
-            => new(responses, reports);
+        public static JsonRpcResult Single(Entry entry)
+            => new(entry);
 
-        public void Dispose()
+        public static JsonRpcResult Collection(IJsonRpcBatchResult responses)
+            => new(responses);
+
+        public readonly struct Entry : IDisposable
         {
-            Response?.Dispose();
-            if (Responses != null)
+            public JsonRpcResponse Response { get; }
+            public RpcReport Report { get; }
+
+            public Entry(JsonRpcResponse response, RpcReport report)
             {
-                for (var i = 0; i < Responses.Count; i++)
-                {
-                    Responses[i]?.Dispose();
-                }
+                Response = response;
+                Report = report;
+            }
+
+            public void Dispose()
+            {
+                Response?.Dispose();
             }
         }
     }

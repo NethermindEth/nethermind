@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -32,9 +18,9 @@ namespace Nethermind.Abi
 
         public AbiTuple(params AbiType[] elements) : this(elements, null)
         {
-            
+
         }
-        
+
         public AbiTuple(AbiType[] elements, string[]? names = null)
         {
             if (elements.Length > 8)
@@ -68,7 +54,7 @@ namespace Nethermind.Abi
                     yield return tuple[i];
                 }
             }
-            
+
             if (arg is ITuple input && input.Length == _elements.Length)
             {
                 byte[][] encodedItems = EncodeSequence(_elements.Length, _elements, GetEnumerable(input), packed);
@@ -102,7 +88,7 @@ namespace Nethermind.Abi
             Name = $"({string.Join(",", _elements.AsEnumerable())})";
             IsDynamic = _elements.Any(p => p.IsDynamic);
         }
-        
+
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             (object[] arguments, int movedPosition) = DecodeSequence(_elements.Length, _elements, data, packed, position);

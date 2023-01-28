@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -37,8 +24,8 @@ namespace Nethermind.Evm.Test
         public void Sgt(int a, int b, int res)
         {
             byte[] code = Prepare.EvmCode
-                .PushData((UInt256) new Int256.Int256(b))
-                .PushData((UInt256) new Int256.Int256(a))
+                .PushData((UInt256)new Int256.Int256(b))
+                .PushData((UInt256)new Int256.Int256(a))
                 .Op(Instruction.SMOD)
                 .PushData(0)
                 .Op(Instruction.SSTORE)
@@ -46,6 +33,23 @@ namespace Nethermind.Evm.Test
 
             _ = Execute(code);
             AssertStorage(UInt256.Zero, res);
+        }
+
+        [TestCase(-3, -2)]
+        [TestCase(3, -2)]
+        public void Test_for_a_equals_int256_dot_min(int b, int res)
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData((UInt256)new Int256.Int256(b))
+                .PushData(new UInt256(0ul, 0ul, 0ul, 0x8000000000000000ul))
+                .Op(Instruction.SMOD)
+                .PushData(0)
+                .Op(Instruction.SSTORE)
+                .Done;
+
+            _ = Execute(code);
+            AssertStorage(UInt256.Zero, res);
+
         }
     }
 }

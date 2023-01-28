@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,7 +17,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.ReadByte();
                 return null;
             }
-            
+
             rlpStream.ReadSequenceLength();
             Address? address = rlpStream.DecodeAddress();
             long sequenceLength = rlpStream.ReadSequenceLength();
@@ -52,7 +39,7 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.ReadByte();
                 return null;
             }
-            
+
             decoderContext.ReadSequenceLength();
             Address? address = decoderContext.DecodeAddress();
             long sequenceLength = decoderContext.ReadSequenceLength();
@@ -69,7 +56,7 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }
@@ -81,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 rlpStream.EncodeNullObject();
                 return;
@@ -89,7 +76,7 @@ namespace Nethermind.Serialization.Rlp
 
             var (total, topics) = GetContentLength(item);
             rlpStream.StartSequence(total);
-            
+
             rlpStream.Encode(item.LoggersAddress);
             rlpStream.StartSequence(topics);
 
@@ -97,54 +84,54 @@ namespace Nethermind.Serialization.Rlp
             {
                 rlpStream.Encode(item.Topics[i]);
             }
-            
-            rlpStream.Encode(item.Data);   
+
+            rlpStream.Encode(item.Data);
         }
-        
+
         public int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return 1;
             }
-            
+
             return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
-        
+
         private static (int Total, int Topics) GetContentLength(LogEntry? item)
         {
             var contentLength = 0;
-            if (item == null)
+            if (item is null)
             {
                 return (contentLength, 0);
             }
 
             contentLength += Rlp.LengthOf(item.LoggersAddress);
-            
+
             int topicsLength = GetTopicsLength(item);
             contentLength += Rlp.LengthOfSequence(topicsLength);
             contentLength += Rlp.LengthOf(item.Data);
-            
+
             return (contentLength, topicsLength);
         }
-        
+
         private static int GetTopicsLength(LogEntry? item)
         {
-            if (item == null)
+            if (item is null)
             {
                 return 0;
             }
-            
+
             int topicsLength = 0;
             for (int i = 0; i < item.Topics.Length; i++)
             {
                 topicsLength += Rlp.LengthOf(item.Topics[i]);
             }
-            
+
             return topicsLength;
         }
 
-        public static void DecodeStructRef(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
+        public static void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -152,7 +139,7 @@ namespace Nethermind.Serialization.Rlp
                 item = new LogEntryStructRef();
                 return;
             }
-            
+
             decoderContext.ReadSequenceLength();
             decoderContext.DecodeAddressStructRef(out var address);
             var peekPrefixAndContentLength = decoderContext.PeekPrefixAndContentLength();

@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -107,7 +94,7 @@ namespace Nethermind.BeaconNode.Peering
             // Peer should have been created, with an incoming session, when connected.
             // If not, i.e. first knowledge is the status message, then create an incoming session
             ConcurrentBag<Session> peerSessionCollection = _sessions.GetOrAdd(peerInfo.Id,
-                key => new ConcurrentBag<Session>(new[] {new Session(ConnectionDirection.In, peerInfo)}));
+                key => new ConcurrentBag<Session>(new[] { new Session(ConnectionDirection.In, peerInfo) }));
 
             // Not sure if Bag is correct here (insert/take); maybe some kind of queue or stack?
             Session session = peerSessionCollection.First();

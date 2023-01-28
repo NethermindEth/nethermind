@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,10 +37,10 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             {
                 TestState.NextEpoch(testServiceProvider, state);
             }
-            
+
             // eligibility must be finalized
             Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            state.SetFinalizedCheckpoint(new Checkpoint(currentEpoch +new Epoch(2), Root.Zero));
+            state.SetFinalizedCheckpoint(new Checkpoint(currentEpoch + new Epoch(2), Root.Zero));
 
             // Act
             RunProcessRegistryUpdates(testServiceProvider, state);
@@ -61,7 +48,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             // Assert
             Validator validator = state.Validators[index];
             validator.ActivationEligibilityEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
-            validator.ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch); 
+            validator.ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
             bool isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch + timeParameters.MaximumSeedLookahead + Epoch.One);
             isActive.ShouldBeTrue();
         }
@@ -85,7 +72,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             }
 
             // eligibility must be finalized
-            state.SetFinalizedCheckpoint(new Checkpoint(currentEpoch +new Epoch(2), Root.Zero));
+            state.SetFinalizedCheckpoint(new Checkpoint(currentEpoch + new Epoch(2), Root.Zero));
 
             // give the last priority over the others
             state.Validators[mockActivations - 1].SetEligible(currentEpoch);
@@ -108,7 +95,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             state.Validators[mockActivations - 2].ActivationEpoch.ShouldBe(chainConstants.FarFutureEpoch);
             //# the one at churn_limit - 1 did not make it, it was out-prioritized
             state.Validators[churnLimit - 1].ActivationEpoch.ShouldBe(chainConstants.FarFutureEpoch);
-            //# but the the one in front of the above did
+            //# but the one in front of the above did
             state.Validators[churnLimit - 2].ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
         }
 

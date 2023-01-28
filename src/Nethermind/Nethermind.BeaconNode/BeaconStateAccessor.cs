@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers.Binary;
@@ -62,9 +49,9 @@ namespace Nethermind.BeaconNode
         public IndexedAttestation GetIndexedAttestation(BeaconState state, Attestation attestation)
         {
             IEnumerable<ValidatorIndex> attestingIndices = GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
-            
+
             IOrderedEnumerable<ValidatorIndex> sortedAttestingIndices = attestingIndices.OrderBy(x => x);
-            
+
             IndexedAttestation indexedAttestation = new IndexedAttestation(sortedAttestingIndices, attestation.Data, attestation.Signature);
             return indexedAttestation;
         }
@@ -167,7 +154,7 @@ namespace Nethermind.BeaconNode
             ulong blockIndex = slot % timeParameters.SlotsPerHistoricalRoot;
             return state.BlockRoots[(int)blockIndex];
         }
-        
+
         /// <summary>
         /// Return the number of committees at ``slot``.
         /// </summary>
@@ -242,7 +229,7 @@ namespace Nethermind.BeaconNode
                 - _timeParameterOptions.CurrentValue.MinimumSeedLookahead - 1UL);
             // # Avoid underflow
             Bytes32 mix = GetRandaoMix(state, mixEpoch);
-            
+
             Span<byte> seedHashInput = stackalloc byte[DomainType.Length + sizeof(ulong) + Bytes32.Length];
             domainType.AsSpan().CopyTo(seedHashInput);
             BinaryPrimitives.WriteUInt64LittleEndian(seedHashInput.Slice(DomainType.Length), epoch);
@@ -250,7 +237,7 @@ namespace Nethermind.BeaconNode
             Bytes32 seed = _cryptographyService.Hash(seedHashInput);
             return seed;
         }
-        
+
         /// <summary>
         /// Return the combined effective balance of the active validators
         /// </summary>

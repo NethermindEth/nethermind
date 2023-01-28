@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -47,7 +34,8 @@ namespace Nethermind.BeaconNode.Host
                 // configure logging to console, debug, and event source,
                 // and, when 'Development', enables scope validation on the dependency injection container.
                 .UseWindowsService()
-                .ConfigureHostConfiguration(config => {
+                .ConfigureHostConfiguration(config =>
+                {
                     config.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
                     config.AddJsonFile("hostsettings.json");
                     config.AddCommandLine(args);
@@ -60,7 +48,7 @@ namespace Nethermind.BeaconNode.Host
                     }
                     // this causes MASSIVE slowdown on BeaconNode start - please review
                     // (try with 10000 validators with and without logging)
-                    
+
                     // if (hostContext.Configuration.GetSection("Logging:Seq").Exists())
                     // {
                     //     configureLogging.AddSeq(hostContext.Configuration.GetSection("Logging:Seq"));
@@ -82,7 +70,7 @@ namespace Nethermind.BeaconNode.Host
                     // Other settings are based on data directory; can be relative, or start with a special folder token,
                     // e.g. "{CommonApplicationData}/Nethermind/BeaconHost/Production"
                     DataDirectory dataDirectory = new DataDirectory(hostContext.Configuration.GetValue<string>(DataDirectory.Key));
-                        
+
                     // Support standard YAML config files, if specified
                     string yamlConfig = hostContext.Configuration[_yamlConfigKey];
                     if (!string.IsNullOrWhiteSpace(yamlConfig))
@@ -90,7 +78,7 @@ namespace Nethermind.BeaconNode.Host
                         string yamlPath = Path.Combine(dataDirectory.ResolvedPath, $"{yamlConfig}.yaml");
                         config.AddYamlFile(yamlPath, true, true);
                     }
-                    
+
                     // Override with environment specific JSON files
                     string settingsPath = Path.Combine(dataDirectory.ResolvedPath, $"appsettings.json");
                     config.AddJsonFile(settingsPath, true, true);
@@ -110,7 +98,7 @@ namespace Nethermind.BeaconNode.Host
                     {
                         services.AddBeaconNodeQuickStart(hostContext.Configuration);
                     }
-                    
+
                     // TODO: Add non-quickstart validator check
                     if (hostContext.Configuration.GetSection("QuickStart:ValidatorStartIndex").Exists())
                     {

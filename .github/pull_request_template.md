@@ -1,37 +1,40 @@
-Fixes | Closes | Resolves #
+Fixes Closes Resolves #
 
-> Anything marked as optional that you didn't need to fill in, please remove it from the PR description. Choose one of the keywords above to refer to the issue this PR solves, followed by the issue number (e.g Fixes # 666). If there is no issue, remove the line. Remove this note after reading.
+_Please choose one of the keywords above to refer to the issue this PR solves followed by the issue number (e.g. Fixes #000). If no issue number, remove the line. Also, remove everything marked optional that is not applicable. Remove this note after reading._
 
-## Changes:
--
+## Changes
+
+- _List the changes_
 
 ## Types of changes
 
-What types of changes does your code introduce?
-_Put an `x` in the boxes that apply_
+#### What types of changes does your code introduce?
 
-- [ ] Bugfix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation Update
-- [ ] Code style update (formatting, renaming)
-- [ ] Refactoring (no functional changes, no api changes)
-- [ ] Build related changes
-- [ ] Other (please describe): 
+- [ ] Bugfix (a non-breaking change that fixes an issue)
+- [ ] New feature (a non-breaking change that adds functionality)
+- [ ] Breaking change (a change that causes existing functionality not to work as expected)
+- [ ] Optimization
+- [ ] Refactoring
+- [ ] Documentation update
+- [ ] Build-related changes
+- [ ] Other: _Description_
 
 ## Testing
-**Requires testing**
+
+#### Requires testing
 
 - [ ] Yes
 - [ ] No
 
-**In case you checked yes, did you write tests??**
+#### If yes, did you write tests?
 
 - [ ] Yes
 - [ ] No
 
-**Comments about testing , should you have some** (optional)
+#### Notes on testing
 
-## Further comments (optional)
+_Optional. Remove if not applicable._
 
-If this is a relatively large or complex change, kick off the discussion by explaining why you chose the solution you did and what alternatives you considered, etc...
+## Remarks
+
+_Optional. Remove if not applicable._

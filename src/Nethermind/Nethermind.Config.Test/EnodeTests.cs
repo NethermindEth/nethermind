@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -35,7 +21,7 @@ namespace Nethermind.Config.Test
             enode.Port.Should().Be(1234);
             enode.PublicKey.Should().BeEquivalentTo(publicKey);
         }
-        
+
         [Test]
         public void dns_test()
         {
@@ -46,7 +32,7 @@ namespace Nethermind.Config.Test
             enode.Port.Should().Be(1234);
             enode.PublicKey.Should().BeEquivalentTo(publicKey);
         }
-        
+
         [Test]
         public void dns_test_wrong_domain()
         {
@@ -63,10 +49,10 @@ namespace Nethermind.Config.Test
                 IPAddress ipv6_1 = IPAddress.Parse("2607:f8b0:4002:c02::6a");
                 IPAddress ipv6_2 = IPAddress.Parse("2607:f8b0:4002:c02::67");
                 IPAddress ipv4 = IPAddress.Parse("172.217.12.36");
-                yield return new TestCaseData(new object[] {new[] {ipv4}}).Returns(ipv4);
-                yield return new TestCaseData(new object[] {new[] {ipv6_1, ipv6_2, ipv4}}).Returns(ipv4);
-                yield return new TestCaseData(new object[] {new[] {ipv4, ipv6_1, ipv6_2}}).Returns(ipv4);
-                yield return new TestCaseData(new object[] {new[] {ipv6_1, ipv6_2}}).Returns(ipv6_1.MapToIPv4());
+                yield return new TestCaseData(new object[] { new[] { ipv4 } }).Returns(ipv4);
+                yield return new TestCaseData(new object[] { new[] { ipv6_1, ipv6_2, ipv4 } }).Returns(ipv4);
+                yield return new TestCaseData(new object[] { new[] { ipv4, ipv6_1, ipv6_2 } }).Returns(ipv4);
+                yield return new TestCaseData(new object[] { new[] { ipv6_1, ipv6_2 } }).Returns(ipv6_1.MapToIPv4());
             }
         }
 

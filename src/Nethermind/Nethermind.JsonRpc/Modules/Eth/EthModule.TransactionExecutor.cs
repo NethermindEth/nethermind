@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -43,9 +29,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _blockFinder = blockFinder;
                 _rpcConfig = rpcConfig;
             }
-            
+
             public ResultWrapper<TResult> ExecuteTx(
-                TransactionForRpc transactionCall, 
+                TransactionForRpc transactionCall,
                 BlockParameter? blockParameter)
             {
                 SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
@@ -70,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
 
-            protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
+            protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) =>
                 ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
         }
 
@@ -84,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
                 BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, token);
-            
+
                 if (result.Error is null)
                 {
                     return ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
@@ -98,15 +84,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private class EstimateGasTxExecutor : TxExecutor<UInt256?>
         {
-            public EstimateGasTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) 
+            public EstimateGasTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
                 : base(blockchainBridge, blockFinder, rpcConfig)
             {
             }
-            
+
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
                 BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(header, tx, token);
-            
+
                 if (result.Error is null)
                 {
                     return ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent);
@@ -117,21 +103,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     : ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.ExecutionError);
             }
         }
-        
+
         private class CreateAccessListTxExecutor : TxExecutor<AccessListForRpc>
         {
             private readonly bool _optimize;
 
-            public CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, bool optimize) 
+            public CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, bool optimize)
                 : base(blockchainBridge, blockFinder, rpcConfig)
             {
                 _optimize = optimize;
             }
-            
+
             protected override ResultWrapper<AccessListForRpc> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
                 BlockchainBridge.CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
-            
+
                 if (result.Error is null)
                 {
                     return ResultWrapper<AccessListForRpc>.Success(new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
@@ -147,7 +133,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 AccessList? accessList = result.AccessList ?? tx.AccessList;
                 return accessList is null ? Array.Empty<AccessListItemForRpc>() : AccessListItemForRpc.FromAccessList(accessList);
             }
-            
+
             private static UInt256 GetResultGas(Transaction transaction, BlockchainBridge.CallOutput result)
             {
                 long gas = result.GasSpent;
@@ -159,7 +145,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     gas += IntrinsicGasCalculator.Calculate(transaction, Berlin.Instance);
                 }
 
-                return (UInt256) gas;
+                return (UInt256)gas;
             }
         }
     }

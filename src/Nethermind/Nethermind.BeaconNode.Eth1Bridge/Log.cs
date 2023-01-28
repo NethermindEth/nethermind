@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Microsoft.Extensions.Logging;
@@ -25,7 +12,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge
     internal static class Log
     {
         // Event IDs: ABxx (based on Theory of Reply Codes)
-        
+
         // Event ID Type:
         // 6bxx debug - general
         // 7bxx debug - test
@@ -36,7 +23,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge
         // 4bxx warning
         // 5bxx error
         // 9bxx critical
-        
+
         // Event ID Category:
         // a0xx core service, worker, configuration, peering
         // a1xx beacon chain, incl. state transition
@@ -46,7 +33,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge
         // a5xx custody game
         // a6xx shard data chains
         // a9xx miscellaneous / other
-        
+
         // 1bxx preliminary
 
         public static readonly Action<ILogger, string, string, int, Exception?> PeeringWorkerStarting =
@@ -60,9 +47,9 @@ namespace Nethermind.BeaconNode.Eth1Bridge
                 "Eth genesis succeeded with block hash {BlockHash}, genesis time {GenesisTime:n0}, and {DepositCount} deposits, at check {CheckGenesisCount}.");
 
         // 2bxx 
-        
+
         // 4bxx warning
-        
+
         public static readonly Action<ILogger, ulong, ulong, ulong, Exception?> QuickStartEth1TimestampTooLow =
             LoggerMessage.Define<ulong, ulong, ulong>(LogLevel.Warning,
                 new EventId(4390, nameof(QuickStartEth1TimestampTooLow)),

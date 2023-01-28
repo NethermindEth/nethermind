@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 /* ECDH bindings were based on ECDH bindings from Secp256k1.Net (MIT license) */
 
@@ -124,7 +111,7 @@ namespace Nethermind.Secp256k1
         {
             Span<byte> publicKey = stackalloc byte[64];
             Span<byte> serializedPublicKey = stackalloc byte[compressed ? 33 : 65];
-            
+
             fixed (byte* serializedPtr = &MemoryMarshal.GetReference(serializedPublicKey), pubKeyPtr = &MemoryMarshal.GetReference(publicKey))
             {
                 bool keyDerivationFailed =
@@ -134,9 +121,9 @@ namespace Nethermind.Secp256k1
                     return null;
                 }
 
-                uint outputSize = (uint) serializedPublicKey.Length;
+                uint outputSize = (uint)serializedPublicKey.Length;
                 uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
-                
+
                 bool serializationFailed =
                     !secp256k1_ec_pubkey_serialize(Context, serializedPtr, ref outputSize, pubKeyPtr, flags);
                 if (serializationFailed)
@@ -200,7 +187,7 @@ namespace Nethermind.Secp256k1
         //         return true;
         //     }
         // }
-        
+
         public static unsafe bool RecoverKeyFromCompact(Span<byte> output, byte[] messageHash, Span<byte> compactSignature, int recoveryId, bool compressed)
         {
             Span<byte> recoverableSignature = stackalloc byte[65];
@@ -227,10 +214,10 @@ namespace Nethermind.Secp256k1
                 {
                     return false;
                 }
-                
+
                 uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
-                
-                uint outputSize = (uint) output.Length;
+
+                uint outputSize = (uint)output.Length;
                 if (!secp256k1_ec_pubkey_serialize(
                     Context, serializedPublicKeyPtr, ref outputSize, pubKeyPtr, flags))
                 {
@@ -285,18 +272,18 @@ namespace Nethermind.Secp256k1
             Ecdh(result, key, privateKey);
             return result;
         }
-        
+
         public static byte[] Decompress(Span<byte> compressed)
         {
             Span<byte> serializedKey = stackalloc byte[65];
             byte[] publicKey = new byte[64];
             PublicKeyParse(publicKey, compressed);
-            
+
             if (!PublicKeySerialize(serializedKey, publicKey))
             {
                 throw new Exception("Failed toi serialize");
             }
-            
+
             return serializedKey.ToArray();
         }
 
@@ -325,7 +312,7 @@ namespace Nethermind.Secp256k1
             fixed (byte* pubKeyPtr = &MemoryMarshal.GetReference(publicKeyOutput), serializedPtr = &MemoryMarshal.GetReference(serializedPublicKey))
             {
                 return secp256k1_ec_pubkey_parse(
-                    Context, pubKeyPtr, serializedPtr, (uint) inputLen) == 1;
+                    Context, pubKeyPtr, serializedPtr, (uint)inputLen) == 1;
             }
         }
 
@@ -351,7 +338,7 @@ namespace Nethermind.Secp256k1
                 throw new ArgumentException($"{nameof(publicKey)} must be {expectedInputLength} bytes");
             }
 
-            uint newLength = (uint) serializedPubKeyLength;
+            uint newLength = (uint)serializedPubKeyLength;
 
             fixed (byte* serializedPtr = &MemoryMarshal.GetReference(serializedPublicKeyOutput), pubKeyPtr = &MemoryMarshal.GetReference(publicKey))
             {

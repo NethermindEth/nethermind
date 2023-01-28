@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -41,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
         }
-        
+
         protected abstract BlockHeader BlockHeader { get; }
 
         public UInt256 GetPriority(Transaction tx) =>
@@ -70,13 +56,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
             if (ReferenceEquals(x, y)) return 0;
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
-                
+
             // we already have nonce ordered by previous code, we don't deal with it here
-                
+
             // first order by whitelisted
             int whitelistedComparision = IsWhiteListed(y).CompareTo(IsWhiteListed(x));
             if (whitelistedComparision != 0) return whitelistedComparision;
-                
+
             // then order by priority descending
             return GetPriority(y).CompareTo(GetPriority(x));
         }

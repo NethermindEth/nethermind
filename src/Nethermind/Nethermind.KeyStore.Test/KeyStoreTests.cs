@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.IO;
@@ -85,7 +72,7 @@ namespace Nethermind.KeyStore.Test
             {
                 securePassword.AppendChar(password[i]);
             }
-            
+
             securePassword.MakeReadOnly();
 
             test.Store.StoreKey(new Address(item.Address), item);
@@ -101,10 +88,10 @@ namespace Nethermind.KeyStore.Test
             }
         }
 
-        [TestCase("{\"address\":\"20b2e4bb8688a44729780d15dc64adb42f9f5a0a\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"d30cbb0f5b30ef86e57b7fa111307398b911b8c0a3eab4ac4edc4b2c8839afbe\",\"cipherparams\":{\"iv\":\"1e29e79023d73be3f3bb065ca9ddc078\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"fffcd979c3223b3cdfcb2cf21b07bd4313e6f8d02af8a79a5c5dc879a25680d3\"},\"mac\":\"3ac5a539775c33bd73adfd2c0d4ef8c9154e4b404e2a15c77b0e6c78cb90df20\"},\"id\":\"68462de1-4114-4f92-828b-883fae5f779c\",\"version\":3}", Ignore="Order of fields changed from geth to mycryptowallet.")]
-        [TestCase("{\"address\":\"746526c3a59db995b914a319306cd7ae35dc50c5\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"644b1af45188b23f6195abd2b0563d7b079ff6622e5ac61767cd81cbd621a13e\",\"cipherparams\":{\"iv\":\"844c895835de8571409b8a76a75672b2\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"e7df76e322e444ed61314fa5261cf0ac02b9c057fe626a74a37c5255c16a8d61\"},\"mac\":\"48f26081eec397b818ed4e2cb3b1c04908c671a81d6b183e9965d869bd001862\"},\"id\":\"6ee56be1-367f-4b41-a25d-f60e0a7bfe42\",\"version\":3}", Ignore="Order of fields changed from geth to mycryptowallet.")]
-        [TestCase("{\"address\":\"aa42104423e00a862b616f2f712a1b17d308bbc9\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"450c341ab64c39237039a30a8d84cc112dfbdda889caa19201b0cf8473680936\",\"cipherparams\":{\"iv\":\"923d950dcdba710a0c8e240441e0a227\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"101185ea81a1067591bce5323d75648b753f71becc22a4ebd55256593a705698\"},\"mac\":\"dc0a3bc555ac8f22d84115968b5fde6f50eb065ff7fe47a1da30de668a5ca864\"},\"id\":\"339ef573-a7d5-4bd0-86b2-3b1e420439d7\",\"version\":3}", Ignore="Order of fields changed from geth to mycryptowallet.")]
-        [TestCase("{\"address\":\"25dead29c683c5db3e0fabcf8f3757cdb0abe549\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"4fd59f3a3fa1bed32774b29a40886d5489c0c06a8da014cb44b25792f6c32cb2\",\"cipherparams\":{\"iv\":\"6b850162043a0a879726839cfca55220\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"cafbe520e0d711cf32d9a2e6b2ecbd231cc7aed09018c5032c637436e02754d1\"},\"mac\":\"379f51c673f1f355a6ffc92b31b37381670eea2e0e23604a2572f5df650d148e\"},\"id\":\"fc7ff6bf-c51e-4e02-bb7c-0c91a3eeab4c\",\"version\":3}", Ignore="Order of fields changed from geth to mycryptowallet.")]
+        [TestCase("{\"address\":\"20b2e4bb8688a44729780d15dc64adb42f9f5a0a\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"d30cbb0f5b30ef86e57b7fa111307398b911b8c0a3eab4ac4edc4b2c8839afbe\",\"cipherparams\":{\"iv\":\"1e29e79023d73be3f3bb065ca9ddc078\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"fffcd979c3223b3cdfcb2cf21b07bd4313e6f8d02af8a79a5c5dc879a25680d3\"},\"mac\":\"3ac5a539775c33bd73adfd2c0d4ef8c9154e4b404e2a15c77b0e6c78cb90df20\"},\"id\":\"68462de1-4114-4f92-828b-883fae5f779c\",\"version\":3}", Ignore = "Order of fields changed from geth to mycryptowallet.")]
+        [TestCase("{\"address\":\"746526c3a59db995b914a319306cd7ae35dc50c5\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"644b1af45188b23f6195abd2b0563d7b079ff6622e5ac61767cd81cbd621a13e\",\"cipherparams\":{\"iv\":\"844c895835de8571409b8a76a75672b2\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"e7df76e322e444ed61314fa5261cf0ac02b9c057fe626a74a37c5255c16a8d61\"},\"mac\":\"48f26081eec397b818ed4e2cb3b1c04908c671a81d6b183e9965d869bd001862\"},\"id\":\"6ee56be1-367f-4b41-a25d-f60e0a7bfe42\",\"version\":3}", Ignore = "Order of fields changed from geth to mycryptowallet.")]
+        [TestCase("{\"address\":\"aa42104423e00a862b616f2f712a1b17d308bbc9\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"450c341ab64c39237039a30a8d84cc112dfbdda889caa19201b0cf8473680936\",\"cipherparams\":{\"iv\":\"923d950dcdba710a0c8e240441e0a227\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"101185ea81a1067591bce5323d75648b753f71becc22a4ebd55256593a705698\"},\"mac\":\"dc0a3bc555ac8f22d84115968b5fde6f50eb065ff7fe47a1da30de668a5ca864\"},\"id\":\"339ef573-a7d5-4bd0-86b2-3b1e420439d7\",\"version\":3}", Ignore = "Order of fields changed from geth to mycryptowallet.")]
+        [TestCase("{\"address\":\"25dead29c683c5db3e0fabcf8f3757cdb0abe549\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"4fd59f3a3fa1bed32774b29a40886d5489c0c06a8da014cb44b25792f6c32cb2\",\"cipherparams\":{\"iv\":\"6b850162043a0a879726839cfca55220\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"cafbe520e0d711cf32d9a2e6b2ecbd231cc7aed09018c5032c637436e02754d1\"},\"mac\":\"379f51c673f1f355a6ffc92b31b37381670eea2e0e23604a2572f5df650d148e\"},\"id\":\"fc7ff6bf-c51e-4e02-bb7c-0c91a3eeab4c\",\"version\":3}", Ignore = "Order of fields changed from geth to mycryptowallet.")]
         public void Same_storage_format_as_in_geth(string keyJson)
         {
             TestContext test = new TestContext();
@@ -120,7 +107,7 @@ namespace Nethermind.KeyStore.Test
 
             Address address = new Address(item.Address);
             test.Store.StoreKey(address, item);
-            
+
             try
             {
                 string[] files = test.Store.FindKeyFiles(address);
@@ -138,7 +125,7 @@ namespace Nethermind.KeyStore.Test
         public void GenerateKeyAddressesTest()
         {
             TestContext test = new TestContext();
-            
+
             PrivateKey key1;
             PrivateKey key2;
 

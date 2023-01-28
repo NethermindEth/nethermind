@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -79,7 +66,7 @@ namespace Nethermind.BeaconNode
                     try
                     {
                         DateTimeOffset clockTime = _clock.UtcNow();
-                        ulong time = (ulong) clockTime.ToUnixTimeSeconds();
+                        ulong time = (ulong)clockTime.ToUnixTimeSeconds();
 
                         if (_store.IsInitialized)
                         {
@@ -87,7 +74,7 @@ namespace Nethermind.BeaconNode
                             {
                                 if (_logger.IsInfo())
                                 {
-                                    long slotValue = ((long) time - (long) _store.GenesisTime) /
+                                    long slotValue = ((long)time - (long)_store.GenesisTime) /
                                                      _timeParameterOptions.CurrentValue.SecondsPerSlot;
                                     Log.WorkerStoreAvailableTickStarted(_logger, _store!.GenesisTime, time, slotValue,
                                         Thread.CurrentThread.ManagedThreadId, null);
@@ -102,7 +89,7 @@ namespace Nethermind.BeaconNode
                             }
                             else
                             {
-                                long timeToGenesis = (long) _store.GenesisTime - (long) time;
+                                long timeToGenesis = (long)_store.GenesisTime - (long)time;
                                 if (timeToGenesis < 10 || timeToGenesis % 10 == 0)
                                 {
                                     if (_logger.IsInfo()) Log.GenesisCountdown(_logger, timeToGenesis, null);
@@ -112,7 +99,7 @@ namespace Nethermind.BeaconNode
 
                         // Wait for remaining time, if any
                         // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
-                        DateTimeOffset nextClockTime = DateTimeOffset.FromUnixTimeSeconds((long) time + 1);
+                        DateTimeOffset nextClockTime = DateTimeOffset.FromUnixTimeSeconds((long)time + 1);
                         TimeSpan remaining = nextClockTime - _clock.UtcNow();
                         if (remaining > TimeSpan.Zero)
                         {

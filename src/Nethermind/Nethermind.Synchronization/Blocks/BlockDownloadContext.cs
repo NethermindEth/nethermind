@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -55,7 +42,7 @@ namespace Nethermind.Synchronization.Blocks
             for (int i = 1; i < headers.Length; i++)
             {
                 BlockHeader? header = headers[i];
-                if (header?.Hash == null)
+                if (header?.Hash is null)
                 {
                     break;
                 }
@@ -69,7 +56,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 else
                 {
-                    Blocks[i - 1] = new Block(header, BlockBody.Empty);
+                    Blocks[i - 1] = new Block(header);
                 }
             }
         }
@@ -101,7 +88,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             int mappedIndex = _indexMapping[index];
             Block block = Blocks[mappedIndex];
-            if (body == null)
+            if (body is null)
             {
                 throw new EthSyncException($"{_syncPeer} sent an empty body for {block.ToString(Block.Format.Short)}.");
             }
@@ -138,7 +125,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
         {
-            Keccak receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Number), blockReceipts).RootHash;
+            Keccak receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Header), blockReceipts).RootHash;
 
             if (receiptsRoot != block.ReceiptsRoot)
             {

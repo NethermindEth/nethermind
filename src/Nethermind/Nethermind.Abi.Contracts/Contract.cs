@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Abi;
@@ -43,7 +30,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// Default gas limit of transactions generated from contract. 
         /// </summary>
         public const long DefaultContractGasLimit = 1_600_000L;
-        
+
         private readonly ITransactionProcessor _transactionProcessor;
         protected IAbiEncoder AbiEncoder { get; }
         protected Address ContractAddress { get; }
@@ -72,7 +59,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 GasLimit = gasLimit,
                 GasPrice = UInt256.Zero,
             };
-                
+
             transaction.Hash = transaction.CalculateHash();
 
             return transaction;
@@ -121,9 +108,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private static byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, Transaction transaction, bool callAndRestore = false)
         {
             bool failure;
-            
+
             CallOutputTracer tracer = new CallOutputTracer();
-            
+
             try
             {
                 if (callAndRestore)
@@ -134,14 +121,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 {
                     transactionProcessor.Execute(transaction, header, tracer);
                 }
-                
+
                 failure = tracer.StatusCode != StatusCode.Success;
             }
             catch (Exception e)
             {
                 throw new AuRaException($"System call returned an exception '{e.Message}' at block {header.Number}.", e);
             }
-           
+
             if (failure)
             {
                 throw new AuRaException($"System call returned error '{tracer.Error}' at block {header.Number}.");
@@ -155,7 +142,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private bool TryCall(BlockHeader header, Transaction transaction, out byte[] result)
         {
             CallOutputTracer tracer = new CallOutputTracer();
-            
+
             try
             {
                 _transactionProcessor.Execute(transaction, header, tracer);
@@ -190,7 +177,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             result = null;
             return false;
         }
-        
+
         /// <summary>
         /// Creates <see cref="Address.SystemUser"/> account if its not in current state.
         /// </summary>

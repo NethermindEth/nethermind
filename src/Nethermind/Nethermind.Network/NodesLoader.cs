@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -55,13 +42,13 @@ namespace Nethermind.Network
         {
             List<Node> allPeers = new();
             LoadPeersFromDb(allPeers);
-            
+
             LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
             {
                 n.IsBootnode = true;
                 if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
             });
-            
+
             LoadConfigPeers(allPeers, _networkConfig.StaticPeers, n =>
             {
                 n.IsStatic = true;
@@ -93,10 +80,10 @@ namespace Nethermind.Network
                 }
                 catch (Exception)
                 {
-                    if(_logger.IsDebug) _logger.Error($"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                    if (_logger.IsDebug) _logger.Error($"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
                     continue;
                 }
-                
+
                 INodeStats nodeStats = _stats.GetOrAdd(node);
                 nodeStats.CurrentPersistedNodeReputation = networkNode.Reputation;
 
@@ -108,7 +95,7 @@ namespace Nethermind.Network
 
         private void LoadConfigPeers(List<Node> peers, string? enodesString, Action<Node> nodeUpdate)
         {
-            if (enodesString == null || !enodesString.Any())
+            if (enodesString is null || !enodesString.Any())
             {
                 return;
             }
@@ -127,7 +114,7 @@ namespace Nethermind.Network
         }
 
         public event EventHandler<NodeEventArgs>? NodeAdded { add { } remove { } }
-        
+
         public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
     }
 }
