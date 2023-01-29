@@ -16,23 +16,30 @@ namespace Nethermind.Crypto
             private const string BaseName = AppName + "_";
             private const string ProtectionDir = "protection_keys";
 
-            public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope, string keyStoreDir)
+            private readonly string _keyStoreDir;
+
+            public AspNetWrapper(string keyStoreDir)
             {
-                var protector = GetProtector(scope, optionalEntropy, keyStoreDir);
+                _keyStoreDir = keyStoreDir;
+            }
+
+            public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
+            {
+                var protector = GetProtector(scope, optionalEntropy);
                 return protector.Protect(userData);
             }
 
-            public byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope, string keyStoreDir)
+            public byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope)
             {
-                var protector = GetProtector(scope, optionalEntropy, keyStoreDir);
+                var protector = GetProtector(scope, optionalEntropy);
                 return protector.Unprotect(encryptedData);
             }
 
-            private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy, string keyStoreDir)
+            private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy)
             {
                 if (scope == DataProtectionScope.CurrentUser)
                 {
-                    return GetUserProtector(keyStoreDir, optionalEntropy);
+                    return GetUserProtector(optionalEntropy);
                 }
                 else
                 {
@@ -44,7 +51,7 @@ namespace Nethermind.Crypto
              * Creates data protector with keys located in Environment.SpecialFolder.ApplicationData
              * if we don't have permission to write to this folder keys will be stored at keyStore/protection_keys
              */
-            private IDataProtector GetUserProtector(string keyStoreDir, byte[] optionalEntropy)
+            private IDataProtector GetUserProtector(byte[] optionalEntropy)
             {
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 var path = Path.Combine(appData, AppName);
@@ -55,7 +62,7 @@ namespace Nethermind.Crypto
                 }
                 catch // Change location of keys to keyStore/protection_keys directory
                 {
-                    path = Path.Combine(keyStoreDir, ProtectionDir);
+                    path = Path.Combine(_keyStoreDir, ProtectionDir);
                 }
                 var info = new DirectoryInfo(path);
                 var provider = DataProtectionProvider.Create(info);

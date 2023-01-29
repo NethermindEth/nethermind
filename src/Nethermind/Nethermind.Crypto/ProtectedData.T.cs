@@ -18,13 +18,12 @@ namespace Nethermind.Crypto
         private byte[] _entropy;
         private DateTime _timestamp;
         private byte[] _encryptedData;
-        private readonly string _keyStoreDir;
 
-        public ProtectedData(byte[] data, string keyStoreDir, ICryptoRandom? random = null, ITimestamper? timestamper = null)
+        public ProtectedData(byte[] data, string keyStoreDir, ICryptoRandom? random = null,
+            ITimestamper? timestamper = null) : base(keyStoreDir)
         {
             _random = random ?? new CryptoRandom();
             _timestamper = timestamper ?? Timestamper.Default;
-            _keyStoreDir = keyStoreDir;
             Protect(data);
         }
 
@@ -32,13 +31,13 @@ namespace Nethermind.Crypto
         private void Protect(byte[] data)
         {
             _entropy = _random.GenerateRandomBytes(_random.NextInt(EntropyMaxLength - EntropyMinLength) + EntropyMinLength);
-            _encryptedData = Protect(data, _entropy, DataProtectionScope.CurrentUser, _keyStoreDir);
+            _encryptedData = Protect(data, _entropy, DataProtectionScope.CurrentUser);
             _timestamp = _timestamper.UtcNow;
         }
 
         public T Unprotect()
         {
-            var data = Unprotect(_encryptedData, _entropy, DataProtectionScope.CurrentUser, _keyStoreDir);
+            var data = Unprotect(_encryptedData, _entropy, DataProtectionScope.CurrentUser);
             CheckReProtect(data);
             return CreateUnprotected(data);
         }

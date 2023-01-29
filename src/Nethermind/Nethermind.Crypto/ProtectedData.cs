@@ -9,21 +9,26 @@ namespace Nethermind.Crypto
     // based on https://github.com/integrativesoft/CrossProtectedData
     public abstract partial class ProtectedData
     {
+        private readonly IProtector _protector;
+
+        protected ProtectedData(string keyStoreDir)
+        {
+            _protector = CreateProtector(keyStoreDir);
+        }
+
         private interface IProtector
         {
-            byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope, string keyStoreDir);
-            byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope, string keyStoreDir);
+            byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope);
+            byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope);
         }
 
-        private static readonly IProtector _protector = CreateProtector();
-
-        private static IProtector CreateProtector()
+        private static IProtector CreateProtector(string keyStoreDir)
         {
-            return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : (IProtector)new AspNetWrapper();
+            return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : new AspNetWrapper(keyStoreDir);
         }
 
-        protected static byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope, string keyStoreDir) => _protector.Protect(userData, optionalEntropy, scope, keyStoreDir);
+        protected byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope) => _protector.Protect(userData, optionalEntropy, scope);
 
-        protected static byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope, string keyStoreDir) => _protector.Unprotect(encryptedData, optionalEntropy, scope, keyStoreDir);
+        protected byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope) => _protector.Unprotect(encryptedData, optionalEntropy, scope);
     }
 }
