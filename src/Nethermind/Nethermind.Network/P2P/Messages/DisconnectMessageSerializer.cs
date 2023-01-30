@@ -17,11 +17,31 @@ namespace Nethermind.Network.P2P.Messages
             ).Bytes;
         }
 
+        
+        private byte[] breach1 = Bytes.FromHexString("0204c104");
+        private byte[] breach2 = Bytes.FromHexString("0204c180");
+
         public DisconnectMessage Deserialize(byte[] msgBytes)
         {
             if (msgBytes.Length == 1)
             {
                 return new DisconnectMessage((DisconnectReason)msgBytes[0]);
+            }
+            
+            if (msgBytes.SequenceEqual(breach1))
+            {
+                return new DisconnectMessage(DisconnectReason.Other)
+                {
+                    Details = "breach1"
+                };
+            }
+
+            if (msgBytes.SequenceEqual(breach2))
+            {
+                return new DisconnectMessage(DisconnectReason.Other)
+                {
+                    Details = "breach2"
+                };
             }
 
             RlpStream rlpStream = msgBytes.AsRlpStream();
