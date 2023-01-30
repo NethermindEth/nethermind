@@ -349,15 +349,15 @@ public partial class EngineModuleTests
 
         chain.AddTransactions(txs);
 
+        await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
         var executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
 
         await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload2.BlockHash!,
             executionPayload2.BlockHash!, executionPayload2.BlockHash!));
 
-        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 3).Result.Data;
+        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
         var expected = new ExecutionPayloadBodyV1Result?[]
         {
-            new(Array.Empty<Transaction>(), null),
             new(txs, withdrawals)
         };
 
@@ -369,10 +369,10 @@ public partial class EngineModuleTests
     {
         using var chain = await CreateBlockChain();
         var rpc = CreateEngineModule(chain);
-        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 0).Result.Data;
+        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 1).Result.Data;
         var expected = Array.Empty<ExecutionPayloadBodyV1Result?>();
 
-        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+        payloadBodies.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -380,9 +380,23 @@ public partial class EngineModuleTests
     {
         using var chain = await CreateBlockChain();
         var rpc = CreateEngineModule(chain);
-        var result = rpc.engine_getPayloadBodiesByRangeV1(0, 1025);
+        var result = rpc.engine_getPayloadBodiesByRangeV1(1, 1025);
 
-        result.Result.ErrorCode.Should().Be(ErrorCodes.LimitExceeded);
+        result.Result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
+    }
+
+    [Test]
+    public async Task getPayloadBodiesByRangeV1_should_fail_when_params_below_1()
+    {
+        using var chain = await CreateBlockChain();
+        var rpc = CreateEngineModule(chain);
+        var result = rpc.engine_getPayloadBodiesByRangeV1(0, 1);
+
+        result.Result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
+
+        result = await rpc.engine_getPayloadBodiesByRangeV1(1, 0);
+
+        result.Result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
@@ -468,7 +482,7 @@ public partial class EngineModuleTests
         chain.BlockTree = blockTree;
 
         var rpc = CreateEngineModule(chain);
-        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 5).Result.Data;
+        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
 
         payloadBodies.Should().BeEquivalentTo(input.Outcome);
     }
@@ -480,13 +494,13 @@ public partial class EngineModuleTests
 
         blockTree.FindBlock(Arg.Any<long>())
             .Returns(i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
-        blockTree.BestSuggestedBody.Returns(Build.A.Block.WithNumber(3).TestObject);
+        blockTree.BestSuggestedBody.Returns(Build.A.Block.WithNumber(5).TestObject);
 
         using var chain = await CreateShanghaiBlockChain();
         chain.BlockTree = blockTree;
 
         var rpc = CreateEngineModule(chain);
-        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 5).Result.Data;
+        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
 
         payloadBodies.Count().Should().Be(4);
     }
@@ -825,7 +839,7 @@ public partial class EngineModuleTests
         );
 
         yield return (
-            new Func<CallInfo, Block?>(i => i.ArgAt<long>(0) % 2 == 0 ? null : block),
+            new Func<CallInfo, Block?>(i => i.ArgAt<long>(0) % 2 == 0 ? block : null),
             new[] { null, result, null, result }
         );
 
