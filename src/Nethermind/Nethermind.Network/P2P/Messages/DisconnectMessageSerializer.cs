@@ -14,10 +14,10 @@ namespace Nethermind.Network.P2P.Messages
         {
             return Rlp.Encode(
                 Rlp.Encode((byte)msg.Reason) // sic!, as a list of 1 element
-            ).Bytes;
+            ).Bytes; // we are not encoding the details as it is not part of the spec. but maybe it will be in the future.
         }
 
-        
+
         private byte[] breach1 = Bytes.FromHexString("0204c104");
         private byte[] breach2 = Bytes.FromHexString("0204c180");
 
@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Messages
             {
                 return new DisconnectMessage((DisconnectReason)msgBytes[0]);
             }
-            
+
             if (msgBytes.SequenceEqual(breach1))
             {
                 return new DisconnectMessage(DisconnectReason.Other)

@@ -286,7 +286,10 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
     {
         if (Logger.IsTrace)
             Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
-        DisconnectMessage message = new(disconnectReason);
+        DisconnectMessage message = new(disconnectReason)
+        {
+            Details = details
+        };
         Send(message);
         if (NetworkDiagTracer.IsEnabled)
             NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
