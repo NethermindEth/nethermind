@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using System.IO.Abstractions;
 using System.Security;
 using System.Text;
 using Nethermind.Core;
@@ -38,7 +39,7 @@ namespace Nethermind.Vault.Test
             ILogManager logger = LimboLogs.Instance;
             _serializer = new EthereumJsonSerializer();
             _cryptoRandom = new CryptoRandom();
-            _store = new FileKeyStore(_keyStoreConfig, _serializer, new AesEncrypter(_keyStoreConfig, logger), _cryptoRandom, logger, _keyStoreIOSettingsProvider);
+            _store = new FileKeyStore(_keyStoreConfig, _serializer, new AesEncrypter(_keyStoreConfig, logger), _cryptoRandom, logger, _keyStoreIOSettingsProvider, new FileSysytem());
         }
 
         [TestCase("fragile potato army dinner inch enrich decline under scrap soup audit worth trend point cheese sand online parrot faith catch olympic dignity mail crouch")]
