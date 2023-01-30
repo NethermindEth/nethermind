@@ -242,7 +242,19 @@ namespace Nethermind.Blockchain.Test
                 };
                 shanghai3860Scenarios.ExpectedSelectedTransactions.AddRange(
                     new[] { 1 ,2 }.Select(i => shanghai3860Scenarios.Transactions[i]));
-                yield return new TestCaseData(shanghai3860Scenarios).SetName("EIP3860");
+                yield return new TestCaseData(shanghai3860Scenarios).SetName("EIP3860 enabled scenarios");
+
+                TransactionSelectorTests.ProperTransactionsSelectedTestCase london3860Scenarios = new()
+                {
+                    ReleaseSpec = London.Instance,
+                    BaseFee = 5,
+                    AccountStates = { { TestItem.AddressA, (30000000.Ether(), 1) } },
+                    Transactions = new List<Transaction>() { txAboveTheLimit },
+                    GasLimit = 10000000
+                };
+                london3860Scenarios.ExpectedSelectedTransactions.AddRange(
+                    new[] { 0 }.Select(i => london3860Scenarios.Transactions[i]));
+                yield return new TestCaseData(london3860Scenarios).SetName("EIP3860 disabled scenarios");
             }
         }
 
