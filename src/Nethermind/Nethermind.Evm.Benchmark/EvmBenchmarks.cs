@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Benchmark
                 CodeInfo = new CodeInfo(ByteCode),
                 Value = 0,
                 TransferValue = 0,
-                TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0)
+                TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0, null)
             };
 
             _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.Transaction, true, _worldState.TakeSnapshot(), false);

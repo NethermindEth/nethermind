@@ -39,7 +39,8 @@ namespace Nethermind.Consensus.Validators
                    ValidateSignature(transaction.Signature, releaseSpec) &&
                    ValidateChainId(transaction) &&
                    Validate1559GasFields(transaction, releaseSpec) &&
-                   Validate3860Rules(transaction, releaseSpec);
+                   Validate3860Rules(transaction, releaseSpec) &&
+                   Validate4844Fields(transaction);
         }
 
         private bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec)
@@ -58,6 +59,8 @@ namespace Nethermind.Consensus.Validators
                     return releaseSpec.UseTxAccessLists;
                 case TxType.EIP1559:
                     return releaseSpec.IsEip1559Enabled;
+                case TxType.Blob:
+                    return releaseSpec.IsEip4844Enabled;
                 default:
                     return false;
             }
@@ -77,11 +80,8 @@ namespace Nethermind.Consensus.Validators
             {
                 case TxType.Legacy:
                     return true;
-                case TxType.AccessList:
-                case TxType.EIP1559:
-                    return transaction.ChainId == _chainIdValue;
                 default:
-                    return false;
+                    return transaction.ChainId == _chainIdValue;
             }
         }
 
@@ -111,6 +111,12 @@ namespace Nethermind.Consensus.Validators
             }
 
             return !spec.ValidateChainId || (signature.V == 27 || signature.V == 28);
+        }
+
+        private bool Validate4844Fields(Transaction transaction)
+        {
+            // TODO: Add blobs validation
+            return transaction.Type == TxType.Blob ^ transaction.MaxFeePerDataGas is null;
         }
     }
 }

@@ -5,6 +5,9 @@ using System;
 using System.IO;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+
+using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -21,7 +24,7 @@ namespace Nethermind.Network.Rlpx
         private readonly KeccakDigest _ingressMac;
         private readonly KeccakDigest _egressMacCopy;
         private readonly KeccakDigest _ingressMacCopy;
-        private readonly AesEngine _aesEngine;
+        private readonly IBlockCipher _aesEngine;
         private readonly byte[] _macSecret;
 
         public FrameMacProcessor(PublicKey remoteNodeId, EncryptionSecrets secrets)
@@ -39,9 +42,9 @@ namespace Nethermind.Network.Rlpx
             _egressAesBlockBuffer = new byte[_ingressMac.GetDigestSize()];
         }
 
-        private AesEngine MakeMacCipher()
+        private IBlockCipher MakeMacCipher()
         {
-            AesEngine aesFastEngine = new();
+            IBlockCipher aesFastEngine = AesEngineX86Intrinsic.IsSupported ? new AesEngineX86Intrinsic() : new AesEngine();
             aesFastEngine.Init(true, new KeyParameter(_macSecret));
             return aesFastEngine;
         }

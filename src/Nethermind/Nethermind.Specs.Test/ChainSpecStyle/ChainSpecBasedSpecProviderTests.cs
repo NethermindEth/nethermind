@@ -345,7 +345,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                          .Where(p => isMainnet || checkDifficultyBomb ||
                                      p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
                          .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
-                         .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp)))
+                         .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
+                         .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp)))
             {
                 Assert.AreEqual(propertyInfo.GetValue(expectedSpec), propertyInfo.GetValue(ActualSpec),
                     activation + "." + propertyInfo.Name);
@@ -619,6 +620,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 r.IsTimeAdjustmentPostOlympic = true;
                 r.MaximumUncleCount = 2;
                 r.WithdrawalTimestamp = ulong.MaxValue;
+                r.Eip4844TransitionTimestamp = ulong.MaxValue;
             });
 
             TestTransitions((ForkActivation)1L, r =>
