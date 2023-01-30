@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
         }
 
-        public ulong ChainId => _blockTree.ChainId;
+        public ulong NetworkId => _blockTree.NetworkId;
         public BlockHeader Genesis => _blockTree.Genesis;
 
         public BlockHeader? Head

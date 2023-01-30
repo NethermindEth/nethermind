@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             // Kovan has some wrong difficulty in early blocks before using proper AuRa difficulty calculation
             // In order to support that we need to support another pivot
-            { ChainId.Kovan, new Dictionary<long, ulong> { {148240, 19430113280} } }
+            { BlockchainIds.Kovan, new Dictionary<long, ulong> { {148240, 19430113280} } }
         };
 
         private readonly ILogger _logger;
@@ -185,7 +185,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
-            _historicalOverrides.TryGetValue(_blockTree.ChainId, out _expectedDifficultyOverride);
+            _historicalOverrides.TryGetValue(_blockTree.NetworkId, out _expectedDifficultyOverride);
         }
 
         public override void InitializeFeed()

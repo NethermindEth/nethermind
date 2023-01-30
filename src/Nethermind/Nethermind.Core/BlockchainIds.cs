@@ -27,7 +27,7 @@ namespace Nethermind.Core
     /// 7762959: Musicoin, the music blockchain
     /// 61717561: Aquachain, ASIC resistant chain
     /// </summary>
-    public static class ChainId
+    public static class BlockchainIds
     {
         public const int Olympic = 0;
         public const int Mainnet = 1;
@@ -48,29 +48,35 @@ namespace Nethermind.Core
         public const int Volta = 73799;
         public const int Sepolia = 11155111;
 
-        public static string GetChainName(ulong chainId)
+        public static string GetBlockchainName(ulong networkId)
         {
-            return chainId switch
+            return networkId switch
             {
-                Olympic => "Olympic",
-                Mainnet => "Mainnet",
-                Morden => "Morden",
-                Ropsten => "Ropsten",
-                Rinkeby => "Rinkeby",
-                Goerli => "Goerli",
-                RootstockMainnet => "RootstockMainnet",
-                RootstockTestnet => "RootstockTestnet",
-                Kovan => "Kovan",
-                EthereumClassicMainnet => "EthereumClassicMainnet",
-                EthereumClassicTestnet => "EthereumClassicTestnet",
-                DefaultGethPrivateChain => "DefaultGethPrivateChain",
-                Stureby => "Stureby",
-                xDai => "xDai",
-                PoaCore => "PoaCore",
-                Volta => "Volta",
-                Sepolia => "Sepolia",
-                _ => chainId.ToString()
+                Olympic => nameof(Olympic),
+                Mainnet => nameof(Mainnet),
+                Morden => nameof(Morden),
+                Ropsten => nameof(Ropsten),
+                Rinkeby => nameof(Rinkeby),
+                Goerli => nameof(Goerli),
+                RootstockMainnet => nameof(RootstockMainnet),
+                RootstockTestnet => nameof(RootstockTestnet),
+                Kovan => nameof(Kovan),
+                EthereumClassicMainnet => nameof(EthereumClassicMainnet),
+                EthereumClassicTestnet => nameof(EthereumClassicTestnet),
+                DefaultGethPrivateChain => nameof(DefaultGethPrivateChain),
+                Stureby => nameof(Stureby),
+                xDai => nameof(xDai),
+                PoaCore => nameof(PoaCore),
+                Volta => nameof(Volta),
+                Sepolia => nameof(Sepolia),
+                _ => networkId.ToString()
             };
         }
+    }
+
+    public static class TestBlockchainIds
+    {
+        public const int NetworkId = 4261;
+        public const int ChainId = 1;
     }
 }

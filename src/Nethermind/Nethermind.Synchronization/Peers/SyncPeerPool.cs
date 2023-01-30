@@ -506,7 +506,7 @@ namespace Nethermind.Synchronization.Peers
                         peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.UselessInFastBlocks, "PEER REVIEW / HEAD 0");
                     }
                 }
-                else if (peerInfo.HeadNumber == 1920000 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
+                else if (peerInfo.HeadNumber == 1920000 && _blockTree.NetworkId == BlockchainIds.Mainnet) // mainnet, stuck Geth nodes
                 {
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {
@@ -514,7 +514,7 @@ namespace Nethermind.Synchronization.Peers
                         peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.UselessInFastBlocks, "PEER REVIEW / 1920000");
                     }
                 }
-                else if (peerInfo.HeadNumber == 7280022 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
+                else if (peerInfo.HeadNumber == 7280022 && _blockTree.NetworkId == BlockchainIds.Mainnet) // mainnet, stuck Geth nodes
                 {
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
                     {

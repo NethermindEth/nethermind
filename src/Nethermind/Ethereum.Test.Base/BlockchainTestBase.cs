@@ -87,14 +87,14 @@ namespace Ethereum.Test.Base
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition != null)
             {
-                specProvider = new CustomSpecProvider(1,
+                specProvider = new CustomSpecProvider(
                     ((ForkActivation)0, Frontier.Instance),
                     ((ForkActivation)1, test.Network),
                     ((ForkActivation)test.TransitionBlockNumber, test.NetworkAfterTransition));
             }
             else
             {
-                specProvider = new CustomSpecProvider(1,
+                specProvider = new CustomSpecProvider(
                     ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                     ((ForkActivation)1, test.Network));
             }
@@ -123,7 +123,7 @@ namespace Ethereum.Test.Base
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
-            ITxValidator txValidator = new TxValidator(ChainId.Mainnet);
+            ITxValidator txValidator = new TxValidator(TestBlockchainIds.ChainId);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);

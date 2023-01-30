@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Test.Find
             specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip155Enabled.Returns(true);
             _receiptStorage = new InMemoryReceiptStorage(allowReceiptIterator);
             _rawBlockTree = Build.A.BlockTree()
-                .WithTransactions(_receiptStorage, specProvider, LogsForBlockBuilder)
+                .WithTransactions(_receiptStorage, LogsForBlockBuilder)
                 .OfChainLength(out _headTestBlock, 5)
                 .TestObject;
             _blockTree = _rawBlockTree;

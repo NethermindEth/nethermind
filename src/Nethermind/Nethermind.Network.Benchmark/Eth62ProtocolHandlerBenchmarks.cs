@@ -51,7 +51,7 @@ namespace Nethermind.Network.Benchmarks
             _ser.Register(new TransactionsMessageSerializer());
             _ser.Register(new StatusMessageSerializer());
             NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
-            var ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
+            var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
             var tree = Build.A.BlockTree().TestObject;
             var stateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
             var specProvider = MainnetSpecProvider.Instance;
@@ -59,7 +59,7 @@ namespace Nethermind.Network.Benchmarks
                 ecdsa,
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
-                new TxValidator(ChainId.Mainnet),
+                new TxValidator(TestBlockchainIds.ChainId),
                 LimboLogs.Instance,
                 new TransactionComparerProvider(specProvider, tree).GetDefaultComparer());
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
@@ -73,7 +73,7 @@ namespace Nethermind.Network.Benchmarks
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
-            statusMessage.ChainId = 1;
+            statusMessage.NetworkId = 1;
             IByteBuffer bufStatus = _ser.ZeroSerialize(statusMessage);
             _zeroPacket = new ZeroPacket(bufStatus);
             _zeroPacket.PacketType = bufStatus.ReadByte();
