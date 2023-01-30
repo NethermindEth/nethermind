@@ -241,7 +241,7 @@ namespace Nethermind.Blockchain.Test
                     GasLimit = 10000000
                 };
                 shanghai3860Scenarios.ExpectedSelectedTransactions.AddRange(
-                    new[] { 1,2 }.Select(i => shanghai3860Scenarios.Transactions[i]));
+                    new[] { 1, 2 }.Select(i => shanghai3860Scenarios.Transactions[i]));
                 yield return new TestCaseData(shanghai3860Scenarios).SetName("EIP3860 enabled scenarios");
 
                 TransactionSelectorTests.ProperTransactionsSelectedTestCase london3860Scenarios = new()
