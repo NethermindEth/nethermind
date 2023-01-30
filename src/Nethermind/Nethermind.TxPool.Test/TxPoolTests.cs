@@ -95,7 +95,7 @@ namespace Nethermind.TxPool.Test
         public void should_ignore_transactions_with_different_chain_id()
         {
             _txPool = CreatePool();
-            EthereumEcdsa ecdsa = new(ChainId.Mainnet, _logManager);
+            EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId, _logManager);
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactions().Length.Should().Be(0);
@@ -187,7 +187,7 @@ namespace Nethermind.TxPool.Test
             var txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .WithChainId(ChainId.Mainnet)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithMaxFeePerGas(10.GWei())
                 .WithMaxPriorityFeePerGas(5.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -205,7 +205,7 @@ namespace Nethermind.TxPool.Test
             var txPool = CreatePool(null, specProvider);
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.EIP1559).WithMaxFeePerGas(20)
-                .WithChainId(ChainId.Mainnet)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithValue(5).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx.SenderAddress, tx.Value - 1); // we should have InsufficientFunds only when balance < tx.Value
             AcceptTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -466,7 +466,7 @@ namespace Nethermind.TxPool.Test
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(20)
                 .WithMaxPriorityFeePerGas((UInt256)gasPremium)
-                .WithChainId(ChainId.Mainnet)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             tx.Value = (UInt256)(value * tx.GasLimit);
             EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
@@ -1148,7 +1148,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.AccessList)
-                .WithChainId(ChainId.Mainnet)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);

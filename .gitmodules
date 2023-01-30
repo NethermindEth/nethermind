@@ -4,7 +4,7 @@
 [submodule "src/bench_precompiles"]
 	path = src/bench_precompiles
 	url = https://github.com/shamatar/bench_precompiles.git
-[submodule "gitbook/docs"]
+[submodule "src/Nethermind/Nethermind.GitBook/docs"]
 	path = src/Nethermind/Nethermind.GitBook/docs
 	url = https://github.com/NethermindEth/docs.git
 [submodule "src/ethereum-tests"]

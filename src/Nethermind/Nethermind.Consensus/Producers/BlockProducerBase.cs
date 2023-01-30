@@ -303,7 +303,14 @@ namespace Nethermind.Consensus.Producers
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
-            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());
+
+            if (_specProvider.GetSpec(header).IsEip4844Enabled)
+            {
+                // TODO: Calculate ExcessDataGas depending on parent ExcessDataGas and number of blobs in txs
+                header.ExcessDataGas = 0;
+            }
+
+            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }
     }
 }

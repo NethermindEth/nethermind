@@ -40,8 +40,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IBlockchainBridge Bridge { get; private set; } = null!;
         public ITxSealer TxSealer { get; private set; } = null!;
         public ITxSender TxSender { get; private set; } = null!;
-        public ILogFinder LogFinder { get; private set; } = null!;
-
         public IReceiptFinder ReceiptFinder { get; private set; } = null!;
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
 
@@ -108,14 +106,11 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
         {
-            BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
-            specProvider ??= new TestSpecProvider(Berlin.Instance) { ChainId = ChainId.Mainnet };
+            specProvider ??= new TestSpecProvider(Berlin.Instance);
             await base.Build(specProvider, initialValues);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
 
-            ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), specProvider);
-            LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
 
             ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(DbProvider, false),
