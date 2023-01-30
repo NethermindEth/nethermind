@@ -391,7 +391,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 jsonRpcResult.TryDequeue(out var result);
 
-                ((BlockForRpc)((JsonRpcSubscriptionResponse)result.Response).Params.Result).Difficulty.Should().Be((UInt256)i);
+                ((BlockForRpc)((JsonRpcSubscriptionResponse)result.Response!).Params.Result).Difficulty.Should().Be((UInt256)i);
             }
         }
 
@@ -454,7 +454,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string _);
 
             jsonRpcResults.Count.Should().Be(0);
         }
@@ -475,7 +475,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId);
 
             jsonRpcResults.Count.Should().Be(3);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
@@ -513,7 +513,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId);
 
             jsonRpcResults.Count.Should().Be(5);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);

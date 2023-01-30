@@ -17,7 +17,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         {
             StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 3;
-            statusMessage.ChainId = 1;
+            statusMessage.NetworkId = 1;
             statusMessage.TotalDifficulty = 131200;
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.HeadBlockNo = 4;

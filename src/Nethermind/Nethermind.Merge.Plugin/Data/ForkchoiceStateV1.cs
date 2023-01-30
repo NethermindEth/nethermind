@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
 
@@ -36,6 +36,5 @@ public class ForkchoiceStateV1
     /// <remarks>Can be <see cref="Keccak.Zero"/> when transition block is not finalized yet.</remarks>
     public Keccak FinalizedBlockHash { get; set; }
 
-    public override string ToString() =>
-        $"ForkchoiceState: {{{nameof(HeadBlockHash)}: {HeadBlockHash}, {nameof(SafeBlockHash)}: {SafeBlockHash}, {nameof(FinalizedBlockHash)}: {FinalizedBlockHash}}}";
+    public override string ToString() => $"ForkchoiceState: ({nameof(HeadBlockHash)}: {HeadBlockHash}, {nameof(SafeBlockHash)}: {SafeBlockHash}, {nameof(FinalizedBlockHash)}: {FinalizedBlockHash})";
 }

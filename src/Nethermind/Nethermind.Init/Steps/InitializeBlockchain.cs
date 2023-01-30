@@ -172,7 +172,12 @@ namespace Nethermind.Init.Steps
                     try
                     {
                         _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                        TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                        TrieStore noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
+                        IStateProvider diagStateProvider = new StateProvider(noPruningStore, codeDb, getApi.LogManager)
+                        {
+                            StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
+                        };
+                        TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
                         _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
                     }
                     catch (Exception ex)

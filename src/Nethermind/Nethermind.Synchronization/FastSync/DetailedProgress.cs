@@ -48,9 +48,9 @@ namespace Nethermind.Synchronization.FastSync
 
         public DetailedProgress(ulong chainId, byte[] serializedInitialState)
         {
-            if (Known.ChainSize.ContainsKey(chainId))
+            if (Known.ChainSize.TryGetValue(chainId, out Known.SizeInfo value))
             {
-                _chainSizeInfo = Known.ChainSize[chainId];
+                _chainSizeInfo = value;
             }
 
             LoadFromSerialized(serializedInitialState);

@@ -1,14 +1,20 @@
-name: '[RUN] CodeQL code analysis'
+name: 'CodeQL analysis'
 
 on:
   push:
-    tags:
-    - '*'
+    tags: ['*']
+  schedule:
+  - cron: '0 0 * * 0'
+  workflow_dispatch:
 
 jobs:
-  run-analysis:
-    name: Analyse Nethermind code
+  analyze:
+    name: Analyze
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
     strategy:
       fail-fast: false
       matrix:
@@ -16,12 +22,10 @@ jobs:
     steps:
     - name: Check out repository
       uses: actions/checkout@v3
-      with:
-        fetch-depth: 2
     - name: Update submodules
       run: git submodule update --init src/tests
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v1
+      uses: github/codeql-action/init@v2
       with:
         languages: ${{ matrix.language }}
     - name: Set up .NET
@@ -29,8 +33,9 @@ jobs:
       with:
         dotnet-version: 7
     - name: Build Nethermind
-      run: |
-        cd src/Nethermind
-        dotnet build Nethermind.sln -c release
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v1
+      working-directory: src/Nethermind
+      run: dotnet build Nethermind.sln -c release
+    - name: Perform CodeQL analysis
+      uses: github/codeql-action/analyze@v2
+      with:
+        category: '/language:${{ matrix.language }}'

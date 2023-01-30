@@ -21,9 +21,9 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Catalyst": {
+    "Eip4844 Local Trace": {
       "commandName": "Project",
-      "commandLineArgs": "-c catalyst -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true --Merge.BlockAuthorAccount 0x1000000000000000000000000000000000000000",
+      "commandLineArgs": "-c eip4844_local -dd %NETHERMIND_DATA_DIR% --log TRACE",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -63,34 +63,6 @@
     "Hive": {
       "commandName": "Project",
       "commandLineArgs": "-c hive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Kiln": {
-      "commandName": "Project",
-      "commandLineArgs": "-c kiln -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Kiln (devnet)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c kiln_devnet -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Kiln (fast sync)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c kiln_fastsync -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Kiln (pre-TTD)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c kiln_pre_ttd_pivot -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -203,27 +175,6 @@
     "The Merge (hive tests)": {
       "commandName": "Project",
       "commandLineArgs": "-c themerge_hivetests -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (Kiln M2)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_kiln_m2 -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 100",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (Kiln MEV)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_kiln_mev -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (Kiln test vectors)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_kiln_testvectors -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false --Merge.FeeRecipient 0x0000000000000000000000000000000000000000",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

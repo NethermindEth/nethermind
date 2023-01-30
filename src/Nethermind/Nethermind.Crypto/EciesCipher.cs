@@ -73,7 +73,7 @@ namespace Nethermind.Crypto
 
         private IIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
         {
-            AesEngine aesFastEngine = new();
+            IBlockCipher aesFastEngine = AesEngineX86Intrinsic.IsSupported ? new AesEngineX86Intrinsic() : new AesEngine();
 
             EthereumIesEngine iesEngine = new(
                 new HMac(new Sha256Digest()),

@@ -24,12 +24,14 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
 using Newtonsoft.Json;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -71,7 +73,7 @@ public partial class EngineModuleTests
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
         Keccak blockHash = new("0xb1b3b07ef3832bd409a04fdea9bf2bfa83d7af0f537ff25f4a3d2eb632ebfb0f");
-        var expectedPayload = chain.JsonSerializer.Serialize(new ExecutionPayload
+        string? expectedPayload = chain.JsonSerializer.Serialize(new ExecutionPayload
         {
             BaseFeePerGas = 0,
             BlockHash = blockHash,
@@ -123,6 +125,13 @@ public partial class EngineModuleTests
         string[] parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams) };
         string? result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"SYNCING\",\"latestValidHash\":null,\"validationError\":null},\"payloadId\":null},\"id\":67}");
+    }
+
+    [Test]
+    public void ForkchoiceV1_ToString_returns_correct_results()
+    {
+        ForkchoiceStateV1 forkchoiceState = new(TestItem.KeccakA, TestItem.KeccakF, TestItem.KeccakC);
+        forkchoiceState.ToString().Should().Be("ForkchoiceState: (HeadBlockHash: 0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760, SafeBlockHash: 0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72, FinalizedBlockHash: 0xe61d9a3d3848fb2cdd9a2ab61e2f21a10ea431275aed628a0557f9dee697c37a)");
     }
 
     [Test]
@@ -217,7 +226,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
-        var result = rpc.engine_getPayloadBodiesByRangeV1(0, 1025);
+        Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> result = rpc.engine_getPayloadBodiesByRangeV1(0, 1025);
         result.Result.ErrorCode.Should().Be(-32005);
     }
 
@@ -510,7 +519,7 @@ public partial class EngineModuleTests
         getPayloadResult.BlockHash = TestItem.KeccakC;
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Invalid);
     }
 
     [Test]
@@ -546,7 +555,7 @@ public partial class EngineModuleTests
     public async Task executePayloadV1_result_is_fail_when_blockchainprocessor_report_exception()
     {
         using MergeTestBlockchain chain = await CreateBaseBlockChain(null, null)
-            .Build(new SingleReleaseSpecProvider(London.Instance, 1));
+            .Build(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         ((TestBlockProcessorInterceptor)chain.BlockProcessor).ExceptionToThrow =
@@ -564,7 +573,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBaseBlockChain()
             .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
-            .Build(new SingleReleaseSpecProvider(London.Instance, 1));
+            .Build(new TestSingleReleaseSpecProvider(London.Instance));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0)
@@ -1057,7 +1066,7 @@ public partial class EngineModuleTests
         resultWrapper2.Data.Status.Should().Be(PayloadStatus.Valid);
         executionPayload.ParentHash = executionPayload.BlockHash!;
         ResultWrapper<PayloadStatusV1> invalidBlockRequest = await rpc.engine_newPayloadV1(executionPayload);
-        invalidBlockRequest.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
+        invalidBlockRequest.Data.Status.Should().Be(PayloadStatus.Invalid);
     }
 
     [TestCase(30)]
@@ -1652,6 +1661,43 @@ public partial class EngineModuleTests
                          currentBlockHash == forkChoiceState3.SafeBlockHash ||
                          currentBlockHash == forkChoiceState3.FinalizedBlockHash);
         }
+    }
+
+    [Test]
+    public async Task Should_return_capabilities()
+    {
+        using var chain = await CreateBlockChain();
+        var rpcModule = CreateEngineModule(chain);
+        var expected = typeof(IEngineRpcModule).GetMethods()
+            .Select(m => m.Name)
+            .Where(m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
+            .Order();
+
+        var result = await rpcModule.engine_exchangeCapabilities(expected);
+
+        result.Data.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public async Task Should_warn_for_missing_capabilities()
+    {
+        using var chain = await CreateBlockChain();
+        chain.LogManager = Substitute.For<ILogManager>();
+        chain.LogManager.GetClassLogger().IsWarn.Returns(true);
+
+        var rpcModule = CreateEngineModule(chain);
+        var list = new[]
+        {
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)
+        };
+
+        var result = await rpcModule.engine_exchangeCapabilities(list);
+
+        chain.LogManager.GetClassLogger().Received().Warn(
+            Arg.Is<string>(a =>
+                a.Contains(nameof(IEngineRpcModule.engine_getPayloadV1), StringComparison.Ordinal) &&
+                !a.Contains(nameof(IEngineRpcModule.engine_getPayloadV2), StringComparison.Ordinal)));
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(

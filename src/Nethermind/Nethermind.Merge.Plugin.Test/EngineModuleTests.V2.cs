@@ -44,7 +44,7 @@ public partial class EngineModuleTests
         };
         Withdrawal[] withdrawals = new[]
         {
-            new Withdrawal { Index = 1, Amount = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
+            new Withdrawal { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
         };
         var payloadAttrs = new
         {
@@ -79,7 +79,7 @@ public partial class EngineModuleTests
             }
         }));
 
-        Keccak blockHash = new("0xed14029504c440624047d5d0223899fb2c8abc4550464ac21e8f42ccdbb472d3");
+        Keccak blockHash = new("0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68");
         Block block = new(
             new(
                 startingHead,
@@ -98,7 +98,7 @@ public partial class EngineModuleTests
                 Hash = blockHash,
                 MixHash = prevRandao,
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
-                StateRoot = new("0xde9a4fd5deef7860dc840612c5e960c942b76a9b2e710504de9bab8289156491"),
+                StateRoot = new("0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51"),
             },
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
@@ -194,7 +194,7 @@ public partial class EngineModuleTests
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
         errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
-        errorResponse!.Error!.Message.Should().Contain("Withdrawals not supported");
+        errorResponse!.Error!.Message.Should().Be("PayloadAttributesV1 expected");
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
@@ -231,8 +231,8 @@ public partial class EngineModuleTests
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
-        errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, string.Empty));
+        errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
+        errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "PayloadAttributes"));
     }
 
     [Test]
@@ -336,7 +336,7 @@ public partial class EngineModuleTests
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
         errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
-        errorResponse!.Error!.Message.Should().Contain("Withdrawals not supported");
+        errorResponse!.Error!.Message.Should().Be("ExecutionPayloadV1 expected");
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
@@ -375,19 +375,12 @@ public partial class EngineModuleTests
 
         string response = RpcTest.TestSerializedRequest(rpcModule, "engine_newPayloadV2",
             chain.JsonSerializer.Serialize(expectedPayload));
-        JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
-        {
-            Id = successResponse.Id,
-            Result = new PayloadStatusV1
-            {
-                LatestValidHash = startingHead,
-                Status = PayloadStatus.Invalid,
-                ValidationError = string.Format(input.ErrorMessage, $"in block {blockHash} ")
-            }
-        }));
+        errorResponse.Should().NotBeNull();
+        errorResponse!.Error.Should().NotBeNull();
+        errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
+        errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "ExecutionPayload"));
     }
 
     protected static IEnumerable<(
@@ -399,12 +392,12 @@ public partial class EngineModuleTests
     {
         yield return (
             Shanghai.Instance,
-            "Withdrawals cannot be null {0}when EIP-4895 activated.",
+            "{0}V2 expected",
             null,
             "0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
         yield return (
             London.Instance,
-            "Withdrawals must be null {0}when EIP-4895 not activated.",
+            "{0}V1 expected",
             Enumerable.Empty<Withdrawal>(),
             "0xaa4aa15951a28e6adab430a795e36a84649bbafb1257eda23e38b9131cbd3b98");
     }
@@ -419,7 +412,11 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, input.Withdrawals);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
-        resultWrapper.Data.Status.Should().Be(input.IsValid ? PayloadStatus.Valid : PayloadStatus.Invalid);
+
+        if (input.IsValid)
+            resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+        else
+            resultWrapper.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
     }
 
     protected static IEnumerable<(

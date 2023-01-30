@@ -1048,10 +1048,10 @@ namespace Nethermind.Synchronization.Test
             private void BuildTree(long chainLength, bool withReceipts)
             {
                 _receiptStorage = new InMemoryReceiptStorage();
-                BlockTreeBuilder builder = Build.A.BlockTree();
+                BlockTreeBuilder builder = Build.A.BlockTree(MainnetSpecProvider.Instance);
                 if (withReceipts)
                 {
-                    builder = builder.WithTransactions(_receiptStorage, MainnetSpecProvider.Instance);
+                    builder = builder.WithTransactions(_receiptStorage);
                 }
 
                 builder = builder.OfChainLength((int)chainLength);
