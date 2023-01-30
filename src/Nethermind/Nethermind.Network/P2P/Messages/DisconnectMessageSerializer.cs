@@ -28,20 +28,10 @@ namespace Nethermind.Network.P2P.Messages
                 return new DisconnectMessage((DisconnectReason)msgBytes[0]);
             }
 
-            if (msgBytes.SequenceEqual(breach1))
+            if (msgBytes.SequenceEqual(breach1)
+                || msgBytes.SequenceEqual(breach2))
             {
-                return new DisconnectMessage(DisconnectReason.Other)
-                {
-                    Details = "breach1"
-                };
-            }
-
-            if (msgBytes.SequenceEqual(breach2))
-            {
-                return new DisconnectMessage(DisconnectReason.Other)
-                {
-                    Details = "breach2"
-                };
+                return new DisconnectMessage(DisconnectReason.Other);
             }
 
             RlpStream rlpStream = msgBytes.AsRlpStream();

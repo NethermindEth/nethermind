@@ -127,7 +127,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                         string reason = FastEnum.IsDefined<DisconnectReason>((byte)disconnectMessage.Reason)
                             ? ((DisconnectReason)disconnectMessage.Reason).ToName()
                             : disconnectMessage.Reason.ToString();
-                        Logger.Trace($"{Session} Received disconnect ({reason}) on {Session.RemotePort} {disconnectMessage.Details}");
+                        Logger.Trace($"{Session} Received disconnect ({reason}) on {Session.RemotePort}");
                     }
 
                     Close(disconnectMessage.Reason);
@@ -286,10 +286,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
     {
         if (Logger.IsTrace)
             Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
-        DisconnectMessage message = new(disconnectReason)
-        {
-            Details = details
-        };
+        DisconnectMessage message = new(disconnectReason);
         Send(message);
         if (NetworkDiagTracer.IsEnabled)
             NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
