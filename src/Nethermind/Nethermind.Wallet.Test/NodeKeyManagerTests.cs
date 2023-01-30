@@ -36,7 +36,7 @@ namespace Nethermind.Wallet.Test
             test.PasswordProvider.GetPassword(TestItem.AddressA).Returns("p1".Secure());
             test.KeyStore.GetProtectedKey(TestItem.AddressA, Arg.Any<SecureString>()).Returns(
                 c => ((SecureString)c[1]).Unsecure() == "p1"
-                    ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Environment.SpecialFolder.ApplicationData.ToString()), Result.Success)
+                    ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Environment.SpecialFolder.ApplicationData.ToString(), new FileSystem()), Result.Success)
                     : ((ProtectedPrivateKey)null, Result.Fail("nope")));
             test.NodeKeyManager.LoadNodeKey().Unprotect().Should().Be(TestItem.PrivateKeyA);
         }
@@ -87,7 +87,7 @@ namespace Nethermind.Wallet.Test
             test.PasswordProvider.GetPassword(TestItem.AddressA).Returns("p1".Secure());
             test.KeyStore.GetProtectedKey(TestItem.AddressA, Arg.Any<SecureString>()).Returns(
                 c => ((SecureString)c[1]).Unsecure() == "p1"
-                    ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Environment.SpecialFolder.ApplicationData.ToString()), Result.Success)
+                    ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Environment.SpecialFolder.ApplicationData.ToString(), new FileSystem()), Result.Success)
                     : ((ProtectedPrivateKey)null, Result.Fail("nope")));
             test.NodeKeyManager.LoadSignerKey().Unprotect().Should().Be(TestItem.PrivateKeyA);
         }

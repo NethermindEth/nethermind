@@ -41,13 +41,16 @@ namespace Nethermind.Init.Steps
                     encrypter,
                     get.CryptoRandom,
                     get.LogManager,
-                    new PrivateKeyStoreIOSettingsProvider(keyStoreConfig));
+                    new PrivateKeyStoreIOSettingsProvider(keyStoreConfig),
+                    get.FileSystem);
 
                 set.Wallet = get.Config<IInitConfig>() switch
                 {
                     var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory => new DevWallet(get.Config<IWalletConfig>(), get.LogManager),
                     var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory => new DevKeyStoreWallet(get.KeyStore, get.LogManager),
-                    _ => new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(keyStoreConfig.KeyStoreDirectory, get.CryptoRandom, get.Timestamper), get.Timestamper, get.LogManager),
+                    _ => new ProtectedKeyStoreWallet(keyStore,
+                        new ProtectedPrivateKeyFactory(get.CryptoRandom, get.Timestamper,
+                            keyStoreConfig.KeyStoreDirectory, get.FileSystem), get.Timestamper, get.LogManager),
                 };
 
                 new AccountUnlocker(keyStoreConfig, get.Wallet, get.LogManager, new KeyStorePasswordProvider(keyStoreConfig))

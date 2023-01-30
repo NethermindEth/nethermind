@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -8,7 +9,9 @@ namespace Nethermind.Crypto
 {
     public class ProtectedPrivateKey : ProtectedData<PrivateKey>
     {
-        public ProtectedPrivateKey(PrivateKey privateKey, string keyStoreDir, ICryptoRandom random = null, ITimestamper timestamper = null) : base(privateKey.KeyBytes, keyStoreDir, random, timestamper)
+        public ProtectedPrivateKey(PrivateKey privateKey, string keyStoreDir, IFileSystem fileSystem,
+            ICryptoRandom? random = null, ITimestamper? timestamper = null)
+            : base(privateKey.KeyBytes, keyStoreDir, fileSystem, random, timestamper)
         {
             PublicKey = privateKey.PublicKey;
             CompressedPublicKey = privateKey.CompressedPublicKey;

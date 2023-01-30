@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 
@@ -17,10 +18,12 @@ namespace Nethermind.Crypto
             private const string ProtectionDir = "protection_keys";
 
             private readonly string _keyStoreDir;
+            private readonly IFileSystem _fileSystem;
 
-            public AspNetWrapper(string keyStoreDir)
+            public AspNetWrapper(string keyStoreDir, IFileSystem fileSystem)
             {
                 _keyStoreDir = keyStoreDir;
+                _fileSystem = fileSystem;
             }
 
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
@@ -37,14 +40,9 @@ namespace Nethermind.Crypto
 
             private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy)
             {
-                if (scope == DataProtectionScope.CurrentUser)
-                {
-                    return GetUserProtector(optionalEntropy);
-                }
-                else
-                {
-                    return GetMachineProtector(optionalEntropy);
-                }
+                return scope == DataProtectionScope.CurrentUser
+                    ? GetUserProtector(optionalEntropy)
+                    : GetMachineProtector(optionalEntropy);
             }
 
             /**
@@ -57,8 +55,7 @@ namespace Nethermind.Crypto
                 var path = Path.Combine(appData, AppName);
                 try // Check if we have permission to write to directory SpecialFolder.ApplicationData
                 {
-                    using (FileStream _ = File.Create(Path.Combine(path, Path.GetRandomFileName()), 1,
-                               FileOptions.DeleteOnClose)) { }
+                    using (_fileSystem.File.Create(Path.Combine(path, Path.GetRandomFileName()), 1, FileOptions.DeleteOnClose)) { }
                 }
                 catch // Change location of keys to keyStore/protection_keys directory
                 {

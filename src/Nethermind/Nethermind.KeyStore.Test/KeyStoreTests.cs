@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Security;
 using System.Text;
@@ -52,7 +53,8 @@ namespace Nethermind.KeyStore.Test
                 ILogManager logger = LimboLogs.Instance;
                 Serializer = new EthereumJsonSerializer();
                 CryptoRandom = new CryptoRandom();
-                Store = new FileKeyStore(KeyStoreConfig, Serializer, new AesEncrypter(KeyStoreConfig, logger), CryptoRandom, logger, new PrivateKeyStoreIOSettingsProvider(KeyStoreConfig));
+                Store = new FileKeyStore(KeyStoreConfig, Serializer, new AesEncrypter(KeyStoreConfig, logger),
+                    CryptoRandom, logger, new PrivateKeyStoreIOSettingsProvider(KeyStoreConfig), new FileSystem());
             }
         }
 

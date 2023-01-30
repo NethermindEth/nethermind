@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
@@ -11,9 +12,9 @@ namespace Nethermind.Crypto
     {
         private readonly IProtector _protector;
 
-        protected ProtectedData(string keyStoreDir)
+        protected ProtectedData(string keyStoreDir, IFileSystem fileSystem)
         {
-            _protector = CreateProtector(keyStoreDir);
+            _protector = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : new AspNetWrapper(keyStoreDir, fileSystem);
         }
 
         private interface IProtector
@@ -22,13 +23,10 @@ namespace Nethermind.Crypto
             byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope);
         }
 
-        private static IProtector CreateProtector(string keyStoreDir)
-        {
-            return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : new AspNetWrapper(keyStoreDir);
-        }
+        protected byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope) =>
+            _protector.Protect(userData, optionalEntropy, scope);
 
-        protected byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope) => _protector.Protect(userData, optionalEntropy, scope);
-
-        protected byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope) => _protector.Unprotect(encryptedData, optionalEntropy, scope);
+        protected byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope) =>
+            _protector.Unprotect(encryptedData, optionalEntropy, scope);
     }
 }
