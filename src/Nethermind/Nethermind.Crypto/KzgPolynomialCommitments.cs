@@ -23,20 +23,7 @@ public static class KzgPolynomialCommitments
 
     private static Task? _initializeTask = null;
 
-    public static Task Initialize(ILogger? logger = null)
-    {
-        if (_ckzgSetup != IntPtr.Zero)
-        {
-            return Task.CompletedTask;
-        }
-
-        Task? initializeTask = _initializeTask;
-        if (initializeTask is not null)
-        {
-            return initializeTask;
-        }
-
-        Task task = Task.Run(() =>
+    public static Task Initialize(ILogger? logger = null) => _initializeTask ?? (_initializeTask = Task.Run(() =>
         {
             if (_ckzgSetup != IntPtr.Zero) return;
 
@@ -51,12 +38,7 @@ public static class KzgPolynomialCommitments
             {
                 throw new InvalidOperationException("Unable to load trusted setup");
             }
-
-            _initializeTask = null;
-        });
-
-        return _initializeTask = task;
-    }
+        }));
 
     public static bool TryComputeCommitmentV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
     {
@@ -71,7 +53,10 @@ public static class KzgPolynomialCommitments
 
     public static unsafe bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> proof)
     {
-        Initialize().Wait();
+        if (_ckzgSetup == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("KZG is not initialized");
+        }
 
         fixed (byte* commitmentPtr = commitment, zPtr = z, yPtr = y, proofPtr = proof)
         {
