@@ -18,11 +18,13 @@ namespace Nethermind.Evm.Test;
 [Parallelizable(ParallelScope.All)]
 public class PointEvaluationPrecompileTests
 {
-    private static readonly byte[] _predefinedSuccessAnswer = Bytes.FromHexString("001000000000000001000000fffffffffe5bfeff02a4bd5305d8a10908d83933487d9d2953a7ed73");
+    private static readonly byte[] _predefinedSuccessAnswer =
+        Bytes.FromHexString("001000000000000001000000fffffffffe5bfeff02a4bd5305d8a10908d83933487d9d2953a7ed73");
+
     private static readonly byte[] _predefinedFailureAnswer = Array.Empty<byte>();
 
     [OneTimeSetUp]
-    public Task OneTimeSetUp() =>  KzgPolynomialCommitments.Initialize();
+    public Task OneTimeSetUp() => KzgPolynomialCommitments.Initialize();
 
     [TestCaseSource(nameof(OutputTests))]
     public bool Test_PointEvaluationPrecompile_Produces_Correct_Outputs(byte[] input)
