@@ -39,7 +39,7 @@ namespace Nethermind.Vault.Test
             ILogManager logger = LimboLogs.Instance;
             _serializer = new EthereumJsonSerializer();
             _cryptoRandom = new CryptoRandom();
-            _store = new FileKeyStore(_keyStoreConfig, _serializer, new AesEncrypter(_keyStoreConfig, logger), _cryptoRandom, logger, _keyStoreIOSettingsProvider, new FileSysytem());
+            _store = new FileKeyStore(_keyStoreConfig, _serializer, new AesEncrypter(_keyStoreConfig, logger), _cryptoRandom, logger, _keyStoreIOSettingsProvider, new FileSystem());
         }
 
         [TestCase("fragile potato army dinner inch enrich decline under scrap soup audit worth trend point cheese sand online parrot faith catch olympic dignity mail crouch")]

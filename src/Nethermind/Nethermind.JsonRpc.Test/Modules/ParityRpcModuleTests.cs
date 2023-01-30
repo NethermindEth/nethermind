@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _signerStore = new Signer(specProvider.ChainId, TestItem.PrivateKeyB, logger);
             _parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage,
                 new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), _signerStore,
-                new MemKeyStore(new[] {TestItem.PrivateKeyA}, Environment.SpecialFolder.ApplicationData.ToString(),
+                new MemKeyStore(new[] { TestItem.PrivateKeyA }, Environment.SpecialFolder.ApplicationData.ToString(),
                     new FileSystem()),
                 MainnetSpecProvider.Instance, peerManager);
 
@@ -357,7 +357,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage,
                 new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}, string.Empty, new FileSystem()),
+                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, string.Empty, new FileSystem()),
                 MainnetSpecProvider.Instance, peerManager);
 
             string serialized = RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
@@ -387,7 +387,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage,
                 new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}, string.Empty, new FileSystem()),
+                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, string.Empty, new FileSystem()),
                 MainnetSpecProvider.Instance, peerManager);
             string serialized = RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":0,\"max\":0,\"peers\":[]},\"id\":67}";
