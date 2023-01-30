@@ -33,7 +33,8 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
                 ErrorCodes.LimitExceeded);
         }
 
-        var payloadBodies = new ExecutionPayloadBodyV1Result?[count];
+        var bestSuggestedNumber = _blockTree.BestSuggestedBody?.Number;
+        var payloadBodies = new List<ExecutionPayloadBodyV1Result?>();
         var skipFrom = 0;
 
         for (int i = 0; i < count; i++)
@@ -42,19 +43,21 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
 
             if (block is null)
             {
-                payloadBodies[i] = null;
+                payloadBodies.Add(null);
 
                 if (skipFrom == 0 && i > 0 && payloadBodies[i - 1] is not null)
                     skipFrom = i;
             }
+            else if (block.Number > bestSuggestedNumber)
+                break;
             else
             {
-                payloadBodies[i] = new(block.Transactions, block.Withdrawals);
+                payloadBodies.Add(new(block.Transactions, block.Withdrawals));
                 skipFrom = 0;
             }
         }
 
-        var trimmedBodies = skipFrom > 0 ? payloadBodies.SkipLast(payloadBodies.Length - skipFrom) : payloadBodies;
+        var trimmedBodies = skipFrom > 0 ? payloadBodies.SkipLast(payloadBodies.Count - skipFrom) : payloadBodies;
 
         return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(trimmedBodies);
     }

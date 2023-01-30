@@ -455,7 +455,7 @@ public partial class EngineModuleTests
         }
     }
 
-    [TestCaseSource(nameof(PayloadBodiesByRangeTestCases))]
+    [TestCaseSource(nameof(PayloadBodiesByRangeNullTrimTestCases))]
     public async Task getPayloadBodiesByRangeV1_should_trim_trailing_null_bodies(
         (Func<CallInfo, Block?> Impl,
         IEnumerable<ExecutionPayloadBodyV1Result?> Outcome) input)
@@ -471,6 +471,24 @@ public partial class EngineModuleTests
         var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 5).Result.Data;
 
         payloadBodies.Should().BeEquivalentTo(input.Outcome);
+    }
+
+    [Test]
+    public async Task getPayloadBodiesByRangeV1_should_return_up_to_best_body_number()
+    {
+        var blockTree = Substitute.For<IBlockTree>();
+
+        blockTree.FindBlock(Arg.Any<long>())
+            .Returns(i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
+        blockTree.BestSuggestedBody.Returns(Build.A.Block.WithNumber(3).TestObject);
+
+        using var chain = await CreateShanghaiBlockChain();
+        chain.BlockTree = blockTree;
+
+        var rpc = CreateEngineModule(chain);
+        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 5).Result.Data;
+
+        payloadBodies.Count().Should().Be(4);
     }
 
     [Test]
@@ -796,7 +814,7 @@ public partial class EngineModuleTests
     protected static IEnumerable<(
         Func<CallInfo, Block?>,
         IEnumerable<ExecutionPayloadBodyV1Result?>
-        )> PayloadBodiesByRangeTestCases()
+        )> PayloadBodiesByRangeNullTrimTestCases()
     {
         var block = Build.A.Block.TestObject;
         var result = new ExecutionPayloadBodyV1Result(Array.Empty<Transaction>(), null);
