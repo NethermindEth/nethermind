@@ -52,7 +52,7 @@ namespace Nethermind.HealthChecks.Test
                                                     a => 3 * _freeSpaceBytes);
             FreeDiskSpaceChecker freeDiskSpaceChecker = new(hcConfig, LimboTraceLogger.Instance, drives, Core.Timers.TimerFactory.Default, ts.TotalMinutes);
 
-            Task t = Task.Run(() => freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default) );
+            Task t = Task.Run(() => freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default));
             bool completed = t.Wait((int)ts.TotalMilliseconds * 2);
 
             Assert.IsTrue(completed);
