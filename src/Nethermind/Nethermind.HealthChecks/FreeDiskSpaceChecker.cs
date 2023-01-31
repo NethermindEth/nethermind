@@ -19,14 +19,19 @@ namespace Nethermind.HealthChecks
         private readonly ILogger _logger;
         private readonly IDriveInfo[] _drives;
         private readonly ITimer _timer;
-        private const int CheckPeriodMinutes = 1;
+        private readonly double _checkPeriodMinutes;
+        public static readonly int DefaultCheckPeriodMinutes = 1;
 
-        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IDriveInfo[] drives, ITimerFactory timerFactory)
+        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IDriveInfo[] drives, ITimerFactory timerFactory) :
+            this(healthChecksConfig, logger, drives, timerFactory, DefaultCheckPeriodMinutes) { }
+
+        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IDriveInfo[] drives, ITimerFactory timerFactory, double checkPeriodMinutes)
         {
             _healthChecksConfig = healthChecksConfig;
             _logger = logger;
             _drives = drives;
-            _timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(CheckPeriodMinutes));
+            _checkPeriodMinutes = checkPeriodMinutes;
+            _timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(_checkPeriodMinutes));
             _timer.Elapsed += CheckDiskSpace;
         }
 
@@ -78,7 +83,7 @@ namespace Nethermind.HealthChecks
                 if (_healthChecksConfig.LowStorageCheckAwaitOnStartup)
                 {
                     ManualResetEventSlim mre = new(false);
-                    using ITimer timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(CheckPeriodMinutes));
+                    using ITimer timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(_checkPeriodMinutes));
                     timer.Elapsed += (t, e) =>
                     {
                         if (IsEnoughDiskSpace(minAvailableSpaceThreshold))
