@@ -100,6 +100,7 @@ public partial class EngineModuleTests
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
+            new ExchangeCapabilitiesHandler(chain.SpecProvider, chain.LogManager),
             chain.SpecProvider,
             chain.LogManager);
     }
@@ -139,7 +140,7 @@ public partial class EngineModuleTests
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-        public sealed override ILogManager LogManager { get; } = LimboLogs.Instance;
+        public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
 
         public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
 

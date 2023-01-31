@@ -24,10 +24,5 @@ namespace Nethermind.Merge.Plugin.Data
         /// Payload was accepted but not executed yet. It can be executed in <see cref="ForkchoiceStateV1"/> call.
         /// </summary>
         public const string Accepted = "ACCEPTED";
-
-        /// <summary>
-        /// Payload has invalid block hash.
-        /// </summary>
-        public const string InvalidBlockHash = "INVALID_BLOCK_HASH";
     }
 }
