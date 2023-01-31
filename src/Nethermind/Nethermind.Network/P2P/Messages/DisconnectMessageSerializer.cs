@@ -17,6 +17,7 @@ namespace Nethermind.Network.P2P.Messages
             ).Bytes;
         }
 
+
         private byte[] breach1 = Bytes.FromHexString("0204c104");
         private byte[] breach2 = Bytes.FromHexString("0204c180");
 
@@ -27,14 +28,10 @@ namespace Nethermind.Network.P2P.Messages
                 return new DisconnectMessage((DisconnectReason)msgBytes[0]);
             }
 
-            if (msgBytes.SequenceEqual(breach1))
+            if (msgBytes.SequenceEqual(breach1)
+                || msgBytes.SequenceEqual(breach2))
             {
-                return new DisconnectMessage(DisconnectReason.Breach1);
-            }
-
-            if (msgBytes.SequenceEqual(breach2))
-            {
-                return new DisconnectMessage(DisconnectReason.Breach2);
+                return new DisconnectMessage(DisconnectReason.Other);
             }
 
             RlpStream rlpStream = msgBytes.AsRlpStream();
