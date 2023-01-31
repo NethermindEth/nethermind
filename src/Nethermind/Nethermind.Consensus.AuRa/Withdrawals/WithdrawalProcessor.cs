@@ -47,7 +47,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
 
                 if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.AmountInWei / (BigInteger)Unit.Ether:N3}GNO to account {withdrawal.Address}");
             }
-            
+
             // TODO: check for a failure to invalidate block
             _contract.Withdraw(block.Header, amounts, addresses);
 
