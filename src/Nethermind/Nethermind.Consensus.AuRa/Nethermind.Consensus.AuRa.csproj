@@ -29,6 +29,7 @@
         <None Remove="Contracts\TransactionPermissionContractV2.json" />
         <None Remove="Contracts\TransactionPermissionContractV3.json" />
         <None Remove="Contracts\BlockGasLimitContract.json" />
+        <None Remove="Contracts\WithdrawalContract.json" />
         <EmbeddedResource Include="Contracts\CertifierContract.json" />
         <EmbeddedResource Include="Contracts\RandomContract.json" />
         <EmbeddedResource Include="Contracts\RegisterContract.json" />
@@ -42,6 +43,7 @@
         <EmbeddedResource Include="Contracts\BlockGasLimitContract.json" />
         <None Remove="Contracts\TransactionPermissionContractV4.json" />
         <EmbeddedResource Include="Contracts\TransactionPermissionContractV4.json" />
+        <EmbeddedResource Include="Contracts\WithdrawalContract.json" />
     </ItemGroup>
 
 </Project>
