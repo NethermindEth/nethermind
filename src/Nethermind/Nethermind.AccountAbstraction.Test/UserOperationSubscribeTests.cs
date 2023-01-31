@@ -189,7 +189,7 @@ namespace Nethermind.AccountAbstraction.Test
         public void NewPendingUserOperationsSubscription_on_NewPending_event()
         {
             UserOperation userOperation = Build.A.UserOperation.TestObject;
-            userOperation.CalculateRequestId(_entryPointAddress, 1);
+            userOperation.CalculateRequestId(_entryPointAddress, TestBlockchainIds.ChainId);
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
 
             JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out var subscriptionId, true);
@@ -204,10 +204,10 @@ namespace Nethermind.AccountAbstraction.Test
         public void NewPendingUserOperationsSubscription_on_NewPending_event_without_full_user_operations()
         {
             UserOperation userOperation = Build.A.UserOperation.TestObject;
-            userOperation.CalculateRequestId(_entryPointAddress, 1);
+            userOperation.CalculateRequestId(_entryPointAddress, TestBlockchainIds.ChainId);
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
 
-            JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out var subscriptionId, false);
+            JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out string subscriptionId, false);
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
@@ -250,7 +250,7 @@ namespace Nethermind.AccountAbstraction.Test
         public void NewReceivedUserOperationsSubscription_on_NewPending_event()
         {
             UserOperation userOperation = Build.A.UserOperation.TestObject;
-            userOperation.CalculateRequestId(_entryPointAddress, 1);
+            userOperation.CalculateRequestId(_entryPointAddress, TestBlockchainIds.ChainId);
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
 
             JsonRpcResult jsonRpcResult = GetNewReceivedUserOpsResult(userOperationEventArgs, out var subscriptionId, true);
@@ -265,7 +265,7 @@ namespace Nethermind.AccountAbstraction.Test
         public void NewReceivedUserOperationsSubscription_on_NewPending_event_without_full_user_operations()
         {
             UserOperation userOperation = Build.A.UserOperation.TestObject;
-            userOperation.CalculateRequestId(_entryPointAddress, 1);
+            userOperation.CalculateRequestId(_entryPointAddress, TestBlockchainIds.ChainId);
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
 
             JsonRpcResult jsonRpcResult = GetNewReceivedUserOpsResult(userOperationEventArgs, out var subscriptionId, false);

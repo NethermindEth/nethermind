@@ -12,7 +12,7 @@ using Nethermind.Logging;
 namespace Nethermind.Baseline.Benchmark
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31, targetCount: 10)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31, iterationCount: 10)]
     public class BuildingTreeBenchmarks
     {
         private Keccak[] _testLeaves;

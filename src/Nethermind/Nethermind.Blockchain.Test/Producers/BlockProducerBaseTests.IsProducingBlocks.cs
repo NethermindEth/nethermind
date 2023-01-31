@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Security;
@@ -136,7 +136,7 @@ namespace Nethermind.Blockchain.Test.Producers
         private async Task<TestRpcBlockchain> CreateTestRpc()
         {
             Address address = TestItem.Addresses[0];
-            SingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance, 1);
+            TestSingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());

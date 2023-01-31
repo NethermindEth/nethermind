@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain.Find;
@@ -37,6 +37,8 @@ namespace Nethermind.Blockchain.Spec
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
+
+        public ulong NetworkId => _specProvider.NetworkId;
 
         public ulong ChainId => _specProvider.ChainId;
 

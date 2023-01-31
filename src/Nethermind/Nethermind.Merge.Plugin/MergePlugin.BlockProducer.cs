@@ -18,13 +18,14 @@ namespace Nethermind.Merge.Plugin
 {
     public partial class MergePlugin
     {
-        private PostMergeBlockProducer _postMergeBlockProducer = null!;
-        private IManualBlockProductionTrigger? _blockProductionTrigger = null;
-        private ManualTimestamper? _manualTimestamper;
+        protected PostMergeBlockProducer _postMergeBlockProducer = null!;
+        protected IManualBlockProductionTrigger? _blockProductionTrigger = null;
+        protected ManualTimestamper? _manualTimestamper;
 
-        protected virtual ITxSource? CreateTxSource(IStateProvider stateProvider) => null;
+        protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
+            => new(_api.SpecProvider!, _api.SealEngine, _manualTimestamper!, _blocksConfig, _api.LogManager);
 
-        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public virtual async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             if (MergeEnabled)
             {
@@ -55,11 +56,9 @@ namespace Nethermind.Merge.Plugin
 
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.SealValidator, _api.LogManager);
                 _api.Sealer = _api.SealEngine;
-                PostMergeBlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _blocksConfig, _api.LogManager);
-                _postMergeBlockProducer = blockProducerFactory.Create(
+                _postMergeBlockProducer = CreateBlockProducerFactory().Create(
                     blockProducerEnv,
-                    _blockProductionTrigger,
-                    CreateTxSource(blockProducerEnv.ReadOnlyStateProvider)
+                    _blockProductionTrigger
                 );
 
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);

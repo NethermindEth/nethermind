@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
@@ -15,10 +18,10 @@ while (true)
     try
     {
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(input));
-        TxValidator txValidator = new TxValidator(ChainId.Mainnet);
+        TxValidator txValidator = new TxValidator(BlockchainIds.Mainnet);
         if (txValidator.IsWellFormed(tx, GrayGlacier.Instance))
         {
-            EthereumEcdsa ecdsa = new(ChainId.Mainnet, SimpleConsoleLogManager.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet, SimpleConsoleLogManager.Instance);
             Address? sender = ecdsa.RecoverAddress(tx);
             if (sender == null)
             {

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -493,7 +493,8 @@ namespace Nethermind.Mev.Test
                     BlockTree.Head.Returns(Build.A.Block.WithNumber((long)blockTreeHead).TestObject);
                 }
 
-                BlockTree.ChainId.Returns((ulong)ChainId.Mainnet);
+                BlockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
+                BlockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
 
                 if (timestamper is not null)
                 {

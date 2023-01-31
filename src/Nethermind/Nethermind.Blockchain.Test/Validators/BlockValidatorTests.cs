@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_more_uncles_than_allowed_returns_false()
         {
-            TxValidator txValidator = new(ChainId.Mainnet);
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             ReleaseSpec releaseSpec = new();
             releaseSpec.MaximumUncleCount = 0;
             ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));

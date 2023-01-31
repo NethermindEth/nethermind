@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -20,7 +20,6 @@ namespace Nethermind.Mev
 {
     public class MevModuleFactory : ModuleFactoryBase<IMevRpcModule>
     {
-        private readonly IMevConfig _mevConfig;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBundlePool _bundlePool;
         private readonly IBlockTree _blockTree;
@@ -28,20 +27,16 @@ namespace Nethermind.Mev
         private readonly ITracerFactory _tracerFactory;
         private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
-        private readonly ulong _chainId;
 
         public MevModuleFactory(
-            IMevConfig mevConfig,
             IJsonRpcConfig jsonRpcConfig,
             IBundlePool bundlePool,
             IBlockTree blockTree,
             IStateReader stateReader,
             ITracerFactory tracerFactory,
             ISpecProvider specProvider,
-            ISigner? signer,
-            ulong chainId)
+            ISigner? signer)
         {
-            _mevConfig = mevConfig;
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
             _blockTree = blockTree;
@@ -49,7 +44,6 @@ namespace Nethermind.Mev
             _tracerFactory = tracerFactory;
             _specProvider = specProvider;
             _signer = signer;
-            _chainId = chainId;
         }
 
         public override IMevRpcModule Create()

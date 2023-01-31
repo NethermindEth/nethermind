@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Linq;
@@ -131,8 +131,8 @@ namespace Nethermind.AccountAbstraction.Source
 
                 // add userOp accessList to combined list
                 foreach (KeyValuePair<Address, HashSet<UInt256>> kv in userOperation.AccessList.Data)
-                    if (usedAccessList.ContainsKey(kv.Key))
-                        usedAccessList[kv.Key].UnionWith(kv.Value);
+                    if (usedAccessList.TryGetValue(kv.Key, out HashSet<UInt256>? value))
+                        value.UnionWith(kv.Value);
                     else
                         usedAccessList[kv.Key] = kv.Value;
             }

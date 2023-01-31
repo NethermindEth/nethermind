@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
 using Nethermind.Core.Specs;
@@ -37,6 +37,14 @@ namespace Nethermind.Specs.Test
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip3198Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip3529Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip3541Enabled.Should().Be(isEnabled);
+        }
+
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp, false)]
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, true)]
+        public void Cancun_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        {
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip1153Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4844Enabled.Should().Be(isEnabled);
         }
 
         [Test]

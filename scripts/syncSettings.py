@@ -34,6 +34,11 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
+    "gnosis": {
+        "url": "https://rpc.gnosischain.com",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
     "xdai": {
         "url": "https://rpc.gnosischain.com",
         "blockReduced": 8192,
@@ -79,11 +84,6 @@ configs = {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
         "multiplierRequirement": 30000
-    },
-    "xdai_mev": {
-        "url": "https://rpc.gnosischain.com",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
     },
     # aa section
     "mainnet_aa": {

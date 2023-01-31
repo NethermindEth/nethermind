@@ -20,7 +20,7 @@ indent_style = space
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-file_header_template = SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited\nSPDX-License-Identifier: LGPL-3.0-only
+file_header_template = SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited\nSPDX-License-Identifier: LGPL-3.0-only
 
 ###############################
 # Other file type settings    #

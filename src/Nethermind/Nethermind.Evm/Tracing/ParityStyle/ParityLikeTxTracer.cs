@@ -397,9 +397,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
             storage = _trace.StateChanges[storageCell.Address].Storage ?? (_trace.StateChanges[storageCell.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
 
-            if (storage.ContainsKey(storageCell.Index))
+            if (storage.TryGetValue(storageCell.Index, out ParityStateChange<byte[]> value))
             {
-                before = storage[storageCell.Index].Before ?? before;
+                before = value.Before ?? before;
             }
 
             storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);

@@ -19,7 +19,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -39,10 +39,10 @@ public partial class EngineModuleTests
         PayloadAttributes payload = new() { Timestamp = Timestamper.UnixTime.Seconds, SuggestedFeeRecipient = Address.Zero, PrevRandao = Keccak.Zero };
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoiceResponse = rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payload);
         byte[] payloadId = Bytes.FromHexString(forkchoiceResponse.Result.Data.PayloadId!);
-        ResultWrapper<ExecutionPayloadV1?> responseFirst = await rpc.engine_getPayloadV1(payloadId);
+        ResultWrapper<ExecutionPayload?> responseFirst = await rpc.engine_getPayloadV1(payloadId);
         responseFirst.Should().NotBeNull();
         responseFirst.Result.ResultType.Should().Be(ResultType.Success);
-        ResultWrapper<ExecutionPayloadV1?> responseSecond = await rpc.engine_getPayloadV1(payloadId);
+        ResultWrapper<ExecutionPayload?> responseSecond = await rpc.engine_getPayloadV1(payloadId);
         responseSecond.Should().NotBeNull();
         responseSecond.Result.ResultType.Should().Be(ResultType.Success);
         responseSecond.Data!.BlockHash!.Should().Be(responseFirst.Data!.BlockHash!);
@@ -74,7 +74,7 @@ public partial class EngineModuleTests
 
         await Task.Delay(PayloadPreparationService.SlotsPerOldPayloadCleanup * 2 * timePerSlot + timePerSlot);
 
-        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         response.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
     }
@@ -99,7 +99,7 @@ public partial class EngineModuleTests
             .Result.Data.PayloadId!;
 
         await blockImprovementLock.WaitAsync(10000);
-        ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         getPayloadResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
 
@@ -153,7 +153,7 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
-        ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         return getPayloadResult.Transactions.Length;
     }
@@ -168,7 +168,7 @@ public partial class EngineModuleTests
         ulong timestamp = chain.BlockTree.Head!.Timestamp + 5;
         Address? suggestedFeeRecipient = TestItem.AddressC;
         PayloadAttributes? payloadAttributes = new() { PrevRandao = random, Timestamp = timestamp, SuggestedFeeRecipient = suggestedFeeRecipient };
-        ExecutionPayloadV1 getPayloadResult = await BuildAndGetPayloadResult(chain, rpc, payloadAttributes);
+        ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc, payloadAttributes);
         getPayloadResult.ParentHash.Should().Be(startingHead);
 
 
@@ -197,7 +197,7 @@ public partial class EngineModuleTests
             .PayloadId!;
 
         byte[] requestedPayloadId = Bytes.FromHexString("0x45bd36a8143d860d");
-        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(requestedPayloadId);
+        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(requestedPayloadId);
 
         response.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
     }
@@ -216,9 +216,33 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockChain(null, payloadPreparationService);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-
         string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", payload.ToHexString(true));
-        Assert.AreEqual(result, "{\"jsonrpc\":\"2.0\",\"result\":{\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"feeRecipient\":\"0x0000000000000000000000000000000000000000\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"prevRandao\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"blockNumber\":\"0x0\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"timestamp\":\"0xf4240\",\"extraData\":\"0x010203\",\"baseFeePerGas\":\"0x0\",\"blockHash\":\"0x5fd61518405272d77fd6cdc8a824a109d75343e32024ee4f6769408454b1823d\",\"transactions\":[\"0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102\",\"0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0033e85439a128c42f2ba47ca278f1375ef211e61750018ff21bcd9750d1893f2a04ee981fe5261f8853f95c865232ffdab009abcc7858ca051fb624c49744bf18d\"]},\"id\":67}");
+        Assert.AreEqual(result,
+            chain.JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0",
+                result = new ExecutionPayload
+                {
+                    BaseFeePerGas = 0,
+                    BlockHash = new("0x5fd61518405272d77fd6cdc8a824a109d75343e32024ee4f6769408454b1823d"),
+                    BlockNumber = 0,
+                    ExtraData = Bytes.FromHexString("0x010203"),
+                    FeeRecipient = Address.Zero,
+                    GasLimit = 0x3d0900L,
+                    GasUsed = 0,
+                    LogsBloom = new Bloom(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
+                    ParentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c"),
+                    PrevRandao = new("0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2"),
+                    ReceiptsRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
+                    StateRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
+                    Timestamp = 0xf4240UL,
+                    Transactions = new[] {
+                        Bytes.FromHexString("0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"),
+                        Bytes.FromHexString("0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0033e85439a128c42f2ba47ca278f1375ef211e61750018ff21bcd9750d1893f2a04ee981fe5261f8853f95c865232ffdab009abcc7858ca051fb624c49744bf18d")
+                    },
+                },
+                id = 67
+            }));
     }
 
     [Test]
@@ -304,7 +328,7 @@ public partial class EngineModuleTests
 
         await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
 
-        ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         List<int?> transactionsLength = improvementContextFactory.CreatedContexts
             .Select(c =>
@@ -357,7 +381,7 @@ public partial class EngineModuleTests
         await blockImprovementStartsLock.WaitAsync(100); // started improving block
         improvementContextFactory.CreatedContexts.Should().HaveCount(2);
 
-        ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         getPayloadResult.GetTransactions().Should().HaveCount(3);
         cancelledContext?.Disposed.Should().BeTrue();

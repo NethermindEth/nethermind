@@ -207,9 +207,11 @@ public class InitializeNetwork : IStep
             // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
             // no longer available). Eth67 should be added if snap is enabled OR sync is finished
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+
+            // eth68 is disabled for now, as spec has draft status and can change (https://eips.ethereum.org/EIPS/eip-5793)
+            // _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
         }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
+        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
 
         if (_syncConfig.SnapSync && !stateSyncFinished)
         {
@@ -545,7 +547,7 @@ public class InitializeNetwork : IStep
             _networkConfig,
             _api.LogManager);
 
-        string chainName = ChainId.GetChainName(_api.ChainSpec!.ChainId).ToLowerInvariant();
+        string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
         string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
 #pragma warning disable CS4014
         enrDiscovery.SearchTree(domain).ContinueWith(t =>
