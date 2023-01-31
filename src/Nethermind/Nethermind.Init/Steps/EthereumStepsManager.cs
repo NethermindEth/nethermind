@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -128,6 +129,8 @@ namespace Nethermind.Init.Steps
 
                 if (step.MustInitialize)
                 {
+                    if (task.IsFaulted && task.Exception is not null)
+                        ExceptionDispatchInfo.Capture(task.Exception.GetBaseException()).Throw();
                     _allPending.Enqueue(task);
                 }
                 else

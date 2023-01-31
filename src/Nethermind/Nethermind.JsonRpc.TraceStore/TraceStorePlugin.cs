@@ -28,7 +28,7 @@ public class TraceStorePlugin : INethermindPlugin
     public string Name => DbName;
     public string Description => "Allows to serve traces without the block state, by saving historical traces to DB.";
     public string Author => "Nethermind";
-    private bool Enabled => _config.Enabled;
+    private bool? Enabled => _config?.Enabled;
 
     public Task Init(INethermindApi nethermindApi)
     {
@@ -38,7 +38,7 @@ public class TraceStorePlugin : INethermindPlugin
         _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
         _logger = _logManager.GetClassLogger<TraceStorePlugin>();
 
-        if (Enabled)
+        if (Enabled == true)
         {
             // Setup serialization
             _traceSerializer = new ParityLikeTraceSerializer(_logManager, _config.MaxDepth, _config.VerifySerialized);
@@ -59,7 +59,7 @@ public class TraceStorePlugin : INethermindPlugin
 
     public Task InitNetworkProtocol()
     {
-        if (Enabled)
+        if (Enabled == true)
         {
             if (_logger.IsInfo) _logger.Info($"Starting TraceStore with {_config.TraceTypes} traces.");
 
@@ -76,7 +76,7 @@ public class TraceStorePlugin : INethermindPlugin
 
     public Task InitRpcModules()
     {
-        if (Enabled && _jsonRpcConfig.Enabled)
+        if (Enabled == true && _jsonRpcConfig.Enabled)
         {
             IRpcModuleProvider apiRpcModuleProvider = _api.RpcModuleProvider!;
             if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule> traceModulePool)
@@ -91,7 +91,7 @@ public class TraceStorePlugin : INethermindPlugin
 
     public ValueTask DisposeAsync()
     {
-        if (Enabled)
+        if (Enabled == true)
         {
             _pruner?.Dispose();
             _db?.Dispose();

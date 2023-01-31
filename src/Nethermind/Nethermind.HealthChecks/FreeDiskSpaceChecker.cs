@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Config;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 
@@ -74,16 +75,25 @@ namespace Nethermind.HealthChecks
 
             if (!IsEnoughDiskSpace(minAvailableSpaceThreshold))
             {
-                ManualResetEventSlim mre = new(false);
-                using ITimer timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(CheckPeriodMinutes));
-                timer.Elapsed += (t, e) =>
+                if (_healthChecksConfig.LowStorageCheckAwaitOnStartup)
                 {
-                    if (IsEnoughDiskSpace(minAvailableSpaceThreshold))
-                        mre.Set();
-                };
+                    ManualResetEventSlim mre = new(false);
+                    using ITimer timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(CheckPeriodMinutes));
+                    timer.Elapsed += (t, e) =>
+                    {
+                        if (IsEnoughDiskSpace(minAvailableSpaceThreshold))
+                            mre.Set();
+                    };
 
-                timer.Start();
-                mre.Wait();
+                    timer.Start();
+                    mre.Wait();
+                }
+                else
+                {
+                    //throwing an exception as Environment.Exit will cause a deadlock in this scenario:
+                    //https://github.com/dotnet/runtime/issues/50397
+                    throw new NotEnoughDiskSpaceException();
+                }
             }
         }
 
