@@ -21,7 +21,6 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -89,8 +88,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         protected virtual BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
         {
-            var withdrawalContractFactory = new WithdrawalContractFactory(_api.ChainSpec.AuRa, _api.AbiEncoder);
-
             return new AuRaBlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
@@ -101,8 +98,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 _api.BlockTree,
-                new Withdrawals.WithdrawalProcessor(
-                    withdrawalContractFactory.Create(_api.TransactionProcessor), _api.LogManager),
+                NullWithdrawalProcessor.Instance,
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter

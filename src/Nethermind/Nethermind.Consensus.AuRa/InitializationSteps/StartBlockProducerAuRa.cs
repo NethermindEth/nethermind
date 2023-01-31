@@ -15,10 +15,10 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -159,7 +159,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 changeableTxProcessingEnv.BlockTree,
-                new WithdrawalProcessor(_api.StateProvider!, _api.LogManager),
+                NullWithdrawalProcessor.Instance,
                 auRaTxFilter,
                 CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride,
                 contractRewriter)
