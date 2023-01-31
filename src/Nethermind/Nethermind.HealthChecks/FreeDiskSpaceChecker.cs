@@ -23,7 +23,8 @@ namespace Nethermind.HealthChecks
         public static readonly int DefaultCheckPeriodMinutes = 1;
 
         public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IDriveInfo[] drives, ITimerFactory timerFactory) :
-            this(healthChecksConfig, logger, drives, timerFactory, DefaultCheckPeriodMinutes) { }
+            this(healthChecksConfig, logger, drives, timerFactory, DefaultCheckPeriodMinutes)
+        { }
 
         public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IDriveInfo[] drives, ITimerFactory timerFactory, double checkPeriodMinutes)
         {
