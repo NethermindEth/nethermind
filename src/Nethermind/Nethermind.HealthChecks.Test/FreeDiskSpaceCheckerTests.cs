@@ -8,8 +8,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Extensions;
 using System.Threading.Tasks;
-using System.Threading;
-using System.Diagnostics;
+using NSubstitute.ReceivedExtensions;
 
 namespace Nethermind.HealthChecks.Test
 {
@@ -41,7 +40,7 @@ namespace Nethermind.HealthChecks.Test
         [TestCase(2.5f, false)] //no wait
         public void free_disk_check_ensure_free_on_startup_wait_until_enough(float availableDiskSpacePercent, bool awaitsForFreeSpace)
         {
-            TimeSpan ts = TimeSpan.FromMinutes(1 / 120.0);
+            TimeSpan ts = TimeSpan.FromMilliseconds(100);
             HealthChecksConfig hcConfig = new()
             {
                 LowStorageCheckAwaitOnStartup = true,
@@ -49,25 +48,19 @@ namespace Nethermind.HealthChecks.Test
                 LowStorageSpaceWarningThreshold = 5
             };
             var drives = GetDriveInfos(availableDiskSpacePercent);
+            drives[0].AvailableFreeSpace.Returns(a => _freeSpaceBytes,
+                                                    a => 3 * _freeSpaceBytes);
             FreeDiskSpaceChecker freeDiskSpaceChecker = new(hcConfig, LimboTraceLogger.Instance, drives, Core.Timers.TimerFactory.Default, ts.TotalMinutes);
 
-            Stopwatch sw = new();
-            Task t = new(() =>
-            {
-                sw.Start();
-                freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default);
-                sw.Stop();
-            });
-            t.Start();
-            Thread.Sleep(10);
-            drives[0].AvailableFreeSpace.Returns(_freeSpaceBytes * 3);
+            Task t = Task.Run(() => freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default) );
             bool completed = t.Wait((int)ts.TotalMilliseconds * 2);
 
             Assert.IsTrue(completed);
+
             if (awaitsForFreeSpace)
-                Assert.IsTrue(sw.Elapsed.TotalMilliseconds >= ts.TotalMilliseconds);
+                _ = drives[0].Received(3).AvailableFreeSpace;
             else
-                Assert.IsTrue(sw.Elapsed.TotalMilliseconds < ts.TotalMilliseconds);
+                _ = drives[0].Received(1).AvailableFreeSpace;
         }
 
         private static IDriveInfo[] GetDriveInfos(float availableDiskSpacePercent)
