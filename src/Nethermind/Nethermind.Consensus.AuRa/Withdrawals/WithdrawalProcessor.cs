@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Numerics;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Withdrawals;
@@ -33,10 +34,11 @@ public class WithdrawalProcessor : IWithdrawalProcessor
 
         if (block.Withdrawals is not null) // This check looks redundant
         {
-            var amounts = Array.Empty<ulong>();
-            var addresses = Array.Empty<Address>();
+            var count = block.Withdrawals.Length;
+            var amounts = ArrayPool<ulong>.Shared.Rent(count);
+            var addresses = ArrayPool<Address>.Shared.Rent(count);
 
-            for (int i = 0, count = block.Withdrawals.Length; i < count; i++)
+            for (var i = 0; i < count; i++)
             {
                 var withdrawal = block.Withdrawals[i];
 
@@ -45,9 +47,12 @@ public class WithdrawalProcessor : IWithdrawalProcessor
 
                 if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.AmountInWei / (BigInteger)Unit.Ether:N3}GNO to account {withdrawal.Address}");
             }
-
+            
             // TODO: check for a failure to invalidate block
             _contract.Withdraw(block.Header, amounts, addresses);
+
+            ArrayPool<ulong>.Shared.Return(amounts);
+            ArrayPool<Address>.Shared.Return(addresses);
         }
 
         if (_logger.IsTrace) _logger.Trace($"Withdrawals applied for block {block}");
