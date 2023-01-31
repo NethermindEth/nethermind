@@ -40,7 +40,6 @@ namespace Nethermind.Consensus.Validators
                    ValidateChainId(transaction) &&
                    Validate1559GasFields(transaction, releaseSpec) &&
                    Validate3860Rules(transaction, releaseSpec) &&
-                   Validate3860Rules(transaction, releaseSpec) &&
                    Validate4844Fields(transaction);
         }
 
