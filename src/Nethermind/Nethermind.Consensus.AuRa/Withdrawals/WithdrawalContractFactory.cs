@@ -15,7 +15,6 @@ public class WithdrawalContractFactory : IWithdrawalContractFactory
 {
     private readonly IAbiEncoder _abiEncoder;
     private readonly Address _contractAddress;
-    private readonly ForkActivation _contractTransition;
 
     public WithdrawalContractFactory(AuRaParameters parameters, IAbiEncoder abiEncoder)
     {
@@ -23,13 +22,12 @@ public class WithdrawalContractFactory : IWithdrawalContractFactory
 
         _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
         _contractAddress = parameters.WithdrawalContractAddress;
-        _contractTransition = parameters.WithdrawalContractTransition;
     }
 
     public IWithdrawalContract Create(ITransactionProcessor processor)
     {
         ArgumentNullException.ThrowIfNull(processor);
 
-        return new WithdrawalContract(processor, _abiEncoder, _contractAddress, _contractTransition);
+        return new WithdrawalContract(processor, _abiEncoder, _contractAddress);
     }
 }

@@ -85,7 +85,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long? PosdaoTransition { get; set; }
             public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; } = new Dictionary<long, IDictionary<Address, byte[]>>();
             public Address WithdrawalContractAddress { get; set; }
-            public ForkActivation WithdrawalContractTransition { get; set; }
 
             public class StepDurationJson : SortedDictionary<long, long> { }
         }
@@ -157,8 +156,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode => Params.RewriteBytecode;
 
             public Address WithdrawalContractAddress => Params.WithdrawalContractAddress;
-
-            public ForkActivation WithdrawalContractTransition => Params.WithdrawalContractTransition;
 
             public AuraEngineParamsJson Params { get; set; }
         }

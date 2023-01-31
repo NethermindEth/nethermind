@@ -70,8 +70,6 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public Address WithdrawalContractAddress { get; set; }
 
-        public ForkActivation WithdrawalContractTransition { get; set; }
-
         public enum ValidatorType
         {
             List,
