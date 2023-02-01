@@ -47,10 +47,10 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
 
         var bestSuggestedNumber = _blockTree.BestSuggestedBody?.Number ?? 0;
         var payloadBodies = new List<ExecutionPayloadBodyV1Result?>();
-        var skipFrom = 0;
-        var j = 0;
+        //var skipFrom = 0;
+        //var j = 0;
 
-        for (long i = start, c = Math.Min(start + count, bestSuggestedNumber); i < c; i++, j++)
+        for (long i = start, c = Math.Min(start + count, bestSuggestedNumber); i < c; i++/*, j++*/)
         {
             var block = _blockTree.FindBlock(i);
 
@@ -58,18 +58,18 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
             {
                 payloadBodies.Add(null);
 
-                if (skipFrom == 0 && j > 0 && payloadBodies[j - 1] is not null)
-                    skipFrom = j;
+                //if (skipFrom == 0 && j > 0 && payloadBodies[j - 1] is not null)
+                //    skipFrom = j;
             }
             else
             {
                 payloadBodies.Add(new(block.Transactions, block.Withdrawals));
-                skipFrom = 0;
+                //skipFrom = 0;
             }
         }
 
-        var trimmedBodies = skipFrom > 0 ? payloadBodies.SkipLast(payloadBodies.Count - skipFrom) : payloadBodies;
+        //var trimmedBodies = skipFrom > 0 ? payloadBodies.SkipLast(payloadBodies.Count - skipFrom) : payloadBodies;
 
-        return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(trimmedBodies);
+        return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(payloadBodies);
     }
 }
