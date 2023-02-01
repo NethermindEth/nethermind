@@ -134,6 +134,7 @@ namespace Nethermind.Evm
                             if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
                         }
 
+
                         callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
                         if (!callResult.IsReturn)
                         {
@@ -144,10 +145,10 @@ namespace Nethermind.Evm
                             previousCallOutput = ZeroPaddedSpan.Empty;
                             continue;
                         }
-
                         if (callResult.IsException)
                         {
                             if (_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
+
                             _worldState.Restore(currentState.Snapshot);
 
                             RevertParityTouchBugAccount(spec);
@@ -617,6 +618,7 @@ namespace Nethermind.Evm
             {
                 return CallResult.Empty(0);
             }
+
 
             vmState.InitStacks();
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
@@ -2114,7 +2116,9 @@ namespace Nethermind.Evm
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
                             }
-                            stack.PushUInt32(programCounter - 1);
+                            int currentCodeSectionOffset = env.CodeInfo.SectionOffset(sectionIndex);
+                            int correctedPC = programCounter - currentCodeSectionOffset - 1;
+                            stack.PushUInt32(correctedPC);
                             break;
                         }
                     case Instruction.MSIZE:

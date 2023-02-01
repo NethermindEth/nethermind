@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Test
     public class EOF5450Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
-        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance));
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Cancun.Instance));
 
         public static IEnumerable<TestCase> Eip5450TxTestCases
         {
@@ -629,7 +629,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void EOF_validation_tests([ValueSource(nameof(Eip5450TxTestCases))] TestCase testcase)
         {
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+            var TargetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance);
 
             Instance.EOF_contract_header_parsing_tests(testcase, TargetReleaseSpec);
         }

@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Test
         [Flags]
         public enum FormatScenario
         {
-            None = 0,
+            None = 1,
 
             OmitTypeSectionHeader = 1 << 1,
             OmitCodeSectionsHeader = 1 << 2,
@@ -79,6 +79,7 @@ namespace Nethermind.Evm.Test
         [Flags]
         public enum DeploymentScenario
         {
+            None = 1,
             EofInitCode = 1 << 1,
             EofDeployedCode = 1 << 2,
             EofContainer = 1 << 3,
@@ -143,9 +144,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput tracer = CreateTracer();
 
             _processor.Execute(transaction, block.Header, tracer);
-
-            var result = tracer.ReportedActionErrors.Any(x => x == EvmExceptionType.InvalidCode || x == EvmExceptionType.BadInstruction) ? StatusCode.Failure : StatusCode.Success;
-            Assert.AreEqual(testcase.Result.Status, result, testcase.Result.Msg);
+            Assert.AreEqual(testcase.Result.Status, tracer.StatusCode, testcase.Result.Msg);
         }
 
         public record TestCase(int Index)
@@ -576,7 +575,7 @@ namespace Nethermind.Evm.Test
 
                     if (scenarios.HasFlag(DeploymentScenario.ContainerInitcodeVersionMismatch))
                     {
-                        initcode[2] = 02; result[2] = 01;
+                        initcode[2] = 01; result[2] = 02;
                     }
                     else
                     {
@@ -587,18 +586,25 @@ namespace Nethermind.Evm.Test
                     return result;
                 }
 
+                int bitmap = (scenarios.HasFlag(DeploymentScenario.EofContainer) ? 4 : 0) | (scenarios.HasFlag(DeploymentScenario.EofInitCode) ? 2 : 0) | (scenarios.HasFlag(DeploymentScenario.EofDeployedCode) ? 1 : 0);
                 bool isValid = ctx is DeploymentContext.UseCreateTx
                     ? !scenarios.HasFlag(DeploymentScenario.CorruptInitCode) && (
-                        scenarios.HasFlag(DeploymentScenario.EofInitCode) ||
-                        !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode))
+                        scenarios.HasFlag(DeploymentScenario.EofInitCode)
+                        ? scenarios.HasFlag(DeploymentScenario.EofDeployedCode) && !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode)
+                        : !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode))
                     : !scenarios.HasFlag(DeploymentScenario.CorruptContainer) && (
-                        scenarios.HasFlag(DeploymentScenario.EofContainer) || (
-                            !scenarios.HasFlag(DeploymentScenario.CorruptInitCode) && (
-                            scenarios.HasFlag(DeploymentScenario.EofInitCode) ||
-                            !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode))));
+                        scenarios.HasFlag(DeploymentScenario.EofContainer)
+                        ? !scenarios.HasFlag(DeploymentScenario.CorruptInitCode)
+                            && scenarios.HasFlag(DeploymentScenario.EofInitCode)
+                            && !scenarios.HasFlag(DeploymentScenario.ContainerInitcodeVersionMismatch)
+                            && !scenarios.HasFlag(DeploymentScenario.InitcodeDeploycodeVersionMismatch)
+                            && scenarios.HasFlag(DeploymentScenario.EofDeployedCode)
+                            && !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode)
+                        : true);
+
 
                 byte[] bytecode = EmitBytecode();
-                string message = $"EOF1 execution : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.FastToString()}, \nContext : {ctx.FastToString()}";
+                string message = $"EOF1 execution : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {EnumToDetailedString(scenarios)}, \nContext : {ctx.FastToString()}, \n Bitmap : {bitmap}";
                 return new TestCase(scenarios.ToInt32())
                 {
                     Bytecode = bytecode,
@@ -607,12 +613,26 @@ namespace Nethermind.Evm.Test
             }
         }
 
+        static string EnumToDetailedString<TEnum>(TEnum value) where TEnum : struct, Enum
+        {
+            List<String> sb = new();
+            var fieldsInTEnum = FastEnum.GetValues<TEnum>();
+            foreach (var field in fieldsInTEnum)
+            {
+                if (value.HasFlag(field))
+                {
+                    sb.Add(field.ToString());
+                }
+            }
+            return String.Join(", ", sb);
+        }
+
         public static IEnumerable<IReleaseSpec> Specs
         {
             get
             {
                 yield return GrayGlacier.Instance;
-                yield return Shanghai.Instance;
+                yield return Cancun.Instance;
             }
         }
 
