@@ -476,6 +476,7 @@ public partial class EngineModuleTests
     {
         var blockTree = Substitute.For<IBlockTree>();
 
+        blockTree.BestSuggestedBody.Returns(Build.A.Block.WithNumber(5).TestObject);
         blockTree.FindBlock(Arg.Any<long>()).Returns(input.Impl);
 
         using var chain = await CreateShanghaiBlockChain();
@@ -500,9 +501,9 @@ public partial class EngineModuleTests
         chain.BlockTree = blockTree;
 
         var rpc = CreateEngineModule(chain);
-        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
+        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 7).Result.Data;
 
-        payloadBodies.Count().Should().Be(4);
+        payloadBodies.Count().Should().Be(5);
     }
 
     [Test]
@@ -840,7 +841,7 @@ public partial class EngineModuleTests
 
         yield return (
             new Func<CallInfo, Block?>(i => i.ArgAt<long>(0) % 2 == 0 ? block : null),
-            new[] { null, result, null, result }
+            new[] { null, result, null, result, null }
         );
 
         yield return (
