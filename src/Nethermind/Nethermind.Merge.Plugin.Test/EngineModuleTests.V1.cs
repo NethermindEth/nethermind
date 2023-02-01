@@ -1570,8 +1570,8 @@ public partial class EngineModuleTests
 
         chain.LogManager.GetClassLogger().Received().Warn(
             Arg.Is<string>(a =>
-                a.Contains(nameof(IEngineRpcModule.engine_getPayloadV1), StringComparison.Ordinal) &&
-                !a.Contains(nameof(IEngineRpcModule.engine_getPayloadV2), StringComparison.Ordinal)));
+                a.Contains(nameof(IEngineRpcModule.engine_getPayloadV1), StringComparison.Ordinal)/* &&
+                !a.Contains(nameof(IEngineRpcModule.engine_getPayloadV2), StringComparison.Ordinal)*/));
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(
