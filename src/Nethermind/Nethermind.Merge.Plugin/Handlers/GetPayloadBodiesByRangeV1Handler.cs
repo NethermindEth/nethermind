@@ -45,7 +45,7 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
             return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        var bestSuggestedNumber = _blockTree.BestSuggestedBody?.Number ?? long.MaxValue;
+        var bestSuggestedNumber = _blockTree.BestSuggestedBody?.Number ?? 0;
         var payloadBodies = new List<ExecutionPayloadBodyV1Result?>();
         var skipFrom = 0;
         var j = 0;
