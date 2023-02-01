@@ -86,7 +86,7 @@ namespace Ethereum.Test.Base
             }
             if (test.NetworkAfterTransition == Shanghai.Instance)
             {
-                HeaderDecoder.Eip1559TransitionBlock = 1;
+                HeaderDecoder.Eip1559TransitionBlock = 0;
                 HeaderDecoder.WithdrawalTimestamp = test.TransitionInfo!.Timestamp!.Value;
             }
             else if (test.NetworkAfterTransition == London.Instance || test.NetworkAfterTransition == GrayGlacier.Instance)
@@ -104,7 +104,7 @@ namespace Ethereum.Test.Base
             IDb codeDb = new MemDb();
 
             ISpecProvider specProvider;
-            if (test.NetworkAfterTransition != null)
+            if (test.NetworkAfterTransition is not null)
             {
                 specProvider = new CustomSpecProvider(
                     ((ForkActivation)0, Frontier.Instance),

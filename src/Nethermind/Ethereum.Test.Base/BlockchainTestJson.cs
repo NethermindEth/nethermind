@@ -35,7 +35,7 @@ namespace Ethereum.Test.Base
 
     public class TransitionInfo
     {
-        public int BlockNumber = 0;
+        public int BlockNumber = 1;
         public ulong? Timestamp;
     }
 }
