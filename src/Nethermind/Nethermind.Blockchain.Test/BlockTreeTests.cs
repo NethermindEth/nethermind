@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -21,6 +22,8 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -1664,7 +1667,9 @@ namespace Nethermind.Blockchain.Test
         public void SuggestBlock_should_work_with_zero_difficulty()
         {
             Block genesisWithZeroDifficulty = Build.A.Block.WithDifficulty(0).WithNumber(0).TestObject;
-            BlockTree blockTree = Build.A.BlockTree(genesisWithZeroDifficulty).OfChainLength(1).TestObject;
+            CustomSpecProvider specProvider = new(((ForkActivation)0, GrayGlacier.Instance));
+            specProvider.UpdateMergeTransitionInfo(null, 0);
+            BlockTree blockTree = Build.A.BlockTree(genesisWithZeroDifficulty, specProvider).OfChainLength(1).TestObject;
 
             Block block = Build.A.Block.WithDifficulty(0).WithParent(genesisWithZeroDifficulty).TestObject;
             blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
