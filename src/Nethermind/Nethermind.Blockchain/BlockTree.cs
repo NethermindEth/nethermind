@@ -1882,7 +1882,7 @@ namespace Nethermind.Blockchain
             void SetTotalDifficultyDeep(BlockHeader current)
             {
                 Stack<BlockHeader> stack = new();
-                while (!current.IsNonZeroTotalDifficulty())
+                while (!current.IsGenesis && !current.IsNonZeroTotalDifficulty())
                 {
                     (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(current.Number, current.Hash, true);
                     if (level is null || blockInfo is null || blockInfo.TotalDifficulty == 0)
