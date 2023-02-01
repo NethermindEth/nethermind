@@ -848,20 +848,32 @@ namespace Nethermind.Core.Extensions
             {
                 throw new ArgumentNullException($"{nameof(hexString)}");
             }
-            ReadOnlySpan<char> spanned;
-            int span = 0;
 
-            if (hexString != string.Empty)
+            int start = hexString is ['0', 'x', ..] ? 2 : 0;
+            ReadOnlySpan<char> chars = hexString.AsSpan(start);
+
+            if (chars.Length == 0)
             {
-                span = (hexString[0] == '0' && hexString[1] == 'x') ? 2 : 0;
+                return Array.Empty<byte>();
             }
 
-            if (hexString.Length % 2 != 0)
-                hexString = hexString.Insert(span, "0");
+            int parity = hexString.Length % 2;
+            byte[] result = GC.AllocateUninitializedArray<byte>((chars.Length >> 1) + parity);
+            bool success = true;
+            if (parity != 0)
+            {
+                Span<char> firstChar = stackalloc char[2] { '0', chars[0] };
+                Span<byte> firstCharByte = stackalloc byte[1];
+                success &= HexConverter.TryDecodeFromUtf16(firstChar, firstCharByte);
+                success &= HexConverter.TryDecodeFromUtf16(chars.Slice(1), result.AsSpan().Slice(1));
+                result[0] = firstCharByte[0];
+            }
+            else
+            {
+                success = HexConverter.TryDecodeFromUtf16(chars, result);
+            }
 
-            spanned = hexString.AsSpan(span);
-
-            return Convert.FromHexString(spanned);
+            return success ? result : throw new FormatException("Incorrect hex string");
         }
 
         [DebuggerStepThrough]
