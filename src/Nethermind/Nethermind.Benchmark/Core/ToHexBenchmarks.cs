@@ -1,18 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Benchmarks.Core
 {
-    public class FromHexBenchmarks
+    public class ToHexBenchmarks
     {
-        private string hex = "0123456789abcdef";
-
-        [Params(true, false)]
-        public bool With0xPrefix;
+        private byte[] bytes = TestItem.KeccakA.Bytes;
 
         [Params(true, false)]
         public bool OddNumber;
@@ -22,23 +21,19 @@ namespace Nethermind.Benchmarks.Core
         {
             //Test Performance of odd number
             if (OddNumber)
-                hex = "5" + hex;
-
-            //Test performance of hex
-            if (With0xPrefix)
-                hex = "0x" + hex;
+                bytes = bytes.Slice(1).ToArray();
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Current()
+        public string Current()
         {
-            return Bytes.FromHexStringOld(hex);
+            return bytes.ToHexString();
         }
 
         [Benchmark]
-        public byte[] Improved()
+        public string Improved()
         {
-            return Bytes.FromHexString(hex);
+            return HexConverter.ToString(bytes);
         }
     }
 }

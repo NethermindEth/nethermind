@@ -227,20 +227,21 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryDecodeFromUtf16(ReadOnlySpan<char> chars, Span<byte> bytes)
+        public static bool TryDecodeFromUtf16(ReadOnlySpan<char> chars, Span<byte> bytes, bool isOdd)
         {
-            return TryDecodeFromUtf16(chars, bytes, out _);
-        }
-
-        public static bool TryDecodeFromUtf16(ReadOnlySpan<char> chars, Span<byte> bytes, out int charsProcessed)
-        {
-            Debug.Assert(chars.Length % 2 == 0, "Un-even number of characters provided");
-            Debug.Assert(chars.Length / 2 == bytes.Length, "Target buffer not right-sized for provided characters");
+            Debug.Assert((chars.Length / 2) + (chars.Length % 2) == bytes.Length, "Target buffer not right-sized for provided characters");
 
             int i = 0;
             int j = 0;
             int byteLo = 0;
             int byteHi = 0;
+
+            if (isOdd)
+            {
+                byteLo = FromChar(chars[i++]);
+                bytes[j++] = (byte)byteLo;
+            }
+
             while (j < bytes.Length)
             {
                 byteLo = FromChar(chars[i + 1]);
@@ -258,20 +259,19 @@ namespace Nethermind.Core.Extensions
             if (byteLo == 0xFF)
                 i++;
 
-            charsProcessed = i;
             return (byteLo | byteHi) != 0xFF;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int FromChar(int c)
+        public static byte FromChar(char c)
         {
-            return c >= CharToHexLookup.Length ? 0xFF : CharToHexLookup[c];
+            return c >= CharToHexLookup.Length ? (byte)0xFF : CharToHexLookup[c];
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int FromUpperChar(int c)
+        public static byte FromUpperChar(char c)
         {
-            return c > 71 ? 0xFF : CharToHexLookup[c];
+            return c > 71 ? (byte)0xFF : CharToHexLookup[c];
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -287,7 +287,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsHexChar(int c)
+        public static bool IsHexChar(char c)
         {
             if (IntPtr.Size == 8)
             {
