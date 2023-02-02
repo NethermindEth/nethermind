@@ -36,14 +36,10 @@ namespace Nethermind.Network
             switch (protocol)
             {
                 case Protocol.P2P:
-                    if (!ValidateP2PProtocol(session, eventArgs)) return false;
-
-                    break;
+                    return ValidateP2PProtocol(session, eventArgs);
                 case Protocol.Eth:
                 case Protocol.Les:
-                    if (!ValidateEthProtocol(session, eventArgs)) return false;
-
-                    break;
+                    return ValidateEthProtocol(session, eventArgs);
             }
 
             return true;
