@@ -14,6 +14,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>>
 {
+    private const int MaxCount = 1024;
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
 
@@ -25,6 +26,15 @@ public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Keccak>, IEnu
 
     public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> HandleAsync(IList<Keccak> blockHashes)
     {
+        if (blockHashes.Count > MaxCount)
+        {
+            var error = $"The number of requested bodies must not exceed {MaxCount}";
+
+            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByHashV1Handler)}: {error}");
+
+            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+        }
+
         var payloadBodies = new ExecutionPayloadBodyV1Result?[blockHashes.Count];
         for (int i = 0; i < blockHashes.Count; i++)
         {

@@ -386,6 +386,17 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task getPayloadBodiesByHashV1_should_fail_when_too_many_payloads_requested()
+    {
+        using var chain = await CreateBlockChain();
+        var rpc = CreateEngineModule(chain);
+        var hashes = Enumerable.Repeat(TestItem.KeccakA, 1025).ToArray();
+        var result = rpc.engine_getPayloadBodiesByHashV1(hashes);
+
+        result.Result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
+    }
+
+    [Test]
     public async Task getPayloadBodiesByRangeV1_should_fail_when_params_below_1()
     {
         using var chain = await CreateBlockChain();

@@ -46,7 +46,7 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
         }
 
         var bestSuggestedNumber = _blockTree.BestSuggestedBody?.Number ?? 0;
-        var payloadBodies = new List<ExecutionPayloadBodyV1Result?>();
+        var payloadBodies = new List<ExecutionPayloadBodyV1Result?>((int)count);
 
         for (long i = start, c = Math.Min(start + count, bestSuggestedNumber + 1); i < c; i++)
         {
