@@ -1859,11 +1859,11 @@ namespace Nethermind.Blockchain
             if (header.IsGenesis)
             {
                 header.TotalDifficulty = header.Difficulty;
-                if (_logger.IsTrace) _logger.Trace($"Calculated total difficulty genesis {header} is {header.TotalDifficulty}");
+                if (_logger.IsTrace) _logger.Trace($"Genesis total difficulty is {header.TotalDifficulty}");
                 return;
             }
 
-            // In some Ethereum tests and possible testnets diffuculty of all blocks might be zero
+            // In some Ethereum tests and possible testnets difficulty of all blocks might be zero
             // We also checking TTD is zero to ensure that block after genesis have zero difficulty
             if (Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0)
             {
@@ -1897,6 +1897,13 @@ namespace Nethermind.Blockchain
                     {
                         current.TotalDifficulty = blockInfo.TotalDifficulty;
                     }
+                }
+
+                if (current.IsGenesis)
+                {
+                    current.TotalDifficulty = current.Difficulty;
+                    BlockInfo blockInfo = new(current.Hash, current.Difficulty);
+                    UpdateOrCreateLevel(current.Number, current.Hash, blockInfo);
                 }
 
                 while (stack.TryPop(out BlockHeader child))
