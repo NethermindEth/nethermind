@@ -29,6 +29,8 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(Keccak keccak) => _trieStore.IsPersisted(keccak);
 
+        public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
+
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
         {
             return new ReadOnlyTrieStore(_trieStore, keyValueStore);
@@ -52,7 +54,12 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public byte[]? LoadRlp(Span<byte> nodePath)
+        public byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode)
         {
             throw new NotImplementedException();
         }

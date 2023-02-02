@@ -24,6 +24,8 @@ namespace Nethermind.Trie.Pruning
             return this;
         }
 
+        public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
+
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
             add { }
@@ -49,10 +51,12 @@ namespace Nethermind.Trie.Pruning
             return new(NodeType.Unknown, nodePath.ToArray());
         }
 
-        public byte[]? LoadRlp(Span<byte> nodePath)
+        public byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash)
         {
             return Array.Empty<byte>();
         }
+
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode) { }
 
         public byte[]? this[byte[] key] => null;
     }

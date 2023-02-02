@@ -29,6 +29,8 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(Keccak keccak) => _trieStore.IsPersisted(keccak);
 
+        public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Path;
+
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
         {
             return new ReadOnlyTrieStoreByPath(_trieStore, keyValueStore);
@@ -52,10 +54,12 @@ namespace Nethermind.Trie.Pruning
             return _trieStore.FindCachedOrUnknown(nodePath);
         }
 
-        public byte[]? LoadRlp(Span<byte> nodePath)
+        public byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash)
         {
-            return _trieStore.LoadRlp(nodePath);
+            return _trieStore.LoadRlp(nodePath, rootHash);
         }
+
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode) { }
 
         public byte[]? this[byte[] key] => _trieStore[key];
     }

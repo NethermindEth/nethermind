@@ -36,31 +36,50 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
-            Span<byte> pathNibbles = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(ValueKeccak.Compute(address.Bytes).BytesAsSpan, pathNibbles);
-            TrieNode accountNode = TrieStore.FindCachedOrUnknown(pathNibbles);
-            if (!accountNode.IsLeaf || accountNode.FullRlp is null)
+            byte[]? bytes = null;
+            byte[] addressKeyBytes = Keccak.Compute(address.Bytes).Bytes;
+            if (rootHash is not null && RootHash != rootHash)
             {
-                return null;
+                Span<byte> nibbleBytes = stackalloc byte[64];
+                Nibbles.BytesToNibbleBytes(addressKeyBytes, nibbleBytes);
+                var nodeBytes = TrieStore.LoadRlp(nibbleBytes, rootHash);
+                if (nodeBytes is not null)
+                {
+                    TrieNode node = new(NodeType.Unknown, nodeBytes);
+                    node.ResolveNode(TrieStore);
+                    bytes = node.Value;
+                }
             }
 
-            return _decoder.Decode(accountNode.Value.AsRlpStream());
+            if (bytes is null && RootRef?.IsPersisted == true)
+            {
+                byte[]? nodeData = TrieStore[addressKeyBytes];
+                if (nodeData is not null)
+                {
+                    TrieNode node = new(NodeType.Unknown, nodeData);
+                    node.ResolveNode(TrieStore);
+                    bytes = node.Value;
+                }
+            }
+            bytes ??= Get(addressKeyBytes);
+            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
         [DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
         {
-            Span<byte> pathNibbles = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(keccak.Bytes, pathNibbles);
-
-            byte[]? nodeData = TrieStore[pathNibbles.ToArray()];
-            if (nodeData is not null)
+            byte[] addressKeyBytes = keccak.Bytes;
+            if (RootRef?.IsPersisted == true)
             {
-                TrieNode node = new(NodeType.Unknown, nodeData);
-                node.ResolveNode(TrieStore);
-                return _decoder.Decode(node.Value.AsRlpStream());
+                byte[]? nodeData = TrieStore[addressKeyBytes];
+                if (nodeData is not null)
+                {
+                    TrieNode node = new(NodeType.Unknown, nodeData);
+                    node.ResolveNode(TrieStore);
+                    return _decoder.Decode(node.Value.AsRlpStream());
+                }
             }
-            byte[]? bytes = Get(keccak.Bytes);
+            byte[]? bytes = Get(addressKeyBytes);
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 

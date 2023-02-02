@@ -585,6 +585,8 @@ namespace Nethermind.Trie.Pruning
 
         private long LatestCommittedBlockNumber { get; set; }
 
+        public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
+
         private void CreateCommitSet(long blockNumber)
         {
             if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
@@ -826,7 +828,12 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public byte[]? LoadRlp(Span<byte> nodePath)
+        public byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode)
         {
             throw new NotImplementedException();
         }

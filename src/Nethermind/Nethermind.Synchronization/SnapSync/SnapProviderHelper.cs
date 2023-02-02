@@ -157,6 +157,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 (TrieNode parent, TrieNode node, int pathIndex, List<byte> path) = proofNodesToProcess.Pop();
 
+                node.PathToNode = path.ToArray();
                 if (node.IsExtension)
                 {
                     Keccak? childKeccak = node.GetChildHash(0);

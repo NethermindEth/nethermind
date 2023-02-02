@@ -298,7 +298,8 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                RootRef = TrieStore.FindCachedOrUnknown(EmptyKeyPath);
+                RootRef = TrieStore.FindCachedOrUnknown(Array.Empty<byte>());
+                RootRef.Keccak = _rootHash;
             }
         }
 
@@ -379,7 +380,8 @@ namespace Nethermind.Trie
             {
                 if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
                 TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash);
-                startNode.ResolveNode(TrieStore, traverseContext.GetCurrentPath());
+                //startNode.ResolveNode(TrieStore, traverseContext.GetCurrentPath());
+                startNode.ResolveNode(TrieStore);
                 result = TraverseNode(startNode, traverseContext);
             }
             else
@@ -399,7 +401,8 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    RootRef.ResolveNode(TrieStore, traverseContext.GetCurrentPath());
+                    //RootRef.ResolveNode(TrieStore, traverseContext.GetCurrentPath());
+                    RootRef.ResolveNode(TrieStore);
                     if (_logger.IsTrace) _logger.Trace($"{traverseContext.ToString()}");
                     result = TraverseNode(RootRef, traverseContext);
                 }
@@ -682,6 +685,7 @@ namespace Nethermind.Trie
                 return traverseContext.UpdateValue;
             }
 
+            byte a = traverseContext.UpdatePath[61];
             TrieNode childNode = node.GetChild(TrieStore, traverseContext.UpdatePath.Slice(0, traverseContext.CurrentIndex + 1), traverseContext.UpdatePath[traverseContext.CurrentIndex]);
             if (traverseContext.IsUpdate)
             {
@@ -717,7 +721,8 @@ namespace Nethermind.Trie
                 return traverseContext.UpdateValue;
             }
 
-            childNode.ResolveNode(TrieStore, traverseContext.GetCurrentPath());
+            //childNode.ResolveNode(TrieStore, traverseContext.GetCurrentPath());
+            childNode.ResolveNode(TrieStore);
             TrieNode nextNode = childNode;
             return TraverseNode(nextNode, traverseContext);
         }
@@ -860,14 +865,15 @@ namespace Nethermind.Trie
                     _nodeStack.Push(new StackedNode(node, 0));
                 }
 
-                TrieNode next = node.GetChild(TrieStore, 0);
+                TrieNode next = node.GetChild(TrieStore, traverseContext.GetCurrentPath(), 0);
                 if (next is null)
                 {
                     throw new TrieException(
                         $"Found an {nameof(NodeType.Extension)} {node.Keccak} that is missing a child.");
                 }
 
-                next.ResolveNode(TrieStore, traverseContext.GetCurrentPath());
+                //next.ResolveNode(TrieStore, traverseContext.GetCurrentPath());
+                next.ResolveNode(TrieStore);
                 return TraverseNode(next, traverseContext);
             }
 

@@ -67,7 +67,7 @@ namespace Nethermind.Trie
         public long? LastSeen { get; set; }
 
         public byte[]? Path => Key?.Path;
-        public byte[]? PathToNode { get; internal set; }
+        public byte[]? PathToNode { get; set; }
         public byte[]? FullPath
         {
             get
@@ -208,6 +208,17 @@ namespace Nethermind.Trie
             }
         }
 
+        public TrieNode(NodeType nodeType, Span<byte> path, Keccak keccak)
+        {
+            Keccak = keccak ?? throw new ArgumentNullException(nameof(keccak));
+            PathToNode = path.ToArray();
+            NodeType = nodeType;
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
+        }
+
         public TrieNode(NodeType nodeType, byte[] rlp, bool isDirty = false)
         {
             NodeType = nodeType;
@@ -269,12 +280,20 @@ namespace Nethermind.Trie
                 {
                     if (FullRlp is null)
                     {
-                        if (Keccak is null)
+                        if (tree.Capability == TrieNodeResolverCapability.Hash)
                         {
-                            throw new TrieException("Unable to resolve node without Keccak");
-                        }
+                            if (Keccak is null)
+                                throw new TrieException("Unable to resolve node without Keccak");
 
-                        FullRlp = tree.LoadRlp(Keccak);
+                            FullRlp = tree.LoadRlp(Keccak);
+                        }
+                        else if (tree.Capability == TrieNodeResolverCapability.Path)
+                        {
+                            if (PathToNode is null)
+                                throw new TrieException("Unable to resolve node without its path");
+
+                            FullRlp = tree.LoadRlp(FullPath);
+                        }
                         IsPersisted = true;
 
                         if (FullRlp is null)
@@ -296,35 +315,7 @@ namespace Nethermind.Trie
             }
         }
 
-        /// <summary>
-        /// Highly optimized
-        /// </summary>
-        public void ResolveNode(ITrieNodeResolver tree, Span<byte> path)
-        {
-            try
-            {
-                if (NodeType == NodeType.Unknown)
-                {
-                    FullRlp = tree.LoadRlp(path);
-                    IsPersisted = true;
 
-                    if (FullRlp is null)
-                    {
-                        throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
-                    }
-                }
-                else
-                {
-                    return;
-                }
-
-                ResolveNodeProcessStream();
-            }
-            catch (RlpException rlpException)
-            {
-                throw new TrieException($"Error when decoding node {Keccak}", rlpException);
-            }
-        }
 
         public void ResolveNodeProcessStream()
         {
@@ -1001,9 +992,25 @@ namespace Nethermind.Trie
                             }
                         case 160:
                             {
+                                TrieNode child = null;
                                 rlpStream.Position--;
                                 Keccak keccak = rlpStream.DecodeKeccak();
-                                TrieNode child = tree.FindCachedOrUnknown(keccak);
+
+                                if (tree.Capability == TrieNodeResolverCapability.Hash || FullPath is null)
+                                {
+                                    child = tree.FindCachedOrUnknown(keccak);
+                                }
+                                else if (tree.Capability == TrieNodeResolverCapability.Path)
+                                {
+                                    int totalLen = PathToNode.Length + (Path?.Length ?? 0) + (IsBranch ? 1 : 0);
+                                    Span<byte> childPath = stackalloc byte[totalLen];
+                                    PathToNode.CopyTo(childPath);
+                                    Path.CopyTo(childPath.Slice(PathToNode.Length));
+                                    if (IsBranch)
+                                        childPath[totalLen - 1] = (byte)i;
+                                    child = tree.FindCachedOrUnknown(childPath);
+                                    child.Keccak = keccak;
+                                }
                                 _data![i] = childOrRef = child;
 
                                 if (IsPersisted && !child.IsPersisted)

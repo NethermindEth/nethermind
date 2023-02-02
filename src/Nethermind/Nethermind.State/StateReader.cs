@@ -17,15 +17,15 @@ namespace Nethermind.State
     {
         private readonly IDb _codeDb;
         private readonly ILogger _logger;
-        private readonly StateTree _state;
+        private readonly IStateTree _state;
         private readonly StorageTree _storage;
 
-        public StateReader(ITrieStore? trieStore, IDb? codeDb, ILogManager? logManager)
+        public StateReader(ITrieStore? trieStore, ITrieStore? storageTrieStore, IDb? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _state = new StateTree(trieStore, logManager);
-            _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
+            _state = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, logManager) : new StateTree(trieStore, logManager);
+            _storage = new StorageTree(storageTrieStore, Keccak.EmptyTreeHash, logManager);
         }
 
         public Account? GetAccount(Keccak stateRoot, Address address)

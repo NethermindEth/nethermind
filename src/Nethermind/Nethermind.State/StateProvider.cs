@@ -42,7 +42,7 @@ namespace Nethermind.State
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = new StateTree(trieStore, logManager);
+            _tree = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, logManager) : new StateTree(trieStore, logManager);
         }
 
         public void Accept(ITreeVisitor? visitor, Keccak? stateRoot, VisitingOptions? visitingOptions = null)
@@ -75,7 +75,7 @@ namespace Nethermind.State
             set => _tree.RootHash = value;
         }
 
-        private readonly StateTree _tree;
+        private readonly IStateTree _tree;
 
         public bool AccountExists(Address address)
         {

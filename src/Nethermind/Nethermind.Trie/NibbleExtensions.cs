@@ -74,10 +74,31 @@ namespace Nethermind.Trie
 
         public static byte[] ToBytes(byte[] nibbles)
         {
-            byte[] bytes = new byte[nibbles.Length / 2];
-            for (int i = 0; i < bytes.Length; i++)
+            int oddity = nibbles.Length % 2;
+            byte[] bytes = new byte[nibbles.Length / 2 + oddity];
+            for (int i = oddity; i < bytes.Length - oddity; i++)
             {
-                bytes[i] = ToByte(nibbles[2 * i], nibbles[2 * i + 1]);
+                bytes[i] = ToByte(nibbles[2 * i + oddity], nibbles[2 * i + 1 + oddity]);
+            }
+            if (oddity == 1)
+            {
+                bytes[0] = ToByte(0, nibbles[0]);
+            }
+
+            return bytes;
+        }
+
+        public static byte[] ToBytes(Span<byte> nibbles)
+        {
+            int oddity = nibbles.Length % 2;
+            byte[] bytes = new byte[nibbles.Length / 2 + oddity];
+            for (int i = oddity; i < bytes.Length - oddity; i++)
+            {
+                bytes[i] = ToByte(nibbles[2 * i + oddity], nibbles[2 * i + 1 + oddity]);
+            }
+            if (oddity == 1)
+            {
+                bytes[0] = ToByte(0, nibbles[0]);
             }
 
             return bytes;
