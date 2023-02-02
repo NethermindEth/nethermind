@@ -18,8 +18,6 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private readonly IAsyncHandler<IEnumerable<string>, IEnumerable<string>> _capabilitiesHandler;
     private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
-    private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result?[]> _executionGetPayloadBodiesByHashV1Handler;
-    private readonly IGetPayloadBodiesByRangeV1Handler _executionGetPayloadBodiesByRangeV1Handler;
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
 
@@ -29,7 +27,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IHandler<ExecutionStatusResult> executionStatusHandler,
-        IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result?[]> executionGetPayloadBodiesByHashV1Handler,
+        IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
         IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IAsyncHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
@@ -53,10 +51,4 @@ public partial class EngineRpcModule : IEngineRpcModule
         => _capabilitiesHandler.HandleAsync(methods);
 
     public ResultWrapper<ExecutionStatusResult> engine_executionStatus() => _executionStatusHandler.Handle();
-
-    public Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes)
-        => _executionGetPayloadBodiesByHashV1Handler.HandleAsync(blockHashes);
-
-    public Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByRangeV1(long start, long count)
-        => _executionGetPayloadBodiesByRangeV1Handler.Handle(start, count);
 }

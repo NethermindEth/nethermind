@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -13,7 +14,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class ExchangeCapabilitiesHandler : IAsyncHandler<IEnumerable<string>, IEnumerable<string>>
 {
-    private static IDictionary<string, bool> _capabilities = new Dictionary<string, bool>();
+    private static IDictionary<string, bool> _capabilities = new ConcurrentDictionary<string, bool>();
     private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(1);
 
     private readonly ILogger _logger;
