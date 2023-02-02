@@ -857,9 +857,9 @@ namespace Nethermind.Core.Extensions
                 return Array.Empty<byte>();
             }
 
-            int hexStringLength = hexString.Length & 1;
-            byte[] result = GC.AllocateUninitializedArray<byte>((chars.Length >> 1) + hexStringLength);
-            return HexConverter.TryDecodeFromUtf16(chars, result, hexStringLength == 1) ? result : throw new FormatException("Incorrect hex string");
+            int oddMod = hexString.Length % 2;
+            byte[] result = GC.AllocateUninitializedArray<byte>((chars.Length >> 1) + oddMod);
+            return HexConverter.TryDecodeFromUtf16(chars, result, oddMod == 1) ? result : throw new FormatException("Incorrect hex string");
         }
 
         [DebuggerStepThrough]
