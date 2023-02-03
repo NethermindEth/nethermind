@@ -121,11 +121,6 @@ namespace Nethermind.Db
             return this[key].AsSpan();
         }
 
-        public void PutSpan(byte[] key, ReadOnlySpan<byte> value)
-        {
-            this[key] = value.ToArray();
-        }
-
         public void DangerousReleaseMemory(in Span<byte> span)
         {
         }
