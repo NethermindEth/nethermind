@@ -250,7 +250,7 @@ namespace Nethermind.Network.Test
         // Local is mainnet Petersburg. remote announces Byzantium but is not aware of further forks.
         // Remote needs software update.
         [TestCase(7987396, 0ul, "0xa00bc324", 0ul, ValidationResult.RemoteStale)]
-            
+
         // Local is mainnet Petersburg, and isn't aware of more forks. Remote announces Petersburg +
         // 0xffffffff. Local needs software update, reject.
         [TestCase(7987396, 0ul, "0x5cddc0e1", 0ul, ValidationResult.IncompatibleOrStale)]
