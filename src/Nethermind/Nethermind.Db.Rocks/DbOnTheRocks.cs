@@ -401,26 +401,6 @@ public class DbOnTheRocks : IDbWithSpan
         }
     }
 
-    public void PutSpan(byte[] key, ReadOnlySpan<byte> value)
-    {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to write form a disposed database {Name}");
-        }
-
-        UpdateWriteMetrics();
-
-        try
-        {
-            _db.Put(key, value, null, WriteOptions);
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
-        }
-    }
-
     public void DangerousReleaseMemory(in Span<byte> span)
     {
         if (!span.IsNullOrEmpty())

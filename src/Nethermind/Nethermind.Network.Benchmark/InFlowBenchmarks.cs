@@ -14,7 +14,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Benchmarks
 {

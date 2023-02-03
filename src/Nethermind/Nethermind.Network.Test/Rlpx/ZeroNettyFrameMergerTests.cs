@@ -8,7 +8,6 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
-using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 

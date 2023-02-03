@@ -569,10 +569,8 @@ namespace Nethermind.Blockchain
             // validate hash here
             // using previously received header RLPs would allows us to save 2GB allocations on a sample
             // 3M Goerli blocks fast sync
-            using (NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header))
-            {
-                _headerDb.Set(header.Hash, newRlp.AsSpan());
-            }
+            Rlp newRlp = _headerDecoder.Encode(header);
+            _headerDb.Set(header.Hash, newRlp.Bytes);
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
             BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
@@ -668,10 +666,8 @@ namespace Nethermind.Blockchain
 
             // if we carry Rlp from the network message all the way here then we could solve 4GB of allocations and some processing
             // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
-            using (NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block))
-            {
-                _blockDb.Set(block.Hash, newRlp.AsSpan());
-            }
+            Rlp newRlp = _blockDecoder.Encode(block);
+            _blockDb.Set(block.Hash, newRlp.Bytes);
 
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
             if (saveHeader)
@@ -758,14 +754,14 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to suggest block with a null hash.");
                 }
 
-                using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
-                _blockDb.Set(block.Hash, newRlp.AsSpan());
+                Rlp newRlp = _blockDecoder.Encode(block);
+                _blockDb.Set(block.Hash, newRlp.Bytes);
             }
 
             if (!isKnown)
             {
-                using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
-                _headerDb.Set(header.Hash, newRlp.AsSpan());
+                Rlp newRlp = _headerDecoder.Encode(header);
+                _headerDb.Set(header.Hash, newRlp.Bytes);
             }
 
             if (!isKnown || fillBeaconBlock)
