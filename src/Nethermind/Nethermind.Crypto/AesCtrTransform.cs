@@ -10,13 +10,13 @@ internal sealed class AesCtrTransform : ICryptoTransform
 {
     private readonly ICryptoTransform _aes;
     private readonly byte[] _counter;
-    private readonly byte[] _nonce;
+    private readonly byte[] _iv;
 
-    public AesCtrTransform(ICryptoTransform aes, ReadOnlySpan<byte> nonce)
+    public AesCtrTransform(ICryptoTransform aes, ReadOnlySpan<byte> iv)
     {
         _aes = aes ?? throw new ArgumentNullException(nameof(aes));
-        _counter = nonce.ToArray();
-        _nonce = nonce.ToArray();
+        _counter = iv.ToArray();
+        _iv = iv.ToArray();
     }
 
     public bool CanReuseTransform => _aes.CanReuseTransform;
@@ -82,7 +82,7 @@ internal sealed class AesCtrTransform : ICryptoTransform
         var offset = 0;
         var outputBuffer = new byte[inputCount];
 
-        for (int i = 0, count = inputCount / blockSize; i < count; i += blockSize)
+        for (var i = 0; i + blockSize <= inputCount; i += blockSize)
             offset += TransformBlock(inputBuffer, inputOffset + i, blockSize, outputBuffer, offset);
 
         _aes.TransformBlock(_counter, 0, blockSize, counterOutput, 0);
@@ -95,5 +95,5 @@ internal sealed class AesCtrTransform : ICryptoTransform
         return outputBuffer;
     }
 
-    private void Reset() => _nonce.CopyTo((Memory<byte>)_counter);
+    private void Reset() => _iv.CopyTo((Memory<byte>)_counter);
 }
