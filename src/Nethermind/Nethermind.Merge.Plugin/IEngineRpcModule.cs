@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
@@ -25,16 +24,4 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<ExecutionStatusResult> engine_executionStatus();
-
-    [JsonRpcMethod(
-        Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
-        IsSharable = true,
-        IsImplemented = true)]
-    Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes);
-
-    [JsonRpcMethod(
-        Description = "Returns an array of execution payload bodies for the provided number range",
-        IsSharable = true,
-        IsImplemented = true)]
-    Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByRangeV1(long start, long count);
 }

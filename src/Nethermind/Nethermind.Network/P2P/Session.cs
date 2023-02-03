@@ -347,8 +347,6 @@ namespace Nethermind.Network.P2P
                     case DisconnectReason.TcpSubSystemError:
                     case DisconnectReason.UselessPeer:
                     case DisconnectReason.TooManyPeers:
-                    case DisconnectReason.Breach1:
-                    case DisconnectReason.Breach2:
                     case DisconnectReason.Other:
                         return false;
                     case DisconnectReason.ReceiveMessageTimeout:
@@ -359,9 +357,6 @@ namespace Nethermind.Network.P2P
                     case DisconnectReason.ClientQuitting:
                     case DisconnectReason.UnexpectedIdentity:
                     case DisconnectReason.IdentitySameAsSelf:
-                    case DisconnectReason.NdmInvalidHiSignature:
-                    case DisconnectReason.NdmHostAddressesNotConfigured:
-                    case DisconnectReason.NdmPeerAddressesNotConfigured:
                         return true;
                     default:
                         return true;
