@@ -23,6 +23,9 @@ namespace Nethermind.Trie.Pruning
     public class TrieStoreByPath : ITrieStore
     {
         private static readonly byte[] _rootKeyPath = Array.Empty<byte>();
+        private static byte PathPointerOdd = 0xfe;
+        private static byte PathPointerEven = 0xff;
+
         private class DirtyNodesCache
         {
             private readonly TrieStoreByPath _trieStore;
@@ -71,7 +74,7 @@ namespace Nethermind.Trie.Pruning
                     }
 
                     // we returning a copy to avoid multithreaded access
-                    trieNode = new TrieNode(NodeType.Unknown, path, trieNode.FullRlp);
+                    trieNode = new TrieNode(NodeType.Unknown, path, trieNode.Keccak, trieNode.FullRlp);
                     trieNode.ResolveNode(_trieStore);
                     //trieNode.Keccak = hash;
 
@@ -389,10 +392,10 @@ namespace Nethermind.Trie.Pruning
             if (node is not null)
                 return node.FullRlp;
 
-            byte[] keyPath = Nibbles.ToBytes(path);
+            byte[] keyPath = Nibbles.ToEncodedStorageBytes(path);
             keyValueStore ??= _keyValueStore;
             byte[]? rlp = _currentBatch?[keyPath] ?? keyValueStore[keyPath];
-            if (path.Length < 64 && rlp?.Length == 32)
+            if (path.Length < 64 && rlp?.Length == 33 && (rlp[0] & PathPointerEven) >= PathPointerOdd)
             {
                 byte[]? pointsToPath = _currentBatch?[rlp] ?? keyValueStore[rlp];
                 if (pointsToPath is not null)
@@ -744,10 +747,10 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                byte[] pathBytes = Nibbles.ToBytes(currentNode.FullPath);
+                byte[] pathBytes = Nibbles.ToEncodedStorageBytes(currentNode.FullPath);
                 if ((currentNode.IsLeaf && currentNode.Key.Path.Length < 64) || currentNode.PathToNode.Length == 0)
                 {
-                    byte[] pathToNodeBytes = Nibbles.ToBytes(currentNode.PathToNode);
+                    byte[] pathToNodeBytes = Nibbles.ToEncodedStorageBytes(currentNode.PathToNode);
                     _currentBatch[pathToNodeBytes] = pathBytes;
                 }
 
@@ -929,10 +932,10 @@ namespace Nethermind.Trie.Pruning
 
         public void SaveNodeDirectly(long blockNumber, TrieNode trieNode)
         {
-            byte[] pathBytes = Nibbles.ToBytes(trieNode.FullPath);
-            if ((trieNode.IsLeaf && trieNode.Key.Path.Length < 64) || trieNode.PathToNode.Length == 0)
+            byte[] pathBytes = Nibbles.ToEncodedStorageBytes(trieNode.FullPath);
+            if (trieNode.IsLeaf && (trieNode.Key.Path.Length < 64 || trieNode.PathToNode.Length == 0))
             {
-                byte[] pathToNodeBytes = Nibbles.ToBytes(trieNode.PathToNode);
+                byte[] pathToNodeBytes = Nibbles.ToEncodedStorageBytes(trieNode.PathToNode);
                 _keyValueStore[pathToNodeBytes] = pathBytes;
             }
             _keyValueStore[pathBytes] = trieNode.FullRlp;

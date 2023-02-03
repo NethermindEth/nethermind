@@ -97,7 +97,7 @@ namespace Nethermind.Trie
             bool allowCommits,
             ILogManager logManager)
             : this(
-                new TrieStore(keyValueStore, logManager),
+                new TrieStoreByPath(keyValueStore, logManager),
                 rootHash,
                 parallelBranches,
                 allowCommits,
@@ -112,7 +112,7 @@ namespace Nethermind.Trie
             bool allowCommits,
             ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PatriciaTreeByPath>() ?? throw new ArgumentNullException(nameof(logManager));
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;

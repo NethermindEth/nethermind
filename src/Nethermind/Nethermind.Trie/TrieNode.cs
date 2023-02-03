@@ -238,10 +238,11 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieNode(NodeType nodeType, byte[] path, byte[] rlp)
+        public TrieNode(NodeType nodeType, byte[] path, Keccak keccak, byte[] rlp)
             : this(nodeType, rlp)
         {
             PathToNode = path;
+            Keccak = keccak;
             if (nodeType == NodeType.Unknown)
             {
                 IsPersisted = true;
@@ -280,7 +281,7 @@ namespace Nethermind.Trie
                 {
                     if (FullRlp is null)
                     {
-                        if (tree.Capability == TrieNodeResolverCapability.Hash)
+                        if (tree.Capability == TrieNodeResolverCapability.Hash || PathToNode is null)
                         {
                             if (Keccak is null)
                                 throw new TrieException("Unable to resolve node without Keccak");
@@ -306,65 +307,59 @@ namespace Nethermind.Trie
                 {
                     return;
                 }
-                ResolveNodeProcessStream();
+
+                if (FullRlp is null)
+                    throw new ArgumentNullException(nameof(FullRlp));
+
+                _rlpStream = FullRlp.AsRlpStream();
+                if (_rlpStream is null)
+                {
+                    throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
+                }
+
+                Metrics.TreeNodeRlpDecodings++;
+                _rlpStream.ReadSequenceLength();
+
+                // micro optimization to prevent searches beyond 3 items for branches (search up to three)
+                int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining(null, 3);
+
+                if (numberOfItems > 2)
+                {
+                    NodeType = NodeType.Branch;
+                }
+                else if (numberOfItems == 2)
+                {
+                    HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
+                    bool isExtension = key.IsExtension;
+
+                    // a hack to set internally and still verify attempts from the outside
+                    // after the code is ready we should just add proper access control for methods from the outside and inside
+                    bool isDirtyActual = IsDirty;
+                    IsDirty = true;
+
+                    if (isExtension)
+                    {
+                        NodeType = NodeType.Extension;
+                        Key = key;
+                    }
+                    else
+                    {
+                        NodeType = NodeType.Leaf;
+                        Key = key;
+                        Value = _rlpStream.DecodeByteArray();
+                    }
+
+                    IsDirty = isDirtyActual;
+                }
+                else
+                {
+                    throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp?.ToHexString()})");
+                }
 
             }
             catch (RlpException rlpException)
             {
                 throw new TrieException($"Error when decoding node {Keccak}", rlpException);
-            }
-        }
-
-
-
-        public void ResolveNodeProcessStream()
-        {
-            if (FullRlp is null)
-                throw new ArgumentNullException(nameof(FullRlp));
-
-            _rlpStream = FullRlp.AsRlpStream();
-            if (_rlpStream is null)
-            {
-                throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
-            }
-
-            Metrics.TreeNodeRlpDecodings++;
-            _rlpStream.ReadSequenceLength();
-
-            // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-            int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining(null, 3);
-
-            if (numberOfItems > 2)
-            {
-                NodeType = NodeType.Branch;
-            }
-            else if (numberOfItems == 2)
-            {
-                HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
-                bool isExtension = key.IsExtension;
-
-                // a hack to set internally and still verify attempts from the outside
-                // after the code is ready we should just add proper access control for methods from the outside and inside
-                bool isDirtyActual = IsDirty;
-                IsDirty = true;
-
-                if (isExtension)
-                {
-                    NodeType = NodeType.Extension;
-                    Key = key;
-                }
-                else
-                {
-                    NodeType = NodeType.Leaf;
-                    Key = key;
-                    Value = _rlpStream.DecodeByteArray();
-                }
-
-                IsDirty = isDirtyActual;
-            }
-            else
-            {
-                throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp?.ToHexString()})");
             }
         }
 
@@ -695,6 +690,8 @@ namespace Nethermind.Trie
                 trieNode.FullRlp = FullRlp;
                 trieNode._rlpStream = FullRlp.AsRlpStream();
             }
+            if (PathToNode is not null)
+                trieNode.PathToNode = (byte[])PathToNode.Clone();
             return trieNode;
         }
 
@@ -1011,6 +1008,7 @@ namespace Nethermind.Trie
                                     child = tree.FindCachedOrUnknown(childPath);
                                     child.Keccak = keccak;
                                 }
+                                //Console.WriteLine($"At node:{PathToNode?.ToHexString()} / {Keccak}, child: {child?.PathToNode?.ToHexString()} / {child?.Keccak}");
                                 _data![i] = childOrRef = child;
 
                                 if (IsPersisted && !child.IsPersisted)
