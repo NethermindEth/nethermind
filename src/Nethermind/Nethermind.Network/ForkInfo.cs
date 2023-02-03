@@ -18,18 +18,14 @@ using Nethermind.Specs;
 
 namespace Nethermind.Network
 {
-    public class ForkInfo : IForkInfo
+    public class ForkInfo
     {
         private Dictionary<uint, (ForkActivation Activation, ForkId Id)> DictForks { get; }
         private (ForkActivation Activation, ForkId Id)[] Forks { get; }
-
-        private IBlockTree _blockTree;
         private ulong TimstampThreshold => 1438269973ul; // MainnetSpecProvider.ShanghaiBlockTimestamp;
 
-        public ForkInfo(ISpecProvider specProvider, Keccak genesisHash, IBlockTree blockTree)
+        public ForkInfo(ISpecProvider specProvider, Keccak genesisHash)
         {
-            _blockTree = blockTree;
-
             ForkActivation[] transitionActivations = specProvider.TransitionActivations;
             DictForks = new();
             Forks = new (ForkActivation Activation, ForkId Id)[transitionActivations.Length + 1];
@@ -91,7 +87,7 @@ namespace Nethermind.Network
         /// </summary>
         /// <param name="peerId"></param>
         /// <returns></returns>
-        public IForkInfo.ValidationResult ValidateForkId(ForkId peerId)
+        public ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head)
         {
             // Run the fork checksum validation ruleset:
             //   1. If local and remote FORK_CSUM matches, compare local head to FORK_NEXT.
@@ -112,8 +108,7 @@ namespace Nethermind.Network
             //        the remote, but at this current point in time we don't have enough
             //        information.
             //   4. Reject in all other cases.
-            BlockHeader? head = _blockTree.Head?.Header;
-            if (head == null) return IForkInfo.ValidationResult.Valid;
+            if (head == null) return ValidationResult.Valid;
 
             for (int i = 0; i < Forks.Length; i++)
             {
@@ -136,10 +131,10 @@ namespace Nethermind.Network
                     // locally without the local node being aware of it (rule #1a).
                     if (peerId.Next > 0 && headActivation >= peerId.Next)
                     {
-                        return IForkInfo.ValidationResult.IncompatibleOrStale;
+                        return ValidationResult.IncompatibleOrStale;
                     }
                     // Haven't passed locally a remote-only fork, accept the connection (rule #1b).
-                    return IForkInfo.ValidationResult.Valid;
+                    return ValidationResult.Valid;
                 }
 
                 // The local and remote nodes are in different forks currently, check if the
@@ -151,10 +146,10 @@ namespace Nethermind.Network
                         // Remote checksum is a subset, validate based on the announced next fork
                         if (Forks[j + 1].Activation.Activation != peerId.Next)
                         {
-                            return IForkInfo.ValidationResult.RemoteStale;
+                            return ValidationResult.RemoteStale;
                         }
 
-                        return IForkInfo.ValidationResult.Valid;
+                        return ValidationResult.Valid;
                     }
                 }
 
@@ -165,28 +160,27 @@ namespace Nethermind.Network
                     if (Bytes.AreEqual(Forks[j].Id.ForkHash, peerId.ForkHash))
                     {
                         // Yay, remote checksum is a superset, ignore upcoming forks
-                        return IForkInfo.ValidationResult.Valid;
+                        return ValidationResult.Valid;
                     }
                 }
                 // No exact, subset or superset match. We are on differing chains, reject.
-                return IForkInfo.ValidationResult.IncompatibleOrStale;
+                return ValidationResult.IncompatibleOrStale;
             }
 
             throw new InvalidOperationException();
         }
 
         /// <summary>
-        /// Verify that the forkid from peer matches our forks. Code is largely copied from Geth.
+        /// Verify that the forkid from peer matches our forks.
         /// </summary>
         /// <param name="peerId"></param>
         /// <returns></returns>
-        public IForkInfo.ValidationResult ValidateForkId2(ForkId peerId)
+        public ValidationResult ValidateForkId2(ForkId peerId, BlockHeader? head)
         {
-            BlockHeader? head = _blockTree.Head?.Header;
-            if (head == null) return IForkInfo.ValidationResult.Valid;
+            if (head == null) return ValidationResult.Valid;
             if (!DictForks.TryGetValue(BitConverter.ToUInt32(peerId.ForkHash), out (ForkActivation Activation, ForkId Id) found))
             {
-                return IForkInfo.ValidationResult.IncompatibleOrStale;
+                return ValidationResult.IncompatibleOrStale;
             }
             bool usingTimestamp = (found.Id.Next == 0
                 || found.Id.Next >= TimstampThreshold)
@@ -203,24 +197,24 @@ namespace Nethermind.Network
                     && found.Id.Next > 0
                     && headActivation >= found.Id.Next)
                 {
-                    return IForkInfo.ValidationResult.RemoteStale;
+                    return ValidationResult.RemoteStale;
                 }
                 if (peerId.Next > 0
                     && headActivation > found.Activation.Activation)
                 {
                     if (headActivation >= peerId.Next)
                     {
-                        return IForkInfo.ValidationResult.IncompatibleOrStale;
+                        return ValidationResult.IncompatibleOrStale;
                     }
                     if (found.Id.Next > 0
                         && headActivation >= found.Id.Next
                         && peerId.Next != found.Id.Next)
                     {
-                        return IForkInfo.ValidationResult.IncompatibleOrStale;
+                        return ValidationResult.IncompatibleOrStale;
                     }
                 }
             }
-            return IForkInfo.ValidationResult.Valid;
+            return ValidationResult.Valid;
         }
     }
 }

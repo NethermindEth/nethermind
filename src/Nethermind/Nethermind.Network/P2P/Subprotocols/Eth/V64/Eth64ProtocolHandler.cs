@@ -19,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
     /// </summary>
     public class Eth64ProtocolHandler : Eth63ProtocolHandler
     {
-        private readonly IForkInfo _forkInfo;
+        private readonly ForkInfo _forkInfo;
 
         public Eth64ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
             ISyncServer syncServer,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
-            IForkInfo forkInfo,
+            ForkInfo forkInfo,
             ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager)
         {
             _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));

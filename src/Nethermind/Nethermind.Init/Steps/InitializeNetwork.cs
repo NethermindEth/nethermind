@@ -507,7 +507,7 @@ public class InitializeNetwork : IStep
 
         NetworkStorage peerStorage = new(peersDb, _api.LogManager);
         ISyncServer syncServer = _api.SyncServer!;
-        ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!, _api.BlockTree);
+        ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree!, forkInfo, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);

@@ -95,7 +95,7 @@ namespace Nethermind.Network.Test
                 _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
                 _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
                 _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-                ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!, _blockTree);
+                ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!);
                 _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _syncPeerPool = Substitute.For<ISyncPeerPool>();

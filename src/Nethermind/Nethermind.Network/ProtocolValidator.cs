@@ -106,7 +106,7 @@ namespace Nethermind.Network
                 return false;
             }
 
-            if (_forkInfo.ValidateForkId(syncPeerArgs.ForkId.Value) != IForkInfo.ValidationResult.Valid)
+            if (_forkInfo.ValidateForkId(syncPeerArgs.ForkId.Value, _blockTree.Head.Header) != ValidationResult.Valid)
             {
                 if (_logger.IsTrace)
                     _logger.Trace(
