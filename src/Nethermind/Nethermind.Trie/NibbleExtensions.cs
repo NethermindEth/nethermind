@@ -76,6 +76,11 @@ namespace Nethermind.Trie
 
         public static byte[] ToBytes(byte[] nibbles)
         {
+            return ToBytes(nibbles.AsSpan());
+        }
+
+        public static byte[] ToBytes(Span<byte> nibbles)
+        {
             byte[] bytes = new byte[nibbles.Length / 2];
             for (int i = 0; i < bytes.Length; i++)
             {
