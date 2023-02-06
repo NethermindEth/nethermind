@@ -235,8 +235,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             {
                 _trace.Output = output;
             }
-            
-            if (_trace.Action?.Result is not null )
+
+            if (_trace.Action?.Result is not null)
                 _trace.Action.Result.Output = output;
         }
 
