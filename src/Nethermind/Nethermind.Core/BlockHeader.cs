@@ -71,6 +71,8 @@ public class BlockHeader
         || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
         || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
 
+    public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
+
     public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
     public bool IsPostMerge { get; set; }
 
