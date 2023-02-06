@@ -32,7 +32,6 @@ public class ExchangeCapabilitiesHandler : IAsyncHandler<IEnumerable<string>, IE
 
             #region The Merge
             _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_executionStatus)] = true;
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = true;
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = true;
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = true;

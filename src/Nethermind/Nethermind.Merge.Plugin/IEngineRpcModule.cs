@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -17,11 +16,4 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<IEnumerable<string>>> engine_exchangeCapabilities(IEnumerable<string> methods);
-
-    [JsonRpcMethod(
-        Description =
-            "Responds with information on the state of the execution client to either engine_consensusStatus or any other call if consistency failure has occurred.",
-        IsSharable = true,
-        IsImplemented = true)]
-    ResultWrapper<ExecutionStatusResult> engine_executionStatus();
 }
