@@ -116,7 +116,7 @@ public class InitializeNetwork : IStep
         // Heap arena frees a chunk by just dereferencing, leaving GC to take it later.
         // Direct arena holds a pinned `GCHandle` per chunk and calls `GCHandle.Free` to release the chunk.
         // We never use any direct arena, but it does not take up memory because of that.
-        int arenaCount = Math.Min(_networkConfig.MaxNettyArenaCount, Environment.ProcessorCount * 2);
+        uint arenaCount = Math.Min(_networkConfig.MaxNettyArenaCount, (uint) (Environment.ProcessorCount * 2));
         Environment.SetEnvironmentVariable("io.netty.allocator.numHeapArenas", arenaCount.ToString());
         Environment.SetEnvironmentVariable("io.netty.allocator.numDirectArenas", arenaCount.ToString());
 

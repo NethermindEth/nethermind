@@ -71,7 +71,7 @@ namespace Nethermind.Network.Config
         int NettyArenaOrder { get; set; }
 
         [ConfigItem(DefaultValue = "8", Description = "[TECHNICAL] Defines maximum netty arena count. Increasing this on high core machine without increasing memory budget may reduce chunk size so much that it causes significant netty huge allocation.")]
-        int MaxNettyArenaCount { get; set; }
+        uint MaxNettyArenaCount { get; set; }
 
         [ConfigItem(DefaultValue = "", Description = "Bootnodes")]
         string Bootnodes { get; set; }
