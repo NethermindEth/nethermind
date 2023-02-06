@@ -24,12 +24,14 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
 using Newtonsoft.Json;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -165,132 +167,6 @@ public partial class EngineModuleTests
     }
 
     protected virtual Keccak ExpectedBlockHash => new("0x3accc4186d73f4826acf1a8da3f7c696f16c3863e4f76b1315d65daa88fe28ff");
-
-    [Test]
-    public async Task getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes()
-    {
-        using MergeTestBlockchain chain = await CreateBlockChain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-
-        ExecutionPayload executionPayloadV11 = await SendNewBlockV1(rpc, chain);
-
-        PrivateKey from = TestItem.PrivateKeyA;
-        Address to = TestItem.AddressB;
-        Transaction[] txs = BuildTransactions(chain, executionPayloadV11.BlockHash, from, to, 3, 0, out _, out _);
-        chain.AddTransactions(txs);
-        ExecutionPayload executionPayloadV12 = await BuildAndSendNewBlockV1(rpc, chain, true);
-        Keccak?[] blockHashes = { executionPayloadV11.BlockHash, TestItem.KeccakA, executionPayloadV12.BlockHash };
-        ExecutionPayloadBodyV1Result?[] payloadBodies = rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
-        ExecutionPayloadBodyV1Result?[] expected = { new(Array.Empty<Transaction>()), null, new(txs) };
-        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
-    }
-
-    [Test]
-    public async Task getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_nil_for_unknown_indexes()
-    {
-        using MergeTestBlockchain chain = await CreateBlockChain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-
-        ExecutionPayload executionPayloadV11 = await SendNewBlockV1(rpc, chain);
-
-        PrivateKey from = TestItem.PrivateKeyA;
-        Address to = TestItem.AddressB;
-        Transaction[] txs = BuildTransactions(chain, executionPayloadV11.BlockHash, from, to, 3, 0, out _, out _);
-        chain.AddTransactions(txs);
-        ExecutionPayload executionPayloadV12 = await BuildAndSendNewBlockV1(rpc, chain, true);
-
-        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(executionPayloadV12.BlockHash!,
-            executionPayloadV12.BlockHash!, executionPayloadV12.BlockHash!));
-
-        ExecutionPayloadBodyV1Result?[] payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 3).Result.Data;
-        ExecutionPayloadBodyV1Result?[] expected = { new(Array.Empty<Transaction>()), new(txs), null };
-        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
-    }
-
-    [Test]
-    public async Task getPayloadBodiesByRangeV1_empty_response()
-    {
-        using MergeTestBlockchain chain = await CreateBlockChain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-
-        ExecutionPayloadBodyV1Result?[] payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(0, 0).Result.Data;
-        ExecutionPayloadBodyV1Result?[] expected = { };
-        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
-    }
-
-    [Test]
-    public async Task getPayloadBodiesByRangeV1_should_fail_when_too_many_payloads_requested()
-    {
-        using MergeTestBlockchain chain = await CreateBlockChain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-
-        Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> result = rpc.engine_getPayloadBodiesByRangeV1(0, 1025);
-        result.Result.ErrorCode.Should().Be(-32005);
-    }
-
-    [Test]
-    public async Task getPayloadBodiesByRangeV1_should_return_canonical()
-    {
-        using MergeTestBlockchain chain = await CreateBlockChain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-
-        ExecutionPayload executionPayloadV11 = await SendNewBlockV1(rpc, chain);
-
-        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(executionPayloadV11.BlockHash!,
-            executionPayloadV11.BlockHash!, executionPayloadV11.BlockHash!));
-
-        Block head = chain.BlockTree.Head!;
-
-        PrivateKey from = TestItem.PrivateKeyA;
-
-        // First branch
-        {
-            Transaction[] txsA =
-                BuildTransactions(chain, executionPayloadV11.BlockHash!, from, TestItem.AddressA, 1, 0, out _, out _);
-            chain.AddTransactions(txsA);
-
-            ExecutionPayload executionPayloadV12A = await BuildAndGetPayloadResult(rpc, chain,
-                head.Hash!, head.Hash!, head.Hash!, 1001, Keccak.Zero, Address.Zero);
-
-            ResultWrapper<PayloadStatusV1> executePayloadResultA =
-                await rpc.engine_newPayloadV1(executionPayloadV12A);
-            executePayloadResultA.Data.Status.Should().Be(PayloadStatus.Valid);
-
-            (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(executionPayloadV12A.BlockHash!,
-                    head.Hash!, head.Hash!))).Data.PayloadStatus.Status.Should()
-                .Be(PayloadStatus.Valid);
-
-            ExecutionPayloadBodyV1Result?[] payloadBodiesA = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
-            ExecutionPayloadBodyV1Result?[] expectedA = { new(Array.Empty<Transaction>()), new(txsA), null };
-
-            payloadBodiesA.Should().BeEquivalentTo(expectedA, o => o.WithStrictOrdering());
-        }
-
-        // Second branch
-        {
-            Block? newBlock = Build.A.Block
-                .WithNumber(head.Number + 1)
-                .WithParent(head)
-                .WithNonce(0)
-                .WithDifficulty(0)
-                .WithStateRoot(head.StateRoot!)
-                .WithBeneficiary(Build.An.Address.TestObject)
-                .TestObject;
-
-            (await rpc.engine_newPayloadV1(new ExecutionPayload(newBlock))).Data.Status.Should().Be(PayloadStatus.Valid);
-
-            await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newBlock.Hash!,
-                newBlock.Hash!, newBlock.Hash!));
-
-            ExecutionPayloadBodyV1Result?[] payloadBodiesB = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
-            ExecutionPayloadBodyV1Result?[] expectedB =
-            {
-                    new(Array.Empty<Transaction>()), new(Array.Empty<Transaction>()), null
-                };
-
-            payloadBodiesB.Should().BeEquivalentTo(expectedB, o => o.WithStrictOrdering());
-        }
-    }
 
     [Test]
     public async Task forkchoiceUpdatedV1_should_not_create_block_or_change_head_with_unknown_parent()
@@ -517,7 +393,7 @@ public partial class EngineModuleTests
         getPayloadResult.BlockHash = TestItem.KeccakC;
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Invalid);
     }
 
     [Test]
@@ -1064,7 +940,7 @@ public partial class EngineModuleTests
         resultWrapper2.Data.Status.Should().Be(PayloadStatus.Valid);
         executionPayload.ParentHash = executionPayload.BlockHash!;
         ResultWrapper<PayloadStatusV1> invalidBlockRequest = await rpc.engine_newPayloadV1(executionPayload);
-        invalidBlockRequest.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
+        invalidBlockRequest.Data.Status.Should().Be(PayloadStatus.Invalid);
     }
 
     [TestCase(30)]
@@ -1659,6 +1535,43 @@ public partial class EngineModuleTests
                          currentBlockHash == forkChoiceState3.SafeBlockHash ||
                          currentBlockHash == forkChoiceState3.FinalizedBlockHash);
         }
+    }
+
+    [Test]
+    public async Task Should_return_capabilities()
+    {
+        using var chain = await CreateBlockChain();
+        var rpcModule = CreateEngineModule(chain);
+        var expected = typeof(IEngineRpcModule).GetMethods()
+            .Select(m => m.Name)
+            .Where(m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
+            .Order();
+
+        var result = await rpcModule.engine_exchangeCapabilities(expected);
+
+        result.Data.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public async Task Should_warn_for_missing_capabilities()
+    {
+        using var chain = await CreateBlockChain();
+        chain.LogManager = Substitute.For<ILogManager>();
+        chain.LogManager.GetClassLogger().IsWarn.Returns(true);
+
+        var rpcModule = CreateEngineModule(chain);
+        var list = new[]
+        {
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)
+        };
+
+        var result = await rpcModule.engine_exchangeCapabilities(list);
+
+        chain.LogManager.GetClassLogger().Received().Warn(
+            Arg.Is<string>(a =>
+                a.Contains(nameof(IEngineRpcModule.engine_getPayloadV1), StringComparison.Ordinal)/* &&
+                !a.Contains(nameof(IEngineRpcModule.engine_getPayloadV2), StringComparison.Ordinal)*/));
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(

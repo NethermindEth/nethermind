@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
@@ -78,11 +79,11 @@ namespace Nethermind.Merge.Plugin.Test
                 StateRoot = head.StateRoot!,
                 ReceiptsRoot = head.ReceiptsRoot!,
                 GasLimit = head.GasLimit,
-                Timestamp = (ulong)head.Timestamp
+                Timestamp = head.Timestamp
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null)
+        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null)
         {
             ExecutionPayload blockRequest = new()
             {
