@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
@@ -16,7 +15,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the currently supported list of Engine API methods.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IEnumerable<string>>> engine_exchangeCapabilities(IEnumerable<string> methods);
+    ResultWrapper<IEnumerable<string>> engine_exchangeCapabilities(IEnumerable<string> methods);
 
     [JsonRpcMethod(
         Description =

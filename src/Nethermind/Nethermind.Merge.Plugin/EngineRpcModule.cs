@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -16,7 +15,7 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
 
-    private readonly IAsyncHandler<IEnumerable<string>, IEnumerable<string>> _capabilitiesHandler;
+    private readonly IHandler<IEnumerable<string>, IEnumerable<string>> _capabilitiesHandler;
     private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
@@ -30,7 +29,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
         IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
-        IAsyncHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
+        IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         ISpecProvider specProvider,
         ILogManager logManager)
     {
@@ -47,8 +46,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         _logger = logManager.GetClassLogger();
     }
 
-    public Task<ResultWrapper<IEnumerable<string>>> engine_exchangeCapabilities(IEnumerable<string> methods)
-        => _capabilitiesHandler.HandleAsync(methods);
+    public ResultWrapper<IEnumerable<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
+        => _capabilitiesHandler.Handle(methods);
 
     public ResultWrapper<ExecutionStatusResult> engine_executionStatus() => _executionStatusHandler.Handle();
 }
