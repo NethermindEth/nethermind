@@ -1547,7 +1547,7 @@ public partial class EngineModuleTests
             .Where(m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
             .Order();
 
-        var result = await rpcModule.engine_exchangeCapabilities(expected);
+        var result = rpcModule.engine_exchangeCapabilities(expected);
 
         result.Data.Should().BeEquivalentTo(expected);
     }
@@ -1566,7 +1566,7 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)
         };
 
-        var result = await rpcModule.engine_exchangeCapabilities(list);
+        var result = rpcModule.engine_exchangeCapabilities(list);
 
         chain.LogManager.GetClassLogger().Received().Warn(
             Arg.Is<string>(a =>
