@@ -790,10 +790,6 @@ public partial class EngineModuleTests
         // TODO: post merge sync checking pointers after state sync
     }
 
-    //[Test]
-    //[Ignore("TODO: post merge sync able to handle multiple pivots")]
-    //public async Task Maintain_correct_pointers_for_multiple_pivots() { }
-
     private void AssertBlockTreePointers(
         IBlockTree blockTree,
         BlockTreePointers pointers)
