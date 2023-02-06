@@ -29,13 +29,12 @@ namespace Nethermind.Merge.Plugin.Test
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
 
-        private void AssertExecutionStatusChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash,
+        private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Keccak headBlockHash, Keccak finalizedBlockHash,
              Keccak safeBlockHash)
         {
-            ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
-            Assert.AreEqual(headBlockHash, result.HeadBlockHash);
-            Assert.AreEqual(finalizedBlockHash, result.FinalizedBlockHash);
-            Assert.AreEqual(safeBlockHash, result.SafeBlockHash);
+            Assert.AreEqual(headBlockHash, blockFinder.HeadHash);
+            Assert.AreEqual(finalizedBlockHash, blockFinder.FinalizedHash);
+            Assert.AreEqual(safeBlockHash, blockFinder.SafeHash);
         }
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,

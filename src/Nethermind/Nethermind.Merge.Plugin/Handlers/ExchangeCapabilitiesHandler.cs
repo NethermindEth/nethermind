@@ -30,7 +30,6 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
             {
                 #region The Merge
                 [nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = true,
-                [nameof(IEngineRpcModule.engine_executionStatus)] = true,
                 [nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = true,
                 [nameof(IEngineRpcModule.engine_getPayloadV1)] = true,
                 [nameof(IEngineRpcModule.engine_newPayloadV1)] = true,
