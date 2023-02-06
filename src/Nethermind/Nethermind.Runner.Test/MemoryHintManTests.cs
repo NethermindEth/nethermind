@@ -57,7 +57,7 @@ namespace Nethermind.Runner.Test
         [TestCase(512 * MB, 4u, 8u, 10)]
         [TestCase(256 * MB, 6u, 12u, 8)]
         [TestCase(1000 * MB, 12u, 24u, 9)]
-        [TestCase(2000 * MB, 12u,24u, 10)]
+        [TestCase(2000 * MB, 12u, 24u, 10)]
         [TestCase(1000 * MB, 12u, 8u, 11)]
         [TestCase(2000 * MB, 12u, 8u, 11)]
         public void Netty_arena_order_is_configured_correctly(long memoryHint, uint cpuCount, uint maxArenaCount, int expectedArenaOrder)
