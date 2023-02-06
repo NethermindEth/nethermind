@@ -3,7 +3,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Contracts;
+namespace Nethermind.Merge.AuRa.Contracts;
 
 public interface IWithdrawalContract
 {

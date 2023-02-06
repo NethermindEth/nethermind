@@ -4,11 +4,11 @@
 using System;
 using System.Buffers;
 using System.Numerics;
-using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Merge.AuRa.Contracts;
 
 namespace Nethermind.Merge.AuRa.Withdrawals;
 
