@@ -288,7 +288,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             //should be added one the timestamp for Shanghai is know and included in the chainspec for mainent.
             //chainSpec.ShanghaiTimestamp.Should().Be(MainnetSpecProvider.ShanghaiBlockTimestamp);
         }
-        
+
         [Test]
         public void Can_load_spaceneth()
         {

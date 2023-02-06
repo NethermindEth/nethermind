@@ -60,7 +60,7 @@ namespace Nethermind.Config.Test
         [ConfigFileGroup("poacore")]
         protected IEnumerable<string> PoaCoreConfigs
             => Configs.Where(config => config.Contains("poacore"));
-                
+
         [ConfigFileGroup("volta")]
         protected IEnumerable<string> VoltaConfigs
             => Configs.Where(config => config.Contains("volta"));
