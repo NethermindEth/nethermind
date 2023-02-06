@@ -10,7 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
-namespace Nethermind.Consensus.AuRa.Withdrawals;
+namespace Nethermind.Merge.AuRa.Withdrawals;
 
 public class WithdrawalProcessor : IWithdrawalProcessor
 {

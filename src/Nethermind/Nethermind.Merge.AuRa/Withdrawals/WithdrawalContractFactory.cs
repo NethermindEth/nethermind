@@ -5,11 +5,10 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.ChainSpecStyle;
 
-namespace Nethermind.Consensus.AuRa.Withdrawals;
+namespace Nethermind.Merge.AuRa.Withdrawals;
 
 public class WithdrawalContractFactory : IWithdrawalContractFactory
 {

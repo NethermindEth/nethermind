@@ -7,11 +7,11 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
+using Nethermind.Merge.AuRa.Withdrawals;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps
 {

@@ -4,7 +4,7 @@
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Evm.TransactionProcessing;
 
-namespace Nethermind.Consensus.AuRa.Withdrawals;
+namespace Nethermind.Merge.AuRa.Withdrawals;
 
 public interface IWithdrawalContractFactory
 {
