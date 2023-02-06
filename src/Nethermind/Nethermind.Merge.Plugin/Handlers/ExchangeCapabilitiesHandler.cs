@@ -4,18 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class ExchangeCapabilitiesHandler : IAsyncHandler<IEnumerable<string>, IEnumerable<string>>
+public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumerable<string>>
 {
-    private static IDictionary<string, bool> _capabilities = new Dictionary<string, bool>();
-    private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(1);
-
+    private static IDictionary<string, bool> _capabilities = null!;
     private readonly ILogger _logger;
 
     public ExchangeCapabilitiesHandler(ISpecProvider specProvider, ILogManager logManager)
@@ -25,44 +22,35 @@ public class ExchangeCapabilitiesHandler : IAsyncHandler<IEnumerable<string>, IE
 
         _logger = logManager.GetClassLogger();
 
-        if (_capabilities.Count == 0)
+        if (_capabilities is null)
         {
             var spec = specProvider.GetSpec((long.MaxValue, ulong.MaxValue));
 
-            #region The Merge
-            _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_executionStatus)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = true;
-            #endregion
+            _capabilities = new Dictionary<string, bool>
+            {
+                #region The Merge
+                [nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = true,
+                [nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = true,
+                [nameof(IEngineRpcModule.engine_getPayloadV1)] = true,
+                [nameof(IEngineRpcModule.engine_newPayloadV1)] = true,
+                #endregion
 
-            #region Shanghai
-            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV2)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV2)] = spec.WithdrawalsEnabled;
-            #endregion
+                #region Shanghai
+                [nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)] = spec.WithdrawalsEnabled,
+                [nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1)] = spec.WithdrawalsEnabled,
+                [nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)] = spec.WithdrawalsEnabled,
+                [nameof(IEngineRpcModule.engine_getPayloadV2)] = spec.WithdrawalsEnabled,
+                [nameof(IEngineRpcModule.engine_newPayloadV2)] = spec.WithdrawalsEnabled
+                #endregion
+            };
         }
     }
 
-    public async Task<ResultWrapper<IEnumerable<string>>> HandleAsync(IEnumerable<string> methods)
+    public ResultWrapper<IEnumerable<string>> Handle(IEnumerable<string> methods)
     {
-        var task = Task.Run(() => CheckCapabilities(methods));
+        CheckCapabilities(methods);
 
-        try
-        {
-            await task.WaitAsync(_timeout);
-
-            return ResultWrapper<IEnumerable<string>>.Success(_capabilities.Keys);
-        }
-        catch (TimeoutException)
-        {
-            if (_logger.IsWarn) _logger.Warn($"{nameof(IEngineRpcModule.engine_exchangeCapabilities)} timed out");
-
-            return ResultWrapper<IEnumerable<string>>.Fail("Timed out", ErrorCodes.Timeout);
-        }
+        return ResultWrapper<IEnumerable<string>>.Success(_capabilities.Keys);
     }
 
     private void CheckCapabilities(IEnumerable<string> methods)

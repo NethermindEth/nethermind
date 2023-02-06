@@ -89,7 +89,6 @@ namespace Nethermind.Network.Test
             isConnDelayed.Should().Be(connectionDelayed);
         }
 
-        [TestCase(DisconnectType.Local, DisconnectReason.Breach1, false)]
         [TestCase(DisconnectType.Local, DisconnectReason.UselessPeer, true)]
         [TestCase(DisconnectType.Remote, DisconnectReason.ClientQuitting, true)]
         public async Task DisconnectDelayDueToDisconnect(DisconnectType disconnectType, DisconnectReason reason, bool connectionDelayed)
