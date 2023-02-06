@@ -231,12 +231,13 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress?.Length ?? 0}");
             }
 
-            if (_trace.Action.TraceAddress.Length == 0)
+            if (_trace.Action?.TraceAddress?.Length == 0)
             {
                 _trace.Output = output;
             }
-
-            _trace.Action.Result.Output = output;
+            
+            if (_trace.Action?.Result is not null )
+                _trace.Action.Result.Output = output;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
