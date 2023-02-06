@@ -16,7 +16,7 @@ using Nethermind.TxPool;
 namespace Nethermind.Init
 {
     /// <summary>
-    /// Applies changes to the NetworkConfig and the DbConfig so to adhere to the max memory limit hint. 
+    /// Applies changes to the NetworkConfig and the DbConfig so to adhere to the max memory limit hint.
     /// </summary>
     public class MemoryHintMan
     {
@@ -350,9 +350,13 @@ namespace Nethermind.Init
 
         private void AssignNettyMemory(INetworkConfig networkConfig, uint cpuCount)
         {
-            NettyMemory = Math.Min(512.MB(), (long)(0.2 * _remainingMemory));
-            long estimate = NettyMemoryEstimator.Estimate(cpuCount, networkConfig.NettyArenaOrder);
             ValidateCpuCount(cpuCount);
+
+            NettyMemory = Math.Min(512.MB(), (long)(0.2 * _remainingMemory));
+
+            uint arenaCount = (uint)Math.Min(cpuCount * 2, networkConfig.MaxNettyArenaCount);
+
+            long estimate = NettyMemoryEstimator.Estimate(arenaCount, networkConfig.NettyArenaOrder);
 
             /* first of all we assume that the mainnet will be heavier than any other chain on the side */
             /* we will leave the arena order as in config if it is set to a non-default value */
@@ -367,7 +371,7 @@ namespace Nethermind.Init
                 int targetNettyArenaOrder = INetworkConfig.DefaultNettyArenaOrder;
                 for (int i = networkConfig.NettyArenaOrder; i > 0; i--)
                 {
-                    estimate = NettyMemoryEstimator.Estimate(cpuCount, i);
+                    estimate = NettyMemoryEstimator.Estimate(arenaCount, i);
                     long maxAvailableFoNetty = NettyMemory;
                     if (estimate <= maxAvailableFoNetty)
                     {
