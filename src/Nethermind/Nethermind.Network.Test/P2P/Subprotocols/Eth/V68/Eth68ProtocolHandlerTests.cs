@@ -151,6 +151,43 @@ public class Eth68ProtocolHandlerTests
             Arg.Any<IReadOnlyList<Keccak>>());
     }
 
+    [TestCase(1)]
+    [TestCase(NewPooledTransactionHashesMessage68.MaxCount - 1)]
+    [TestCase(NewPooledTransactionHashesMessage68.MaxCount)]
+    public void should_send_up_to_MaxCount_hashes_in_one_NewPooledTransactionHashesMessage68(int txCount)
+    {
+        Transaction[] txs = new Transaction[txCount];
+
+        for (int i = 0; i < txCount; i++)
+        {
+            txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+        }
+
+        _handler.SendNewTransactions(txs, false);
+
+        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m => m.Hashes.Count == txCount));
+    }
+
+    [TestCase(NewPooledTransactionHashesMessage68.MaxCount - 1)]
+    [TestCase(NewPooledTransactionHashesMessage68.MaxCount)]
+    [TestCase(10000)]
+    [TestCase(20000)]
+    public void should_send_more_than_MaxCount_hashes_in_more_than_one_NewPooledTransactionHashesMessage68(int txCount)
+    {
+        int nonFullMsgTxsCount = txCount % NewPooledTransactionHashesMessage68.MaxCount;
+        int messagesCount = txCount / NewPooledTransactionHashesMessage68.MaxCount + (nonFullMsgTxsCount > 0 ? 1 : 0);
+        Transaction[] txs = new Transaction[txCount];
+
+        for (int i = 0; i < txCount; i++)
+        {
+            txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+        }
+
+        _handler.SendNewTransactions(txs, false);
+
+        _session.Received(messagesCount).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m => m.Hashes.Count == NewPooledTransactionHashesMessage68.MaxCount || m.Hashes.Count == nonFullMsgTxsCount));
+    }
+
     private void HandleIncomingStatusMessage()
     {
         var statusMsg = new StatusMessage();

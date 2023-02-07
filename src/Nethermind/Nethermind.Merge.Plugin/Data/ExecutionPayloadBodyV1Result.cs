@@ -2,23 +2,32 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
+using Newtonsoft.Json;
 
-namespace Nethermind.Merge.Plugin.Data
+namespace Nethermind.Merge.Plugin.Data;
+
+public class ExecutionPayloadBodyV1Result
 {
-
-    public class ExecutionPayloadBodyV1Result
+    public ExecutionPayloadBodyV1Result(IList<Transaction> transactions, IList<Withdrawal>? withdrawals)
     {
-        public ExecutionPayloadBodyV1Result(Transaction[] transactions)
+        ArgumentNullException.ThrowIfNull(transactions);
+
+        var t = new byte[transactions.Count][];
+
+        for (int i = 0, count = t.Length; i < count; i++)
         {
-            Transactions = new byte[transactions.Length][];
-            for (int i = 0; i < Transactions.Length; i++)
-            {
-                Transactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
-            }
+            t[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
         }
 
-        public byte[][] Transactions { get; set; }
+        Transactions = t;
+        Withdrawals = withdrawals;
     }
+
+    public IList<IList<byte>> Transactions { get; set; }
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    public IList<Withdrawal>? Withdrawals { get; set; }
 }

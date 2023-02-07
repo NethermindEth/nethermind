@@ -231,6 +231,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip4895Enabled = (chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.WithdrawalTimestamp = chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue;
 
+            releaseSpec.IsEip4844Enabled = (chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.Eip4844TransitionTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue;
 
             return releaseSpec;
         }
@@ -278,6 +280,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
+        public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;
         public ForkActivation[] TransitionActivations { get; private set; }
     }

@@ -17,7 +17,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             int protocolVersionLength = Rlp.LengthOf(StatusMessage.KeyNames.ProtocolVersion) + Rlp.LengthOf(message.ProtocolVersion);
             totalContentLength += Rlp.LengthOfSequence(protocolVersionLength);
 
-            int networkIdLength = Rlp.LengthOf(StatusMessage.KeyNames.ChainId) + Rlp.LengthOf(message.ChainId);
+            int networkIdLength = Rlp.LengthOf(StatusMessage.KeyNames.NetworkId) + Rlp.LengthOf(message.NetworkId);
             totalContentLength += Rlp.LengthOfSequence(networkIdLength);
 
             int headTdLength = Rlp.LengthOf(StatusMessage.KeyNames.TotalDifficulty) + Rlp.LengthOf(message.TotalDifficulty);
@@ -122,8 +122,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             rlpStream.Encode(message.ProtocolVersion);
 
             rlpStream.StartSequence(networkIdLength);
-            rlpStream.Encode(StatusMessage.KeyNames.ChainId);
-            rlpStream.Encode(message.ChainId);
+            rlpStream.Encode(StatusMessage.KeyNames.NetworkId);
+            rlpStream.Encode(message.NetworkId);
 
             rlpStream.StartSequence(headTdLength);
             rlpStream.Encode(StatusMessage.KeyNames.TotalDifficulty);
@@ -245,8 +245,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
                     case StatusMessage.KeyNames.ProtocolVersion:
                         statusMessage.ProtocolVersion = rlpStream.DecodeByte();
                         break;
-                    case StatusMessage.KeyNames.ChainId:
-                        statusMessage.ChainId = rlpStream.DecodeUInt256();
+                    case StatusMessage.KeyNames.NetworkId:
+                        statusMessage.NetworkId = rlpStream.DecodeUInt256();
                         break;
                     case StatusMessage.KeyNames.TotalDifficulty:
                         statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();

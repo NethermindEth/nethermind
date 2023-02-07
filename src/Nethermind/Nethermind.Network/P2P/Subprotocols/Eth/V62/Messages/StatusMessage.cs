@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     public class StatusMessage : P2PMessage
     {
         public byte ProtocolVersion { get; set; }
-        public UInt256 ChainId { get; set; }
+        public UInt256 NetworkId { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public Keccak? BestHash { get; set; }
         public Keccak? GenesisHash { get; set; }
@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public override string ToString()
         {
-            return $"{Protocol}.{ProtocolVersion} chain: {ChainId} | diff: {TotalDifficulty} | best: {BestHash?.ToShortString()} | genesis: {GenesisHash?.ToShortString()} | fork: {ForkId}";
+            return $"{Protocol}.{ProtocolVersion} network: {NetworkId} | diff: {TotalDifficulty} | best: {BestHash?.ToShortString()} | genesis: {GenesisHash?.ToShortString()} | fork: {ForkId}";
         }
     }
 }

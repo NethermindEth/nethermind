@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
@@ -60,6 +61,11 @@ namespace Nethermind.Core
         {
             return eip1559Enabled ? UInt256.Min(tx.MaxPriorityFeePerGas, tx.MaxFeePerGas > baseFee ? tx.MaxFeePerGas - baseFee : 0) : tx.MaxPriorityFeePerGas;
         }
+        public static bool IsAboveInitCode(this Transaction tx, IReleaseSpec spec)
+        {
+            return tx.IsContractCreation && spec.IsEip3860Enabled && (tx.DataLength) > spec.MaxInitCodeSize;
+        }
+
 
     }
 }

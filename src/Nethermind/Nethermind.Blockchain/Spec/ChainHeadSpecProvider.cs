@@ -38,6 +38,8 @@ namespace Nethermind.Blockchain.Spec
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
+        public ulong NetworkId => _specProvider.NetworkId;
+
         public ulong ChainId => _specProvider.ChainId;
 
         public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;

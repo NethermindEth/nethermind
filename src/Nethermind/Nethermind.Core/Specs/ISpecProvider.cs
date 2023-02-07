@@ -44,6 +44,11 @@ namespace Nethermind.Core.Specs
         /// Unique identifier of the chain that allows to sign messages for the specified chain only.
         /// It is also used when verifying if sync peers are on the same chain.
         /// </summary>
+        ulong NetworkId { get; }
+
+        /// <summary>
+        /// Additional identifier of the chain to mitigate risks described in 155
+        /// </summary>
         ulong ChainId { get; }
 
         /// <summary>
@@ -59,5 +64,11 @@ namespace Nethermind.Core.Specs
         IReleaseSpec GetSpec(ForkActivation forkActivation);
         IReleaseSpec GetSpec(long blockNumber, ulong? timestamp) => GetSpec((blockNumber, timestamp));
         IReleaseSpec GetSpec(BlockHeader blockHeader) => GetSpec((blockHeader.Number, blockHeader.Timestamp));
+
+        /// <summary>
+        /// Resolves a spec for all planned forks applied.
+        /// </summary>
+        /// <returns>A spec for all planned forks applied</returns>
+        IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue, ulong.MaxValue);
     }
 }
