@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Specs;
@@ -16,7 +15,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
-using Metrics = Nethermind.Trie.Pruning.Metrics;
+using System.Threading;
 
 namespace Nethermind.Store.Test
 {
@@ -27,13 +26,27 @@ namespace Nethermind.Store.Test
         private readonly Address _address1 = new(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
 
+        private static (string, ITrieStore)[] _variants;
+        public static (string name, ITrieStore trieStore)[] Variants
+            => LazyInitializer.EnsureInitialized(ref _variants, InitVariants);
+
+        public static (string Name, ITrieStore TrieStore)[] InitVariants()
+        {
+            return new (string, ITrieStore)[]
+            {
+                ("Keccak Store", new TrieStore(new MemDb(), Logger)),
+                ("Path Store", new TrieStoreByPath(new MemDb(), Logger))
+            };
+        }
+
         [Test]
-        public async Task Can_ask_about_balance_in_parallel()
+        [TestCaseSource(nameof(Variants))]
+        public async Task Can_ask_about_balance_in_parallel((string Name, ITrieStore TrieStore) testCase)
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
             MemDb stateDb = new();
             StateProvider provider =
-                new(new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
+                new(testCase.TrieStore, Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
@@ -42,23 +55,23 @@ namespace Nethermind.Store.Test
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
-            provider.CommitTree(0);
+            provider.CommitTree(1);
             Keccak stateRoot1 = provider.StateRoot;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
-            provider.CommitTree(0);
+            provider.CommitTree(2);
             Keccak stateRoot2 = provider.StateRoot;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
-            provider.CommitTree(0);
+            provider.CommitTree(3);
             Keccak stateRoot3 = provider.StateRoot;
 
-            provider.CommitTree(0);
+            //provider.CommitTree(0);
 
             StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(testCase.TrieStore, new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
 
             Task a = StartTask(reader, stateRoot0, 1);
             Task b = StartTask(reader, stateRoot1, 2);
@@ -69,13 +82,14 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public async Task Can_ask_about_storage_in_parallel()
+        [TestCaseSource(nameof(Variants))]
+        public async Task Can_ask_about_storage_in_parallel((string Name, ITrieStore TrieStore) testCase)
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
             MemDb stateDb = new();
             TrieStore trieStore = new(stateDb, Logger);
-            StateProvider provider = new(trieStore, new MemDb(), Logger);
+            StateProvider provider = new(testCase.TrieStore, new MemDb(), Logger);
             StorageProvider storageProvider = new(trieStore, provider, Logger);
 
             void UpdateStorageValue(byte[] newValue)
@@ -88,39 +102,39 @@ namespace Nethermind.Store.Test
                 provider.AddToBalance(_address1, 1, spec);
             }
 
-            void CommitEverything()
+            void CommitEverything(long blockNumber)
             {
                 storageProvider.Commit();
-                storageProvider.CommitTrees(0);
+                storageProvider.CommitTrees(blockNumber);
                 provider.Commit(spec);
-                provider.CommitTree(0);
+                provider.CommitTree(blockNumber);
             }
 
             provider.CreateAccount(_address1, 1);
-            CommitEverything();
+            CommitEverything(0);
 
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 1 });
-            CommitEverything();
+            CommitEverything(1);
             Keccak stateRoot0 = provider.StateRoot;
 
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 2 });
-            CommitEverything();
+            CommitEverything(2);
             Keccak stateRoot1 = provider.StateRoot;
 
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 3 });
-            CommitEverything();
+            CommitEverything(3);
             Keccak stateRoot2 = provider.StateRoot;
 
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 4 });
-            CommitEverything();
+            CommitEverything(4);
             Keccak stateRoot3 = provider.StateRoot;
 
             StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(testCase.TrieStore, trieStore, Substitute.For<IDb>(), Logger);
 
             Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] { 1 });
             Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] { 2 });
@@ -131,14 +145,15 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Non_existing()
+        [TestCaseSource(nameof(Variants))]
+        public void Non_existing((string Name, ITrieStore TrieStore) testCase)
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
 
             MemDb stateDb = new();
             TrieStore trieStore = new(stateDb, Logger);
-            StateProvider provider = new(trieStore, new MemDb(), Logger);
+            StateProvider provider = new(testCase.TrieStore, new MemDb(), Logger);
             StorageProvider storageProvider = new(trieStore, provider, Logger);
 
             void CommitEverything()
@@ -155,7 +170,7 @@ namespace Nethermind.Store.Test
             Keccak stateRoot0 = provider.StateRoot;
 
             StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(testCase.TrieStore, new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
             Keccak storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
             reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
             reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
@@ -189,7 +204,8 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public async Task Get_storage()
+        [TestCaseSource(nameof(Variants))]
+        public async Task Get_storage((string Name, ITrieStore TrieStore) testCase)
         {
             IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
 
@@ -197,7 +213,7 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
 
             TrieStore trieStore = new(dbProvider.StateDb, Logger);
-            StateProvider state = new(trieStore, dbProvider.CodeDb, Logger);
+            StateProvider state = new(testCase.TrieStore, dbProvider.CodeDb, Logger);
             StorageProvider storage = new(trieStore, state, Logger);
 
             /* to start with we need to create an account that we will be setting storage at */
@@ -214,8 +230,7 @@ namespace Nethermind.Store.Test
             state.Commit(MuirGlacier.Instance);
             state.CommitTree(2);
 
-            StateReader reader = new(
-                new TrieStore(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
+            StateReader reader = new(testCase.TrieStore, new TrieStore(dbProvider.StateDb, Logger), dbProvider.CodeDb, Logger);
 
             var account = reader.GetAccount(state.StateRoot, _address1);
             var retrieved = reader.GetStorage(account.StorageRoot, storageCell.Index);
@@ -230,7 +245,7 @@ namespace Nethermind.Store.Test
             byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 
             StateProvider processorStateProvider =
-                new(trieStore, new MemDb(), LimboLogs.Instance);
+                new(testCase.TrieStore, new MemDb(), LimboLogs.Instance);
             processorStateProvider.StateRoot = state.StateRoot;
 
             StorageProvider processorStorageProvider =
