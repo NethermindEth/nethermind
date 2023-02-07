@@ -728,6 +728,66 @@ namespace Nethermind.Synchronization.Test
             }
         }
 
+         [TestCase(DownloaderOptions.WithReceipts, true)]
+        [TestCase(DownloaderOptions.None, false)]
+        [TestCase(DownloaderOptions.Process, false)]
+        public async Task Throws_on_null_receipt_downloaded2(int options, bool shouldThrow)
+        {
+            Context ctx = new();
+            DownloaderOptions downloaderOptions = (DownloaderOptions)options;
+            bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
+            BlockDownloader downloader = ctx.BlockDownloader;
+
+            Response responseOptions = Response.AllCorrect;
+            if (withReceipts)
+            {
+                responseOptions |= Response.WithTransactions;
+            }
+
+            int headNumber = 5;
+
+            // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
+            // will only be fixed slightly later
+            long chainLength = headNumber + 1;
+            SyncPeerMock syncPeerInternal = new(chainLength, withReceipts, responseOptions);
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<long>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
+
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IReadOnlyList<Keccak>>(0), ci.ArgAt<CancellationToken>(1)));
+
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
+                .Returns(async ci =>
+                {
+                    TxReceipt[][] receipts = await syncPeerInternal.GetReceipts(ci.ArgAt<IReadOnlyList<Keccak>>(0), ci.ArgAt<CancellationToken>(1));
+                    receipts[^1] = null;
+                    return receipts;
+                });
+
+            syncPeer.TotalDifficulty.Returns(ci => syncPeerInternal.TotalDifficulty);
+            syncPeer.HeadHash.Returns(ci => syncPeerInternal.HeadHash);
+            syncPeer.HeadNumber.Returns(ci => syncPeerInternal.HeadNumber);
+
+            PeerInfo peerInfo = new(syncPeer);
+
+            int threshold = 2;
+            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
+            ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
+
+            syncPeerInternal.ExtendTree(chainLength * 2);
+            Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
+
+            if (shouldThrow)
+            {
+                await action.Should().ThrowAsync<EthSyncException>();
+            }
+            else
+            {
+                await action.Should().NotThrowAsync();
+            }
+        }
+
         [TestCase(DownloaderOptions.WithReceipts, true)]
         [TestCase(DownloaderOptions.None, false)]
         [TestCase(DownloaderOptions.Process, false)]
@@ -1016,6 +1076,7 @@ namespace Nethermind.Synchronization.Test
         private class SyncPeerMock : ISyncPeer
         {
             private readonly bool _withReceipts;
+            private readonly bool _withWithdrawals;
             private readonly BlockHeadersMessageSerializer _headersSerializer = new();
             private readonly BlockBodiesMessageSerializer _bodiesSerializer = new();
             private readonly ReceiptsMessageSerializer _receiptsSerializer = new(RopstenSpecProvider.Instance);
@@ -1026,14 +1087,14 @@ namespace Nethermind.Synchronization.Test
 
             public Response Flags { get; set; }
 
-            public SyncPeerMock(long chainLength, bool withReceipts, Response flags)
+            public SyncPeerMock(long chainLength, bool withReceipts, Response flags, bool withWithdrawals = false)
             {
                 _withReceipts = withReceipts;
                 Flags = flags;
                 BuildTree(chainLength, withReceipts);
             }
 
-            public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty)
+            public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty, bool withWithdrawals = false)
             {
                 _withReceipts = withReceipts;
                 Flags = flags;
@@ -1051,6 +1112,11 @@ namespace Nethermind.Synchronization.Test
                 {
                     builder = builder.WithTransactions(_receiptStorage);
                 }
+
+                // if (_withWithdrawals)
+                // {
+                //     builder = builder.Wit
+                // }
 
                 builder = builder.OfChainLength((int)chainLength);
                 BlockTree = builder.TestObject;

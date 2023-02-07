@@ -185,6 +185,20 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
+    },
+    "Zhejiang": {
+      "commandName": "Project",
+      "commandLineArgs": "-c zhejiang -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Zhejiang (archive)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c zhejiang_archive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.JwtSecretFile D:\\jwtsecret",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   }
 }
