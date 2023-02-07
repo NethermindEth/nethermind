@@ -146,25 +146,37 @@ namespace Nethermind.HealthChecks
         public bool CheckClAlive()
         {
             var now = _api.Timestamper.UtcNow;
-            bool result = false;
-            foreach (var capability in _rpcCapabilitiesProvider.GetEngineCapabilities())
+            var capabilities = _rpcCapabilitiesProvider.GetEngineCapabilities();
+            foreach (var capability in capabilities)
             {
                 if (capability.Value)
                 {
-                    result |= CheckMethodInvoked(capability.Key, now);
+                    UpdateMethodStats(capability.Key, now);
                 }
             }
-            return result;
+            foreach (var capability in capabilities)
+            {
+                if (capability.Value && CheckMethodInvoked(capability.Key))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private readonly ConcurrentDictionary<string, bool> _previousMethodCheckResult = new();
         private readonly ConcurrentDictionary<string, DateTime> _previousSuccessfulCheckTime = new();
         private readonly ConcurrentDictionary<string, int> _previousMethodCallSuccesses = new();
 
-        private bool CheckMethodInvoked(string methodName, DateTime now)
+        private bool CheckMethodInvoked(string methodName)
         {
+            return _previousMethodCheckResult[methodName];
+        }
+
+        private void UpdateMethodStats(string methodName, DateTime now)
+        {
+            _previousMethodCheckResult.TryAdd(methodName, true);
             var methodCallSuccesses = _api.JsonRpcLocalStats!.GetMethodStats(methodName).Successes;
-            var previousCheckResult = _previousMethodCheckResult.GetOrAdd(methodName, true);
             var previousSuccesses = _previousMethodCallSuccesses.GetOrAdd(methodName, 0);
             var lastSuccessfulCheckTime = _previousSuccessfulCheckTime.GetOrAdd(methodName, now);
 
@@ -174,16 +186,14 @@ namespace Nethermind.HealthChecks
                 if (diff > _healthChecksConfig.MaxIntervalClRequestTime)
                 {
                     _previousMethodCheckResult[methodName] = false;
-                    return false;
                 }
 
-                return previousCheckResult;
+                return;
             }
 
             _previousSuccessfulCheckTime[methodName] = now;
             _previousMethodCheckResult[methodName] = true;
             _previousMethodCallSuccesses[methodName] = methodCallSuccesses;
-            return true;
         }
 
         private static bool CheckPeers(ICollection<(string Description, string LongDescription)> messages,
