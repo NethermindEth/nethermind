@@ -181,7 +181,7 @@
     },
     "Zhejiang": {
       "commandName": "Project",
-      "commandLineArgs": "-c zhejiang -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "commandLineArgs": "-c zhejiang -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.JwtSecretFile D:\\jwtsecret --Network.DiagTracerEnabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
