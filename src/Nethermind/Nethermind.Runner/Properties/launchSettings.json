@@ -119,13 +119,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Sokol": {
-      "commandName": "Project",
-      "commandLineArgs": "-c sokol -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Spaceneth": {
       "commandName": "Project",
       "commandLineArgs": "-c spaceneth -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
