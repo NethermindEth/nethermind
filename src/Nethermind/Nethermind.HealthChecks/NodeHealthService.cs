@@ -147,7 +147,8 @@ namespace Nethermind.HealthChecks
         {
             var now = _api.Timestamper.UtcNow;
             bool result = false;
-            foreach (var capability in _rpcCapabilitiesProvider.GetEngineCapabilities()) {
+            foreach (var capability in _rpcCapabilitiesProvider.GetEngineCapabilities())
+            {
                 if (capability.Value)
                 {
                     result |= CheckMethodInvoked(capability.Key, now);

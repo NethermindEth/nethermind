@@ -408,7 +408,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = true,
                     ExpectedMessage = "Fully synced. Peers: 10.",
                     TimeSpanSeconds = 301,
-                    EnabledCapabilities = new[] { "engine_forkchoiceUpdatedV999", "engine_newPayloadV999"},
+                    EnabledCapabilities = new[] { "engine_forkchoiceUpdatedV999", "engine_newPayloadV999" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 1, 1 },
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
                 };
