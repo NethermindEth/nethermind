@@ -49,9 +49,6 @@
         <Content Include="..\Chains\ropsten.json" CopyToOutputDirectory="PreserveNewest">
             <Link>Chains\ropsten.json</Link>
         </Content>
-        <Content Include="..\Chains\sokol.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\sokol.json</Link>
-        </Content>
         <Content Include="..\Chains\spaceneth.json" CopyToOutputDirectory="PreserveNewest">
             <Link>Chains\spaceneth.json</Link>
         </Content>

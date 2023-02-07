@@ -119,13 +119,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Sokol": {
-      "commandName": "Project",
-      "commandLineArgs": "-c sokol -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Spaceneth": {
       "commandName": "Project",
       "commandLineArgs": "-c spaceneth -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
@@ -140,16 +133,16 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "xDai": {
+    "Gnosis": {
       "commandName": "Project",
-      "commandLineArgs": "-c xdai -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c gnosis -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "xDai (archive)": {
+    "Gnosis (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "-c xdai_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c gnosis_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
