@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
+using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -301,6 +302,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.LogManager,
                 TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
+            _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
+
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
                 new GetPayloadV2Handler(payloadPreparationService, _api.LogManager),
@@ -332,7 +335,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
-                new ExchangeCapabilitiesHandler(_api.SpecProvider, _api.LogManager),
+                new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.SpecProvider, _api.LogManager),
                 _api.SpecProvider,
                 _api.LogManager);
 
