@@ -117,7 +117,7 @@ namespace Nethermind.AuRa.Test
         public void correctly_finalizes_blocks_in_already_in_chain_on_initialize()
         {
             int count = 2;
-            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(count, 0, 0, false,TestItem.AddressA, TestItem.AddressB);
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(count, 0, 0, false, TestItem.AddressA, TestItem.AddressB);
             AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _validatorStore, _validSealerStrategy, _logManager);
 
             IEnumerable<bool> result = Enumerable.Range(0, count).Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.IsFinalized);

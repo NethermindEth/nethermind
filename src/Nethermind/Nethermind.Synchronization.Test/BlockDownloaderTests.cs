@@ -1055,7 +1055,7 @@ namespace Nethermind.Synchronization.Test
                     builder = builder.WithTransactions(_receiptStorage);
                 }
 
-                builder = builder.OfChainLength((int)chainLength, 0,0, _withWithdrawals);
+                builder = builder.OfChainLength((int)chainLength, 0, 0, _withWithdrawals);
                 BlockTree = builder.TestObject;
 
                 HeadNumber = BlockTree.Head.Number;
