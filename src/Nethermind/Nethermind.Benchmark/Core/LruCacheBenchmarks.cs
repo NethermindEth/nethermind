@@ -20,12 +20,34 @@ namespace Nethermind.Benchmarks.Core
         public LruCache<int, object> WithItems()
         {
             LruCache<int, object> cache = new LruCache<int, object>(16, StartCapacity, string.Empty);
-            for (int j = 0; j < ItemsCount; j++)
-            {
-                cache.Set(j, new object());
-            }
+            Fill(cache);
 
             return cache;
+
+            void Fill(LruCache<int, object> cache)
+            {
+                for (int j = 0; j < ItemsCount; j++)
+                {
+                    cache.Set(j, new object());
+                }
+            }
+        }
+
+        [Benchmark(Baseline = true)]
+        public ICache<int, object> WithItems_Previous()
+        {
+            ICache<int, object> cache = new PreviousLruCache<int, object>(16, StartCapacity, string.Empty);
+            Fill(cache);
+
+            return cache;
+
+            void Fill(ICache<int, object> cache)
+            {
+                for (int j = 0; j < ItemsCount; j++)
+                {
+                    cache.Set(j, new object());
+                }
+            }
         }
     }
 }
