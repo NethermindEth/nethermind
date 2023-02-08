@@ -306,60 +306,61 @@ public partial class BlockDownloaderTests
         cts.Dispose();
     }
 
-        [TestCase(DownloaderOptions.WithReceipts)]
-        [TestCase(DownloaderOptions.None)]
-        [TestCase(DownloaderOptions.Process)]
-        public async Task BlockDownloader_works_correctly_with_withdrawals(int options)
+    [TestCase(DownloaderOptions.WithReceipts)]
+    [TestCase(DownloaderOptions.None)]
+    [TestCase(DownloaderOptions.Process)]
+    public async Task BlockDownloader_works_correctly_with_withdrawals(int options)
+    {
+        PostMergeContext ctx = new();
+        DownloaderOptions downloaderOptions = (DownloaderOptions)options;
+        bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
+        BlockDownloader downloader = ctx.BlockDownloader;
+
+        Response responseOptions = Response.AllCorrect;
+        if (withReceipts)
         {
-            PostMergeContext ctx = new();
-            DownloaderOptions downloaderOptions = (DownloaderOptions)options;
-            bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
-            BlockDownloader downloader = ctx.BlockDownloader;
-
-            Response responseOptions = Response.AllCorrect;
-            if (withReceipts)
-            {
-                responseOptions |= Response.WithTransactions;
-            }
-
-            int headNumber = 5;
-
-            // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
-            // will only be fixed slightly later
-            long chainLength = headNumber + 1;
-            SyncPeerMock syncPeerInternal = new(chainLength, withReceipts, responseOptions, true);
-            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<long>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
-
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IReadOnlyList<Keccak>>(0), ci.ArgAt<CancellationToken>(1)));
-
-            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(async ci => await syncPeerInternal.GetReceipts(ci.ArgAt<IReadOnlyList<Keccak>>(0), ci.ArgAt<CancellationToken>(1)));
-
-
-            syncPeer.TotalDifficulty.Returns(ci => syncPeerInternal.TotalDifficulty);
-            syncPeer.HeadHash.Returns(ci => syncPeerInternal.HeadHash);
-            syncPeer.HeadNumber.Returns(ci => syncPeerInternal.HeadNumber);
-
-            PeerInfo peerInfo = new(syncPeer);
-
-            int threshold = 2;
-            await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
-            ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
-
-            syncPeerInternal.ExtendTree(chainLength * 2);
-            Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
-
-            await action.Should().NotThrowAsync();
+            responseOptions |= Response.WithTransactions;
         }
+
+        int headNumber = 5;
+
+        // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
+        // will only be fixed slightly later
+        long chainLength = headNumber + 1;
+        SyncPeerMock syncPeerInternal = new(chainLength, withReceipts, responseOptions, true);
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<long>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
+
+        syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
+            .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IReadOnlyList<Keccak>>(0), ci.ArgAt<CancellationToken>(1)));
+
+        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
+            .Returns(async ci => await syncPeerInternal.GetReceipts(ci.ArgAt<IReadOnlyList<Keccak>>(0), ci.ArgAt<CancellationToken>(1)));
+
+
+        syncPeer.TotalDifficulty.Returns(ci => syncPeerInternal.TotalDifficulty);
+        syncPeer.HeadHash.Returns(ci => syncPeerInternal.HeadHash);
+        syncPeer.HeadNumber.Returns(ci => syncPeerInternal.HeadNumber);
+
+        PeerInfo peerInfo = new(syncPeer);
+
+        int threshold = 2;
+        await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
+        ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
+
+        syncPeerInternal.ExtendTree(chainLength * 2);
+        Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
+
+        await action.Should().NotThrowAsync();
+    }
 
     class PostMergeContext : Context
     {
         protected override ISpecProvider SpecProvider => _specProvider ??= new MainnetSpecProvider(); // PoSSwitcher changes TTD, so can't use MainnetSpecProvider.Instance
 
         private BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder? _blockTreeScenario = null;
+
         public BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder BlockTreeScenario
         {
             get =>
@@ -374,6 +375,7 @@ public partial class BlockDownloaderTests
         private MemDb MetadataDb => (_metadataDb ?? _blockTreeScenario?.NotSyncedTreeBuilder?.MetadataDb) ?? (_metadataDb ??= new MemDb());
 
         private MergeConfig _mergeConfig;
+
         public MergeConfig MergeConfig
         {
             get => _mergeConfig ??= new MergeConfig() { TerminalTotalDifficulty = "58750000000000000000000" }; // Main block downloader test assume pre-merge
@@ -384,6 +386,7 @@ public partial class BlockDownloaderTests
         public BeaconPivot BeaconPivot => _beaconPivot ??= new(new SyncConfig(), MetadataDb, BlockTree, LimboLogs.Instance);
 
         private PoSSwitcher? _posSwitcher = null;
+
         public PoSSwitcher PosSwitcher => _posSwitcher ??= new(
             MergeConfig,
             new SyncConfig(),
@@ -396,6 +399,7 @@ public partial class BlockDownloaderTests
             new MergeBetterPeerStrategy(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), PosSwitcher, BeaconPivot, LimboLogs.Instance);
 
         private IChainLevelHelper? _chainLevelHelper = null;
+
         public IChainLevelHelper ChainLevelHelper
         {
             get =>
@@ -408,6 +412,7 @@ public partial class BlockDownloaderTests
         }
 
         private MergeBlockDownloader? _mergeBlockDownloader;
+
         public override BlockDownloader BlockDownloader
         {
             get
