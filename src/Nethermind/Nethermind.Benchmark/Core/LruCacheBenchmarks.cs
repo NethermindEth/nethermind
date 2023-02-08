@@ -32,22 +32,5 @@ namespace Nethermind.Benchmarks.Core
                 }
             }
         }
-
-        [Benchmark(Baseline = true)]
-        public ICache<int, object> WithItems_Previous()
-        {
-            ICache<int, object> cache = new PreviousLruCache<int, object>(16, StartCapacity, string.Empty);
-            Fill(cache);
-
-            return cache;
-
-            void Fill(ICache<int, object> cache)
-            {
-                for (int j = 0; j < ItemsCount; j++)
-                {
-                    cache.Set(j, new object());
-                }
-            }
-        }
     }
 }

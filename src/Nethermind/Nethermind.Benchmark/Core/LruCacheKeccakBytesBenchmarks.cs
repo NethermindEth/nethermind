@@ -46,22 +46,5 @@ namespace Nethermind.Benchmarks.Core
                 }
             }
         }
-
-        [Benchmark(Baseline = true)]
-        public ICache<Keccak, byte[]> WithItems_Previous()
-        {
-            ICache<Keccak, byte[]> cache = new PreviousLruCache<Keccak, byte[]>(MaxCapacity, MaxCapacity, String.Empty);
-            Fill(cache);
-
-            return cache;
-
-            void Fill(ICache<Keccak, byte[]> cache)
-            {
-                for (int j = 0; j < ItemsCount; j++)
-                {
-                    cache.Set(Keys[j], Value);
-                }
-            }
-        }
     }
 }
