@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -27,7 +28,7 @@ namespace Nethermind.Facade.Test
         {
             _txPool = Substitute.For<ITxPool>();
             _txSigner = Substitute.For<ITxSigner>();
-            _nonceManager = Substitute.For<INonceManager>();
+            _nonceManager = new NonceManager(Substitute.For<IAccountStateProvider>());
             _ecdsa = Substitute.For<IEthereumEcdsa>();
             _txSender = new TxPoolSender(_txPool, new TxSealer(_txSigner, Timestamper.Default), _nonceManager, _ecdsa);
         }
