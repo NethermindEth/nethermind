@@ -7,7 +7,8 @@ namespace Nethermind.Network.Config
 {
     public interface INetworkConfig : IConfig
     {
-        public const int DefaultNettyArenaOrder = 11;
+        public const int DefaultNettyArenaOrder = -1;
+        public const int MaxNettyArenaOrder = 14;
         public const int DefaultMaxNettyArenaCount = 8;
 
         [ConfigItem(Description = "Use only if your node cannot resolve external IP automatically.", DefaultValue = "null")]
@@ -67,7 +68,7 @@ namespace Nethermind.Network.Config
         [ConfigItem(DefaultValue = "false", Description = "Enabled very verbose diag network tracing files for DEV purposes (Nethermind specific)")]
         bool DiagTracerEnabled { get; set; }
 
-        [ConfigItem(DefaultValue = "11", Description = "[TECHNICAL] Defines the size of a netty chunk size - default is 8192 << 11 so 16MB where order is 11, but will get overridden by memory hint if not specified.")]
+        [ConfigItem(DefaultValue = "-1", Description = "[TECHNICAL] Defines the size of a netty arena order. Default depends on memory hint.")]
         int NettyArenaOrder { get; set; }
 
         [ConfigItem(DefaultValue = "8", Description = "[TECHNICAL] Defines maximum netty arena count. Increasing this on high core machine without increasing memory budget may reduce chunk size so much that it causes significant netty huge allocation.")]

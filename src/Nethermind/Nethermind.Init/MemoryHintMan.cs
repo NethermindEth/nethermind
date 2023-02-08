@@ -370,8 +370,8 @@ namespace Nethermind.Init
             }
             else
             {
-                int targetNettyArenaOrder = INetworkConfig.DefaultNettyArenaOrder;
-                for (int i = networkConfig.NettyArenaOrder; i > 0; i--)
+                int targetNettyArenaOrder = INetworkConfig.MaxNettyArenaOrder;
+                for (int i = INetworkConfig.MaxNettyArenaOrder; i > 0; i--)
                 {
                     estimate = NettyMemoryEstimator.Estimate(arenaCount, i);
                     long maxAvailableFoNetty = NettyMemory;
