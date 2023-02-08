@@ -97,29 +97,6 @@ public class InitializeNetwork : IStep
             NetworkDiagTracer.Start(_api.LogManager);
         }
 
-        Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
-
-        // Arena count is capped because if its too high, the memory budget per arena can get too low causing
-        // a very small chunk size. Any allocation of size higher than a chunk will essentially be unpooled triggering LOH.
-        // For example, on 16C32T machine, the default arena count is 64. Goerli with its default 128MB budget will
-        // cause the chunk size to be 2 MB. Mainnet with its 383MB budget will cause the chunk size to be 4 MB (lower
-        // power of two from 5.9 MB).
-        //
-        // When a thread first try to allocate from the pooled byte buffer, a threadlocal is created and pick
-        // one of the many arena, binding the thread to it. So arena count is like sharding.
-        //
-        // An arena consist of a list of chunks. Usually only one remain most of the time per arena.
-        // Multiple allocation will share a chunk as long as there is enough space. If no chunk with enough space
-        // is available, a new chunk is created, triggering a LOH allocation. There are also a thread level cache,
-        // so a chunk usually is not immediately freed once buffer allocated to it is released.
-        //
-        // Heap arena frees a chunk by just dereferencing, leaving GC to take it later.
-        // Direct arena holds a pinned `GCHandle` per chunk and calls `GCHandle.Free` to release the chunk.
-        // We never use any direct arena, but it does not take up memory because of that.
-        uint arenaCount = Math.Min(_networkConfig.MaxNettyArenaCount, (uint)(Environment.ProcessorCount * 2));
-        Environment.SetEnvironmentVariable("io.netty.allocator.numHeapArenas", arenaCount.ToString());
-        Environment.SetEnvironmentVariable("io.netty.allocator.numDirectArenas", arenaCount.ToString());
-
         CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
         ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
