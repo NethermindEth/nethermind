@@ -1090,6 +1090,7 @@ namespace Nethermind.Synchronization.Test
             public SyncPeerMock(long chainLength, bool withReceipts, Response flags, bool withWithdrawals = false)
             {
                 _withReceipts = withReceipts;
+                _withWithdrawals = withWithdrawals;
                 Flags = flags;
                 BuildTree(chainLength, withReceipts);
             }
@@ -1097,6 +1098,7 @@ namespace Nethermind.Synchronization.Test
             public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty, bool withWithdrawals = false)
             {
                 _withReceipts = withReceipts;
+                _withWithdrawals = withWithdrawals;
                 Flags = flags;
                 BlockTree = blockTree;
                 HeadNumber = BlockTree.Head.Number;
