@@ -9,7 +9,6 @@ namespace Nethermind.TxPool;
 
 public interface INonceManager
 {
-    IDisposable ReserveNonce(Address address, out UInt256 nonce);
-    IDisposable TxWithNonceReceived(Address address, UInt256 nonce);
-    void TxAccepted(Address address);
+    NonceLocker ReserveNonce(Address address);
+    NonceLocker TxWithNonceReceived(Address address, UInt256 nonce);
 }

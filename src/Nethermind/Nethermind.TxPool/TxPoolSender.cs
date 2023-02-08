@@ -41,26 +41,26 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult SubmitTxWithNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            using IDisposable locker = _nonceManager.TxWithNonceReceived(tx.SenderAddress!, tx.Nonce);
-            return SubmitTx(tx, txHandlingOptions);
+            using NonceLocker locker = _nonceManager.TxWithNonceReceived(tx.SenderAddress!, tx.Nonce);
+            return SubmitTx(locker, tx, txHandlingOptions);
         }
 
         private AcceptTxResult SubmitTxWithManagedNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            using IDisposable locker = _nonceManager.ReserveNonce(tx.SenderAddress!, out UInt256 nonce);
+            using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!);
             txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
-            tx.Nonce = nonce;
-            return SubmitTx(tx, txHandlingOptions);
+            tx.Nonce = locker.ReservedNonce;
+            return SubmitTx(locker, tx, txHandlingOptions);
         }
 
-        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions)
+        private AcceptTxResult SubmitTx(NonceLocker locker, Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             _sealer.Seal(tx, txHandlingOptions);
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
 
             if (result == AcceptTxResult.Accepted)
             {
-                _nonceManager.TxAccepted(tx.SenderAddress!);
+                locker.Accept();
             }
 
             return result;

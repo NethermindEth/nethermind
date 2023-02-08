@@ -20,22 +20,14 @@ public class NonceManager : INonceManager
         _accounts = accounts;
     }
 
-    public IDisposable ReserveNonce(Address address, out UInt256 nonce)
+    public NonceLocker ReserveNonce(Address address)
     {
         AddressNonceManager addressNonceManager =
             _addressNonceManagers.GetOrAdd(address, _ => new AddressNonceManager());
-        return addressNonceManager.ReserveNonce(_accounts.GetAccount(address).Nonce, out nonce);
+        return addressNonceManager.ReserveNonce(_accounts.GetAccount(address).Nonce);
     }
 
-    public void TxAccepted(Address address)
-    {
-        if (_addressNonceManagers.TryGetValue(address, out AddressNonceManager? addressNonceManager))
-        {
-            addressNonceManager.TxAccepted();
-        }
-    }
-
-    public IDisposable TxWithNonceReceived(Address address, UInt256 nonce)
+    public NonceLocker TxWithNonceReceived(Address address, UInt256 nonce)
     {
         AddressNonceManager addressNonceManager =
             _addressNonceManagers.GetOrAdd(address, _ => new AddressNonceManager());
@@ -45,38 +37,30 @@ public class NonceManager : INonceManager
     private class AddressNonceManager
     {
         private readonly HashSet<UInt256> _usedNonces = new();
-        private UInt256 _reservedNonce;
         private UInt256 _currentNonce;
         private UInt256 _previousAccountNonce;
 
         private readonly SemaphoreSlim _accountLock = new(1);
 
-        public IDisposable ReserveNonce(UInt256 accountNonce, out UInt256 nonce)
+        public NonceLocker ReserveNonce(UInt256 accountNonce)
         {
-            IDisposable locker = new AccountLocker(_accountLock);
+            NonceLocker locker = new(_accountLock, _currentNonce, TxAccepted);
             ReleaseNonces(accountNonce);
             _currentNonce = UInt256.Max(_currentNonce, accountNonce);
-            _reservedNonce = _currentNonce;
-            nonce = _currentNonce;
 
             return locker;
         }
 
-        public void TxAccepted()
+        private void TxAccepted(UInt256 reservedNonce)
         {
-            _usedNonces.Add(_reservedNonce);
+            _usedNonces.Add(reservedNonce);
             while (_usedNonces.Contains(_currentNonce))
             {
                 _currentNonce++;
             }
         }
 
-        public IDisposable TxWithNonceReceived(UInt256 nonce)
-        {
-            IDisposable locker = new AccountLocker(_accountLock);
-            _reservedNonce = nonce;
-            return locker;
-        }
+        public NonceLocker TxWithNonceReceived(UInt256 nonce) => new(_accountLock, nonce, TxAccepted);
 
         private void ReleaseNonces(UInt256 accountNonce)
         {
@@ -86,40 +70,6 @@ public class NonceManager : INonceManager
             }
 
             _previousAccountNonce = accountNonce;
-        }
-    }
-
-    private class AccountLocker : IDisposable
-    {
-        private readonly SemaphoreSlim _accountLock;
-        private int _disposed;
-
-        public AccountLocker(SemaphoreSlim accountLock)
-        {
-            _accountLock = accountLock;
-            _accountLock.Wait();
-        }
-
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                if (Interlocked.Exchange(ref _disposed, 1) == 0)
-                {
-                    _accountLock.Release();
-                }
-            }
-        }
-
-        ~AccountLocker()
-        {
-            Dispose(true);
         }
     }
 }
