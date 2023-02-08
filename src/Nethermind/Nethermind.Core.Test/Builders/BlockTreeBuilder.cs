@@ -173,6 +173,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithParent(parent)
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong)splitVariant))
                     .WithBeneficiary(beneficiary)
+                    .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
                     .TestObject;
             }
 
