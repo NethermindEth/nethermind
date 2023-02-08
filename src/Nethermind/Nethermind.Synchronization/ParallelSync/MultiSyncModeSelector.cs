@@ -161,7 +161,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 else
                 {
                     Snapshot best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value, inBeaconControl);
-                    best.IsInBeaconHeaders = ShouldBeInBeaconHeaders(best);
+                    best.IsInBeaconHeaders = ShouldBeInBeaconHeaders();
 
                     if (!FastSyncEnabled)
                     {
@@ -336,7 +336,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return result;
         }
 
-        private bool ShouldBeInBeaconHeaders(Snapshot best)
+        private bool ShouldBeInBeaconHeaders()
         {
             return _beaconSyncStrategy.ShouldBeInBeaconHeaders() &&
                    !ShouldBeInUpdatingPivot();
