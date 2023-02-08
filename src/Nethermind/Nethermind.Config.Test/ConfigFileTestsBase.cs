@@ -61,10 +61,6 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> PoaCoreConfigs
             => Configs.Where(config => config.Contains("poacore"));
 
-        [ConfigFileGroup("sokol")]
-        protected IEnumerable<string> SokolConfigs
-            => Configs.Where(config => config.Contains("sokol"));
-
         [ConfigFileGroup("volta")]
         protected IEnumerable<string> VoltaConfigs
             => Configs.Where(config => config.Contains("volta"));
@@ -112,7 +108,6 @@ namespace Nethermind.Config.Test
         [ConfigFileGroup("aura")]
         protected IEnumerable<string> AuraConfigs
             => PoaCoreConfigs
-                .Union(SokolConfigs)
                 .Union(XDaiConfigs)
                 .Union(VoltaConfigs)
                 .Union(EnergyConfigs)

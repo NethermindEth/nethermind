@@ -192,7 +192,14 @@ namespace Nethermind.Evm
                             {
                                 if (currentState.ExecutionType.IsAnyCreate() && currentState.GasAvailable < codeDepositGasCost)
                                 {
-                                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                    if (spec.ChargeForTopLevelCreate)
+                                    {
+                                        _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                    }
+                                    else
+                                    {
+                                        _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output);
+                                    }
                                 }
                                 // Reject code starting with 0xEF if EIP-3541 is enabled.
                                 else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output))
