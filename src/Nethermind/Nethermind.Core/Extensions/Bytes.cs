@@ -43,6 +43,8 @@ namespace Nethermind.Core.Extensions
         {
             public override int Compare(byte[]? x, byte[]? y)
             {
+                if (ReferenceEquals(x, y)) return 0;
+
                 if (x is null)
                 {
                     return y is null ? 0 : 1;
@@ -77,6 +79,12 @@ namespace Nethermind.Core.Extensions
 
             public int Compare(Span<byte> x, Span<byte> y)
             {
+                if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
+                    x.Length == y.Length)
+                {
+                    return 0;
+                }
+
                 if (x.Length == 0)
                 {
                     return y.Length == 0 ? 0 : 1;
@@ -131,6 +139,12 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool AreEqual(Span<byte> a1, Span<byte> a2)
         {
+            if (Unsafe.AreSame(ref MemoryMarshal.GetReference(a1), ref MemoryMarshal.GetReference(a2)) &&
+                a1.Length == a2.Length)
+            {
+                return true;
+            }
+
             // this works for nulls
             return a1.SequenceEqual(a2);
         }

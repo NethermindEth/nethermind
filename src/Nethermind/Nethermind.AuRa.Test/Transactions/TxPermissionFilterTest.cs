@@ -263,7 +263,7 @@ namespace Nethermind.AuRa.Test.Transactions
             public PermissionBasedTxFilter PermissionBasedTxFilter { get; private set; }
             public PermissionBasedTxFilter.Cache TxPermissionFilterCache { get; private set; }
 
-            public ICache<Keccak, UInt256> TransactionPermissionContractVersions { get; private set; }
+            public LruCache<Keccak, UInt256> TransactionPermissionContractVersions { get; private set; }
 
             protected override BlockProcessor CreateBlockProcessor()
             {

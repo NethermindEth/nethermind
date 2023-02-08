@@ -3,199 +3,249 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
-namespace Nethermind.Core.Caching
+namespace Nethermind.Core.Caching;
+
+public sealed class MemCountingCache : ICache<KeccakKey, byte[]>
 {
-    /// <summary>
-    /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
-    /// </summary>
-    public class MemCountingCache : ICache<Keccak, byte[]>
+    private readonly int _maxCapacity;
+    private readonly Dictionary<KeccakKey, LinkedListNode<LruCacheItem>> _cacheMap;
+    private LinkedListNode<LruCacheItem>? _first;
+
+    private const int PreInitMemorySize =
+        48 /* LinkedList */ +
+        80 /* Dictionary */ +
+        MemorySizes.SmallObjectOverhead +
+        8 /* sizeof(int) aligned */;
+
+    private const int PostInitMemorySize =
+        52 /* lazy loaded dictionary.Items */ + PreInitMemorySize;
+
+    private const int DictionaryItemSize = 28;
+    private int _currentDictionaryCapacity;
+
+    public void Clear()
     {
-        private readonly int _maxCapacity;
-        private readonly Dictionary<Keccak, LinkedListNode<LruCacheItem>> _cacheMap;
-        private readonly LinkedList<LruCacheItem> _lruList;
+        _first = null;
+        _cacheMap?.Clear();
+    }
 
-        private const int PreInitMemorySize =
-            48 /* LinkedList */ +
-            80 /* Dictionary */ +
-            MemorySizes.SmallObjectOverhead +
-            8 /* sizeof(int) aligned */;
+    public MemCountingCache(int maxCapacity, int startCapacity, string name)
+    {
+        _maxCapacity = maxCapacity;
+        _cacheMap = new(startCapacity); // do not initialize it at the full capacity
+    }
 
-        private const int PostInitMemorySize =
-            52 /* lazy loaded dictionary.Items */ + PreInitMemorySize;
+    public MemCountingCache(int maxCapacity, string name)
+        : this(maxCapacity, 0, name)
+    {
+    }
 
-        private const int DictionaryItemSize = 28;
-        private int _currentDictionaryCapacity;
-
-        public void Clear()
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public byte[]? Get(KeccakKey key)
+    {
+        if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
         {
-            _cacheMap?.Clear();
-            _lruList?.Clear();
+            byte[] value = node.Value.Value;
+            MoveToLast(node);
+            return value;
         }
 
-        public MemCountingCache(int maxCapacity, int startCapacity, string name)
+        return default;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryGet(KeccakKey key, out byte[]? value)
+    {
+        if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
         {
-            _maxCapacity = maxCapacity;
-            _cacheMap = typeof(Keccak) == typeof(byte[])
-                ? new Dictionary<Keccak, LinkedListNode<LruCacheItem>>((IEqualityComparer<Keccak>)Bytes.EqualityComparer)
-                : new Dictionary<Keccak, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
-            _lruList = new LinkedList<LruCacheItem>();
+            value = node.Value.Value;
+            MoveToLast(node);
+            return true;
         }
 
-        public MemCountingCache(int maxCapacity, string name)
-            : this(maxCapacity, 0, name)
+        value = default;
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool Set(KeccakKey key, byte[]? val)
+    {
+        if (val is null)
         {
+            return Delete(key);
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public byte[]? Get(Keccak key)
+        if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
-            {
-                byte[] value = node.Value.Value;
-                _lruList.Remove(node);
-                _lruList.AddLast(node);
-                return value;
-            }
-
-            return default;
-        }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGet(Keccak key, out byte[]? value)
-        {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
-            {
-                value = node.Value.Value;
-                _lruList.Remove(node);
-                _lruList.AddLast(node);
-                return true;
-            }
-
-            value = default;
+            node.Value.Value = val;
+            MoveToLast(node);
             return false;
         }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Set(Keccak key, byte[]? val)
+        else
         {
-            if (val is null)
-            {
-                return Delete(key);
-            }
+            long cacheItemMemory = LruCacheItem.FindMemorySize(val);
+            int newCount = _cacheMap.Count + 1;
+            int capacityRemembered = _currentDictionaryCapacity;
+            long dictionaryNewMemory = CalculateDictionaryPartMemory(_currentDictionaryCapacity, newCount);
+            int initialGrowth = newCount == 1 ? PostInitMemorySize - PreInitMemorySize : 0;
+            long newMemorySize =
+                MemorySizes.Align(
+                    MemorySize +
+                    initialGrowth +
+                    dictionaryNewMemory +
+                    cacheItemMemory
+                );
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            if (newMemorySize <= _maxCapacity)
             {
-                node.Value.Value = val;
-                _lruList.Remove(node);
-                _lruList.AddLast(node);
-                return false;
+                MemorySize = newMemorySize;
+                LinkedListNode<LruCacheItem> newNode = new(new(key, val));
+                AddLast(newNode);
+                _cacheMap.Add(key, newNode);
             }
             else
             {
-                long cacheItemMemory = LruCacheItem.FindMemorySize(val);
-                int newCount = _lruList.Count + 1;
-                int capacityRemembered = _currentDictionaryCapacity;
-                long dictionaryNewMemory = CalculateDictionaryPartMemory(_currentDictionaryCapacity, newCount);
-                int initialGrowth = newCount == 1 ? PostInitMemorySize - PreInitMemorySize : 0;
-                long newMemorySize =
-                    MemorySizes.Align(
-                        MemorySize +
-                        initialGrowth +
-                        dictionaryNewMemory +
-                        cacheItemMemory
-                    );
-
-                if (newMemorySize <= _maxCapacity)
-                {
-                    MemorySize = newMemorySize;
-                    LruCacheItem cacheItem = new(key, val);
-                    LinkedListNode<LruCacheItem> newNode = new(cacheItem);
-                    _lruList.AddLast(newNode);
-                    _cacheMap.Add(key, newNode);
-                }
-                else
-                {
-                    _currentDictionaryCapacity = capacityRemembered;
-                    Replace(key, val);
-                }
-
-                return true;
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Delete(Keccak key)
-        {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
-            {
-                MemorySize -= node.Value.MemorySize;
-                _lruList.Remove(node);
-                _cacheMap.Remove(key);
-
-                return true;
+                _currentDictionaryCapacity = capacityRemembered;
+                Replace(key, val);
             }
 
-            return false;
+            return true;
         }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Contains(Keccak key) => _cacheMap.ContainsKey(key);
-
-        private void Replace(Keccak key, byte[] value)
-        {
-            LinkedListNode<LruCacheItem>? node = _lruList.First;
-
-            // ReSharper disable once PossibleNullReferenceException
-            MemorySize += MemorySizes.Align(value.Length) - MemorySizes.Align(node?.Value.Value.Length ?? 0);
-
-            _lruList.RemoveFirst();
-            _cacheMap.Remove(node!.Value.Key);
-
-            node.Value.Value = value;
-            node.Value.Key = key;
-            _lruList.AddLast(node);
-            _cacheMap.Add(key, node);
-        }
-
-        private class LruCacheItem
-        {
-            public LruCacheItem(Keccak k, byte[] v)
-            {
-                Key = k;
-                Value = v;
-            }
-
-            public Keccak Key;
-            public byte[] Value;
-
-            public long MemorySize => FindMemorySize(Value);
-
-            public static long FindMemorySize(byte[] withValue)
-            {
-                return MemorySizes.Align(
-                    Keccak.MemorySize +
-                    MemorySizes.ArrayOverhead +
-                    withValue.Length);
-            }
-        }
-
-        private long CalculateDictionaryPartMemory(int currentCapacity, int newCount)
-        {
-            int previousSize = _currentDictionaryCapacity * DictionaryItemSize;
-            int newSize = previousSize;
-            if (newCount > currentCapacity)
-            {
-                _currentDictionaryCapacity = MemorySizes.FindNextPrime(Math.Max(currentCapacity, 1) * 2);
-                newSize = _currentDictionaryCapacity * DictionaryItemSize;
-            }
-
-            return newSize - previousSize;
-        }
-
-        public long MemorySize { get; private set; } = PreInitMemorySize;
     }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool Delete(KeccakKey key)
+    {
+        if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+        {
+            MemorySize -= node.Value.MemorySize;
+            Remove(node);
+            _cacheMap.Remove(key);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool Contains(KeccakKey key) => _cacheMap.ContainsKey(key);
+
+    private void Replace(KeccakKey key, byte[] value)
+    {
+        LinkedListNode<LruCacheItem> node = _first!;
+        Debug.Assert(node != null);
+
+        // ReSharper disable once PossibleNullReferenceException
+        MemorySize += MemorySizes.Align(value.Length) - MemorySizes.Align(node.Value.Value.Length);
+
+        _cacheMap.Remove(node!.Value.Key);
+
+        node.Value = new(key, value);
+        MoveToLast(node);
+        _cacheMap.Add(key, node);
+    }
+
+    private void MoveToLast(LinkedListNode<LruCacheItem> node)
+    {
+        if (node.Next == node)
+        {
+            Debug.Assert(_cacheMap.Count == 1 && _first == node, "this should only be true for a list with only one node");
+            // Do nothing only one node
+        }
+        else
+        {
+            Remove(node);
+            AddLast(node);
+        }
+    }
+
+    private void AddLast(LinkedListNode<LruCacheItem> node)
+    {
+        if (_first is null)
+        {
+            SetFirst(node);
+        }
+        else
+        {
+            InsertLast(node);
+        }
+    }
+
+    private void InsertLast(LinkedListNode<LruCacheItem> newNode)
+    {
+        LinkedListNode<LruCacheItem> first = _first!;
+        newNode.Next = first;
+        newNode.Prev = first.Prev;
+        first.Prev!.Next = newNode;
+        first.Prev = newNode;
+    }
+
+    private void SetFirst(LinkedListNode<LruCacheItem> newNode)
+    {
+        Debug.Assert(_first is null && _cacheMap.Count == 0, "LinkedList must be empty when this method is called!");
+        newNode.Next = newNode;
+        newNode.Prev = newNode;
+        _first = newNode;
+    }
+
+    private void Remove(LinkedListNode<LruCacheItem> node)
+    {
+        Debug.Assert(_first is not null, "This method shouldn't be called on empty list!");
+        if (node.Next == node)
+        {
+            Debug.Assert(_cacheMap.Count == 1 && _first == node, "this should only be true for a list with only one node");
+            _first = null;
+        }
+        else
+        {
+            node.Next!.Prev = node.Prev;
+            node.Prev!.Next = node.Next;
+            if (_first == node)
+            {
+                _first = node.Next;
+            }
+        }
+    }
+
+    private struct LruCacheItem
+    {
+        public LruCacheItem(KeccakKey k, byte[] v)
+        {
+            Key = k;
+            Value = v;
+        }
+
+        public readonly KeccakKey Key;
+        public byte[] Value;
+
+        public long MemorySize => FindMemorySize(Value);
+
+        public static long FindMemorySize(byte[] withValue)
+        {
+            return MemorySizes.Align(
+                Keccak.MemorySize +
+                MemorySizes.ArrayOverhead +
+                withValue.Length);
+        }
+    }
+
+    private long CalculateDictionaryPartMemory(int currentCapacity, int newCount)
+    {
+        int previousSize = _currentDictionaryCapacity * DictionaryItemSize;
+        int newSize = previousSize;
+        if (newCount > currentCapacity)
+        {
+            _currentDictionaryCapacity = MemorySizes.FindNextPrime(Math.Max(currentCapacity, 1) * 2);
+            newSize = _currentDictionaryCapacity * DictionaryItemSize;
+        }
+
+        return newSize - previousSize;
+    }
+
+    public long MemorySize { get; private set; } = PreInitMemorySize;
 }

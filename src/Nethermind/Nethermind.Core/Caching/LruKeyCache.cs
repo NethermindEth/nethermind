@@ -3,121 +3,175 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Core.Caching
+namespace Nethermind.Core.Caching;
+
+public sealed class LruKeyCache<TKey> where TKey : notnull
 {
-    /// <summary>
-    /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
-    /// </summary>
-    public class LruKeyCache<TKey> where TKey : notnull
+    private readonly int _maxCapacity;
+    private readonly string _name;
+    private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
+    private LinkedListNode<TKey>? _first;
+
+    public LruKeyCache(int maxCapacity, int startCapacity, string name)
     {
-        private readonly int _maxCapacity;
-        private readonly string _name;
-        private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
-        private readonly LinkedList<TKey> _lruList;
+        _maxCapacity = maxCapacity;
+        _name = name ?? throw new ArgumentNullException(nameof(name));
+        _cacheMap = typeof(TKey) == typeof(byte[])
+            ? new Dictionary<TKey, LinkedListNode<TKey>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
+            : new Dictionary<TKey, LinkedListNode<TKey>>(startCapacity); // do not initialize it at the full capacity
+    }
 
-        public LruKeyCache(int maxCapacity, int startCapacity, string name)
+    public LruKeyCache(int maxCapacity, string name)
+        : this(maxCapacity, 0, name)
+    {
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public void Clear()
+    {
+        _first = null;
+        _cacheMap.Clear();
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool Get(TKey key)
+    {
+        if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
         {
-            _maxCapacity = maxCapacity;
-            _name = name ?? throw new ArgumentNullException(nameof(name));
-            _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<TKey>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : new Dictionary<TKey, LinkedListNode<TKey>>(startCapacity); // do not initialize it at the full capacity
-            _lruList = new LinkedList<TKey>();
+            MoveToLast(node);
+            return true;
         }
 
-        public LruKeyCache(int maxCapacity, string name)
-            : this(maxCapacity, 0, name)
-        {
-        }
+        return false;
+    }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Clear()
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool Set(TKey key)
+    {
+        if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
         {
-            _cacheMap.Clear();
-            _lruList.Clear();
-        }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Get(TKey key)
-        {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
-            {
-                _lruList.Remove(node);
-                _lruList.AddLast(node);
-                return true;
-            }
-
+            MoveToLast(node);
             return false;
         }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Set(TKey key)
+        else
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
+            if (_cacheMap.Count >= _maxCapacity)
             {
-                _lruList.Remove(node);
-                _lruList.AddLast(node);
-                return false;
+                Replace(key);
             }
             else
             {
-                if (_cacheMap.Count >= _maxCapacity)
-                {
-                    Replace(key);
-                }
-                else
-                {
-                    LinkedListNode<TKey> newNode = new(key);
-                    _lruList.AddLast(newNode);
-                    _cacheMap.Add(key, newNode);
-                }
-
-                return true;
+                LinkedListNode<TKey> newNode = new(key);
+                AddLast(newNode);
+                _cacheMap.Add(key, newNode);
             }
-        }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Delete(TKey key)
+            return true;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public void Delete(TKey key)
+    {
+        if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
+            Remove(node);
+            _cacheMap.Remove(key);
+        }
+    }
+
+    private void MoveToLast(LinkedListNode<TKey> node)
+    {
+        if (node.Next == node)
+        {
+            Debug.Assert(_cacheMap.Count == 1 && _first == node, "this should only be true for a list with only one node");
+            // Do nothing only one node
+        }
+        else
+        {
+            Remove(node);
+            AddLast(node);
+        }
+    }
+
+    private void AddLast(LinkedListNode<TKey> node)
+    {
+        if (_first is null)
+        {
+            SetFirst(node);
+        }
+        else
+        {
+            InsertLast(node);
+        }
+    }
+
+    private void InsertLast(LinkedListNode<TKey> newNode)
+    {
+        LinkedListNode<TKey> first = _first!;
+        newNode.Next = first;
+        newNode.Prev = first.Prev;
+        first.Prev!.Next = newNode;
+        first.Prev = newNode;
+    }
+
+    private void SetFirst(LinkedListNode<TKey> newNode)
+    {
+        Debug.Assert(_first is null && _cacheMap.Count == 0, "LinkedList must be empty when this method is called!");
+        newNode.Next = newNode;
+        newNode.Prev = newNode;
+        _first = newNode;
+    }
+
+    private void Remove(LinkedListNode<TKey> node)
+    {
+        Debug.Assert(_first is not null, "This method shouldn't be called on empty list!");
+        if (node.Next == node)
+        {
+            Debug.Assert(_cacheMap.Count == 1 && _first == node, "this should only be true for a list with only one node");
+            _first = null;
+        }
+        else
+        {
+            node.Next!.Prev = node.Prev;
+            node.Prev!.Next = node.Next;
+            if (_first == node)
             {
-                _lruList.Remove(node);
-                _cacheMap.Remove(key);
+                _first = node.Next;
             }
         }
+    }
 
-        private void Replace(TKey key)
+    private void Replace(TKey key)
+    {
+        // TODO: some potential null ref issue here?
+
+        LinkedListNode<TKey>? node = _first;
+        if (node is null)
         {
-            // TODO: some potential null ref issue here?
-
-            LinkedListNode<TKey>? node = _lruList.First;
-            if (node is null)
-            {
-                throw new InvalidOperationException(
-                    $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
-            }
-
-            _lruList.RemoveFirst();
-            _cacheMap.Remove(node.Value);
-
-            node.Value = key;
-            _lruList.AddLast(node);
-            _cacheMap.Add(node.Value, node);
+            throw new InvalidOperationException(
+                $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
         }
 
-        public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);
+        _cacheMap.Remove(node.Value);
+        node.Value = key;
+        MoveToLast(node);
+        _cacheMap.Add(key, node);
+    }
 
-        // TODO: memory size on the KeyCache will be smaller because we do not create LruCacheItems
-        public static long CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
-        {
-            // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
+    public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);
 
-            const int preInit = 48 /* LinkedList */ + 80 /* Dictionary */ + 24;
-            int postInit = 52 /* lazy init of two internal dictionary arrays + dictionary size times (entry size + int) */ + MemorySizes.FindNextPrime(currentItemsCount) * 28 + currentItemsCount * 80 /* LinkedListNode and CacheItem times items count */;
-            return MemorySizes.Align(preInit + postInit + keyPlusValueSize * currentItemsCount);
-        }
+    // TODO: memory size on the KeyCache will be smaller because we do not create LruCacheItems
+    public static long CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
+    {
+        // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
+
+        const int preInit = 48 /* LinkedList */ + 80 /* Dictionary */ + 24;
+        int postInit = 52 /* lazy init of two internal dictionary arrays + dictionary size times (entry size + int) */ + MemorySizes.FindNextPrime(currentItemsCount) * 28 + currentItemsCount * 80 /* LinkedListNode and CacheItem times items count */;
+        return MemorySizes.Align(preInit + postInit + keyPlusValueSize * currentItemsCount);
     }
 }
