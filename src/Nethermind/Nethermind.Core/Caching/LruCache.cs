@@ -14,7 +14,7 @@ public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : n
 {
     private readonly int _maxCapacity;
     private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
-    private LinkedListNode<LruCacheItem>? _first;
+    private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
     public LruCache(int maxCapacity, int startCapacity, string name)
     {
@@ -37,7 +37,7 @@ public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : n
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void Clear()
     {
-        _first = null;
+        _leastRecentlyUsed = null;
         _cacheMap.Clear();
     }
 
@@ -47,7 +47,7 @@ public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : n
         if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
         {
             TValue value = node.Value.Value;
-            MoveToLast(node);
+            MoveToMostRecent(node);
             return value;
         }
 
@@ -63,7 +63,7 @@ public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : n
         if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
         {
             value = node.Value.Value;
-            MoveToLast(node);
+            MoveToMostRecent(node);
             return true;
         }
 
@@ -85,7 +85,7 @@ public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : n
         if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
         {
             node.Value.Value = val;
-            MoveToLast(node);
+            MoveToMostRecent(node);
             return false;
         }
         else
@@ -97,7 +97,7 @@ public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : n
             else
             {
                 LinkedListNode<LruCacheItem> newNode = new(new(key, val));
-                AddLast(newNode);
+                AddMostRecent(newNode);
                 _cacheMap.Add(key, newNode);
             }
 
@@ -126,50 +126,49 @@ public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : n
 
     private void Replace(TKey key, TValue value)
     {
-        LinkedListNode<LruCacheItem>? node = _first;
+        LinkedListNode<LruCacheItem>? node = _leastRecentlyUsed;
         if (node is null)
         {
             throw new InvalidOperationException(
                 $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
         }
 
-        Remove(node);
         _cacheMap.Remove(node!.Value.Key);
 
         node.Value = new(key, value);
-        AddLast(node);
+        MoveToMostRecent(node);
         _cacheMap.Add(key, node);
     }
 
-    private void MoveToLast(LinkedListNode<LruCacheItem> node)
+    private void MoveToMostRecent(LinkedListNode<LruCacheItem> node)
     {
         if (node.Next == node)
         {
-            Debug.Assert(_cacheMap.Count == 1 && _first == node, "this should only be true for a list with only one node");
+            Debug.Assert(_cacheMap.Count == 1 && _leastRecentlyUsed == node, "this should only be true for a list with only one node");
             // Do nothing only one node
         }
         else
         {
             Remove(node);
-            AddLast(node);
+            AddMostRecent(node);
         }
     }
 
-    private void AddLast(LinkedListNode<LruCacheItem> node)
+    private void AddMostRecent(LinkedListNode<LruCacheItem> node)
     {
-        if (_first is null)
+        if (_leastRecentlyUsed is null)
         {
             SetFirst(node);
         }
         else
         {
-            InsertLast(node);
+            InsertMostRecent(node);
         }
     }
 
-    private void InsertLast(LinkedListNode<LruCacheItem> newNode)
+    private void InsertMostRecent(LinkedListNode<LruCacheItem> newNode)
     {
-        LinkedListNode<LruCacheItem> first = _first!;
+        LinkedListNode<LruCacheItem> first = _leastRecentlyUsed!;
         newNode.Next = first;
         newNode.Prev = first.Prev;
         first.Prev!.Next = newNode;
@@ -178,27 +177,27 @@ public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : n
 
     private void SetFirst(LinkedListNode<LruCacheItem> newNode)
     {
-        Debug.Assert(_first is null && _cacheMap.Count == 0, "LinkedList must be empty when this method is called!");
+        Debug.Assert(_leastRecentlyUsed is null && _cacheMap.Count == 0, "LinkedList must be empty when this method is called!");
         newNode.Next = newNode;
         newNode.Prev = newNode;
-        _first = newNode;
+        _leastRecentlyUsed = newNode;
     }
 
     private void Remove(LinkedListNode<LruCacheItem> node)
     {
-        Debug.Assert(_first is not null, "This method shouldn't be called on empty list!");
+        Debug.Assert(_leastRecentlyUsed is not null, "This method shouldn't be called on empty list!");
         if (node.Next == node)
         {
-            Debug.Assert(_cacheMap.Count == 1 && _first == node, "this should only be true for a list with only one node");
-            _first = null;
+            Debug.Assert(_cacheMap.Count == 1 && _leastRecentlyUsed == node, "this should only be true for a list with only one node");
+            _leastRecentlyUsed = null;
         }
         else
         {
             node.Next!.Prev = node.Prev;
             node.Prev!.Next = node.Next;
-            if (_first == node)
+            if (_leastRecentlyUsed == node)
             {
-                _first = node.Next;
+                _leastRecentlyUsed = node.Next;
             }
         }
     }
