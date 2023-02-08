@@ -344,7 +344,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInUpdatingPivot()
         {
-            bool updateRequestedAndNotFinished = _syncConfig.UpdatePivotFromCl;
+            bool updateRequestedAndNotFinished = _syncConfig.MaxAttemptsToUpdatePivot > 0;
             bool isPostMerge = _beaconSyncStrategy.GetFinalizedHash() != null;
 
             return updateRequestedAndNotFinished &&

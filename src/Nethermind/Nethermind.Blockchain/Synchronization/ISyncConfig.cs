@@ -60,8 +60,8 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         Keccak PivotHashParsed => PivotHash is null ? null : new Keccak(Bytes.FromHexString(PivotHash));
 
-        [ConfigItem(Description = "If set to 'true' then pivot block would be set based on Forkchoice message from Consensus Layer. Only for PoS chains.", DefaultValue = "false")]
-        bool UpdatePivotFromCl { get; set; }
+        [ConfigItem(Description = "Max number of attempts to update pivot block basing on Forkchoice message from Consensus Layer. Only for PoS chains.", DefaultValue = "0")]
+        int MaxAttemptsToUpdatePivot { get; set; }
 
         [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest body downloaded in fast sync when DownloadBodiesInFastSync is enabled. Actual values used will be Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier))", DefaultValue = "0")]
         public long AncientBodiesBarrier { get; set; }

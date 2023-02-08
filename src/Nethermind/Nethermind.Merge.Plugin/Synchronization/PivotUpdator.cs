@@ -26,6 +26,7 @@ public class PivotUpdator
 
     private readonly CancellationTokenSource _cancellation = new();
 
+    private int _attemptsLeft;
     private long _updateInProgress;
     private Keccak _alreadyAnnouncedNewPivotHash = Keccak.Zero;
 
@@ -43,6 +44,7 @@ public class PivotUpdator
         _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
         _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
+        _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
         _syncModeSelector.Changed += OnSyncModeChanged;
     }
 
@@ -55,9 +57,15 @@ public class PivotUpdator
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
             }
-            else
+            else if (_attemptsLeft-- > 0)
             {
                 Interlocked.Decrement(ref _updateInProgress);
+            }
+            else
+            {
+                _syncModeSelector.Changed -= OnSyncModeChanged;
+                _syncConfig.MaxAttemptsToUpdatePivot = 0;
+                _logger.Error("Failed to update pivot block, skipping it.");
             }
         }
     }
@@ -83,7 +91,7 @@ public class PivotUpdator
 
         if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
         {
-            if (_logger.IsInfo) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block");
+            if (_logger.IsInfo) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block. {_attemptsLeft} attempts left");
 
             return null;
         }
@@ -143,7 +151,7 @@ public class PivotUpdator
         {
             _syncConfig.PivotHash = finalizedBlockHash.ToString();
             _syncConfig.PivotNumber = finalizedBlockNumber.ToString();
-            _syncConfig.UpdatePivotFromCl = false;
+            _syncConfig.MaxAttemptsToUpdatePivot = 0;
             if (_logger.IsWarn) _logger.Warn($"New pivot block has been set based on FCU from CL. Pivot block number: {finalizedBlockNumber}, hash: {finalizedBlockHash}");
             return true;
         }
