@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 
@@ -42,7 +43,7 @@ namespace Nethermind.Core.Caching
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
-                MoveToMostRecent(node);
+                LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
                 return true;
             }
 
@@ -54,7 +55,7 @@ namespace Nethermind.Core.Caching
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
-                MoveToMostRecent(node);
+                LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
                 return false;
             }
             else
@@ -66,7 +67,7 @@ namespace Nethermind.Core.Caching
                 else
                 {
                     LinkedListNode<TKey> newNode = new(key);
-                    AddMostRecent(newNode);
+                    LinkedListNode<TKey>.AddMostRecent(ref _leastRecentlyUsed, newNode);
                     _cacheMap.Add(key, newNode);
                 }
 
@@ -79,88 +80,30 @@ namespace Nethermind.Core.Caching
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
-                Remove(node);
+                LinkedListNode<TKey>.Remove(ref _leastRecentlyUsed, node);
                 _cacheMap.Remove(key);
-            }
-        }
-
-        private void MoveToMostRecent(LinkedListNode<TKey> node)
-        {
-            if (node.Next == node)
-            {
-                Debug.Assert(_cacheMap.Count == 1 && _leastRecentlyUsed == node, "this should only be true for a list with only one node");
-                // Do nothing only one node
-            }
-            else
-            {
-                Remove(node);
-                AddMostRecent(node);
-            }
-        }
-
-        private void AddMostRecent(LinkedListNode<TKey> node)
-        {
-            if (_leastRecentlyUsed is null)
-            {
-                SetFirst(node);
-            }
-            else
-            {
-                InsertMostRecent(node);
-            }
-        }
-
-        private void InsertMostRecent(LinkedListNode<TKey> newNode)
-        {
-            LinkedListNode<TKey> first = _leastRecentlyUsed!;
-            newNode.Next = first;
-            newNode.Prev = first.Prev;
-            first.Prev!.Next = newNode;
-            first.Prev = newNode;
-        }
-
-        private void SetFirst(LinkedListNode<TKey> newNode)
-        {
-            Debug.Assert(_leastRecentlyUsed is null && _cacheMap.Count == 0, "LinkedList must be empty when this method is called!");
-            newNode.Next = newNode;
-            newNode.Prev = newNode;
-            _leastRecentlyUsed = newNode;
-        }
-
-        private void Remove(LinkedListNode<TKey> node)
-        {
-            Debug.Assert(_leastRecentlyUsed is not null, "This method shouldn't be called on empty list!");
-            if (node.Next == node)
-            {
-                Debug.Assert(_cacheMap.Count == 1 && _leastRecentlyUsed == node, "this should only be true for a list with only one node");
-                _leastRecentlyUsed = null;
-            }
-            else
-            {
-                node.Next!.Prev = node.Prev;
-                node.Prev!.Next = node.Next;
-                if (_leastRecentlyUsed == node)
-                {
-                    _leastRecentlyUsed = node.Next;
-                }
             }
         }
 
         private void Replace(TKey key)
         {
-            // TODO: some potential null ref issue here?
-
             LinkedListNode<TKey>? node = _leastRecentlyUsed;
             if (node is null)
             {
-                throw new InvalidOperationException(
-                    $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
+                ThrowInvalidOperation();
             }
 
             _cacheMap.Remove(node.Value);
             node.Value = key;
-            MoveToMostRecent(node);
+            LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
             _cacheMap.Add(key, node);
+
+            [DoesNotReturn]
+            static void ThrowInvalidOperation()
+            {
+                throw new InvalidOperationException(
+                                    $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
+            }
         }
 
         public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);

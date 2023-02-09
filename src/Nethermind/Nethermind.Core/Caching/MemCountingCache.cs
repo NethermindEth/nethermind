@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 
@@ -50,7 +50,7 @@ namespace Nethermind.Core.Caching
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 byte[] value = node.Value.Value;
-                MoveToMostRecent(node);
+                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
                 return value;
             }
 
@@ -63,7 +63,7 @@ namespace Nethermind.Core.Caching
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 value = node.Value.Value;
-                MoveToMostRecent(node);
+                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
                 return true;
             }
 
@@ -82,7 +82,7 @@ namespace Nethermind.Core.Caching
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 node.Value.Value = val;
-                MoveToMostRecent(node);
+                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
                 return false;
             }
             else
@@ -104,7 +104,7 @@ namespace Nethermind.Core.Caching
                 {
                     MemorySize = newMemorySize;
                     LinkedListNode<LruCacheItem> newNode = new(new(key, val));
-                    AddMostRecent(newNode);
+                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
                     _cacheMap.Add(key, newNode);
                 }
                 else
@@ -123,7 +123,7 @@ namespace Nethermind.Core.Caching
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 MemorySize -= node.Value.MemorySize;
-                Remove(node);
+                LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
                 _cacheMap.Remove(key);
 
                 return true;
@@ -138,7 +138,10 @@ namespace Nethermind.Core.Caching
         private void Replace(KeccakKey key, byte[] value)
         {
             LinkedListNode<LruCacheItem> node = _leastRecentlyUsed!;
-            Debug.Assert(node != null);
+            if (node is null)
+            {
+                ThrowInvalidOperation();
+            }
 
             // ReSharper disable once PossibleNullReferenceException
             MemorySize += MemorySizes.Align(value.Length) - MemorySizes.Align(node.Value.Value.Length);
@@ -146,69 +149,14 @@ namespace Nethermind.Core.Caching
             _cacheMap.Remove(node!.Value.Key);
 
             node.Value = new(key, value);
-            MoveToMostRecent(node);
+            LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
             _cacheMap.Add(key, node);
-        }
 
-        private void MoveToMostRecent(LinkedListNode<LruCacheItem> node)
-        {
-            if (node.Next == node)
+            [DoesNotReturn]
+            static void ThrowInvalidOperation()
             {
-                Debug.Assert(_cacheMap.Count == 1 && _leastRecentlyUsed == node, "this should only be true for a list with only one node");
-                // Do nothing only one node
-            }
-            else
-            {
-                Remove(node);
-                AddMostRecent(node);
-            }
-        }
-
-        private void AddMostRecent(LinkedListNode<LruCacheItem> node)
-        {
-            if (_leastRecentlyUsed is null)
-            {
-                SetFirst(node);
-            }
-            else
-            {
-                InsertMostRecent(node);
-            }
-        }
-
-        private void InsertMostRecent(LinkedListNode<LruCacheItem> newNode)
-        {
-            LinkedListNode<LruCacheItem> first = _leastRecentlyUsed!;
-            newNode.Next = first;
-            newNode.Prev = first.Prev;
-            first.Prev!.Next = newNode;
-            first.Prev = newNode;
-        }
-
-        private void SetFirst(LinkedListNode<LruCacheItem> newNode)
-        {
-            Debug.Assert(_leastRecentlyUsed is null && _cacheMap.Count == 0, "LinkedList must be empty when this method is called!");
-            newNode.Next = newNode;
-            newNode.Prev = newNode;
-            _leastRecentlyUsed = newNode;
-        }
-
-        private void Remove(LinkedListNode<LruCacheItem> node)
-        {
-            Debug.Assert(_leastRecentlyUsed is not null, "This method shouldn't be called on empty list!");
-            if (node.Next == node)
-            {
-                Debug.Assert(_cacheMap.Count == 1 && _leastRecentlyUsed == node, "this should only be true for a list with only one node");
-                _leastRecentlyUsed = null;
-            }
-            else
-            {
-                node.Next!.Prev = node.Prev;
-                node.Prev!.Next = node.Next;
-                if (_leastRecentlyUsed == node)
-                {
-                    _leastRecentlyUsed = node.Next;
-                }
+                throw new InvalidOperationException(
+                                    $"{nameof(MemCountingCache)} called {nameof(Replace)} when empty.");
             }
         }
 
