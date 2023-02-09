@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (_pivotNumber != _syncConfig.PivotNumberParsed)
             {
                 _pivotNumber = _syncConfig.PivotNumberParsed;
-                if (_logger.IsInfo) _logger.Error($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
+                if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
             }
 
