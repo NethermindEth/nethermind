@@ -43,6 +43,7 @@ public class TestBlockchain : IDisposable
     public const int DefaultTimeout = 4000;
     public IStateReader StateReader { get; private set; } = null!;
     public IEthereumEcdsa EthereumEcdsa { get; private set; } = null!;
+    public INonceManager NonceManager { get; private set; } = null!;
     public TransactionProcessor TxProcessor { get; set; } = null!;
     public IStorageProvider Storage { get; set; } = null!;
     public IReceiptStorage ReceiptStorage { get; set; } = null!;
@@ -141,6 +142,11 @@ public class TestBlockchain : IDisposable
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
         TxPool = CreateTxPool();
+
+        IChainHeadInfoProvider chainHeadInfoProvider =
+            new ChainHeadInfoProvider(SpecProvider, BlockTree, StateReader);
+
+        NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
 
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(TrieStore, BlockTree, LogManager);
 
