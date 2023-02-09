@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using NUnit.Framework;
 
@@ -92,6 +93,29 @@ namespace Nethermind.Trie.Test
             byte[] bytes = Enumerable.Repeat((byte)17, 32).ToArray();
             byte[] result = Nibbles.ToBytes(nibbles);
             CollectionAssert.AreEqual(bytes, result);
+        }
+
+        [Test]
+        public void Nibbles_to_encoded_bytes_correct_output()
+        {
+            byte[] nibbles = Enumerable.Repeat((byte)1, 64).ToArray();
+            byte[] bytes = Enumerable.Repeat((byte)17, 32).ToArray();
+            byte[] result = Nibbles.ToEncodedStorageBytes(nibbles);
+
+            //encoded / even
+            Assert.AreEqual(0xfe, result[0]);
+            CollectionAssert.AreEqual(bytes, result.AsSpan(1).ToArray());
+
+            byte[] nibbles2 = Enumerable.Repeat((byte)1, 5).ToArray();
+            var rawBytes = Enumerable.Repeat((byte)17, 2).ToList();
+            rawBytes.Insert(0, 1);
+            byte[] bytes2 = rawBytes.ToArray();
+
+            byte[] result2 = Nibbles.ToEncodedStorageBytes(nibbles2);
+
+            //encoded / odd
+            Assert.AreEqual(0xff, result2[0]);
+            CollectionAssert.AreEqual(bytes2, result2.AsSpan(1).ToArray());
         }
     }
 }

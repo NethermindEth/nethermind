@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Benchmark
             stateProvider.CommitTree(0);
 
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
-            StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
+            StateReader stateReader = new(trieStore, new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
 
             ChainLevelInfoRepository chainLevelInfoRepository = new(blockInfoDb);
             BlockTree blockTree = new(dbProvider, chainLevelInfoRepository, specProvider, NullBloomStorage.Instance, LimboLogs.Instance);

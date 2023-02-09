@@ -134,7 +134,7 @@ namespace Nethermind.Core.Test.Blockchain
             State.CommitTree(0);
 
             ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
-            StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
+            StateReader = new StateReader(ReadOnlyTrieStore, ReadOnlyTrieStore, CodeDb, LogManager);
 
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
