@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -131,6 +132,12 @@ namespace Nethermind.Trie.Pruning
             private ConcurrentDictionary<long, ConcurrentDictionary<byte[], TrieNode>> _leafNodesByBlock = new();
             private ConcurrentDictionary<Keccak, long> _rootHashToBlock = new();
             private Tuple<long, Keccak> latestBlock;
+            private int _maxNumberOfBlocks;
+
+            public LeafHistory(int maxNumberOfBlocks)
+            {
+                _maxNumberOfBlocks = maxNumberOfBlocks;
+            }
 
             public TrieNode? GetLeafNode(byte[] path)
             {
@@ -152,12 +159,20 @@ namespace Nethermind.Trie.Pruning
 
             public void AddNode(long blockNo, TrieNode node)
             {
+                if (_maxNumberOfBlocks == 0)
+                    return;
+
                 if (!_leafNodesByBlock.TryGetValue(blockNo, out ConcurrentDictionary<byte[], TrieNode> leafDictionary))
                 {
+                    if (_leafNodesByBlock.Keys.Count >= _maxNumberOfBlocks)
+                    {
+                        long minVal = _leafNodesByBlock.Keys.Min();
+                        _leafNodesByBlock.TryRemove(minVal, out _);
+                    }
                     leafDictionary = new(Bytes.EqualityComparer);
                     _leafNodesByBlock[blockNo] = leafDictionary;
                 }
-                leafDictionary.TryAdd(node.FullPath, node);
+                leafDictionary?.TryAdd(node.FullPath, node);
             }
 
             public void SetRootHashForBlock(long blockNo, Keccak? rootHash)
@@ -177,7 +192,7 @@ namespace Nethermind.Trie.Pruning
         private IBatch? _currentBatch = null;
 
         private readonly DirtyNodesCache _dirtyNodes;
-        private readonly LeafHistory _leafHistory;
+        private readonly LeafHistory? _leafHistory;
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -192,14 +207,16 @@ namespace Nethermind.Trie.Pruning
             IKeyValueStoreWithBatching? keyValueStore,
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            int maxLeafCacheSize = 128)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
-            _leafHistory = new LeafHistory();
+            if (maxLeafCacheSize > 0)
+                _leafHistory = new LeafHistory(maxLeafCacheSize);
         }
 
         public long LastPersistedBlockNumber
@@ -384,8 +401,8 @@ namespace Nethermind.Trie.Pruning
         internal byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Keccak rootHash = null)
         {
             TrieNode? node = rootHash is not null ?
-                _leafHistory.GetLeafNode(rootHash, path.ToArray()) :
-                _leafHistory.GetLeafNode(path.ToArray());
+                _leafHistory?.GetLeafNode(rootHash, path.ToArray()) :
+                _leafHistory?.GetLeafNode(path.ToArray());
 
             if (node is not null)
                 return node.FullRlp;
@@ -718,7 +735,7 @@ namespace Nethermind.Trie.Pruning
                 if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
                 LastPersistedBlockNumber = commitSet.BlockNumber;
-                _leafHistory.SetRootHashForBlock(commitSet.BlockNumber, commitSet.Root?.Keccak);
+                _leafHistory?.SetRootHashForBlock(commitSet.BlockNumber, commitSet.Root?.Keccak);
             }
             finally
             {
@@ -755,7 +772,7 @@ namespace Nethermind.Trie.Pruning
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
 
                 if (currentNode.IsLeaf)
-                    _leafHistory.AddNode(blockNumber, currentNode);
+                    _leafHistory?.AddNode(blockNumber, currentNode);
 
                 PersistedNodesCount++;
             }

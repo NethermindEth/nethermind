@@ -35,7 +35,8 @@ namespace Nethermind.Synchronization.SnapSync
                 _dbProvider.StateDb,
                 Trie.Pruning.No.Pruning,
                 Persist.EveryBlock,
-                logManager);
+                logManager,
+                0);
             _store = new TrieStore(
                 _dbProvider.StateDb,
                 Trie.Pruning.No.Pruning,
