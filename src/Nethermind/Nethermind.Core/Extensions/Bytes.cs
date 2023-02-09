@@ -841,38 +841,29 @@ namespace Nethermind.Core.Extensions
             return leadingZeros;
         }
 
-        private static byte[] FromHexNibble1Table =
-        {
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 0, 16,
-            32, 48, 64, 80, 96, 112, 128, 144, 255, 255,
-            255, 255, 255, 255, 255, 160, 176, 192, 208, 224,
-            240, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 160, 176, 192,
-            208, 224, 240
-        };
-
-        private static byte[] FromHexNibble2Table =
-        {
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 0, 1,
-            2, 3, 4, 5, 6, 7, 8, 9, 255, 255,
-            255, 255, 255, 255, 255, 10, 11, 12, 13, 14,
-            15, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 10, 11, 12,
-            13, 14, 15
-        };
-
         [DebuggerStepThrough]
         public static byte[] FromHexString(string hexString)
+        {
+            if (hexString is null)
+            {
+                throw new ArgumentNullException($"{nameof(hexString)}");
+            }
+
+            int start = hexString is ['0', 'x', ..] ? 2 : 0;
+            ReadOnlySpan<char> chars = hexString.AsSpan(start);
+
+            if (chars.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int oddMod = hexString.Length % 2;
+            byte[] result = GC.AllocateUninitializedArray<byte>((chars.Length >> 1) + oddMod);
+            return HexConverter.TryDecodeFromUtf16(chars, result, oddMod == 1) ? result : throw new FormatException("Incorrect hex string");
+        }
+
+        [DebuggerStepThrough]
+        public static byte[] FromHexStringOld(string hexString)
         {
             if (hexString is null)
             {
@@ -903,6 +894,36 @@ namespace Nethermind.Core.Extensions
 
             return bytes;
         }
+
+        private static byte[] FromHexNibble1Table =
+        {
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 0, 16,
+            32, 48, 64, 80, 96, 112, 128, 144, 255, 255,
+            255, 255, 255, 255, 255, 160, 176, 192, 208, 224,
+            240, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 160, 176, 192,
+            208, 224, 240
+        };
+
+        private static byte[] FromHexNibble2Table =
+        {
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 0, 1,
+            2, 3, 4, 5, 6, 7, 8, 9, 255, 255,
+            255, 255, 255, 255, 255, 10, 11, 12, 13, 14,
+            15, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 10, 11, 12,
+            13, 14, 15
+        };
 
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
         public static int GetSimplifiedHashCode(this byte[] bytes)
