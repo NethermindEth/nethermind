@@ -65,7 +65,7 @@ public class PivotUpdator
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
                 _syncConfig.MaxAttemptsToUpdatePivot = 0;
-                _logger.Error("Failed to update pivot block, skipping it.");
+                if (_logger.IsWarn) _logger.Warn("Failed to update pivot block, skipping it.");
             }
         }
     }
