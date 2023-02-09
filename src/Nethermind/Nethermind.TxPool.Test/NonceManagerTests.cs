@@ -113,6 +113,25 @@ public class NonceManagerTests
     }
 
     [Test]
+    public void should_pick_account_nonce_as_initial_value()
+    {
+        IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
+        Account account = new(0);
+        accountStateProvider.GetAccount(TestItem.AddressA).Returns(account);
+        _nonceManager = new NonceManager(accountStateProvider);
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA))
+        {
+            locker.ReservedNonce.Should().Be(0);
+        }
+
+        accountStateProvider.GetAccount(TestItem.AddressA).Returns(account.WithChangedNonce(10));
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA))
+        {
+            locker.ReservedNonce.Should().Be(10);
+        }
+    }
+
+    [Test]
     public void ReserveNonce_should_skip_nonce_if_TxWithNonceReceived()
     {
         using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 4))
@@ -196,7 +215,8 @@ public class NonceManagerTests
         locker.ReservedNonce.Should().Be(0);
         Task task = Task.Run(() =>
         {
-            _nonceManager.ReserveNonce(TestItem.AddressB);
+            using NonceLocker locker2 = _nonceManager.ReserveNonce(TestItem.AddressB);
+            locker2.ReservedNonce.Should().Be(0);
         });
         TimeSpan ts = TimeSpan.FromMilliseconds(1000);
         task.Wait(ts);

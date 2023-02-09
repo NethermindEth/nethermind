@@ -44,9 +44,10 @@ public class NonceManager : INonceManager
 
         public NonceLocker ReserveNonce(UInt256 accountNonce)
         {
-            NonceLocker locker = new(_accountLock, _currentNonce, TxAccepted);
+            NonceLocker locker = new(_accountLock,
+                () => _currentNonce = UInt256.Max(_currentNonce, accountNonce),
+                TxAccepted);
             ReleaseNonces(accountNonce);
-            _currentNonce = UInt256.Max(_currentNonce, accountNonce);
 
             return locker;
         }
@@ -60,7 +61,7 @@ public class NonceManager : INonceManager
             }
         }
 
-        public NonceLocker TxWithNonceReceived(UInt256 nonce) => new(_accountLock, nonce, TxAccepted);
+        public NonceLocker TxWithNonceReceived(UInt256 nonce) => new(_accountLock, () => nonce, TxAccepted);
 
         private void ReleaseNonces(UInt256 accountNonce)
         {

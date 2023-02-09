@@ -16,13 +16,13 @@ public ref struct NonceLocker
 
     public NonceLocker(
         SemaphoreSlim accountLock,
-        in UInt256 reservedNonce,
+        Func<UInt256> reserveNonceFunction,
         Action<UInt256> acceptAction)
     {
         _accountLock = accountLock;
         _acceptAction = acceptAction;
         _accountLock.Wait();
-        ReservedNonce = reservedNonce;
+        ReservedNonce = reserveNonceFunction();
     }
 
     public void Dispose()
