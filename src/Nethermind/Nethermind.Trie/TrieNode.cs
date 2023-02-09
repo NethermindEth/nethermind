@@ -58,9 +58,8 @@ namespace Nethermind.Trie
         private const int DirtyShift = 2;
         private const long PersistedMask = 0b1000;
         private const int PersistedShift = 3;
-        private const long HasLastSeenMask = 0b1_0000;
-        private const int HasLastSeenShift = 4;
-        private const int LastSeenShiftRight = 8;
+
+        private const int LastSeenShift = 8;
 
         private const long IsBoundaryProofNodeMask = 0b10_0000;
         private const int IsBoundaryProofNodeShift = 5;
@@ -95,23 +94,12 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public long? LastSeen
+        public const long LastSeenNotSet = 0L;
+
+        public long LastSeen
         {
-            get
-            {
-                return (_value & HasLastSeenMask) > 0 ? _value >> LastSeenShiftRight : default(long?);
-            }
-            set
-            {
-                if (value == null)
-                {
-                    _value = (_value & ~HasLastSeenMask);
-                }
-                else
-                {
-                    _value = _value | (1L << HasLastSeenShift) | (value.Value << LastSeenShiftRight);
-                }
-            }
+            get => _value >> LastSeenShift;
+            set => _value = (_value & ((1L << LastSeenShift) - 1)) | (value << LastSeenShift);
         }
 
         public byte[]? Key
