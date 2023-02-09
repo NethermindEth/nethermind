@@ -4,7 +4,6 @@
 using System;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -70,7 +69,7 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
 
-            var syncPeer = BuildPeer(false);
+            (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
             var syncPeer2 = BuildPeer(true);
 
             var peers = new[] { syncPeer, syncPeer2 };
@@ -83,12 +82,26 @@ namespace Nethermind.Synchronization.Test
             report.WriteShortReport();
             report.WriteFullReport();
 
-            syncPeer.IsInitialized.Returns(true);
+            syncPeerSyncPeer.IsInitialized = true;
             report.WriteShortReport();
             report.WriteFullReport();
         }
 
         private static PeerInfo BuildPeer(
+            bool initialized,
+            string ip = "127.0.0.1",
+            int port = 3030,
+            ConnectionDirection direction = ConnectionDirection.Out,
+            int head = 9999,
+            string protocolVersion = "eth99"
+        )
+        {
+            (PeerInfo peer, StubSyncPeer _) =
+                BuildPeerWithStubSyncPeer(initialized, ip, port, direction, head, protocolVersion);
+            return peer;
+        }
+
+        private static (PeerInfo, StubSyncPeer) BuildPeerWithStubSyncPeer(
             bool initialized,
             string ip = "127.0.0.1",
             int port = 3030,
@@ -104,19 +117,19 @@ namespace Nethermind.Synchronization.Test
             IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
             INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
             ISyncServer syncServer = Substitute.For<ISyncServer>();
-            ISyncPeer syncPeer = new StubSyncPeer(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
+            StubSyncPeer syncPeer = new StubSyncPeer(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
 
             syncPeer.HeadNumber = head;
 
             PeerInfo peer = new(syncPeer);
-            return peer;
+            return (peer, syncPeer);
         }
 
         [Test]
         public void Can_write_report_update_with_allocations()
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            var syncPeer = BuildPeer(false);
+            (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
             var syncPeer2 = BuildPeer(true);
 
             var peers = new[] { syncPeer, syncPeer2 };
@@ -127,7 +140,7 @@ namespace Nethermind.Synchronization.Test
             report.WriteShortReport();
             report.WriteFullReport();
 
-            syncPeer.IsInitialized.Returns(true);
+            syncPeerSyncPeer.IsInitialized = true;
             report.WriteShortReport();
             report.WriteFullReport();
         }
@@ -149,7 +162,7 @@ namespace Nethermind.Synchronization.Test
 
             string expectedResult =
                 "== Header ==\n" +
-                "===[Active][Sleep ][Peer (ProtocolVersion/Head/Host:Port/Direction)    ][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]\n" +
+                "===[Active][Sleep ][Peer(ProtocolVersion/Head/Host:Port/Direction)][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]\n" +
                 "--------------------------------------------------------------------------------------------------------------------------------------------------------------\n" +
                 "   [HBRNSW][      ][Peer|eth99|    9999|      127.0.0.1: 3030|Out][     |     |     |     |     |     ][]\n" +
                 "   [      ][HBRNSW][Peer|eth99|    9999|      127.0.0.1: 3030| In][     |     |     |     |     |     ][]";
