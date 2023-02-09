@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,7 +25,7 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public Keccak RootHash { get;}
+        public Keccak RootHash { get; }
 
         /// <summary>
         /// Account hash of the first to retrieve
@@ -33,5 +36,10 @@ namespace Nethermind.State.Snap
         /// Account hash after which to stop serving data
         /// </summary>
         public Keccak? LimitHash { get; }
+
+        public override string ToString()
+        {
+            return $"AccountRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
+        }
     }
 }

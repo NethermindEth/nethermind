@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -55,14 +42,14 @@ namespace Nethermind.Baseline.Tree
         public long LastBlockWithLeaves { get; private set; }
 
         public void MemorizePastCount(long blockNumber, uint count)
-        { 
-            if(_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
+        {
+            if (_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
             Metadata.SaveBlockNumberCount(blockNumber, count, LastBlockWithLeaves);
         }
-        
+
         public void MemorizeCurrentCount(Keccak blockHash, long blockNumber, uint count)
-        { 
-            if(_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
+        {
+            if (_logger.IsWarn) _logger.Warn($"Saving block number count ({count}, {LastBlockWithLeaves}) of {this} in block {blockNumber}");
             Metadata.SaveBlockNumberCount(blockNumber, count, LastBlockWithLeaves);
             Metadata.SaveCurrentBlockInDb(blockHash, blockNumber);
             LastBlockWithLeaves = blockNumber;
@@ -78,7 +65,7 @@ namespace Nethermind.Baseline.Tree
         internal static Keccak ZeroHash = Keccak.Zero;
 
         private ILogger _logger;
-        
+
         public BaselineTree(IDb db, IKeyValueStore metadataKeyValueStore, byte[] _dbPrefix, int truncationLength, ILogger logger)
         {
             _logger = logger;
@@ -143,8 +130,8 @@ namespace Nethermind.Baseline.Tree
             LastBlockDbHash = currentBlock.LastBlockDbHash;
             LastBlockWithLeaves = currentBlock.LastBlockWithLeaves;
             Count = LoadCount();
-            
-            if(_logger.IsInfo) _logger.Info(
+
+            if (_logger.IsInfo) _logger.Info(
                 $"Initialized tree {_dbPrefix.ToHexString()} with count {Count}, last block hash {LastBlockDbHash} and last block with leaves {LastBlockWithLeaves}.");
         }
 
@@ -317,9 +304,9 @@ namespace Nethermind.Baseline.Tree
                     }
                     else
                     {
-                        Hash(hash.Bytes.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);    
+                        Hash(hash.Bytes.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);
                     }
-                    
+
                     Index parentIndex = index.Parent();
                     SaveValue(parentIndex, parentHash);
                 }

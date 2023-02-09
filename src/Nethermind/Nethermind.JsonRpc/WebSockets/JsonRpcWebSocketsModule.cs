@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -39,17 +26,18 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
         private readonly IRpcAuthentication _rpcAuthentication;
+        private readonly long? _maxBatchResponseBodySize;
 
         public string Name { get; } = "json-rpc";
 
-        public JsonRpcWebSocketsModule(
-            JsonRpcProcessor jsonRpcProcessor,
+        public JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
             IJsonRpcService jsonRpcService,
             IJsonRpcLocalStats jsonRpcLocalStats,
             ILogManager logManager,
             IJsonSerializer jsonSerializer,
             IJsonRpcUrlCollection jsonRpcUrlCollection,
-            IRpcAuthentication rpcAuthentication)
+            IRpcAuthentication rpcAuthentication,
+            long? maxBatchResponseBodySize)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
@@ -58,6 +46,7 @@ namespace Nethermind.JsonRpc.WebSockets
             _jsonSerializer = jsonSerializer;
             _jsonRpcUrlCollection = jsonRpcUrlCollection;
             _rpcAuthentication = rpcAuthentication;
+            _maxBatchResponseBodySize = maxBatchResponseBodySize;
         }
 
         public ISocketsClient CreateClient(WebSocket webSocket, string clientName, HttpContext context)
@@ -74,15 +63,16 @@ namespace Nethermind.JsonRpc.WebSockets
                 throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
             }
 
-            JsonRpcSocketsClient? socketsClient = new JsonRpcSocketsClient(
-                clientName, 
-                new WebSocketHandler(webSocket, _logManager), 
+            JsonRpcSocketsClient? socketsClient = new(
+                clientName,
+                new WebSocketHandler(webSocket, _logManager),
                 RpcEndpoint.Ws,
-                _jsonRpcProcessor, 
-                _jsonRpcService,  
-                _jsonRpcLocalStats, 
+                _jsonRpcProcessor,
+                _jsonRpcService,
+                _jsonRpcLocalStats,
                 _jsonSerializer,
-                jsonRpcUrl);
+                jsonRpcUrl,
+                _maxBatchResponseBodySize);
 
             _clients.TryAdd(socketsClient.Id, socketsClient);
 
@@ -91,7 +81,7 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public void RemoveClient(string id)
         {
-            if (_clients.TryRemove(id, out ISocketsClient? client) 
+            if (_clients.TryRemove(id, out ISocketsClient? client)
                 && client is IDisposable disposableClient)
             {
                 disposableClient.Dispose();

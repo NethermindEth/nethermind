@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
@@ -72,13 +59,13 @@ namespace Nethermind.Clique.Test
             // Init snapshot db
             MemDb db = new();
             CliqueConfig config = new();
-            
-            _ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance); 
+
+            _ecdsa = new EthereumEcdsa(BlockchainIds.Rinkeby, LimboLogs.Instance);
             _snapshotManager = new SnapshotManager(config, db, _blockTree, _ecdsa, LimboLogs.Instance);
-            _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, key, LimboLogs.Instance), config, _snapshotManager, LimboLogs.Instance);
+            _clique = new CliqueSealer(new Signer(BlockchainIds.Rinkeby, key, LimboLogs.Instance), config, _snapshotManager, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
         }
-        
+
         [TestCase(Block1Rlp)]
         [TestCase(Block2Rlp)]
         [TestCase(Block3Rlp)]
@@ -92,11 +79,11 @@ namespace Nethermind.Clique.Test
             Assert.True(validHeader);
             Assert.True(validSeal);
         }
-        
+
         [TestCase(Block4Rlp)]
         public void Test_no_signer_data_at_epoch_fails(string blockRlp)
         {
-            CliqueConfig config = new() {Epoch = 4};
+            CliqueConfig config = new() { Epoch = 4 };
             _clique = new CliqueSealer(NullSigner.Instance, config, _snapshotManager, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
             Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
@@ -114,7 +101,7 @@ namespace Nethermind.Clique.Test
             UInt256 difficulty = new(1);
             long number = 0L;
             int gasLimit = 4700000;
-            UInt256 timestamp = UInt256.Parse("1492009146");
+            ulong timestamp = 1492009146UL;
             byte[] extraData = Bytes.FromHexString("52657370656374206d7920617574686f7269746168207e452e436172746d616e42eb768f2244c8811c63729a21a3569731535f067ffc57839b00206d1ad20c69a1981b489f772031b279182d99e65703f0076e4812653aab85fca0f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.Bloom = Bloom.Empty;
@@ -122,7 +109,7 @@ namespace Nethermind.Clique.Test
             genesis.Header.Hash = new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177");
             // this would need to be loaded from rinkeby chainspec to include allocations
             // Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
-            
+
             return genesis;
         }
 

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -56,9 +43,9 @@ namespace Nethermind.Consensus.Clique
 
         public Address GetBlockSealer(BlockHeader header)
         {
-            if (header.Author != null) return header.Author;
+            if (header.Author is not null) return header.Author;
             if (header.Number == UInt256.Zero) return Address.Zero;
-            if (_signatures.Get(header.Hash) != null) return _signatures.Get(header.Hash);
+            if (_signatures.Get(header.Hash) is not null) return _signatures.Get(header.Hash);
 
             int extraSeal = 65;
 
@@ -100,7 +87,7 @@ namespace Nethermind.Consensus.Clique
         private object _snapshotCreationLock = new();
 
         public ulong GetLastSignersCount() => _lastSignersCount;
-        
+
         public Snapshot GetOrCreateSnapshot(long number, Keccak hash)
         {
             Snapshot? snapshot = GetSnapshot(number, hash);
@@ -117,7 +104,7 @@ namespace Nethermind.Consensus.Clique
                 while (true)
                 {
                     snapshot = GetSnapshot(number, hash);
-                    if (snapshot != null) break;
+                    if (snapshot is not null) break;
 
                     // If we're at an checkpoint block, make a snapshot if it's known
                     BlockHeader? previousHeader = header;
@@ -127,21 +114,21 @@ namespace Nethermind.Consensus.Clique
                         throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
                     }
 
-                    if (header.Hash == null) throw new InvalidOperationException("Block tree block without hash set");
+                    if (header.Hash is null) throw new InvalidOperationException("Block tree block without hash set");
 
                     Keccak parentHash = header.ParentHash;
                     if (IsEpochTransition(number))
                     {
                         Snapshot? parentSnapshot = GetSnapshot(number - 1, parentHash);
-                        
-                        if(_logger.IsInfo) _logger.Info($"Creating epoch snapshot at block {number}");
+
+                        if (_logger.IsInfo) _logger.Info($"Creating epoch snapshot at block {number}");
                         int signersCount = CalculateSignersCount(header);
                         SortedList<Address, long> signers = new SortedList<Address, long>(signersCount, AddressComparer.Instance);
                         Address epochSigner = GetBlockSealer(header);
                         for (int i = 0; i < signersCount; i++)
                         {
-                            Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));                            
-                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot == null ? 0L : parentSnapshot.Signers.ContainsKey(signer) ? parentSnapshot.Signers[signer] : 0L);
+                            Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));
+                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot is null ? 0L : parentSnapshot.Signers.TryGetValue(signer, out long value) ? value : 0L);
                         }
 
                         snapshot = new Snapshot(number, header.Hash, signers);
@@ -167,13 +154,13 @@ namespace Nethermind.Consensus.Clique
 
                     int countBefore = snapshot.Signers.Count;
                     snapshot = Apply(snapshot, headers, _cliqueConfig.Epoch);
-                    
+
                     int countAfter = snapshot.Signers.Count;
                     if (countAfter != countBefore && _logger.IsInfo)
                     {
                         int signerIndex = 0;
                         string word = countAfter > countBefore ? "added to" : "removed from";
-                        _logger.Info($"At block {number } a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + (KnownAddresses.GoerliValidators.ContainsKey(s.Key) ? KnownAddresses.GoerliValidators[s.Key] : s.Key.ToString())))}");
+                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + (KnownAddresses.GoerliValidators.TryGetValue(s.Key, out string value) ? value : s.Key.ToString())))}");
                     }
                 }
 
@@ -181,7 +168,7 @@ namespace Nethermind.Consensus.Clique
                 // If we've generated a new checkpoint snapshot, save to disk
             }
 
-            if ((ulong) snapshot.Number % Clique.CheckpointInterval == 0 && headers.Count > 0)
+            if ((ulong)snapshot.Number % Clique.CheckpointInterval == 0 && headers.Count > 0)
             {
                 Store(snapshot);
             }
@@ -205,26 +192,26 @@ namespace Nethermind.Consensus.Clique
 
         public bool IsInTurn(Snapshot snapshot, long number, Address signer)
         {
-            return (long) number % snapshot.Signers.Count == snapshot.Signers.IndexOfKey(signer);
+            return (long)number % snapshot.Signers.Count == snapshot.Signers.IndexOfKey(signer);
         }
 
         private bool IsEpochTransition(long number)
         {
-            return (ulong) number % _cliqueConfig.Epoch == 0;
+            return (ulong)number % _cliqueConfig.Epoch == 0;
         }
 
         private Snapshot? GetSnapshot(long number, Keccak hash)
         {
-            if(_logger.IsTrace) _logger.Trace($"Getting snapshot for {number}");
+            if (_logger.IsTrace) _logger.Trace($"Getting snapshot for {number}");
             // If an in-memory snapshot was found, use that
             Snapshot? cachedSnapshot = _snapshotCache.Get(hash);
-            if (cachedSnapshot != null) return cachedSnapshot;
+            if (cachedSnapshot is not null) return cachedSnapshot;
 
             // If an on-disk checkpoint snapshot can be found, use that
-            if ((ulong) number % Clique.CheckpointInterval == 0)
+            if ((ulong)number % Clique.CheckpointInterval == 0)
             {
                 Snapshot? persistedSnapshot = LoadSnapshot(hash);
-                if (persistedSnapshot != null) return persistedSnapshot;
+                if (persistedSnapshot is not null) return persistedSnapshot;
             }
 
             return null;
@@ -234,7 +221,7 @@ namespace Nethermind.Consensus.Clique
         {
             byte[] hashBytes = blockHash.Bytes;
             byte[] keyBytes = new byte[hashBytes.Length];
-            for (int i = 0; i < _snapshotBytes.Length; i++) keyBytes[i] = (byte) (hashBytes[i] ^ _snapshotBytes[i]);
+            for (int i = 0; i < _snapshotBytes.Length; i++) keyBytes[i] = (byte)(hashBytes[i] ^ _snapshotBytes[i]);
 
             return new Keccak(keyBytes);
         }
@@ -246,7 +233,7 @@ namespace Nethermind.Consensus.Clique
         {
             Keccak key = GetSnapshotKey(hash);
             byte[]? bytes = _blocksDb.Get(key);
-            if (bytes == null) return null;
+            if (bytes is null) return null;
 
             return _decoder.Decode(bytes.AsRlpStream());
         }
@@ -273,12 +260,12 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Iterate through the headers and create a new snapshot
-            Snapshot snapshot = (Snapshot) original.Clone();
+            Snapshot snapshot = (Snapshot)original.Clone();
             foreach (BlockHeader header in headers)
             {
                 // Remove any votes on checkpoint blocks
                 long number = header.Number;
-                if ((ulong) number % epoch == 0)
+                if ((ulong)number % epoch == 0)
                 {
                     snapshot.Votes.Clear();
                     snapshot.Tally.Clear();
@@ -356,9 +343,9 @@ namespace Nethermind.Consensus.Clique
             }
 
             snapshot.Number += headers.Count;
-            
+
             // was this needed?
-//            snapshot.Hash = headers[headers.Count - 1].CalculateHash();
+            //            snapshot.Hash = headers[headers.Count - 1].CalculateHash();
             snapshot.Hash = headers[^1].Hash;
             return snapshot;
         }

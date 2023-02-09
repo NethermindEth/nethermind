@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using BenchmarkDotNet.Attributes;
@@ -57,7 +44,7 @@ namespace Nethermind.Network.Benchmarks
                 responses = new byte[6][];
                 _mod = mod;
                 _i = -1;
-            
+
                 // WARN: order reflects the internal implementation of the service (tests may fail after any refactoring)
                 responses[0] = NetTestVectors.NonceA;
                 responses[1] = NetTestVectors.EphemeralKeyA.KeyBytes;
@@ -85,11 +72,11 @@ namespace Nethermind.Network.Benchmarks
 
             public void Dispose()
             {
-                
+
             }
         }
-        
-        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
+
+        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
 
         private IMessageSerializationService _messageSerializationService;
 
@@ -132,13 +119,13 @@ namespace Nethermind.Network.Benchmarks
             Ack();
             Agree();
         }
-        
+
         [Benchmark]
         public void CurrentAuth()
         {
             Auth();
         }
-        
+
         [Benchmark]
         public void CurrentAuthAck()
         {

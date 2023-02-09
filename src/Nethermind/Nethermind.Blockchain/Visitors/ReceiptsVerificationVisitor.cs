@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -47,9 +33,9 @@ namespace Nethermind.Blockchain.Visitors
 
         public bool PreventsAcceptingNewBlocks => false;
         public long StartLevelInclusive { get; }
-        
+
         public long EndLevelExclusive { get; }
-        
+
         public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
         {
             _currentLevel = chainLevelInfo;
@@ -84,7 +70,7 @@ namespace Nethermind.Blockchain.Visitors
                 _good++;
                 if (_logger.IsDebug) _logger.Debug($"OK Receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength}. Good {_good}, Bad {_bad}");
             }
-            
+
             return BlockVisitOutcome.None;
         }
 
@@ -118,7 +104,7 @@ namespace Nethermind.Blockchain.Visitors
             }
             else
             {
-                return _receiptStorage.Get(block)?.Where(r => r != null).Count() ?? 0;
+                return _receiptStorage.Get(block)?.Where(r => r is not null).Count() ?? 0;
             }
         }
 

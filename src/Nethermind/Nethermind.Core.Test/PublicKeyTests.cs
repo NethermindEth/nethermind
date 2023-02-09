@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core.Crypto;
@@ -31,7 +18,7 @@ namespace Nethermind.Core.Test
             PublicKey publicKey = new(bytes);
             Assert.AreEqual(bytes, publicKey.Bytes);
         }
-        
+
         [Test]
         public void Address_is_correct()
         {
@@ -46,7 +33,7 @@ namespace Nethermind.Core.Test
         public void Same_address_is_returned_when_called_twice()
         {
             byte[] bytes = new byte[64];
-            PublicKey publicKey =  new(bytes);
+            PublicKey publicKey = new(bytes);
             Address address1 = publicKey.Address;
             Address address2 = publicKey.Address;
             Assert.AreSame(address1, address2);
@@ -84,8 +71,8 @@ namespace Nethermind.Core.Test
         public void Cannot_be_initialized_with_null()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new PublicKey((string)null));
-            Assert.Throws<ArgumentException>(() => new PublicKey((byte[])null));
+            Assert.Throws<ArgumentNullException>(() => new PublicKey((string)null!));
+            Assert.Throws<ArgumentException>(() => new PublicKey((byte[])null!));
         }
 
         [Test]
@@ -95,7 +82,7 @@ namespace Nethermind.Core.Test
             // ReSharper disable once ObjectCreationAsStatement
             new PublicKey(bytes);
         }
-        
+
         [Test]
         [Explicit]
         public void Generate_Keys()

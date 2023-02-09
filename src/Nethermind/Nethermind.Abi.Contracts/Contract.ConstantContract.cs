@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Abi;
@@ -72,9 +58,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
             /// <returns></returns>
             public T Call<T>(BlockHeader parentHeader, AbiFunctionDescription function, Address sender, params object[] arguments)
             {
-                return (T) Call(parentHeader, function, sender, arguments)[0];
+                return (T)Call(parentHeader, function, sender, arguments)[0];
             }
-            
+
             /// <summary>
             /// 
             /// </summary>
@@ -85,12 +71,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
             /// <typeparam name="T1"></typeparam>
             /// <typeparam name="T2"></typeparam>
             /// <returns></returns>
-            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, AbiFunctionDescription function, Address sender,params object[] arguments)
+            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, AbiFunctionDescription function, Address sender, params object[] arguments)
             {
                 var objects = Call(parentHeader, function, sender, arguments);
-                return ((T1) objects[0], (T2) objects[1]);
+                return ((T1)objects[0], (T2)objects[1]);
             }
-            
+
             /// <summary>
             /// 
             /// </summary>
@@ -105,7 +91,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 var result = Call(parentHeader, transaction);
                 return result;
             }
-            
+
             private Keccak GetState(BlockHeader parentHeader) => parentHeader?.StateRoot ?? Keccak.EmptyTreeHash;
         }
     }

@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -53,7 +39,7 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 throw new ArgumentException($"{path} is not a directory", nameof(path));
             }
-            
+
             _path = path;
             _threshold = threshold;
             _fileSystem = fileSystem;
@@ -100,7 +86,7 @@ namespace Nethermind.Blockchain.FullPruning
             return firstIndexSubDirectory is null ? path : _fileSystem.Path.Combine(path, firstIndexSubDirectory.Value.ToString());
         }
 
-        
+
         /// <summary>
         /// Gets the size of the path.
         /// </summary>
@@ -112,14 +98,14 @@ namespace Nethermind.Blockchain.FullPruning
         /// </remarks>
         private long GetPathSize(string path)
         {
-            IEnumerable<IFileInfo> files = _fileSystem.DirectoryInfo.FromDirectoryName(path).EnumerateFiles();
+            IEnumerable<IFileInfo> files = _fileSystem.DirectoryInfo.New(path).EnumerateFiles();
             long size = files.Sum(f => f.Length);
             return size;
         }
 
         /// <inheritdoc />
         public event EventHandler<PruningTriggerEventArgs>? Prune;
-        
+
         /// <inheritdoc />
         public void Dispose()
         {

@@ -1,20 +1,8 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Logging;
 
@@ -27,13 +15,13 @@ namespace Nethermind.Synchronization.FastSync
     /// **********************+++++++++**++++++++**********+************
     /// ****************************************************************
     /// ++++++++++++++++++*+++++****************************************
-    /// **************************************************************** 
+    /// ****************************************************************
     /// </summary>
     internal class BranchProgress
     {
         private ILogger _logger;
         private NodeProgressState[] _syncProgress;
-        
+
         public decimal LastProgress { get; private set; }
         public long CurrentSyncBlock { get; }
 
@@ -44,7 +32,7 @@ namespace Nethermind.Synchronization.FastSync
             _logger.Info($"Now syncing nodes starting from root of block {syncBlockNumber}");
             _syncProgress = new NodeProgressState[256];
         }
-        
+
         private void ReportSyncedLevel1(int childIndex, NodeProgressState nodeProgressState)
         {
             if (childIndex == -1)
@@ -70,7 +58,7 @@ namespace Nethermind.Synchronization.FastSync
                 _syncProgress[index] = newState;
             }
         }
-        
+
         private void ReportSyncedLevel2(int parentIndex, int childIndex, NodeProgressState nodeProgressState)
         {
             if (parentIndex == -1)
@@ -101,7 +89,8 @@ namespace Nethermind.Synchronization.FastSync
                 syncItem.NodeDataType,
                 NodeProgressState.Requested);
         }
-        
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void ReportSynced(int level, int parentIndex, int childIndex, NodeDataType nodeDataType, NodeProgressState nodeProgressState)
         {
             if (level > 2 || nodeDataType != NodeDataType.State)
@@ -135,14 +124,14 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            decimal currentProgress = (decimal) savedBranches / _syncProgress.Length;
+            decimal currentProgress = (decimal)savedBranches / _syncProgress.Length;
 
             if (currentProgress == LastProgress)
             {
                 return;
             }
 
-            Metrics.StateBranchProgress = (int) (currentProgress * 100);
+            Metrics.StateBranchProgress = (int)(currentProgress * 100);
             LastProgress = currentProgress;
             if (nodeProgressState == NodeProgressState.Empty)
             {

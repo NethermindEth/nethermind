@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
@@ -39,7 +26,7 @@ namespace Nethermind.Mining.Test
         {
             ulong validNonce = 971086423715460064;
 
-            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 27, 1, 21000, 1, new byte[] {1, 2, 3});
+            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 27, 1, 21000, 1, new byte[] { 1, 2, 3 });
             header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
             header.UnclesHash = Keccak.Zero;
@@ -60,7 +47,7 @@ namespace Nethermind.Mining.Test
         {
             ulong badNonce = 971086423715459953; // change if valid
 
-            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, (UInt256)BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] {1, 2, 3});
+            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, (UInt256)BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] { 1, 2, 3 });
             header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
             header.UnclesHash = Keccak.Zero;

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
@@ -10,7 +13,7 @@ namespace Nethermind.Crypto.Bls
         {
             LibResolver.Setup();
         }
-    
+
         [DllImport("shamatar")]
         private static extern unsafe uint eip196_perform_operation(
             byte operation,

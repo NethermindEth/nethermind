@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
 using DotNetty.Buffers;
@@ -23,14 +10,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
-        public byte[] Serialize(BlockBodiesMessage message)
-        {
-            return Rlp.Encode(message.Bodies.Select(b => b == null
+        public byte[] Serialize(BlockBodiesMessage message) =>
+            Rlp.Encode(message.Bodies.Select(b => b is null
                 ? Rlp.OfEmptySequence
-                : Rlp.Encode(
-                    Rlp.Encode(b.Transactions),
-                    Rlp.Encode(b.Uncles))).ToArray()).Bytes;
-        }
+                : b.Withdrawals != null
+                    ? Rlp.Encode(Rlp.Encode(b.Transactions), Rlp.Encode(b.Uncles), Rlp.Encode(b.Withdrawals))
+                    : Rlp.Encode(Rlp.Encode(b.Transactions), Rlp.Encode(b.Uncles))
+                ).ToArray()).Bytes;
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
@@ -58,6 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             message.Bodies = rlpStream.DecodeArray(ctx =>
             {
                 int sequenceLength = rlpStream.ReadSequenceLength();
+                int startingPosition = rlpStream.Position;
                 if (sequenceLength == 0)
                 {
                     return null;
@@ -67,7 +54,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 // (just on these delegates)
                 Transaction[] transactions = rlpStream.DecodeArray(_ => Rlp.Decode<Transaction>(ctx));
                 BlockHeader[] uncles = rlpStream.DecodeArray(_ => Rlp.Decode<BlockHeader>(ctx));
-                return new BlockBody(transactions, uncles);
+                Withdrawal[]? withdrawals = null;
+                if (rlpStream.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
+                {
+                    withdrawals = rlpStream.DecodeArray(_ => Rlp.Decode<Withdrawal>(ctx));
+                }
+
+                return new BlockBody(transactions, uncles, withdrawals);
             }, false);
 
             return message;

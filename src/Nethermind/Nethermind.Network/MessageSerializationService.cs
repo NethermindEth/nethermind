@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -21,6 +8,7 @@ using DotNetty.Buffers;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
@@ -45,7 +33,7 @@ namespace Nethermind.Network
             {
                 return zeroMessageSerializer.Deserialize(buffer);
             }
-            
+
             // 3% allocation of a sample run of Goerli 3 million blocks fast sync on buffer.ReadAllBytes
             // this can be improved by adding ZeroMessageSerializer for a new message type
             return Deserialize<T>(buffer.ReadAllBytes());
@@ -73,7 +61,7 @@ namespace Nethermind.Network
                     if (interfaceGenericDefinition == typeof(IMessageSerializer<>).GetGenericTypeDefinition())
                     {
                         ConstructorInfo constructor = type.GetConstructor(Type.EmptyTypes);
-                        if (constructor == null)
+                        if (constructor is null)
                         {
                             continue;
                         }
@@ -84,7 +72,7 @@ namespace Nethermind.Network
                     if (interfaceGenericDefinition == typeof(IZeroMessageSerializer<>).GetGenericTypeDefinition())
                     {
                         ConstructorInfo constructor = type.GetConstructor(Type.EmptyTypes);
-                        if (constructor == null)
+                        if (constructor is null)
                         {
                             continue;
                         }
@@ -99,7 +87,7 @@ namespace Nethermind.Network
         {
             _serializers[typeof(T).TypeHandle] = messageSerializer;
         }
-        
+
         public void Register<T>(IZeroMessageSerializer<T> messageSerializer) where T : MessageBase
         {
             _zeroSerializers[typeof(T).TypeHandle] = messageSerializer;
@@ -137,8 +125,8 @@ namespace Nethermind.Network
         }
         public byte[] Serialize<T>(T messageBase) where T : MessageBase
         {
-            return TryGetSerializer(out IMessageSerializer<T> messageSerializer) 
-                ? messageSerializer.Serialize(messageBase) 
+            return TryGetSerializer(out IMessageSerializer<T> messageSerializer)
+                ? messageSerializer.Serialize(messageBase)
                 : throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered for {typeof(T).Name}.");
         }
 

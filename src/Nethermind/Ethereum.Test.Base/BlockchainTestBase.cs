@@ -1,20 +1,5 @@
-﻿/*
- * Copyright (c) 2021 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -32,6 +17,7 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -101,16 +87,16 @@ namespace Ethereum.Test.Base
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition != null)
             {
-                specProvider = new CustomSpecProvider(1,
-                    (0, Frontier.Instance),
-                    (1, test.Network),
-                    (test.TransitionBlockNumber, test.NetworkAfterTransition));
+                specProvider = new CustomSpecProvider(
+                    ((ForkActivation)0, Frontier.Instance),
+                    ((ForkActivation)1, test.Network),
+                    ((ForkActivation)test.TransitionBlockNumber, test.NetworkAfterTransition));
             }
             else
             {
-                specProvider = new CustomSpecProvider(1,
-                    (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                    (1, test.Network));
+                specProvider = new CustomSpecProvider(
+                    ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                    ((ForkActivation)1, test.Network));
             }
 
             if (specProvider.GenesisSpec != Frontier.Instance)
@@ -129,15 +115,15 @@ namespace Ethereum.Test.Base
             TrieStore trieStore = new(stateDb, _logManager);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
             MemDb blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance,  _logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, _logManager);
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
             IChainHeadInfoProvider chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, blockTree, stateReader);
-            ITxPool transactionPool = new TxPool(ecdsa, chainHeadInfoProvider, new TxPoolConfig(),  new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+            ITxPool transactionPool = new TxPool(ecdsa, chainHeadInfoProvider, new TxPoolConfig(), new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
-            ITxValidator txValidator = new TxValidator(ChainId.Mainnet);
+            ITxValidator txValidator = new TxValidator(TestBlockchainIds.ChainId);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
@@ -206,7 +192,7 @@ namespace Ethereum.Test.Base
                 {
                     result = new EthereumTestResult(test.Name, "Genesis block header missing in the test spec.");
                 }
-                else if(!new Keccak(test.GenesisBlockHeader.Hash).Equals(test.LastBlockHash))
+                else if (!new Keccak(test.GenesisBlockHeader.Hash).Equals(test.LastBlockHash))
                 {
                     result = new EthereumTestResult(test.Name, "Genesis hash mismatch");
                 }
@@ -279,11 +265,11 @@ namespace Ethereum.Test.Base
             stopwatch?.Stop();
 
             List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
-//            if (differences.Any())
-//            {
-//                BlockTrace blockTrace = blockchainProcessor.TraceBlock(blockTree.BestSuggested.Hash);
-//                _logger.Info(new UnforgivingJsonSerializer().Serialize(blockTrace, true));
-//            }
+            //            if (differences.Any())
+            //            {
+            //                BlockTrace blockTrace = blockchainProcessor.TraceBlock(blockTree.BestSuggested.Hash);
+            //                _logger.Info(new UnforgivingJsonSerializer().Serialize(blockTrace, true));
+            //            }
 
             Assert.Zero(differences.Count, "differences");
 
@@ -328,7 +314,7 @@ namespace Ethereum.Test.Base
         {
             if (test.PostStateRoot != null)
             {
-                return test.PostStateRoot != stateProvider.StateRoot ? new List<string> {"state root mismatch"} : Enumerable.Empty<string>().ToList();
+                return test.PostStateRoot != stateProvider.StateRoot ? new List<string> { "state root mismatch" } : Enumerable.Empty<string>().ToList();
             }
 
             TestBlockHeaderJson testHeaderJson = (test.Blocks?
@@ -359,8 +345,8 @@ namespace Ethereum.Test.Base
                 }
 
                 bool accountExists = stateProvider.AccountExists(acountAddress);
-                UInt256? balance = accountExists ? stateProvider.GetBalance(acountAddress) : (UInt256?) null;
-                UInt256? nonce = accountExists ? stateProvider.GetNonce(acountAddress) : (UInt256?) null;
+                UInt256? balance = accountExists ? stateProvider.GetBalance(acountAddress) : (UInt256?)null;
+                UInt256? nonce = accountExists ? stateProvider.GetNonce(acountAddress) : (UInt256?)null;
 
                 if (accountState.Balance != balance)
                 {

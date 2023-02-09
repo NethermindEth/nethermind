@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -45,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Data
                 fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C");
             }
         }
-        
+
         [Ignore("flaky")]
         [Test]
         public async Task correctly_updates_from_existing_file()
@@ -67,7 +53,7 @@ namespace Nethermind.Blockchain.Test.Data
                     await handle.WaitAsync(TimeSpan.FromMilliseconds(10 * interval));
                     changedRaised.Should().Be(1);
                     fileLocalDataSource.Data.Should().BeEquivalentTo("C", "B");
-                    
+
                     await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("E", "F"));
                     await handle.WaitAsync(TimeSpan.FromMilliseconds(10 * interval));
                     changedRaised.Should().Be(2);
@@ -99,7 +85,7 @@ namespace Nethermind.Blockchain.Test.Data
         }
 
         private static string GenerateStringJson(params string[] items) => $"[{string.Join(", ", items.Select(i => $"\"{i}\""))}]";
-        
+
         [Test]
         public void loads_default_when_failed_loading_file()
         {
@@ -110,7 +96,7 @@ namespace Nethermind.Blockchain.Test.Data
                 fileLocalDataSource.Data.Should().BeEquivalentTo(default);
             }
         }
-        
+
         [Test]
         [Retry(10)]
         [Ignore("Causing repeated pains on GitHub actions.")]
@@ -129,7 +115,7 @@ namespace Nethermind.Blockchain.Test.Data
                     }
 
                     await Task.Delay(10 * interval);
-                    
+
                     fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C");
                 }
 
@@ -138,7 +124,7 @@ namespace Nethermind.Blockchain.Test.Data
                 fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C", "D");
             }
         }
-        
+
         [Ignore("flaky test")]
         [Test]
         public async Task loads_default_when_deleted_file()
@@ -159,9 +145,9 @@ namespace Nethermind.Blockchain.Test.Data
                     await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
                     await handle.WaitAsync(TimeSpan.FromMilliseconds(10 * interval));
                     changedRaised.Should().Be(1);
-                    
+
                     fileLocalDataSource.Data.Should().BeEquivalentTo("C", "B");
-                    
+
                     File.Delete(tempFile.Path);
                     await handle.WaitAsync(TimeSpan.FromMilliseconds(10 * interval));
                     changedRaised.Should().Be(2);

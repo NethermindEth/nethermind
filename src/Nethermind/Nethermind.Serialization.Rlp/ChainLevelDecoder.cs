@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -28,12 +15,12 @@ namespace Nethermind.Serialization.Rlp
             {
                 throw new RlpException($"Received a 0 length stream when decoding a {nameof(ChainLevelInfo)}");
             }
-            
+
             if (rlpStream.IsNextItemNull())
             {
                 return null;
             }
-            
+
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
             bool hasMainChainBlock = rlpStream.DecodeBool();
 
@@ -70,7 +57,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 return null;
             }
-            
+
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
             bool hasMainChainBlock = decoderContext.DecodeBool();
 
@@ -98,19 +85,19 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }
 
             for (int i = 0; i < item.BlockInfos.Length; i++)
             {
-                if (item.BlockInfos[i] == null)
+                if (item.BlockInfos[i] is null)
                 {
                     throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
                 }
             }
-            
+
             Rlp[] elements = new Rlp[2];
             elements[0] = Rlp.Encode(item.HasBlockOnMainChain);
             elements[1] = Rlp.Encode(item.BlockInfos);

@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
 using Nethermind.Core;
@@ -33,7 +20,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         public void SetUp()
         {
             _trueCryptoRandom = new CryptoRandom();
-            
+
             _testRandom = new TestRandom();
 
             _messageSerializationService = new MessageSerializationService();
@@ -54,7 +41,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _ack = null;
         }
 
-        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
+        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
 
         private IMessageSerializationService _messageSerializationService;
 
@@ -88,7 +75,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             _initiatorService.Agree(_initiatorHandshake, _ack);
         }
-        
+
         private void InitializeRandom(bool preEip8Format = false)
         {
             // WARN: order reflects the internal implementation of the service (tests may fail after any refactoring)
@@ -97,7 +84,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                 _testRandom.EnqueueRandomBytes(NetTestVectors.NonceA,
                     NetTestVectors.EphemeralKeyA.KeyBytes,
                     NetTestVectors.NonceB,
-                    NetTestVectors.EphemeralKeyB.KeyBytes);                
+                    NetTestVectors.EphemeralKeyB.KeyBytes);
             }
             else
             {
@@ -149,7 +136,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                 "5833c2464c805246155289f4");
 
             _initiatorService.Agree(_initiatorHandshake, ack);
-            
+
             Assert.AreEqual(NetTestVectors.AesSecret, _initiatorHandshake.Secrets.AesSecret, "initiator AES");
             Assert.AreEqual(NetTestVectors.AesSecret, _recipientHandshake.Secrets.AesSecret, "recipient AES");
             Assert.AreEqual(NetTestVectors.MacSecret, _initiatorHandshake.Secrets.MacSecret, "initiator MAC");
@@ -174,7 +161,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Ack();
             Agree();
 
-//            Assert.AreEqual(_recipientHandshake.Secrets.Token, _initiatorHandshake.Secrets.Token, "Token");
+            //            Assert.AreEqual(_recipientHandshake.Secrets.Token, _initiatorHandshake.Secrets.Token, "Token");
             Assert.AreEqual(_recipientHandshake.Secrets.AesSecret, _initiatorHandshake.Secrets.AesSecret, "AES");
             Assert.AreEqual(_recipientHandshake.Secrets.MacSecret, _initiatorHandshake.Secrets.MacSecret, "MAC");
 
@@ -203,7 +190,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Ack();
             Agree();
 
-//            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
+            //            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
             Assert.NotNull(_initiatorHandshake.Secrets.AesSecret, "AES");
             Assert.NotNull(_initiatorHandshake.Secrets.MacSecret, "MAC");
             Assert.NotNull(_initiatorHandshake.Secrets.EgressMac, "Egress");
@@ -219,7 +206,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Ack();
             Agree();
 
-//            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
+            //            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
             Assert.NotNull(_recipientHandshake.Secrets.AesSecret, "AES");
             Assert.NotNull(_recipientHandshake.Secrets.MacSecret, "MAC");
             Assert.NotNull(_recipientHandshake.Secrets.EgressMac, "Egress");

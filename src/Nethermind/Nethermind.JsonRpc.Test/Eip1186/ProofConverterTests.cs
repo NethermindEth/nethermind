@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -53,14 +40,14 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit(0);
 
-            byte[] code = new byte[] {1, 2, 3};
+            byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
             tree.Commit(0);
 
-            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new byte[][] {a, b, c, d, e});
+            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new byte[][] { a, b, c, d, e });
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
 
@@ -87,14 +74,14 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit(0);
 
-            byte[] code = new byte[] {1, 2, 3};
+            byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
             tree.Commit(0);
 
-            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new byte[][] {a});
+            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new byte[][] { a });
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
 

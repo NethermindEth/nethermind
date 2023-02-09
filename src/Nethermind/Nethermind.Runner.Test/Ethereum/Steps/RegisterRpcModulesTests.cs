@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -37,21 +24,21 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task Proof_module_is_registered_if_configured()
         {
-            JsonRpcConfig jsonRpcConfig = new() {Enabled = true};
+            JsonRpcConfig jsonRpcConfig = new() { Enabled = true };
 
             NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
-            
+
             RegisterRpcModules registerRpcModules = new(context);
             await registerRpcModules.Execute(CancellationToken.None);
 
             context.RpcModuleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http)).Should().Be(ModuleResolution.Enabled);
         }
-        
+
         [Test]
         public async Task Proof_module_is_not_registered_when_json_rpc_not_enabled()
         {
-            JsonRpcConfig jsonRpcConfig = new() {Enabled = false};
+            JsonRpcConfig jsonRpcConfig = new() { Enabled = false };
 
             NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
@@ -59,7 +46,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             RegisterRpcModules registerRpcModules = new(context);
             await registerRpcModules.Execute(CancellationToken.None);
-            
+
             context.RpcModuleProvider.DidNotReceiveWithAnyArgs().Register<IProofRpcModule>(null);
         }
     }

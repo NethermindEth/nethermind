@@ -1,26 +1,16 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.Reflection;
 using System.Threading;
+using ConcurrentCollections;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
@@ -36,9 +26,10 @@ public class DbOnTheRocks : IDbWithSpan
 
     private static readonly ConcurrentDictionary<string, RocksDb> _dbsByPath = new();
 
+    private bool _isDisposing;
     private bool _isDisposed;
 
-    private readonly HashSet<IBatch> _currentBatches = new();
+    private readonly ConcurrentHashSet<IBatch> _currentBatches = new();
 
     internal readonly RocksDb _db;
     internal WriteOptions? WriteOptions { get; private set; }
@@ -57,6 +48,12 @@ public class DbOnTheRocks : IDbWithSpan
 
     private readonly RocksDbSettings _settings;
 
+    private readonly IFileSystem _fileSystem;
+
+    private readonly RocksDbSharp.Native _rocksDbNative;
+
+    private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
+
     protected static void InitCache(IDbConfig dbConfig)
     {
         if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
@@ -66,24 +63,39 @@ public class DbOnTheRocks : IDbWithSpan
         }
     }
 
-    public DbOnTheRocks(string basePath, RocksDbSettings rocksDbSettings, IDbConfig dbConfig,
-        ILogManager logManager, ColumnFamilies? columnFamilies = null)
+    public DbOnTheRocks(
+        string basePath,
+        RocksDbSettings rocksDbSettings,
+        IDbConfig dbConfig,
+        ILogManager logManager,
+        ColumnFamilies? columnFamilies = null,
+        RocksDbSharp.Native? rocksDbNative = null,
+        IFileSystem? fileSystem = null)
     {
         _logger = logManager.GetClassLogger();
         _settings = rocksDbSettings;
         Name = _settings.DbName;
+        _fileSystem = fileSystem ?? new FileSystem();
+        _rocksDbNative = rocksDbNative ?? RocksDbSharp.Native.Instance;
         _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, rocksDbSettings.DeleteOnStart);
+    }
+
+    protected virtual RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
+    {
+        (DbOptions options, ColumnFamilies? families) = db;
+        return families is null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
+    }
+
+    private RocksDb Open(string path, (DbOptions Options, ColumnFamilies? Families) db)
+    {
+        RepairIfCorrupted(db.Options);
+
+        return DoOpen(path, db);
     }
 
     private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager? logManager,
         ColumnFamilies? columnFamilies = null, bool deleteOnStart = false)
     {
-        static RocksDb Open(string path, (DbOptions Options, ColumnFamilies? Families) db)
-        {
-            (DbOptions options, ColumnFamilies? families) = db;
-            return families == null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
-        }
-
         _fullPath = GetFullDbPath(dbPath, basePath);
         _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
         if (!Directory.Exists(_fullPath))
@@ -104,7 +116,7 @@ public class DbOnTheRocks : IDbWithSpan
 
             // ReSharper disable once VirtualMemberCallInConstructor
             if (_logger.IsDebug) _logger.Debug($"Loading DB {Name,-13} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
-            RocksDb db = _dbsByPath.GetOrAdd(_fullPath, static (s, tuple) => Open(s, tuple), (DbOptions, columnFamilies));
+            RocksDb db = _dbsByPath.GetOrAdd(_fullPath, (s, tuple) => Open(s, tuple), (DbOptions, columnFamilies));
 
             if (dbConfig.EnableMetricsUpdater)
             {
@@ -125,11 +137,42 @@ public class DbOnTheRocks : IDbWithSpan
             if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
             throw;
         }
+        catch (RocksDbSharpException x)
+        {
+            CreateMarkerIfCorrupt(x);
+            throw;
+        }
+
+    }
+
+    private void CreateMarkerIfCorrupt(RocksDbSharpException rocksDbException)
+    {
+        if (rocksDbException.Message.Contains("Corruption:"))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
+            _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
+        }
+    }
+
+    private void RepairIfCorrupted(DbOptions dbOptions)
+    {
+        string corruptMarker = CorruptMarkerPath;
+
+        if (!_fileSystem.File.Exists(corruptMarker))
+        {
+            return;
+        }
+
+        if (_logger.IsWarn) _logger.Warn($"Corrupted DB marker detected for db {_fullPath}. Attempting repair...");
+        _rocksDbNative.rocksdb_repair_db(dbOptions.Handle, _fullPath);
+
+        if (_logger.IsWarn) _logger.Warn($"Repair completed. Some data may be lost. Consider a full resync.");
+        _fileSystem.File.Delete(corruptMarker);
     }
 
     protected internal void UpdateReadMetrics()
     {
-        if (_settings.UpdateReadMetrics != null)
+        if (_settings.UpdateReadMetrics is not null)
             _settings.UpdateReadMetrics?.Invoke();
         else
             Metrics.OtherDbReads++;
@@ -137,7 +180,7 @@ public class DbOnTheRocks : IDbWithSpan
 
     protected internal void UpdateWriteMetrics()
     {
-        if (_settings.UpdateWriteMetrics != null)
+        if (_settings.UpdateWriteMetrics is not null)
             _settings.UpdateWriteMetrics?.Invoke();
         else
             Metrics.OtherDbWrites++;
@@ -154,9 +197,11 @@ public class DbOnTheRocks : IDbWithSpan
             propertyName);
         try
         {
-            return (T?)dbConfig.GetType()
-                .GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)?
-                .GetValue(dbConfig);
+            Type type = dbConfig.GetType();
+            PropertyInfo? propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            // if no custom db property default to generic one
+            propertyInfo ??= type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            return (T?)propertyInfo?.GetValue(dbConfig);
         }
         catch (Exception e)
         {
@@ -225,7 +270,7 @@ public class DbOnTheRocks : IDbWithSpan
         options.SetRecycleLogFileNum(dbConfig
             .RecycleLogFileNum); // potential optimization for reusing allocated log files
 
-//            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
+        //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
         WriteOptions = new WriteOptions();
         WriteOptions.SetSync(dbConfig
             .WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
@@ -272,63 +317,138 @@ public class DbOnTheRocks : IDbWithSpan
     {
         get
         {
-            if (_isDisposed)
+            if (_isDisposing)
             {
                 throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
             }
 
             UpdateReadMetrics();
-            return _db.Get(key);
+
+            try
+            {
+                return _db.Get(key);
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
         }
         set
         {
-            if (_isDisposed)
+            if (_isDisposing)
             {
                 throw new ObjectDisposedException($"Attempted to write to a disposed database {Name}");
             }
 
             UpdateWriteMetrics();
 
-            if (value == null)
+            try
             {
-                _db.Remove(key, null, WriteOptions);
+                if (value is null)
+                {
+                    _db.Remove(key, null, WriteOptions);
+                }
+                else
+                {
+                    _db.Put(key, value, null, WriteOptions);
+                }
             }
-            else
+            catch (RocksDbSharpException e)
             {
-                _db.Put(key, value, null, WriteOptions);
+                CreateMarkerIfCorrupt(e);
+                throw;
             }
         }
     }
 
-    public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => _db.MultiGet(keys);
+    public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
+    {
+        get
+        {
+            try
+            {
+                return _db.MultiGet(keys);
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
+        }
+    }
 
     public Span<byte> GetSpan(byte[] key)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
 
         UpdateReadMetrics();
 
-        return _db.GetSpan(key);
+        try
+        {
+            Span<byte> span = _db.GetSpan(key);
+            if (!span.IsNullOrEmpty())
+                GC.AddMemoryPressure(span.Length);
+            return span;
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
     }
 
-    public void DangerousReleaseMemory(in Span<byte> span) => _db.DangerousReleaseMemory(span);
+    public void PutSpan(byte[] key, ReadOnlySpan<byte> value)
+    {
+        if (_isDisposing)
+        {
+            throw new ObjectDisposedException($"Attempted to write form a disposed database {Name}");
+        }
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            _db.Put(key, value, null, WriteOptions);
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    public void DangerousReleaseMemory(in Span<byte> span)
+    {
+        if (!span.IsNullOrEmpty())
+            GC.RemoveMemoryPressure(span.Length);
+        _db.DangerousReleaseMemory(span);
+    }
 
     public void Remove(byte[] key)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to delete form a disposed database {Name}");
         }
 
-        _db.Remove(key, null, WriteOptions);
+        try
+        {
+            _db.Remove(key, null, WriteOptions);
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
     }
 
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to create an iterator on a disposed database {Name}");
         }
@@ -341,12 +461,21 @@ public class DbOnTheRocks : IDbWithSpan
     {
         ReadOptions readOptions = new();
         readOptions.SetTailing(!ordered);
-        return _db.NewIterator(ch, readOptions);
+
+        try
+        {
+            return _db.NewIterator(ch, readOptions);
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
     }
 
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
@@ -357,43 +486,102 @@ public class DbOnTheRocks : IDbWithSpan
 
     internal IEnumerable<byte[]> GetAllValuesCore(Iterator iterator)
     {
-        iterator.SeekToFirst();
+        try
+        {
+            iterator.SeekToFirst();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+
         while (iterator.Valid())
         {
             yield return iterator.Value();
-            iterator.Next();
+            try
+            {
+                iterator.Next();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
         }
 
-        iterator.Dispose();
+        try
+        {
+            iterator.Dispose();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
     }
 
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
 
-        iterator.SeekToFirst();
+        try
+        {
+            iterator.SeekToFirst();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+
         while (iterator.Valid())
         {
             yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
-            iterator.Next();
+
+            try
+            {
+                iterator.Next();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
         }
 
-        iterator.Dispose();
+        try
+        {
+            iterator.Dispose();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
     }
 
     public bool KeyExists(byte[] key)
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
         }
 
-        // seems it has no performance impact
-        return _db.Get(key) != null;
-//            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
+        try
+        {
+            // seems it has no performance impact
+            return _db.Get(key) is not null;
+            // return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
     }
 
     public IBatch StartBatch()
@@ -406,6 +594,7 @@ public class DbOnTheRocks : IDbWithSpan
     internal class RocksDbBatch : IBatch
     {
         private readonly DbOnTheRocks _dbOnTheRocks;
+        private bool _isDisposed;
 
         internal readonly WriteBatch _rocksBatch;
 
@@ -413,7 +602,7 @@ public class DbOnTheRocks : IDbWithSpan
         {
             _dbOnTheRocks = dbOnTheRocks;
 
-            if (_dbOnTheRocks._isDisposed)
+            if (_dbOnTheRocks._isDisposing)
             {
                 throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {_dbOnTheRocks.Name}");
             }
@@ -428,17 +617,40 @@ public class DbOnTheRocks : IDbWithSpan
                 throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {_dbOnTheRocks.Name}");
             }
 
-            _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
-            _dbOnTheRocks._currentBatches.Remove(this);
-            _rocksBatch.Dispose();
+            if (_isDisposed)
+            {
+                return;
+            }
+            _isDisposed = true;
+
+            try
+            {
+                _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
+                _dbOnTheRocks._currentBatches.TryRemove(this);
+                _rocksBatch.Dispose();
+            }
+            catch (RocksDbSharpException e)
+            {
+                _dbOnTheRocks.CreateMarkerIfCorrupt(e);
+                throw;
+            }
         }
 
         public byte[]? this[byte[] key]
         {
-            get => _dbOnTheRocks[key];
+            get
+            {
+                // Not checking _isDisposing here as for some reason, sometimes is is read after dispose
+                return _dbOnTheRocks[key];
+            }
             set
             {
-                if (value == null)
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
+                }
+
+                if (value is null)
                 {
                     _rocksBatch.Delete(key);
                 }
@@ -452,12 +664,24 @@ public class DbOnTheRocks : IDbWithSpan
 
     public void Flush()
     {
-        if (_isDisposed)
+        if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to flush a disposed database {Name}");
         }
 
-        RocksDbSharp.Native.Instance.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
+        InnerFlush();
+    }
+
+    private void InnerFlush()
+    {
+        try
+        {
+            RocksDbSharp.Native.Instance.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+        }
     }
 
     public void Clear()
@@ -528,16 +752,29 @@ public class DbOnTheRocks : IDbWithSpan
 
     public void Dispose()
     {
-        if (!_isDisposed)
-        {
-            if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
-            Flush();
-            ReleaseUnmanagedResources();
-            _dbsByPath.Remove(_fullPath!, out _);
-        }
+        if (_isDisposing) return;
+        _isDisposing = true;
+
+        if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
+        InnerFlush();
+        ReleaseUnmanagedResources();
+
+        _dbsByPath.Remove(_fullPath!, out _);
 
         _isDisposed = true;
     }
 
     public static string GetFullDbPath(string dbPath, string basePath) => dbPath.GetApplicationResourcePath(basePath);
+
+    /// <summary>
+    /// Returns RocksDB version.
+    /// </summary>
+    /// <remarks>Since NuGet package version matches the underlying RocksDB native library version,
+    /// this method returns the package version.</remarks>
+    public static string? GetRocksDbVersion()
+    {
+        Assembly? rocksDbAssembly = Assembly.GetAssembly(typeof(RocksDb));
+        Version? version = rocksDbAssembly?.GetName().Version;
+        return version?.ToString(3);
+    }
 }

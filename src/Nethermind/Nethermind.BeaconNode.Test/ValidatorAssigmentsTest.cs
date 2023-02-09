@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -56,7 +43,7 @@ namespace Nethermind.BeaconNode.Test
 
             // Assert
             Console.WriteLine("Validator [{0}] {1} in slot {2} committee {3}",
-                validatorIndex, state.Validators[(int) validatorIndex].PublicKey, committeeAssignment.Slot,
+                validatorIndex, state.Validators[(int)validatorIndex].PublicKey, committeeAssignment.Slot,
                 committeeAssignment.CommitteeIndex);
 
             committeeAssignment.ShouldNotBe(CommitteeAssignment.None);
@@ -138,9 +125,9 @@ namespace Nethermind.BeaconNode.Test
             // Assert
             validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey);
 
-            Slot? expectedBlockProposalSlot = (Slot?) blockProposalSlot;
-            Slot? expectedAttestationSlot = (Slot?) attestationSlot;
-            CommitteeIndex? expectedAttestationIndex = (CommitteeIndex?) attestationIndex;
+            Slot? expectedBlockProposalSlot = (Slot?)blockProposalSlot;
+            Slot? expectedAttestationSlot = (Slot?)attestationSlot;
+            CommitteeIndex? expectedAttestationIndex = (CommitteeIndex?)attestationIndex;
 
             validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot);
             validatorDuty.AttestationSlot.ShouldBe(expectedAttestationSlot);
@@ -177,8 +164,8 @@ namespace Nethermind.BeaconNode.Test
 
                 await forkChoice.OnTickAsync(store, time);
                 time++;
-//                Hash32 head = await forkChoice.GetHeadAsync(store);
-//                store.TryGetBlockState(head, out BeaconState headState);
+                //                Hash32 head = await forkChoice.GetHeadAsync(store);
+                //                store.TryGetBlockState(head, out BeaconState headState);
                 BeaconState headState = state;
                 BeaconBlock block =
                     TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, headState, BlsSignature.Zero);
@@ -205,12 +192,12 @@ namespace Nethermind.BeaconNode.Test
             for (int dataIndex = 0; dataIndex < data.Count; dataIndex++)
             {
                 object?[] dataRow = data[dataIndex];
-                string publicKey = (string) dataRow[0]!;
-                ulong epoch = (ulong) dataRow[1]!;
-                bool success = (bool) dataRow[2]!;
-                ulong? attestationSlot = (ulong?) dataRow[3]!;
-                ulong? attestationIndex = (ulong?) dataRow[4]!;
-                ulong? blockProposalSlot = (ulong?) dataRow[5];
+                string publicKey = (string)dataRow[0]!;
+                ulong epoch = (ulong)dataRow[1]!;
+                bool success = (bool)dataRow[2]!;
+                ulong? attestationSlot = (ulong?)dataRow[3]!;
+                ulong? attestationIndex = (ulong?)dataRow[4]!;
+                ulong? blockProposalSlot = (ulong?)dataRow[5];
 
                 Console.WriteLine("** Test {0}, public key {1}, epoch {2}", dataIndex, publicKey, epoch);
 
@@ -244,9 +231,9 @@ namespace Nethermind.BeaconNode.Test
                 validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey,
                     $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
 
-                Slot? expectedBlockProposalSlot = (Slot?) blockProposalSlot;
-                Slot? expectedAttestationSlot = (Slot?) attestationSlot;
-                CommitteeIndex? expectedAttestationIndex = (CommitteeIndex?) attestationIndex;
+                Slot? expectedBlockProposalSlot = (Slot?)blockProposalSlot;
+                Slot? expectedAttestationSlot = (Slot?)attestationSlot;
+                CommitteeIndex? expectedAttestationIndex = (CommitteeIndex?)attestationIndex;
 
                 validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot,
                     $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
@@ -329,9 +316,9 @@ namespace Nethermind.BeaconNode.Test
             // Assert
             validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey);
 
-            Slot? expectedBlockProposalSlot = (Slot?) blockProposalSlot;
-            Slot? expectedAttestationSlot = (Slot?) attestationSlot;
-            CommitteeIndex? expectedAttestationIndex = (CommitteeIndex?) attestationIndex;
+            Slot? expectedBlockProposalSlot = (Slot?)blockProposalSlot;
+            Slot? expectedAttestationSlot = (Slot?)attestationSlot;
+            CommitteeIndex? expectedAttestationIndex = (CommitteeIndex?)attestationIndex;
 
             validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot);
             validatorDuty.AttestationSlot.ShouldBe(expectedAttestationSlot);

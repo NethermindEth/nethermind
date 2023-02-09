@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Microsoft.Extensions.Logging;
@@ -26,7 +13,7 @@ namespace Nethermind.BeaconNode.Peering
     internal static class Log
     {
         // Event IDs: ABxx (based on Theory of Reply Codes)
-        
+
         // Event ID Type:
         // 6bxx debug - general
         // 7bxx debug - test
@@ -37,7 +24,7 @@ namespace Nethermind.BeaconNode.Peering
         // 4bxx warning
         // 5bxx error
         // 9bxx critical
-        
+
         // Event ID Category:
         // a0xx core service, worker, configuration, peering
         // a1xx beacon chain, incl. state transition
@@ -47,7 +34,7 @@ namespace Nethermind.BeaconNode.Peering
         // a5xx custody game
         // a6xx shard data chains
         // a9xx miscellaneous / other
-        
+
         // 1bxx preliminary
 
         public static readonly Action<ILogger, string, string, int, Exception?> PeeringWorkerStarting =
@@ -61,19 +48,19 @@ namespace Nethermind.BeaconNode.Peering
                 "Starting queue processor thread for {QueueProcessorName}");
 
         // 2bxx 
-        
+
         public static readonly Action<ILogger, string, Exception?> PeerDiscovered =
             LoggerMessage.Define<string>(LogLevel.Information,
                 new EventId(2050, nameof(PeerDiscovered)),
                 "Peer discovered: {Peer}");
 
         // 4bxx warning
-        
+
         public static readonly Action<ILogger, string, int, Exception?> UnknownGossipReceived =
             LoggerMessage.Define<string, int>(LogLevel.Warning,
                 new EventId(4050, nameof(UnknownGossipReceived)),
                 "Unknown gossip received, unknown topic '{Topic}', {ByteCount} bytes.");
-        
+
         public static readonly Action<ILogger, RpcDirection, int, string, string, int, Exception?> UnknownRpcReceived =
             LoggerMessage.Define<RpcDirection, int, string, string, int>(LogLevel.Warning,
                 new EventId(4051, nameof(UnknownRpcReceived)),
@@ -120,12 +107,12 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define<BeaconBlock, string>(LogLevel.Error,
                 new EventId(5053, nameof(ProcessSignedBeaconBlockError)),
                 "Error handling signed beacon block, {BeaconBlock}: {ErrorMessage}");
-        
+
         public static readonly Action<ILogger, string, string, Exception?> HandleRpcStatusError =
             LoggerMessage.Define<string, string>(LogLevel.Error,
                 new EventId(5054, nameof(HandleRpcStatusError)),
                 "Error handling status from peer {PeerId}: {ErrorMessage}");
-        
+
         public static readonly Action<ILogger, string, string, Exception?> HandlePeerDiscoveredError =
             LoggerMessage.Define<string, string>(LogLevel.Error,
                 new EventId(5055, nameof(HandlePeerDiscoveredError)),
@@ -139,10 +126,10 @@ namespace Nethermind.BeaconNode.Peering
             LoggerMessage.Define(LogLevel.Critical,
                 new EventId(9050, nameof(PeeringWorkerCriticalError)),
                 "Critical unhandled error starting peering worker. Worker cannot continue.");
-        
+
         public static readonly Action<ILogger, string, Exception?> QueueProcessorCriticalError =
             LoggerMessage.Define<string>(LogLevel.Critical,
                 new EventId(9051, nameof(QueueProcessorCriticalError)),
-                "Critical unhandled error in queue processor thread for {QueueProcessorName}. Processor cannot continue.");        
+                "Critical unhandled error in queue processor thread for {QueueProcessorName}. Processor cannot continue.");
     }
 }

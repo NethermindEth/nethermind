@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
@@ -23,7 +26,7 @@ namespace Nethermind.Merkleization
             int layerCount = 32)
         {
             List<Bytes32> workingValues = new List<Bytes32>(values);
-            List<IList<Bytes32>> tree = new List<IList<Bytes32>>(new[] {workingValues.ToArray()});
+            List<IList<Bytes32>> tree = new List<IList<Bytes32>>(new[] { workingValues.ToArray() });
             for (int height = 0; height < layerCount; height++)
             {
                 if (workingValues.Count % 2 == 1)

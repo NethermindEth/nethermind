@@ -1,19 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -29,17 +15,17 @@ namespace Nethermind.Plugin.Baseline
     public class BaselinePlugin : INethermindPlugin
     {
         private INethermindApi _api;
-        
+
         private ILogger _logger;
-        
+
         private IBaselineConfig _baselineConfig;
 
         public string Name => "Baseline";
-        
+
         public string Description => "Ethereum Baseline for Enterprise";
-        
+
         public string Author => "Nethermind";
-        
+
         public Task Init(INethermindApi api)
         {
             _baselineConfig = api.Config<IBaselineConfig>();
@@ -79,7 +65,7 @@ namespace Nethermind.Plugin.Baseline
 
                 var modulePool = new SingletonModulePool<IBaselineModule>(baselineModuleFactory);
                 _api.RpcModuleProvider!.Register(modulePool);
-                
+
                 if (_logger.IsInfo) _logger.Info("Baseline RPC Module has been enabled");
             }
             else

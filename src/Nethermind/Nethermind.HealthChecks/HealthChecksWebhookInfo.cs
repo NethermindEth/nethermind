@@ -18,7 +18,7 @@ namespace Nethermind.HealthChecks
         public HealthChecksWebhookInfo(string description, IIPResolver ipResolver, IMetricsConfig metricsConfig, string hostname)
         {
             _description = description;
-            _hostname = hostname; 
+            _hostname = hostname;
             IPAddress externalIp = ipResolver.ExternalIp;
             _ip = externalIp.ToString();
             _nodeName = metricsConfig.NodeName;

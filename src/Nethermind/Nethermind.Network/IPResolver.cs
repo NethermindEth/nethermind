@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -48,17 +35,17 @@ namespace Nethermind.Network
             {
                 LocalIp = IPAddress.Loopback;
             }
-            
+
             try
             {
                 ExternalIp = await InitializeExternalIp();
             }
             catch (Exception)
             {
-                ExternalIp = IPAddress.None; 
+                ExternalIp = IPAddress.None;
             }
         }
-        
+
         public IPAddress LocalIp { get; private set; }
 
         public IPAddress ExternalIp { get; private set; }
@@ -75,7 +62,7 @@ namespace Nethermind.Network
                 yield return new WebIPSource("http://ipinfo.io/ip", _logManager);
                 yield return new WebIPSource("http://api.ipify.org", _logManager);
             }
-            
+
             try
             {
                 foreach (IIPSource s in GetIPSources())
@@ -90,9 +77,9 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                if(_logger.IsError) _logger.Error("Error while getting external ip", e);
+                if (_logger.IsError) _logger.Error("Error while getting external ip", e);
             }
-            
+
             return IPAddress.Loopback;
         }
 
@@ -101,9 +88,9 @@ namespace Nethermind.Network
             IEnumerable<IIPSource> GetIPSources()
             {
                 yield return new NetworkConfigLocalIPSource(_networkConfig, _logManager);
-                yield return new SocketIPSource( _logManager);
+                yield return new SocketIPSource(_logManager);
             }
-            
+
             try
             {
                 foreach (var s in GetIPSources())
@@ -117,9 +104,9 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                if(_logger.IsError) _logger.Error("Error while getting local ip", e);
+                if (_logger.IsError) _logger.Error("Error while getting local ip", e);
             }
-            
+
             return IPAddress.Loopback;
         }
     }

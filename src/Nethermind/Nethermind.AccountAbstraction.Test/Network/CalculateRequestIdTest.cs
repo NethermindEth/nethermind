@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -60,8 +63,8 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 Signature = Bytes.FromHexString(
                     "0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c")
             });
-            
-            
+
+
             Address entryPointId = new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
             ulong chainId = 5;
             Keccak idFromTransaction2 =

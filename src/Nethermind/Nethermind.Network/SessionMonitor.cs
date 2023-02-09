@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -68,7 +55,7 @@ namespace Nethermind.Network
 
         private void OnDisconnected(object sender, DisconnectEventArgs e)
         {
-            ISession session = (ISession) sender;
+            ISession session = (ISession)sender;
             session.Disconnected -= OnDisconnected;
             _sessions.TryRemove(session.SessionId, out session);
         }
@@ -108,7 +95,7 @@ namespace Nethermind.Network
                     if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasksLength} peers. Received {successes} pongs.");
                     if (failures > tasks.Length / 3)
                     {
-                        decimal percentage = (decimal) failures / tasksLength;
+                        decimal percentage = (decimal)failures / tasksLength;
                         if (_logger.IsInfo) _logger.Info($"{percentage:P0} of nodes did not respond to a Ping message - {failures}/{tasksLength}");
                     }
                 }
@@ -118,7 +105,7 @@ namespace Nethermind.Network
 
         private async Task<bool> SendPingMessage(ISession session)
         {
-            if (session.PingSender == null)
+            if (session.PingSender is null)
             {
                 /* this would happen when session is initialized already but the protocol is not yet initialized
                    we do not have a separate session state for it at the moment */
@@ -157,7 +144,7 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebug) _logger.Debug("Starting session monitor");
 
-            _pingTimer = new Timer(_networkConfig.P2PPingInterval) {AutoReset = false};
+            _pingTimer = new Timer(_networkConfig.P2PPingInterval) { AutoReset = false };
             _pingTimer.Elapsed += (sender, e) =>
             {
                 try

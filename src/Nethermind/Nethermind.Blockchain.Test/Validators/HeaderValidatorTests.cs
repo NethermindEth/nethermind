@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
@@ -53,12 +40,12 @@ namespace Nethermind.Blockchain.Test.Validators
         [SetUp]
         public void Setup()
         {
-            EthashDifficultyCalculator calculator = new(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.Mainnet));
+            EthashDifficultyCalculator calculator = new(new TestSingleReleaseSpecProvider(Frontier.Instance));
             _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance), Timestamper.Default);
             _testLogger = new TestLogger();
             MemDb blockInfoDb = new();
             _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
-            _specProvider = new SingleReleaseSpecProvider(Byzantium.Instance, 3);
+            _specProvider = new TestSingleReleaseSpecProvider(Byzantium.Instance);
 
             _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
@@ -229,7 +216,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
                 .WithGasLimit(gasLimit)
                 .WithNumber(_parentBlock.Number + 1)
-                .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec(_parentBlock.Number + 1)))
+                .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))))
                 .WithNonce(0).TestObject;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
@@ -285,7 +272,7 @@ namespace Nethermind.Blockchain.Test.Validators
         public void When_total_difficulty_0_or_null_we_should_skip_total_difficulty_validation(long? totalDifficulty)
         {
             _block.Header.Difficulty = 1;
-            _block.Header.TotalDifficulty = totalDifficulty == null ? null : (UInt256)totalDifficulty;
+            _block.Header.TotalDifficulty = totalDifficulty is null ? null : (UInt256)totalDifficulty;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
 

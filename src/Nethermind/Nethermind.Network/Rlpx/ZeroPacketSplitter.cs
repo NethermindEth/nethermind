@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -38,7 +25,7 @@ namespace Nethermind.Network.Rlpx
         {
             MaxFrameSize = int.MaxValue;
         }
-        
+
         public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
 
         private int _contextId;
@@ -68,11 +55,11 @@ namespace Nethermind.Network.Rlpx
 
                 // here we encode payload size as an RLP encoded long value without leading zeros
                 /*0*/
-                output.WriteByte((byte) (framePayloadSize >> 16));
+                output.WriteByte((byte)(framePayloadSize >> 16));
                 /*1*/
-                output.WriteByte((byte) (framePayloadSize >> 8));
+                output.WriteByte((byte)(framePayloadSize >> 8));
                 /*2*/
-                output.WriteByte((byte) framePayloadSize);
+                output.WriteByte((byte)framePayloadSize);
 
                 if (framesCount == 1)
                 {
@@ -85,7 +72,7 @@ namespace Nethermind.Network.Rlpx
                     // output.WriteByte(128);
                     // /*5-16*/
                     // output.WriteZero(11);
-                    
+
                     // 194|128 is an RLP encoded array with two elements that are zero
                     /*3*/
                     output.WriteByte(194);

@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
@@ -32,7 +19,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             var length = rlpStream.ReadSequenceLength();
             int check = rlpStream.Position + length;
             var finalizingBlockNumber = rlpStream.DecodeLong();
-            var previousFinalizingBlockNumber= rlpStream.DecodeLong();
+            var previousFinalizingBlockNumber = rlpStream.DecodeLong();
 
             int addressesSequenceLength = rlpStream.ReadSequenceLength();
             int addressesCheck = rlpStream.Position + addressesSequenceLength;
@@ -40,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             int i = 0;
             while (rlpStream.Position < addressesCheck)
             {
-                addresses[i++] = rlpStream.DecodeAddress();                
+                addresses[i++] = rlpStream.DecodeAddress();
             }
             rlpStream.Check(addressesCheck);
             rlpStream.Check(check);
@@ -50,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public Rlp Encode(ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence;
             }
@@ -62,13 +49,13 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void Encode(RlpStream stream, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 stream.EncodeNullObject();
                 return;
             }
 
-            var (contentLength, validatorLength)  = GetContentLength(item, rlpBehaviors);
+            var (contentLength, validatorLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             stream.Encode(item.FinalizingBlockNumber);
             stream.Encode(item.PreviousFinalizingBlockNumber);
@@ -79,7 +66,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public int GetLength(ValidatorInfo? item, RlpBehaviors rlpBehaviors) => item == null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
+        public int GetLength(ValidatorInfo? item, RlpBehaviors rlpBehaviors) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
         private static (int Total, int Validators) GetContentLength(ValidatorInfo item, RlpBehaviors rlpBehaviors)
         {
@@ -87,4 +74,4 @@ namespace Nethermind.Consensus.AuRa.Validators
             return (Rlp.LengthOf(item.FinalizingBlockNumber) + Rlp.LengthOf(item.PreviousFinalizingBlockNumber) + Rlp.LengthOfSequence(validatorsLength), validatorsLength);
         }
     }
-} 
+}

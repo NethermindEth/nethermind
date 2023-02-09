@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.HashLib.Extensions;
 
@@ -20,7 +7,7 @@ namespace Nethermind.HashLib.Crypto
 {
     internal class MD5 : MDBase
     {
-        public MD5() 
+        public MD5()
             : base(4, 16)
         {
         }
@@ -43,7 +30,7 @@ namespace Nethermind.HashLib.Crypto
             uint data13 = Converters.ConvertBytesToUInt(a_data, a_index + 4 * 13);
             uint data14 = Converters.ConvertBytesToUInt(a_data, a_index + 4 * 14);
             uint data15 = Converters.ConvertBytesToUInt(a_data, a_index + 4 * 15);
-            
+
             uint A = m_state[0];
             uint B = m_state[1];
             uint C = m_state[2];
@@ -81,7 +68,7 @@ namespace Nethermind.HashLib.Crypto
             C = ((C << 17) | (C >> (32 - 17))) + D;
             B = data15 + 0x49b40821 + B + ((C & D) | (~C & A));
             B = ((B << 22) | (B >> (32 - 22))) + C;
-            
+
             A = data1 + 0xf61e2562 + A + ((B & D) | (C & ~D));
             A = ((A << 5) | (A >> (32 - 5))) + B;
             D = data6 + 0xc040b340 + D + ((A & C) | (B & ~C));

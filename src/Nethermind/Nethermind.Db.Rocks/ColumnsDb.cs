@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -27,7 +14,7 @@ namespace Nethermind.Db.Rocks;
 public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 {
     private readonly IDictionary<T, IDbWithSpan> _columnDbs = new Dictionary<T, IDbWithSpan>();
-    
+
     public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys)
         : base(basePath, settings, dbConfig, logManager, GetColumnFamilies(dbConfig, settings.DbName, GetEnumKeys(keys)))
     {
@@ -35,7 +22,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
         foreach (T key in keys)
         {
-            _columnDbs[key] = new ColumnDb(_db, this, key.ToString()!); 
+            _columnDbs[key] = new ColumnDb(_db, this, key.ToString()!);
         }
     }
 
@@ -52,7 +39,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, string name, IReadOnlyList<T> keys)
     {
         InitCache(dbConfig);
-        
+
         ColumnFamilies result = new();
         ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize), name);
         foreach (T key in keys)

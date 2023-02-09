@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -36,10 +23,10 @@ namespace Nethermind.Evm
             _byteCode.Add(instruction);
             return this;
         }
-        
+
         public Prepare Op(Instruction instruction)
         {
-            _byteCode.Add((byte) instruction);
+            _byteCode.Add((byte)instruction);
             return this;
         }
 
@@ -73,11 +60,11 @@ namespace Nethermind.Evm
 
             return this;
         }
-        
+
         public Prepare ForCreate2Of(byte[] codeToBeDeployed)
         {
             StoreDataInMemory(0, codeToBeDeployed);
-            
+
             PushData(0); // salt
             PushData(codeToBeDeployed.Length);
             PushData(0); // position in memory
@@ -99,7 +86,7 @@ namespace Nethermind.Evm
             Op(Instruction.CALL);
             return this;
         }
-        
+
         public Prepare Call(Address address, long gasLimit)
         {
             PushData(0);
@@ -120,7 +107,7 @@ namespace Nethermind.Evm
 
         public Prepare CallWithInput(Address address, long gasLimit, byte[]? input = null)
         {
-            if (input != null)
+            if (input is not null)
             {
                 StoreDataInMemory(0, input);
             }
@@ -131,7 +118,7 @@ namespace Nethermind.Evm
             }
             PushData(0);
             PushData(0);
-            PushData(input != null ? input.Length : 32);
+            PushData(input is not null ? input.Length : 32);
             PushData(0);
             PushData(0);
             PushData(address);
@@ -207,7 +194,7 @@ namespace Nethermind.Evm
             {
                 throw new Exception($"Unexpected call type {callType}");
             }
-            if (input != null)
+            if (input is not null)
             {
                 StoreDataInMemory(0, input);
             }
@@ -218,7 +205,7 @@ namespace Nethermind.Evm
             }
             PushData(0);
             PushData(0);
-            PushData(input != null ? input.Length : 32);
+            PushData(input is not null ? input.Length : 32);
             PushData(0);
             PushData(0);
             PushData(address);
@@ -232,22 +219,22 @@ namespace Nethermind.Evm
             PushData(address.Bytes);
             return this;
         }
-        
+
         public Prepare PushData(int data)
         {
-            return PushData((UInt256) data);
+            return PushData((UInt256)data);
         }
-        
+
         public Prepare PushData(long data)
         {
-            return PushData((UInt256) data);
+            return PushData((UInt256)data);
         }
-        
+
         public Prepare PushData(in UInt256 data)
         {
             Span<byte> bytes = stackalloc byte[32];
             data.ToBigEndian(bytes);
-            
+
             PushData(bytes.WithoutLeadingZeros().ToArray());
             return this;
         }
@@ -260,23 +247,23 @@ namespace Nethermind.Evm
 
         public Prepare PushData(byte[] data)
         {
-            _byteCode.Add((byte) (Instruction.PUSH1 + (byte) data.Length - 1));
+            _byteCode.Add((byte)(Instruction.PUSH1 + (byte)data.Length - 1));
             _byteCode.AddRange(data);
             return this;
         }
 
         public Prepare PushData(byte data)
         {
-            PushData(new[] {data});
+            PushData(new[] { data });
             return this;
         }
-        
+
         public Prepare FromCode(string data)
         {
             _byteCode.AddRange(Bytes.FromHexString(data));
             return this;
         }
-        
+
         public Prepare Data(string data)
         {
             _byteCode.AddRange(Bytes.FromHexString(data));
@@ -327,7 +314,7 @@ namespace Nethermind.Evm
         /// <param name="position">Memory position</param>
         /// <returns>Prepare with requested bytecode</returns>
         public Prepare DataOnStackToMemory(int position)
-        {            
+        {
             PushData(position);
             Op(Instruction.MSTORE);
             return this;
@@ -366,7 +353,7 @@ namespace Nethermind.Evm
         /// <param name="position">Memory position</param>
         /// <returns>Prepare with requested bytecode</returns>
         public Prepare Return(int size, int position)
-        {            
+        {
             PushData(size);
             PushData(position);
             Op(Instruction.RETURN);

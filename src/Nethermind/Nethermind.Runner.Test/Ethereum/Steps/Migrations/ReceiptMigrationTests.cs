@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -49,12 +36,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             int chainLength = 10;
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
-            InMemoryReceiptStorage inMemoryReceiptStorage = new() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
-            InMemoryReceiptStorage outMemoryReceiptStorage = new() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
-            NethermindApi context = new() 
+            InMemoryReceiptStorage inMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
+            InMemoryReceiptStorage outMemoryReceiptStorage = new() { MigratedBlockNumber = migratedBlockNumber is not null ? 0 : long.MaxValue };
+            NethermindApi context = new()
             {
-                ConfigProvider = configProvider, 
-                EthereumJsonSerializer = new EthereumJsonSerializer(), 
+                ConfigProvider = configProvider,
+                EthereumJsonSerializer = new EthereumJsonSerializer(),
                 LogManager = LimboLogs.Instance,
                 ReceiptStorage = new TestReceiptStorage(inMemoryReceiptStorage, outMemoryReceiptStorage),
                 DbProvider = Substitute.For<IDbProvider>(),
@@ -77,27 +64,27 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                         Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject
                     });
             }
-            
+
             ManualResetEvent guard = new(false);
             Keccak lastTransaction = TestItem.Keccaks[txIndex - 1];
             context.DbProvider.ReceiptsDb.When(x => x.Remove(lastTransaction.Bytes)).Do(c => guard.Set());
             ReceiptMigration migration = new(context);
             if (migratedBlockNumber.HasValue)
             {
-                migration.Run(migratedBlockNumber.Value);
+                _ = migration.Run(migratedBlockNumber.Value);
             }
             else
             {
                 migration.Run();
             }
 
-            
+
             guard.WaitOne(TimeSpan.FromSeconds(1));
             int txCount = ((migratedBlockNumber ?? chainLength) - 1 - 1) * 2;
             context.DbProvider.ReceiptsDb.Received(Quantity.Exactly(txCount)).Remove(Arg.Any<byte[]>());
             outMemoryReceiptStorage.Count.Should().Be(txCount);
         }
-        
+
         private class TestReceiptStorage : IReceiptStorage
         {
             private readonly IReceiptStorage _inStorage;
@@ -108,7 +95,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 _inStorage = inStorage;
                 _outStorage = outStorage;
             }
-            
+
             public Keccak FindBlockHash(Keccak txHash) => _inStorage.FindBlockHash(txHash);
 
             public TxReceipt[] Get(Block block) => _inStorage.Get(block);
@@ -130,7 +117,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 get => _outStorage.MigratedBlockNumber;
                 set => _outStorage.MigratedBlockNumber = value;
             }
-            
+
             public bool HasBlock(Keccak hash)
             {
                 return _outStorage.HasBlock(hash);

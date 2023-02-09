@@ -1,18 +1,5 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -61,7 +48,7 @@ namespace Nethermind.Vault
 
             return _accounts.Keys.ToArray();
         }
-        
+
         public async Task<Address> CreateAccount()
         {
             Key key = new Key();
@@ -82,9 +69,9 @@ namespace Nethermind.Vault
                 throw new ApplicationException($"Failed to create vault key with a valid {nameof(key.Id)}.");
             }
 
-            if(_logger.IsTrace) _logger.Trace(
+            if (_logger.IsTrace) _logger.Trace(
                 $"Created key {createdKey.Address} {createdKey.Id} in vault {createdKey.VaultId}");
-            
+
             Address account = new Address(createdKey.Address);
             if (!_accounts.TryAdd(account, createdKey.Id.Value))
             {
@@ -101,8 +88,8 @@ namespace Nethermind.Vault
             {
                 throw new KeyNotFoundException($"Account with the given address {address} could not be found");
             }
-            
-            if(_logger.IsTrace) _logger.Trace($"Deleting key {keyId} from vault {_vaultId}");
+
+            if (_logger.IsTrace) _logger.Trace($"Deleting key {keyId} from vault {_vaultId}");
             await _vaultService.DeleteKey(_vaultId, keyId.Value);
         }
 
@@ -113,7 +100,7 @@ namespace Nethermind.Vault
             {
                 throw new KeyNotFoundException($"Account with the given address {address} could not be found");
             }
-            
+
             string signature = await _vaultService.Sign(_vaultId, keyId.Value, message.ToString(false));
             return new Signature(signature);
         }
@@ -135,7 +122,7 @@ namespace Nethermind.Vault
             {
                 throw new KeyNotFoundException($"Account with the given address {address} could not be found");
             }
-            
+
             string sig = Convert.ToString(signature)!.Remove(0, 2);
             bool result = await _vaultService.Verify(_vaultId, keyId.Value, message.ToString(false), sig);
             return result;
@@ -148,7 +135,7 @@ namespace Nethermind.Vault
             {
                 return null;
             }
-            
+
             return _accounts[address];
         }
 
@@ -158,7 +145,7 @@ namespace Nethermind.Vault
             {
                 throw new ArgumentException($"Can only convert keys with {nameof(key.Id)} that is not NULL");
             }
-            
+
             if (key.Address == null)
             {
                 throw new ArgumentException($"Can only convert keys with {nameof(key.Address)} that is not NULL ({key.Name})");

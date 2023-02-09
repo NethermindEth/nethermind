@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -82,14 +69,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             if (Logger.IsTrace) Logger.Trace($"{Name} subprotocol initializing with {Node:c}");
 
-            if (SyncServer.Head == null)
+            if (SyncServer.Head is null)
             {
                 throw new InvalidOperationException($"Cannot initialize {Name} without the head block set");
             }
 
             BlockHeader head = SyncServer.Head;
             StatusMessage statusMessage = new();
-            statusMessage.ChainId = SyncServer.ChainId;
+            statusMessage.NetworkId = SyncServer.NetworkId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
             statusMessage.BestHash = head.Hash!;
@@ -116,7 +103,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 {
                     const string postFinalized = $"NewBlock message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.";
                     ReportIn(postFinalized);
-                    Disconnect(DisconnectReason.BreachOfProtocol, postFinalized);
+                    Disconnect(InitiateDisconnectReason.GossipingInPoS, postFinalized);
                     return false;
                 }
 
@@ -133,14 +120,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             int packetType = message.PacketType;
             if (!_statusReceived && packetType != Eth62MessageCode.Status)
             {
-                throw new SubprotocolException(
-                    $"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
+                throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
             }
 
             int size = message.Content.ReadableBytes;
-            if (Logger.IsTrace)
-                Logger.Trace(
-                    $"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
+            if (Logger.IsTrace) Logger.Trace($"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
 
             switch (packetType)
             {
@@ -234,7 +218,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
             {
-                ChainId = (ulong)status.ChainId,
+                NetworkId = (ulong)status.NetworkId,
                 BestHash = status.BestHash,
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
@@ -242,7 +226,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 TotalDifficulty = status.TotalDifficulty
             };
 
-            Session.IsNetworkIdMatched = SyncServer.ChainId == (ulong)status.ChainId;
+            Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
             ProtocolInitialized?.Invoke(this, eventArgs);

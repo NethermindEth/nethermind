@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -48,7 +34,7 @@ public class SnapProtocolHandlerTests
         {
             get
             {
-                if (_messageSerializationService == null)
+                if (_messageSerializationService is null)
                 {
                     _messageSerializationService = new MessageSerializationService();
                     _messageSerializationService.Register(new AccountRangeMessageSerializer());
@@ -63,7 +49,8 @@ public class SnapProtocolHandlerTests
 
 
         private SnapProtocolHandler _snapProtocolHandler;
-        public SnapProtocolHandler SnapProtocolHandler {
+        public SnapProtocolHandler SnapProtocolHandler
+        {
             get => _snapProtocolHandler ??= new SnapProtocolHandler(
                 Session,
                 NodeStatsManager,
@@ -79,8 +66,10 @@ public class SnapProtocolHandlerTests
         public TimeSpan SimulatedLatency { get; set; } = TimeSpan.Zero;
 
         private List<long> _recordedResponseBytesLength = new();
-        public Context WithResponseBytesRecorder {
-            get {
+        public Context WithResponseBytesRecorder
+        {
+            get
+            {
                 Session
                     .When((ses) => ses.DeliverMessage(Arg.Any<P2PMessage>()))
                     .Do((callInfo) =>
@@ -95,7 +84,7 @@ public class SnapProtocolHandlerTests
 
                         IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
                         {
-                            PathsWithAccounts = new []{ new PathWithAccount(Keccak.Zero, Account.TotallyEmpty)}
+                            PathsWithAccounts = new[] { new PathWithAccount(Keccak.Zero, Account.TotallyEmpty) }
                         });
                         buffer.ReadByte(); // Need to skip adaptive type
 
@@ -133,18 +122,18 @@ public class SnapProtocolHandlerTests
         SnapProtocolHandler protocolHandler = ctx.SnapProtocolHandler;
 
         ctx.SimulatedLatency = TimeSpan.Zero;
-        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero,  Keccak.Zero), CancellationToken.None);
-        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero,  Keccak.Zero), CancellationToken.None);
+        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
+        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         ctx.RecordedMessageSizesShouldIncrease();
 
         ctx.SimulatedLatency = SnapProtocolHandler.LowerLatencyThreshold + TimeSpan.FromMilliseconds(1);
-        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero,  Keccak.Zero), CancellationToken.None);
-        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero,  Keccak.Zero), CancellationToken.None);
+        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
+        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         ctx.RecordedMessageSizesShouldNotChange();
 
         ctx.SimulatedLatency = SnapProtocolHandler.UpperLatencyThreshold + TimeSpan.FromMilliseconds(1);
-        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero,  Keccak.Zero), CancellationToken.None);
-        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero,  Keccak.Zero), CancellationToken.None);
+        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
+        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         ctx.RecordedMessageSizesShouldDecrease();
     }
 
@@ -158,14 +147,14 @@ public class SnapProtocolHandlerTests
         SnapProtocolHandler protocolHandler = ctx.SnapProtocolHandler;
 
         // Just setting baseline
-        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero,  Keccak.Zero), CancellationToken.None);
-        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero,  Keccak.Zero), CancellationToken.None);
+        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
+        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         ctx.RecordedMessageSizesShouldIncrease();
 
         ctx.SimulatedLatency = Timeouts.Eth + TimeSpan.FromSeconds(1);
-        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero,  Keccak.Zero), CancellationToken.None);
+        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         ctx.SimulatedLatency = TimeSpan.Zero; // The read value is the request down, but it is adjusted on above request
-        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero,  Keccak.Zero), CancellationToken.None);
+        await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
         ctx.RecordedMessageSizesShouldDecrease();
     }
 }

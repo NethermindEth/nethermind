@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -103,11 +89,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return (result.Item1, result.Item2, callInfo.ToIsContract);
         }
 
-        protected virtual (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(PermissionConstantContract.PermissionCallInfo callInfo) => 
+        protected virtual (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(PermissionConstantContract.PermissionCallInfo callInfo) =>
             Constant.Call<ITransactionPermissionContract.TxPermissions, bool>(callInfo);
 
         protected abstract object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader);
-        
+
         protected IConstantContract Constant { get; }
 
         protected TransactionPermissionContract(
@@ -118,7 +104,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             Constant = new PermissionConstantContract(this, readOnlyTxProcessorSource);
         }
-        
+
         protected class PermissionConstantContract : ConstantContract
         {
             public PermissionConstantContract(Contract contract, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : base(contract, readOnlyTxProcessorSource)
@@ -144,8 +130,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
                     BlockHeader parentHeader,
                     string functionName,
                     Address sender,
-                    object[] arguments, 
-                    Address to) 
+                    object[] arguments,
+                    Address to)
                     : base(parentHeader, functionName, sender, arguments)
                 {
                     To = to;

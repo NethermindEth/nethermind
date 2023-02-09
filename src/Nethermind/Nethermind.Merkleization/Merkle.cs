@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -23,6 +10,7 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
 using Chunk = Nethermind.Dirichlet.Numerics.UInt256;
+using UInt128 = Nethermind.Dirichlet.Numerics.UInt128;
 
 namespace Nethermind.Merkleization
 {
@@ -53,7 +41,7 @@ namespace Nethermind.Merkleization
         {
             if (Lzcnt.IsSupported)
             {
-                return (uint) 1 << (int) (32 - Lzcnt.LeadingZeroCount(--v));
+                return (uint)1 << (int)(32 - Lzcnt.LeadingZeroCount(--v));
             }
 
             if (v != 0U) v--;
@@ -73,11 +61,11 @@ namespace Nethermind.Merkleization
             {
                 return 0;
             }
-            
+
             int leadingZeros = 0;
             if (Lzcnt.IsSupported)
             {
-                leadingZeros = (int) Lzcnt.X64.LeadingZeroCount(--v);
+                leadingZeros = (int)Lzcnt.X64.LeadingZeroCount(--v);
             }
             else
             {
@@ -90,7 +78,7 @@ namespace Nethermind.Merkleization
         private static int CountLeadingZeros(ulong x)
         {
             x--;
-            
+
             int count = 0;
             for (int i = 63; i >= 0; i--)
             {
@@ -98,7 +86,7 @@ namespace Nethermind.Merkleization
                 {
                     break;
                 }
-                
+
                 count++;
             }
 
@@ -109,7 +97,7 @@ namespace Nethermind.Merkleization
         {
             if (Lzcnt.IsSupported)
             {
-                return (ulong) 1 << (int) (64 - Lzcnt.X64.LeadingZeroCount(--v));
+                return (ulong)1 << (int)(64 - Lzcnt.X64.LeadingZeroCount(--v));
             }
 
             if (v != 0UL) v--;
@@ -252,7 +240,7 @@ namespace Nethermind.Merkleization
                 Ize(out root, MemoryMarshal.Cast<byte, Chunk>(value));
             }
         }
-        
+
         public static void Ize(out UInt256 root, ReadOnlySpan<byte> value, ulong chunkCount)
         {
             const int typeSize = 1;
@@ -269,7 +257,7 @@ namespace Nethermind.Merkleization
                 Ize(out root, MemoryMarshal.Cast<byte, Chunk>(value), chunkCount);
             }
         }
-        
+
         public static void IzeBits(out UInt256 root, Span<byte> value, uint limit)
         {
             // reset lowest bit perf
@@ -427,7 +415,7 @@ namespace Nethermind.Merkleization
                 return;
             }
 
-            int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint) (value.Length + lastChunk.Length) : limit);
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint)(value.Length + lastChunk.Length) : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             int length = value.Length;
             for (int i = 0; i < length; i++)
@@ -452,7 +440,7 @@ namespace Nethermind.Merkleization
                 return;
             }
 
-            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong) length : limit);
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)length : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             for (int i = 0; i < length; i++)
             {
@@ -462,7 +450,7 @@ namespace Nethermind.Merkleization
 
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, List<DepositData> value, ulong limit)
         {
             int length = value.Count;
@@ -472,7 +460,7 @@ namespace Nethermind.Merkleization
                 return;
             }
 
-            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong) length : limit);
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)length : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             for (int i = 0; i < length; i++)
             {
@@ -482,7 +470,7 @@ namespace Nethermind.Merkleization
 
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
         {
             if (limit == 0 && value.Length == 1)
@@ -491,7 +479,7 @@ namespace Nethermind.Merkleization
                 return;
             }
 
-            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong) value.Length : limit);
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)value.Length : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             int length = value.Length;
             for (int i = 0; i < length; i++)

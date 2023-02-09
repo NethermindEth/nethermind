@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -28,6 +15,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -54,6 +42,7 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Config;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -259,9 +248,9 @@ namespace Nethermind.Synchronization.Test
         {
             NoErrorLimboLogs logManager = NoErrorLimboLogs.Instance;
             ConsoleAsyncLogger logger = new(LogLevel.Debug, "PEER " + index + " ");
-//            var logManager = new OneLoggerLogManager(logger);
+            //            var logManager = new OneLoggerLogManager(logger);
             SingleReleaseSpecProvider specProvider =
-                new(ConstantinopleFix.Instance, MainnetSpecProvider.Instance.ChainId);
+                new(ConstantinopleFix.Instance, MainnetSpecProvider.Instance.NetworkId, MainnetSpecProvider.Instance.ChainId);
 
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IDb blockDb = dbProvider.BlocksDb;
@@ -344,7 +333,11 @@ namespace Nethermind.Synchronization.Test
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,
                 BlockchainProcessor.Options.NoReceipts);
-            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider);
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 0
+            };
+            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider, blocksConfig);
             TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
             DevBlockProducer producer = new(
                 transactionSelector,
@@ -354,7 +347,7 @@ namespace Nethermind.Synchronization.Test
                 new BuildBlocksRegularly(TimeSpan.FromMilliseconds(50)).IfPoolIsNotEmpty(txPool),
                 Timestamper.Default,
                 specProvider,
-                new MiningConfig(),
+                new BlocksConfig(),
                 logManager);
 
             ProgressTracker progressTracker = new(tree, dbProvider.StateDb, LimboLogs.Instance);

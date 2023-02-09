@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
@@ -61,10 +64,10 @@ namespace Nethermind.BeaconNode.OApi.Controllers
             {
                 Core2.Api.StatusCode.Success => Ok(apiResponse.Content),
                 Core2.Api.StatusCode.InvalidRequest => Problem("Invalid request syntax.",
-                    statusCode: (int) apiResponse.StatusCode),
+                    statusCode: (int)apiResponse.StatusCode),
                 Core2.Api.StatusCode.CurrentlySyncing => Problem("Beacon node is currently syncing, try again later.",
-                    statusCode: (int) apiResponse.StatusCode),
-                _ => Problem("Beacon node internal error.", statusCode: (int) apiResponse.StatusCode)
+                    statusCode: (int)apiResponse.StatusCode),
+                _ => Problem("Beacon node internal error.", statusCode: (int)apiResponse.StatusCode)
             };
         }
     }

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,7 +14,7 @@ namespace Nethermind.Sockets
     /// </summary>
     public interface ISocketHandler : IDisposable
     {
-        Task SendRawAsync(ArraySegment<byte> data);
+        Task SendRawAsync(ArraySegment<byte> data, bool endMessage = true);
         Task<ReceiveResult?> GetReceiveResult(ArraySegment<byte> buffer);
         Task CloseAsync(ReceiveResult? result);
     }

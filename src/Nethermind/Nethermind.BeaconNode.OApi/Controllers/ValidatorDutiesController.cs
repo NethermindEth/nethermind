@@ -1,19 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Linq;
@@ -57,7 +43,7 @@ namespace Nethermind.BeaconNode.OApi.Controllers
             CancellationToken cancellationToken)
         {
             IList<BlsPublicKey> publicKeys = validator_pubkeys.Select(x => new BlsPublicKey(x)).ToList();
-            Epoch? targetEpoch = (Epoch?) epoch;
+            Epoch? targetEpoch = (Epoch?)epoch;
 
             // NOTE: Spec 0.10.1 still has old Shard references in OAPI in the Duties JSON, although the spec has changed to Index;
             // use Index as it is easier to understand (i.e. the spec OAPI in 0.10.1 is wrong)
@@ -69,12 +55,12 @@ namespace Nethermind.BeaconNode.OApi.Controllers
             {
                 Core2.Api.StatusCode.Success => Ok(apiResponse.Content),
                 Core2.Api.StatusCode.InvalidRequest => Problem("Invalid request syntax.",
-                    statusCode: (int) apiResponse.StatusCode),
+                    statusCode: (int)apiResponse.StatusCode),
                 Core2.Api.StatusCode.CurrentlySyncing => Problem("Beacon node is currently syncing, try again later.",
-                    statusCode: (int) apiResponse.StatusCode),
+                    statusCode: (int)apiResponse.StatusCode),
                 Core2.Api.StatusCode.DutiesNotAvailableForRequestedEpoch => Problem(
-                    "Duties cannot be provided for the requested epoch.", statusCode: (int) apiResponse.StatusCode),
-                _ => Problem("Beacon node internal error.", statusCode: (int) apiResponse.StatusCode)
+                    "Duties cannot be provided for the requested epoch.", statusCode: (int)apiResponse.StatusCode),
+                _ => Problem("Beacon node internal error.", statusCode: (int)apiResponse.StatusCode)
             };
         }
     }

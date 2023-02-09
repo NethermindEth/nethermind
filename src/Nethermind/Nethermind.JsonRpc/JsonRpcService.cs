@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -114,8 +101,8 @@ public class JsonRpcService : IJsonRpcService
         string methodName = rpcRequest.Method.Trim();
 
         (MethodInfo MethodInfo, bool ReadOnly) result = _rpcModuleProvider.Resolve(methodName);
-        return result.MethodInfo != null 
-            ? await ExecuteAsync(rpcRequest, methodName, result, context) 
+        return result.MethodInfo is not null
+            ? await ExecuteAsync(rpcRequest, methodName, result, context)
             : GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id);
     }
 
@@ -124,7 +111,7 @@ public class JsonRpcService : IJsonRpcService
     {
         ParameterInfo[] expectedParameters = method.Info.GetParameters();
         string?[] providedParameters = request.Params ?? Array.Empty<string>();
-        
+
         LogRequest(methodName, providedParameters, expectedParameters);
 
         int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
@@ -140,7 +127,7 @@ public class JsonRpcService : IJsonRpcService
                 {
                     int parameterIndex = expectedParameters.Length - missingParamsCount + i;
                     bool nullable = IsNullableParameter(expectedParameters[parameterIndex]);
-                    
+
                     // if the null is the default parameter it could be passed in an explicit way as "" or null
                     // or we can treat null as a missing parameter. Two tests for this cases:
                     // Eth_call_is_working_with_implicit_null_as_the_last_argument and Eth_call_is_working_with_explicit_null_as_the_last_argument
@@ -170,7 +157,7 @@ public class JsonRpcService : IJsonRpcService
         if (expectedParameters.Length > 0)
         {
             parameters = DeserializeParameters(expectedParameters, providedParameters, missingParamsCount);
-            if (parameters == null)
+            if (parameters is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
                 return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id);
@@ -185,7 +172,7 @@ public class JsonRpcService : IJsonRpcService
             contextAwareModule.Context = context;
         }
         bool returnImmediately = methodName != "eth_getLogs";
-        Action? returnAction = returnImmediately ? (Action) null : () => _rpcModuleProvider.Return(methodName, rpcModule);
+        Action? returnAction = returnImmediately ? (Action)null : () => _rpcModuleProvider.Return(methodName, rpcModule);
         try
         {
             object invocationResult = method.Info.Invoke(rpcModule, parameters);
@@ -202,12 +189,12 @@ public class JsonRpcService : IJsonRpcService
         }
         catch (TargetParameterCountException e)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.ToString(), request.Id, returnAction);
         }
         catch (TargetInvocationException e) when (e.InnerException is JsonException)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id, returnAction);
-        }            
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", e.InnerException?.ToString(), request.Id, returnAction);
+        }
         catch (Exception e) when (e.InnerException is OperationCanceledException)
         {
             string errorMessage = $"{methodName} request was canceled due to enabled timeout.";
@@ -215,7 +202,7 @@ public class JsonRpcService : IJsonRpcService
         }
         catch (Exception e) when (e.InnerException is InsufficientBalanceException)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, null, request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, e.ToString(), request.Id, returnAction);
         }
         finally
         {
@@ -233,7 +220,7 @@ public class JsonRpcService : IJsonRpcService
         }
 
         Result? result = resultWrapper.GetResult();
-        if (result == null)
+        if (result is null)
         {
             if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: no result");
             return GetErrorResponse(methodName, resultWrapper.GetErrorCode(), "Internal error", resultWrapper.GetData(), request.Id, returnAction);
@@ -307,7 +294,7 @@ public class JsonRpcService : IJsonRpcService
 
                 if (string.IsNullOrWhiteSpace(providedParameter))
                 {
-                    if (providedParameter == null && IsNullableParameter(expectedParameter))
+                    if (providedParameter is null && IsNullableParameter(expectedParameter))
                     {
                         executionParameters.Add(null);
                     }
@@ -367,12 +354,12 @@ public class JsonRpcService : IJsonRpcService
         Type parameterType = parameterInfo.ParameterType;
         if (parameterType.IsValueType)
         {
-            return Nullable.GetUnderlyingType(parameterType) != null;
+            return Nullable.GetUnderlyingType(parameterType) is not null;
         }
 
         CustomAttributeData nullableAttribute = parameterInfo.CustomAttributes
             .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
-        if (nullableAttribute != null)
+        if (nullableAttribute is not null)
         {
             CustomAttributeTypedArgument attributeArgument = nullableAttribute.ConstructorArguments.FirstOrDefault();
             if (attributeArgument.ArgumentType == typeof(byte))
@@ -395,14 +382,17 @@ public class JsonRpcService : IJsonRpcService
         return response;
     }
 
-    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage) => 
+    public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage) =>
         GetErrorResponse(null, errorCode, errorMessage, null, null);
+
+    public JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object id) =>
+        GetErrorResponse(methodName, errorCode, errorMessage, null, id);
 
     public JsonConverter[] Converters { get; }
 
     private JsonRpcErrorResponse GetErrorResponse(string? methodName, int errorCode, string? errorMessage, object? errorData, object? id, Action? disposableAction = null)
     {
-        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorCode}, message: {errorMessage}");
+        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
         JsonRpcErrorResponse response = new(disposableAction)
         {
             Error = new Error
@@ -420,7 +410,7 @@ public class JsonRpcService : IJsonRpcService
 
     private (int? ErrorType, string ErrorMessage) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
     {
-        if (rpcRequest == null)
+        if (rpcRequest is null)
         {
             return (ErrorCodes.InvalidRequest, "Invalid request");
         }
@@ -436,7 +426,7 @@ public class JsonRpcService : IJsonRpcService
         ModuleResolution result = _rpcModuleProvider.Check(methodName, context);
         return result switch
         {
-            ModuleResolution.Unknown => ((int?) ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
+            ModuleResolution.Unknown => ((int?)ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
             ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled for the url '{context.Url?.ToString() ?? string.Empty}', consider adding module in JsonRpcConfig.AdditionalRpcUrls for additional url, or to JsonRpcConfig.EnabledModules for default url"),
             ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found for the url '{context.Url?.ToString() ?? string.Empty}' but is disabled for {context.RpcEndpoint}"),
             ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"Method {methodName} should be authenticated"),

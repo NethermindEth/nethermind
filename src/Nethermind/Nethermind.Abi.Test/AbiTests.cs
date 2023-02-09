@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
@@ -40,9 +27,9 @@ namespace Nethermind.Abi.Test
         {
             AbiType type = new AbiArray(new AbiArray(AbiType.UInt256));
             AbiSignature signature = new AbiSignature("abc", type);
-            UInt256[] element = {1, 2, 3};
-            UInt256[][] data = {element, element};
-            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] {data});
+            UInt256[] element = { 1, 2, 3 };
+            UInt256[][] data = { element, element };
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] { data });
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(data, arguments[0]);
         }
@@ -69,8 +56,8 @@ namespace Nethermind.Abi.Test
         {
             AbiType type = new AbiArray(AbiType.String);
             AbiSignature signature = new AbiSignature("abc", type);
-            string[] data = {"a", "bc", "def"};
-            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] {data});
+            string[] data = { "a", "bc", "def" };
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] { data });
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(data, arguments[0]);
         }
@@ -83,7 +70,7 @@ namespace Nethermind.Abi.Test
         {
             AbiType type = new AbiArray(AbiType.UInt256);
             AbiSignature signature = new AbiSignature("abc", type);
-            UInt256[] data = {1, 2, 3};
+            UInt256[] data = { 1, 2, 3 };
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(data, arguments[0]);
@@ -96,10 +83,10 @@ namespace Nethermind.Abi.Test
         public void Fixed_array_of_fixed_array_of_uint(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiFixedLengthArray(new AbiFixedLengthArray(AbiType.UInt256, 2), 3);
-            UInt256[] element = {1, 1};
-            UInt256[][] data = {element, element, element};
+            UInt256[] element = { 1, 1 };
+            UInt256[][] data = { element, element, element };
             AbiSignature signature = new AbiSignature("abc", type);
-            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] {data});
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] { data });
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(data, arguments[0]);
         }
@@ -112,8 +99,8 @@ namespace Nethermind.Abi.Test
         {
             AbiType type = new AbiFixedLengthArray(AbiType.String, 3);
             AbiSignature signature = new AbiSignature("abc", type);
-            string[] data = {"a", "bc", "def"};
-            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] {data});
+            string[] data = { "a", "bc", "def" };
+            byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] { data });
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(data, arguments[0]);
         }
@@ -125,7 +112,7 @@ namespace Nethermind.Abi.Test
         public void Fixed_array_of_uint(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiFixedLengthArray(AbiType.UInt256, 2);
-            UInt256[] data = {1, 1};
+            UInt256[] data = { 1, 1 };
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
@@ -139,11 +126,11 @@ namespace Nethermind.Abi.Test
         public void Test_bytes(AbiEncodingStyle encodingStyle)
         {
             AbiType type = new AbiBytes(19);
-            byte[] data = new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
+            byte[] data = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-            Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
+            Assert.True(Bytes.AreEqual((byte[])arguments[0], data));
         }
 
         [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -165,11 +152,11 @@ namespace Nethermind.Abi.Test
         public void Test_dynamic_bytes(AbiEncodingStyle encodingStyle)
         {
             AbiType type = AbiType.DynamicBytes;
-            byte[] data = new byte[17] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17};
+            byte[] data = new byte[17] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-            Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
+            Assert.True(Bytes.AreEqual((byte[])arguments[0], data));
         }
 
         [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -224,7 +211,7 @@ namespace Nethermind.Abi.Test
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-            Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
+            Assert.True(Bytes.AreEqual((byte[])arguments[0], data));
         }
 
         [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -239,29 +226,29 @@ namespace Nethermind.Abi.Test
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(BigInteger.MinusOne, arguments[0]);
         }
-        
+
         [TestCase(AbiEncodingStyle.None)]
         public void Test_single_uint_with_casting(AbiEncodingStyle encodingStyle)
         {
             AbiType type = AbiType.UInt256;
             AbiSignature signature = new AbiSignature("abc", type);
-            
+
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, UInt256.One);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(UInt256.One, arguments[0]);
-            
+
             encoded = _abiEncoder.Encode(encodingStyle, signature, 1L);
             arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(UInt256.One, arguments[0]);
-            
+
             encoded = _abiEncoder.Encode(encodingStyle, signature, 1UL);
             arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(UInt256.One, arguments[0]);
-            
+
             encoded = _abiEncoder.Encode(encodingStyle, signature, 1);
             arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(UInt256.One, arguments[0]);
-            
+
             encoded = _abiEncoder.Encode(encodingStyle, signature, 1U);
             arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(UInt256.One, arguments[0]);
@@ -321,7 +308,7 @@ namespace Nethermind.Abi.Test
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(data, arguments[0]);
         }
-        
+
         [TestCase(0, 0)]
         [TestCase(0, 19)]
         [TestCase(8, 0)]
@@ -332,7 +319,7 @@ namespace Nethermind.Abi.Test
         {
             Assert.Throws<ArgumentException>(() => _ = new AbiUFixed(length, precision));
         }
-        
+
         [TestCase(0, 0)]
         [TestCase(0, 19)]
         [TestCase(8, 0)]
@@ -343,7 +330,7 @@ namespace Nethermind.Abi.Test
         {
             Assert.Throws<ArgumentException>(() => _ = new AbiFixed(length, precision));
         }
-        
+
         [TestCase(0)]
         [TestCase(7)]
         [TestCase(264)]
@@ -351,7 +338,7 @@ namespace Nethermind.Abi.Test
         {
             Assert.Throws<ArgumentException>(() => _ = new AbiInt(length));
         }
-        
+
         [TestCase(0)]
         [TestCase(7)]
         [TestCase(264)]
@@ -381,7 +368,7 @@ namespace Nethermind.Abi.Test
         public void Test_packed(AbiEncodingStyle encodingStyle)
         {
             Keccak assetId = Keccak.Compute("assetId");
-            uint expiryTime = (uint) Timestamper.Default.UnixTime.Seconds + 86000;
+            uint expiryTime = (uint)Timestamper.Default.UnixTime.Seconds + 86000;
             UInt256 value = 1.Ether();
             uint units = 10U;
             byte[] salt = new byte[16];
@@ -398,7 +385,7 @@ namespace Nethermind.Abi.Test
             byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.Packed, abiDef, assetId.Bytes, units, value, expiryTime, salt, Address.Zero, Address.Zero);
             Assert.AreEqual(108, encoded.Length);
         }
-        
+
         [TestCase(AbiEncodingStyle.IncludeSignature)]
         [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
         [TestCase(AbiEncodingStyle.Packed)]
@@ -409,12 +396,12 @@ namespace Nethermind.Abi.Test
 
             AbiSignature signature = new AbiSignature("abc", type);
 
-            ValueTuple<UInt256, Address, bool> staticTuple = new ValueTuple<UInt256, Address, bool>((UInt256) 1000, Address.SystemUser, true);
+            ValueTuple<UInt256, Address, bool> staticTuple = new ValueTuple<UInt256, Address, bool>((UInt256)1000, Address.SystemUser, true);
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, staticTuple);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(staticTuple, arguments[0]);
         }
-        
+
         [TestCase(AbiEncodingStyle.IncludeSignature)]
         [TestCase(AbiEncodingStyle.None)]
         public void Dynamic_tuple(AbiEncodingStyle encodingStyle)
@@ -440,14 +427,14 @@ namespace Nethermind.Abi.Test
 
             AbiSignature signature = new AbiSignature("abc", type, AbiType.String);
 
-            ValueTuple<UInt256, Address, bool> staticTuple = new ValueTuple<UInt256, Address, bool>((UInt256) 1000, Address.SystemUser, true);
+            ValueTuple<UInt256, Address, bool> staticTuple = new ValueTuple<UInt256, Address, bool>((UInt256)1000, Address.SystemUser, true);
             const string stringParam = "hello there!";
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, staticTuple, stringParam);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(staticTuple, arguments[0]);
             Assert.AreEqual(stringParam, arguments[1]);
         }
-        
+
         [TestCase(AbiEncodingStyle.IncludeSignature)]
         [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
         [TestCase(AbiEncodingStyle.Packed)]
@@ -458,14 +445,14 @@ namespace Nethermind.Abi.Test
 
             AbiSignature signature = new AbiSignature("abc", AbiType.String, type);
 
-            ValueTuple<UInt256, Address, bool> staticTuple = new ValueTuple<UInt256, Address, bool>((UInt256) 1000, Address.SystemUser, true);
+            ValueTuple<UInt256, Address, bool> staticTuple = new ValueTuple<UInt256, Address, bool>((UInt256)1000, Address.SystemUser, true);
             const string stringParam = "hello there!";
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, stringParam, staticTuple);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(stringParam, arguments[0]);
             Assert.AreEqual(staticTuple, arguments[1]);
         }
-        
+
         [TestCase(AbiEncodingStyle.IncludeSignature)]
         [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
         [TestCase(AbiEncodingStyle.Packed)]
@@ -476,12 +463,12 @@ namespace Nethermind.Abi.Test
 
             AbiSignature signature = new AbiSignature("abc", type);
 
-            ValueTuple<UInt256, ValueTuple<UInt256, Address>, bool> staticTuple = new ValueTuple<UInt256, ValueTuple<UInt256, Address>, bool>((UInt256) 1000, new ValueTuple<UInt256, Address>((UInt256) 400, Address.SystemUser), true);
+            ValueTuple<UInt256, ValueTuple<UInt256, Address>, bool> staticTuple = new ValueTuple<UInt256, ValueTuple<UInt256, Address>, bool>((UInt256)1000, new ValueTuple<UInt256, Address>((UInt256)400, Address.SystemUser), true);
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, staticTuple);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(staticTuple, arguments[0]);
         }
-        
+
         [TestCase(AbiEncodingStyle.IncludeSignature)]
         [TestCase(AbiEncodingStyle.None)]
         public void Tuple_with_inner_dynamic_tuple(AbiEncodingStyle encodingStyle)
@@ -490,13 +477,13 @@ namespace Nethermind.Abi.Test
 
             AbiSignature signature = new AbiSignature("abc", type);
 
-            ValueTuple<UInt256, ValueTuple<byte[], Address>, bool> dynamicTuple = new ValueTuple<UInt256, ValueTuple<byte[], Address>, bool>((UInt256) 1000, new ValueTuple<byte[], Address>(Bytes.FromHexString("0x019283fa3d"), Address.SystemUser), true);
+            ValueTuple<UInt256, ValueTuple<byte[], Address>, bool> dynamicTuple = new ValueTuple<UInt256, ValueTuple<byte[], Address>, bool>((UInt256)1000, new ValueTuple<byte[], Address>(Bytes.FromHexString("0x019283fa3d"), Address.SystemUser), true);
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, dynamicTuple);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(dynamicTuple, arguments[0]);
         }
-        
-                
+
+
         [TestCase(AbiEncodingStyle.IncludeSignature)]
         [TestCase(AbiEncodingStyle.None)]
         public void Dynamic_tuple_with_inner_dynamic_tuple(AbiEncodingStyle encodingStyle)
@@ -510,7 +497,7 @@ namespace Nethermind.Abi.Test
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(dynamicTuple, arguments[0]);
         }
-        
+
         [TestCase(AbiEncodingStyle.IncludeSignature)]
         [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
         [TestCase(AbiEncodingStyle.Packed)]
@@ -526,16 +513,16 @@ namespace Nethermind.Abi.Test
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
             Assert.AreEqual(tupleception, arguments[0]);
         }
-        
+
         [Test]
         public void Can_decode_array_of_dynamic_tuples()
         {
             AbiType type = new AbiArray(new AbiTuple<UserOperationAbi>());
             AbiSignature signature = new AbiSignature("handleOps", type, AbiType.Address);
-            
+
             object[] objects = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature, signature, Bytes.FromHexString("0x9984521800000000000000000000000000000000000000000000000000000000000000400000000000000000000000004173c8ce71a385e325357d8d79d6b7bc1c708f40000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000200000000000000000000000004ed7c70f96b99c776995fb64377f0d4ab3b0e1c10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a0000000000000000000000000000000000000000000000000000000000001a5b8000000000000000000000000000000000000000000000000000000000007a1200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000260000000000000000000000000fc7c490fc83e74556aa353ac360cf766e0d4313e000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000084be6002c200000000000000000000000009635f643e140090a9a8dcd712ed6285858cebef0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000406661abd000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000041c0b5810722f6d3ff73d1e22ec2120670a6ae63ee916c026517a55754e7dd9a7b5d9b6aa5046bb35d009e034aace90845823e8365dbb22c2aa591fb60cd5c40001c00000000000000000000000000000000000000000000000000000000000000"));
 
-            object[] expectedObjects = { 
+            object[] expectedObjects = {
                 new[] {new UserOperationAbi {
                     Target = new Address("0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1"),
                     Nonce = UInt256.Zero,
@@ -549,13 +536,13 @@ namespace Nethermind.Abi.Test
                     PaymasterData = Bytes.Empty,
                     Signer = new Address("0xFc7C490fc83e74556aa353ac360Cf766e0d4313e"),
                     Signature = Bytes.FromHexString("0xc0b5810722f6d3ff73d1e22ec2120670a6ae63ee916c026517a55754e7dd9a7b5d9b6aa5046bb35d009e034aace90845823e8365dbb22c2aa591fb60cd5c40001c")
-                }}, 
+                }},
                 new Address("0x4173c8cE71a385e325357d8d79d6B7bc1c708F40")
             };
 
             objects.Should().BeEquivalentTo(expectedObjects);
         }
-        
+
         private class UserOperationAbi
         {
             public Address Target { get; set; }
@@ -600,7 +587,7 @@ namespace Nethermind.Abi.Test
                 AbiEncodingStyle.IncludeSignature,
                 signature,
                 new BigInteger(0x123),
-                new BigInteger[] {0x456, 0x789},
+                new BigInteger[] { 0x456, 0x789 },
                 Encoding.ASCII.GetBytes("1234567890"),
                 Encoding.ASCII.GetBytes("Hello, world!"));
             encoded.ToHexString().Should().BeEquivalentTo(expectedValue.ToHexString());

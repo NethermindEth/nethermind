@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
@@ -35,8 +21,8 @@ namespace Nethermind.Blockchain.Test.Consensus
         [Test]
         public void Throws_when_null_log_manager_in_constructor()
         {
-            Assert.Throws<ArgumentNullException>(() => new Signer(1, (PrivateKey) null, null));
-            Assert.Throws<ArgumentNullException>(() => new Signer(1, (ProtectedPrivateKey) null, null));
+            Assert.Throws<ArgumentNullException>(() => new Signer(1, (PrivateKey)null, null));
+            Assert.Throws<ArgumentNullException>(() => new Signer(1, (ProtectedPrivateKey)null, null));
         }
 
         [Test]
@@ -54,7 +40,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             Signer signer = new(1, (PrivateKey)null, LimboLogs.Instance);
             signer.CanSign.Should().BeFalse();
         }
-        
+
         [Test]
         public void Can_set_signer_to_null()
         {
@@ -63,7 +49,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             signer.SetSigner((PrivateKey)null);
             signer.CanSign.Should().BeFalse();
         }
-        
+
         [Test]
         public void Can_set_signer_to_protected_null()
         {
@@ -72,14 +58,14 @@ namespace Nethermind.Blockchain.Test.Consensus
             signer.SetSigner((ProtectedPrivateKey)null);
             signer.CanSign.Should().BeFalse();
         }
-        
+
         [Test]
         public void Throws_when_trying_to_sign_with_a_null_key()
         {
             Signer signer = new(1, (PrivateKey)null, LimboLogs.Instance);
             Assert.Throws<InvalidOperationException>(() => signer.Sign(Keccak.Zero));
         }
-        
+
         [Test]
         public async Task Test_signing()
         {

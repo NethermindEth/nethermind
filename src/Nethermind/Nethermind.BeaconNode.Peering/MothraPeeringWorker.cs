@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics;
@@ -50,7 +37,7 @@ namespace Nethermind.BeaconNode.Peering
         private readonly IStore _store;
         internal const string MothraDirectory = "mothra";
         private int _minimumSignedBeaconBlockLength;
-        
+
         public MothraPeeringWorker(ILogger<MothraPeeringWorker> logger,
             IOptionsMonitor<MothraConfiguration> mothraConfigurationOptions,
             IHostEnvironment environment,
@@ -76,12 +63,12 @@ namespace Nethermind.BeaconNode.Peering
             _rpcBeaconBlocksByRangeProcessor = rpcBeaconBlocksByRangeProcessor;
             _signedBeaconBlockProcessor = signedBeaconBlockProcessor;
             _store = store;
-            
+
             // 396 bytes
             _minimumSignedBeaconBlockLength = Ssz.Ssz.SignedBeaconBlockLength(
                 new SignedBeaconBlock(new BeaconBlock(Slot.Zero, Root.Zero, Root.Zero, BeaconBlockBody.Zero),
                     BlsSignature.Zero));
-            
+
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)

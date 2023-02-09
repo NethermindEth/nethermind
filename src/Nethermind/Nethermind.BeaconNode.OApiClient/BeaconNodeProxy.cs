@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.IO;
@@ -61,7 +48,7 @@ namespace Nethermind.BeaconNode.OApiClient
             await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
             ulong content =
                 await JsonSerializer.DeserializeAsync<ulong>(contentStream, _jsonSerializerOptions, cancellationToken);
-            return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
+            return ApiResponse.Create((StatusCode)(int)httpResponse.StatusCode, content);
         }
 
         public async Task<ApiResponse<Fork>> GetNodeForkAsync(CancellationToken cancellationToken)
@@ -75,7 +62,7 @@ namespace Nethermind.BeaconNode.OApiClient
             ForkInformation content =
                 await JsonSerializer.DeserializeAsync<ForkInformation>(contentStream, _jsonSerializerOptions,
                     cancellationToken);
-            return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content.Fork);
+            return ApiResponse.Create((StatusCode)(int)httpResponse.StatusCode, content.Fork);
         }
 
         public async Task<ApiResponse<string>> GetNodeVersionAsync(CancellationToken cancellationToken)
@@ -90,7 +77,7 @@ namespace Nethermind.BeaconNode.OApiClient
             await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
             string content =
                 await JsonSerializer.DeserializeAsync<string>(contentStream, _jsonSerializerOptions, cancellationToken);
-            return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
+            return ApiResponse.Create((StatusCode)(int)httpResponse.StatusCode, content);
         }
 
         public async Task<ApiResponse<Syncing>> GetSyncingAsync(CancellationToken cancellationToken)
@@ -104,7 +91,7 @@ namespace Nethermind.BeaconNode.OApiClient
             Syncing content =
                 await JsonSerializer.DeserializeAsync<Syncing>(contentStream, _jsonSerializerOptions,
                     cancellationToken);
-            return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
+            return ApiResponse.Create((StatusCode)(int)httpResponse.StatusCode, content);
         }
 
         public async Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey,
@@ -129,11 +116,11 @@ namespace Nethermind.BeaconNode.OApiClient
             using HttpResponseMessage httpResponse =
                 await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
-            int statusCode = (int) httpResponse.StatusCode;
-            if (statusCode == (int) StatusCode.InvalidRequest
-                || statusCode == (int) StatusCode.CurrentlySyncing)
+            int statusCode = (int)httpResponse.StatusCode;
+            if (statusCode == (int)StatusCode.InvalidRequest
+                || statusCode == (int)StatusCode.CurrentlySyncing)
             {
-                return ApiResponse.Create<Attestation>((StatusCode) statusCode);
+                return ApiResponse.Create<Attestation>((StatusCode)statusCode);
             }
 
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
@@ -141,7 +128,7 @@ namespace Nethermind.BeaconNode.OApiClient
             Attestation content =
                 await JsonSerializer.DeserializeAsync<Attestation>(contentStream, _jsonSerializerOptions,
                     cancellationToken);
-            return ApiResponse.Create((StatusCode) statusCode, content);
+            return ApiResponse.Create((StatusCode)statusCode, content);
         }
 
         public async Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
@@ -160,11 +147,11 @@ namespace Nethermind.BeaconNode.OApiClient
             using HttpResponseMessage httpResponse =
                 await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
-            int statusCode = (int) httpResponse.StatusCode;
-            if (statusCode == (int) StatusCode.InvalidRequest
-                || statusCode == (int) StatusCode.CurrentlySyncing)
+            int statusCode = (int)httpResponse.StatusCode;
+            if (statusCode == (int)StatusCode.InvalidRequest
+                || statusCode == (int)StatusCode.CurrentlySyncing)
             {
-                return ApiResponse.Create<BeaconBlock>((StatusCode) statusCode);
+                return ApiResponse.Create<BeaconBlock>((StatusCode)statusCode);
             }
 
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
@@ -172,7 +159,7 @@ namespace Nethermind.BeaconNode.OApiClient
             BeaconBlock content =
                 await JsonSerializer.DeserializeAsync<BeaconBlock>(contentStream, _jsonSerializerOptions,
                     cancellationToken);
-            return ApiResponse.Create((StatusCode) statusCode, content);
+            return ApiResponse.Create((StatusCode)statusCode, content);
         }
 
         public async Task<ApiResponse> PublishAttestationAsync(Attestation signedAttestation,
@@ -188,16 +175,16 @@ namespace Nethermind.BeaconNode.OApiClient
             content.Headers.ContentType = new MediaTypeHeaderValue(JsonContentType);
             using HttpResponseMessage httpResponse = await _httpClient.PostAsync(uri, content, cancellationToken);
 
-            int statusCode = (int) httpResponse.StatusCode;
-            if (statusCode == (int) StatusCode.InvalidRequest
-                || statusCode == (int) StatusCode.CurrentlySyncing)
+            int statusCode = (int)httpResponse.StatusCode;
+            if (statusCode == (int)StatusCode.InvalidRequest
+                || statusCode == (int)StatusCode.CurrentlySyncing)
             {
-                return new ApiResponse((StatusCode) statusCode);
+                return new ApiResponse((StatusCode)statusCode);
             }
 
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
 
-            return new ApiResponse((StatusCode) statusCode);
+            return new ApiResponse((StatusCode)statusCode);
         }
 
         public async Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock,
@@ -215,16 +202,16 @@ namespace Nethermind.BeaconNode.OApiClient
             content.Headers.ContentType = new MediaTypeHeaderValue(JsonContentType);
             using HttpResponseMessage httpResponse = await _httpClient.PostAsync(uri, content, cancellationToken);
 
-            int statusCode = (int) httpResponse.StatusCode;
-            if (statusCode == (int) StatusCode.InvalidRequest
-                || statusCode == (int) StatusCode.CurrentlySyncing)
+            int statusCode = (int)httpResponse.StatusCode;
+            if (statusCode == (int)StatusCode.InvalidRequest
+                || statusCode == (int)StatusCode.CurrentlySyncing)
             {
-                return new ApiResponse((StatusCode) statusCode);
+                return new ApiResponse((StatusCode)statusCode);
             }
 
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
 
-            return new ApiResponse((StatusCode) statusCode);
+            return new ApiResponse((StatusCode)statusCode);
         }
 
         public async Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(
@@ -246,12 +233,12 @@ namespace Nethermind.BeaconNode.OApiClient
             using HttpResponseMessage httpResponse =
                 await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
-            int statusCode = (int) httpResponse.StatusCode;
-            if (statusCode == (int) StatusCode.InvalidRequest
-                || statusCode == (int) StatusCode.DutiesNotAvailableForRequestedEpoch
-                || statusCode == (int) StatusCode.CurrentlySyncing)
+            int statusCode = (int)httpResponse.StatusCode;
+            if (statusCode == (int)StatusCode.InvalidRequest
+                || statusCode == (int)StatusCode.DutiesNotAvailableForRequestedEpoch
+                || statusCode == (int)StatusCode.CurrentlySyncing)
             {
-                return ApiResponse.Create<IList<ValidatorDuty>>((StatusCode) (int) httpResponse.StatusCode);
+                return ApiResponse.Create<IList<ValidatorDuty>>((StatusCode)(int)httpResponse.StatusCode);
             }
 
             httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
@@ -259,7 +246,7 @@ namespace Nethermind.BeaconNode.OApiClient
             IList<ValidatorDuty> content =
                 await JsonSerializer.DeserializeAsync<IList<ValidatorDuty>>(contentStream, _jsonSerializerOptions,
                     cancellationToken);
-            return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
+            return ApiResponse.Create((StatusCode)(int)httpResponse.StatusCode, content);
         }
     }
 }

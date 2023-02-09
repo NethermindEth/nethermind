@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -111,13 +98,13 @@ namespace Nethermind.BeaconNode
                     if (unslashedAttestingIndices.Contains(index))
                     {
                         Gwei reward = GetBaseReward(state, index) * attestingBalance / totalBalance;
-                        if(_logger.IsDebug()) LogDebug.RewardForValidator(_logger, index, "matching " + setNames[setIndex], reward, null);
+                        if (_logger.IsDebug()) LogDebug.RewardForValidator(_logger, index, "matching " + setNames[setIndex], reward, null);
                         rewards[(int)index] += reward;
                     }
                     else
                     {
                         Gwei penalty = GetBaseReward(state, index);
-                        if(_logger.IsDebug()) LogDebug.PenaltyForValidator(_logger, index, "non-matching " + setNames[setIndex], penalty, null);
+                        if (_logger.IsDebug()) LogDebug.PenaltyForValidator(_logger, index, "non-matching " + setNames[setIndex], penalty, null);
                         penalties[(int)index] += penalty;
                     }
                 }
@@ -139,12 +126,12 @@ namespace Nethermind.BeaconNode
 
                 Gwei baseReward = GetBaseReward(state, index);
                 Gwei proposerReward = baseReward / rewardsAndPenalties.ProposerRewardQuotient;
-                if(_logger.IsDebug()) LogDebug.RewardForValidator(_logger, attestation.ProposerIndex, "proposer", proposerReward, null);
+                if (_logger.IsDebug()) LogDebug.RewardForValidator(_logger, attestation.ProposerIndex, "proposer", proposerReward, null);
                 rewards[(int)attestation.ProposerIndex] += proposerReward;
 
                 Gwei maxAttesterReward = baseReward - proposerReward;
                 Gwei attesterReward = maxAttesterReward / attestation.InclusionDelay;
-                if(_logger.IsDebug()) LogDebug.RewardForValidator(_logger, attestation.ProposerIndex, "attester inclusion delay", proposerReward, null);
+                if (_logger.IsDebug()) LogDebug.RewardForValidator(_logger, attestation.ProposerIndex, "attester inclusion delay", proposerReward, null);
                 rewards[(int)index] += attesterReward;
             }
 
@@ -156,14 +143,14 @@ namespace Nethermind.BeaconNode
                 foreach (ValidatorIndex index in eligibleValidatorIndices)
                 {
                     Gwei delayPenalty = GetBaseReward(state, index) * _chainConstants.BaseRewardsPerEpoch;
-                    if(_logger.IsDebug()) LogDebug.PenaltyForValidator(_logger, index, "finality delay", delayPenalty, null);
+                    if (_logger.IsDebug()) LogDebug.PenaltyForValidator(_logger, index, "finality delay", delayPenalty, null);
                     penalties[(int)index] += delayPenalty;
 
                     if (!matchingTargetAttestingIndices.Contains(index))
                     {
                         Gwei effectiveBalance = state.Validators[(int)index].EffectiveBalance;
                         Gwei additionalInactivityPenalty = (effectiveBalance * finalityDelay) / rewardsAndPenalties.InactivityPenaltyQuotient;
-                        if(_logger.IsDebug()) LogDebug.PenaltyForValidator(_logger, index, "inactivity", additionalInactivityPenalty, null);
+                        if (_logger.IsDebug()) LogDebug.PenaltyForValidator(_logger, index, "inactivity", additionalInactivityPenalty, null);
                         penalties[(int)index] += additionalInactivityPenalty;
                     }
                 }
@@ -240,7 +227,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessAttestation(BeaconState state, Attestation attestation)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessAttestation(_logger, attestation, null);
+            if (_logger.IsDebug()) LogDebug.ProcessAttestation(_logger, attestation, null);
 
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             AttestationData data = attestation.Data;
@@ -250,7 +237,7 @@ namespace Nethermind.BeaconNode
             {
                 throw new ArgumentOutOfRangeException("attestation.Data.Index", data.Index, $"Attestation data committee index must be less that the committee count {committeeCount}.");
             }
-            
+
             Epoch previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             if (data.Target.Epoch != previousEpoch && data.Target.Epoch != currentEpoch)
@@ -314,7 +301,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessAttesterSlashing(BeaconState state, AttesterSlashing attesterSlashing)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessAttesterSlashing(_logger, attesterSlashing, null);
+            if (_logger.IsDebug()) LogDebug.ProcessAttesterSlashing(_logger, attesterSlashing, null);
             IndexedAttestation attestation1 = attesterSlashing.Attestation1;
             IndexedAttestation attestation2 = attesterSlashing.Attestation2;
 
@@ -364,7 +351,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessBlock(BeaconState state, BeaconBlock block)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessBlock(_logger, block, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessBlock(_logger, block, state, null);
             ProcessBlockHeader(state, block);
             ProcessBlockRandao(state, block.Body);
             ProcessBlockEth1Data(state, block.Body);
@@ -392,7 +379,7 @@ namespace Nethermind.BeaconNode
                 Root.Zero, // `state_root` is zeroed and overwritten in the next `process_slot` call
                 bodyRoot
                 );
-            if(_logger.IsDebug()) LogDebug.ProcessingBlockHeader(_logger, state.Slot, newBlockHeader, null);
+            if (_logger.IsDebug()) LogDebug.ProcessingBlockHeader(_logger, state.Slot, newBlockHeader, null);
             state.SetLatestBlockHeader(newBlockHeader);
 
             // Verify proposer is not slashed
@@ -406,7 +393,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessDeposit(BeaconState state, Deposit deposit)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessDeposit(_logger, deposit, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessDeposit(_logger, deposit, state, null);
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
 
@@ -432,7 +419,7 @@ namespace Nethermind.BeaconNode
                     break;
                 }
             }
-            
+
             if (validatorIndex is null)
             {
                 // Verify the deposit signature (proof of possession) which is not checked by the deposit contract
@@ -817,7 +804,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessSlot(BeaconState state)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessSlot(_logger, state.Slot, state, null);
+            if (_logger.IsDebug()) LogDebug.ProcessSlot(_logger, state.Slot, state, null);
             // Cache state root
             Root previousStateRoot = _cryptographyService.HashTreeRoot(state);
             Slot previousRootIndex = (Slot)(state.Slot % _timeParameterOptions.CurrentValue.SlotsPerHistoricalRoot);
@@ -846,7 +833,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessSlots(BeaconState state, Slot slot)
         {
-            if(_logger.IsDebug()) LogDebug.ProcessSlots(_logger, state, slot, null);
+            if (_logger.IsDebug()) LogDebug.ProcessSlots(_logger, state, slot, null);
             if (state.Slot > slot)
             {
                 throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot to process should be greater than current state slot {state.Slot}");
@@ -867,7 +854,7 @@ namespace Nethermind.BeaconNode
         public void ProcessVoluntaryExit(BeaconState state, SignedVoluntaryExit signedVoluntaryExit)
         {
             VoluntaryExit voluntaryExit = signedVoluntaryExit.Message;
-            
+
             if (_logger.IsDebug()) LogDebug.ProcessVoluntaryExit(_logger, voluntaryExit, null);
 
             Validator validator = state.Validators[(int)voluntaryExit.ValidatorIndex];
@@ -925,7 +912,7 @@ namespace Nethermind.BeaconNode
 
             // Process slots (including those with no blocks) since block
             ProcessSlots(state, block.Slot);
-            
+
             // Verify signature
             if (validateResult)
             {
@@ -935,10 +922,10 @@ namespace Nethermind.BeaconNode
                     throw new Exception($"Block {block} signature must be valid (when processing state transition for {state}).");
                 }
             }
-            
+
             // Process block
             ProcessBlock(state, block);
-            
+
             // Validate state root (True in production)
             if (validateResult)
             {

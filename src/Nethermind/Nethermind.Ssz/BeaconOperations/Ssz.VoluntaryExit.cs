@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -26,7 +13,7 @@ namespace Nethermind.Ssz
     public static partial class Ssz
     {
         public const int VoluntaryExitLength = Ssz.EpochLength + Ssz.ValidatorIndexLength + Ssz.BlsSignatureLength;
-        
+
         public static void Encode(Span<byte> span, VoluntaryExit container)
         {
             if (span.Length != Ssz.VoluntaryExitLength) ThrowTargetLength<VoluntaryExit>(span.Length, Ssz.VoluntaryExitLength);
@@ -45,7 +32,7 @@ namespace Nethermind.Ssz
             VoluntaryExit container = new VoluntaryExit(epoch, validatorIndex);
             return container;
         }
-        
+
         private static VoluntaryExit DecodeVoluntaryExit(ReadOnlySpan<byte> span, ref int offset)
         {
             VoluntaryExit container =
@@ -53,7 +40,7 @@ namespace Nethermind.Ssz
             offset += VoluntaryExitLength;
             return container;
         }
-        
+
         private static void Encode(Span<byte> span, VoluntaryExit value, ref int offset)
         {
             Encode(span.Slice(offset, VoluntaryExitLength), value);

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -116,7 +119,7 @@ namespace Nethermind.BeaconNode
             {
                 if (state.Validators[index].PublicKey.Equals(validatorPublicKey))
                 {
-                    return new ValidatorIndex((ulong) index);
+                    return new ValidatorIndex((ulong)index);
                 }
             }
 

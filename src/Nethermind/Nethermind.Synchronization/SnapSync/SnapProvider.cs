@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -85,11 +88,11 @@ namespace Nethermind.Synchronization.SnapSync
                 _progressTracker.NextAccountPath = accounts[accounts.Length - 1].Path;
                 _progressTracker.MoreAccountsToRight = moreChildrenToRight;
             }
-            else if(result == AddRangeResult.MissingRootHashInProofs)
+            else if (result == AddRangeResult.MissingRootHashInProofs)
             {
                 _logger.Trace($"SNAP - AddAccountRange failed, missing root hash {tree.RootHash} in the proofs, startingHash:{startingHash}");
             }
-            else if(result == AddRangeResult.DifferentRootHash)
+            else if (result == AddRangeResult.DifferentRootHash)
             {
                 _logger.Trace($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
             }
@@ -166,13 +169,13 @@ namespace Nethermind.Synchronization.SnapSync
                     _progressTracker.EnqueueStorageRange(range);
                 }
             }
-            else if(result == AddRangeResult.MissingRootHashInProofs)
+            else if (result == AddRangeResult.MissingRootHashInProofs)
             {
                 _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
 
                 _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
             }
-            else if(result == AddRangeResult.DifferentRootHash)
+            else if (result == AddRangeResult.DifferentRootHash)
             {
                 _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
 
@@ -194,7 +197,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     byte[] nodeData = response[reqi];
 
-                    if(nodeData.Length == 0)
+                    if (nodeData.Length == 0)
                     {
                         RetryAccountRefresh(requestedPath);
                         _logger.Trace($"SNAP - Empty Account Refresh:{requestedPath.PathAndAccount.Path}");
@@ -267,19 +270,19 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void RetryRequest(SnapSyncBatch batch)
         {
-            if (batch.AccountRangeRequest != null)
+            if (batch.AccountRangeRequest is not null)
             {
                 _progressTracker.ReportAccountRequestFinished();
             }
-            else if (batch.StorageRangeRequest != null)
+            else if (batch.StorageRangeRequest is not null)
             {
                 _progressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest);
             }
-            else if (batch.CodesRequest != null)
+            else if (batch.CodesRequest is not null)
             {
                 _progressTracker.ReportCodeRequestFinished(batch.CodesRequest);
             }
-            else if (batch.AccountsToRefreshRequest != null)
+            else if (batch.AccountsToRefreshRequest is not null)
             {
                 _progressTracker.ReportAccountRefreshFinished(batch.AccountsToRefreshRequest);
             }

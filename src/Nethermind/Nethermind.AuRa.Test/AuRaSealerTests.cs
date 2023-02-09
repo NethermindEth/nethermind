@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -59,9 +46,9 @@ namespace Nethermind.AuRa.Test
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _validatorStore = Substitute.For<IValidatorStore>();
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
-            Signer signer = new(ChainId.Mainnet, Build.A.PrivateKey.TestObject, LimboLogs.Instance);
+            Signer signer = new(TestBlockchainIds.ChainId, Build.A.PrivateKey.TestObject, LimboLogs.Instance);
             _address = signer.Address;
-            
+
             _auRaSealer = new AuRaSealer(
                 _blockTree,
                 _validatorStore,
@@ -88,10 +75,10 @@ namespace Nethermind.AuRa.Test
             _auRaStepCalculator.CurrentStep.Returns(11);
             _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), _address, 11).Returns(true);
             Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithBeneficiary(_address).WithAura(11, null).TestObject).TestObject;
-            
+
             block = await _auRaSealer.SealBlock(block, CancellationToken.None);
-            
-            EthereumEcdsa ecdsa = new(ChainId.Morden, LimboLogs.Instance);
+
+            EthereumEcdsa ecdsa = new(BlockchainIds.Morden, LimboLogs.Instance);
             Signature signature = new(block.Header.AuRaSignature);
             signature.V += Signature.VOffset;
             Address? recoveredAddress = ecdsa.RecoverAddress(signature, block.Header.CalculateHash(RlpBehaviors.ForSealing));

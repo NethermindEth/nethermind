@@ -1,31 +1,32 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Merge.Plugin
+namespace Nethermind.Merge.Plugin;
+
+/// <summary>
+/// Contains the values of error codes defined in the Engine API
+/// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/common.md">
+/// Common Definitions</see>.
+/// </summary>
+public static class MergeErrorCodes
 {
-    // Error codes spec: https://github.com/ethereum/execution-apis/blob/v1.0.0-alpha.5/src/engine/specification.md#errors
-    public static class MergeErrorCodes
-    {
-        public const int None = 0;
+    /// <summary>
+    /// Payload does not exist or is not available.
+    /// </summary>
+    public const int UnknownPayload = -38001;
 
-        public const int UnknownPayload = -38001;
-        
-        public const int InvalidForkchoiceState = -38002;
+    /// <summary>
+    /// Forkchoice state is invalid or inconsistent.
+    /// </summary>
+    public const int InvalidForkchoiceState = -38002;
 
-        public const int InvalidPayloadAttributes = -38003;
-    }
+    /// <summary>
+    /// Payload attributes are invalid or inconsistent.
+    /// </summary>
+    public const int InvalidPayloadAttributes = -38003;
+
+    /// <summary>
+    /// Number of requested entities is too large.
+    /// </summary>
+    public const int TooLargeRequest = -38004;
 }

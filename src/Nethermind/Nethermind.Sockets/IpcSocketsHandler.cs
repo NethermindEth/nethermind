@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,7 +19,7 @@ namespace Nethermind.Sockets
             _socket = socket;
         }
 
-        public Task SendRawAsync(ArraySegment<byte> data) =>
+        public Task SendRawAsync(ArraySegment<byte> data, bool endOfMessage) =>
             !_socket.Connected
                 ? Task.CompletedTask
                 : _socket.SendAsync(data, SocketFlags.None);
