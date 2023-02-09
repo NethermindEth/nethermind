@@ -41,12 +41,12 @@ void HandleLine(int idx, string line)
         }
         else
         {
-            Console.WriteLine($"err: {LogSink.Content}");
+            Console.WriteLine($"err: {(String.IsNullOrEmpty(LogInterceptor.Content) ? "Invalid Eof Format" : LogInterceptor.Content)}");
         }
-        LogSink.Clear();
+        LogInterceptor.Clear();
     }
     catch (Exception e)
     {
-        Console.WriteLine($"err: {e.Message} at line {idx}");
+        Console.WriteLine($"err: exception with msg : {e.Message} at line {idx} with stack trace {e.StackTrace}");
     }
 }
