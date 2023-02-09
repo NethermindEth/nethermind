@@ -106,7 +106,8 @@ namespace Nethermind.Init.Steps
             IKeyValueStore codeDb = getApi.DbProvider.CodeDb
                 .WitnessedBy(witnessCollector);
 
-            TrieStore trieStore;
+            ITrieStore trieStore;
+            TrieStore storageStore;
             IKeyValueStoreWithBatching stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
             if (pruningConfig.Mode.IsMemory())
             {
@@ -118,7 +119,13 @@ namespace Nethermind.Init.Steps
                     persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
                 }
 
-                setApi.TrieStore = trieStore = new TrieStore(
+                setApi.TrieStore = trieStore = new TrieStoreByPath(
+                    stateWitnessedBy,
+                    Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
+                    persistenceStrategy,
+                    getApi.LogManager);
+                //TODO - remove seprate store for this
+                storageStore = new TrieStore(
                     stateWitnessedBy,
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
                     persistenceStrategy,
@@ -130,13 +137,18 @@ namespace Nethermind.Init.Steps
                     fullPruningDb.PruningStarted += (_, args) =>
                     {
                         cachedStateDb.PersistCache(args.Context);
-                        trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
+                        //trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
                     };
                 }
             }
             else
             {
-                setApi.TrieStore = trieStore = new TrieStore(
+                setApi.TrieStore = trieStore = new TrieStoreByPath(
+                    stateWitnessedBy,
+                    No.Pruning,
+                    Persist.EveryBlock,
+                    getApi.LogManager);
+                storageStore = new TrieStore(
                     stateWitnessedBy,
                     No.Pruning,
                     Persist.EveryBlock,
@@ -156,7 +168,7 @@ namespace Nethermind.Init.Steps
 
             ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
 
-            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
+            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, storageStore.AsReadOnly(), readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
 
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
