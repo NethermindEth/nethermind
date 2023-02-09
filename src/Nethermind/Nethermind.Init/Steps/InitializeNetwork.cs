@@ -496,7 +496,7 @@ public class InitializeNetwork : IStep
         _api.StaticNodesManager = new StaticNodesManager(initConfig.StaticNodesPath, _api.LogManager);
         await _api.StaticNodesManager.InitAsync();
 
-        // ToDo: PeersDB is register outside dbProvider - bad
+        // ToDo: PeersDB is registered outside dbProvider
         string dbName = "PeersDB";
         IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
             ? new MemDb(dbName)
