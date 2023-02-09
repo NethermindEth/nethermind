@@ -9,20 +9,17 @@ namespace Nethermind.TxPool;
 
 public ref struct NonceLocker
 {
-    public UInt256 ReservedNonce { get; }
     private readonly SemaphoreSlim _accountLock;
-    private readonly Action<UInt256> _acceptAction;
+    private readonly Action _acceptAction;
     private int _disposed;
 
-    public NonceLocker(
+    internal NonceLocker(
         SemaphoreSlim accountLock,
-        Func<UInt256> reserveNonceFunction,
-        Action<UInt256> acceptAction)
+        Action acceptAction)
     {
         _accountLock = accountLock;
         _acceptAction = acceptAction;
         _accountLock.Wait();
-        ReservedNonce = reserveNonceFunction();
     }
 
     public void Dispose()
@@ -35,6 +32,6 @@ public ref struct NonceLocker
 
     public void Accept()
     {
-        _acceptAction(ReservedNonce);
+        _acceptAction();
     }
 }

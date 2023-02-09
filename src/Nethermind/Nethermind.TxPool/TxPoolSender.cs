@@ -47,9 +47,9 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult SubmitTxWithManagedNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!);
+            using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!, out UInt256 reservedNonce);
             txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
-            tx.Nonce = locker.ReservedNonce;
+            tx.Nonce = reservedNonce;
             return SubmitTx(locker, tx, txHandlingOptions);
         }
 
