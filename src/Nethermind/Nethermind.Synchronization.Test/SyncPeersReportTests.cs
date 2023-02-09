@@ -164,8 +164,8 @@ namespace Nethermind.Synchronization.Test
                 "== Header ==\n" +
                 "===[Active][Sleep ][Peer(ProtocolVersion/Head/Host:Port/Direction)][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]\n" +
                 "--------------------------------------------------------------------------------------------------------------------------------------------------------------\n" +
-                "   [HBRNSW][      ][Peer|eth99|    9999|      127.0.0.1: 3030|Out][     |     |     |     |     |     ][]\n" +
-                "   [      ][HBRNSW][Peer|eth99|    9999|      127.0.0.1: 3030| In][     |     |     |     |     |     ][]";
+                "   [HBRNSW][      ][Peer|eth99|    9999|      127.0.0.1: 3030| Out][     |     |     |     |     |     ][]\n" +
+                "   [      ][HBRNSW][Peer|eth99|    9999|      127.0.0.1: 3030|  In][     |     |     |     |     |     ][]";
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             string reportStr = report.MakeReportForPeer(peers, "== Header ==");
