@@ -16,35 +16,35 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell"></param>
         /// <returns></returns>
-        byte[] GetOriginal(StorageCell storageCell);
+        byte[] GetOriginal(in StorageCell storageCell);
 
         /// <summary>
         /// Get the persistent storage value at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        byte[] Get(StorageCell storageCell);
+        byte[] Get(in StorageCell storageCell);
 
         /// <summary>
         /// Set the provided value to persistent storage at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        void Set(StorageCell storageCell, byte[] newValue);
+        void Set(in StorageCell storageCell, byte[] newValue);
 
         /// <summary>
         /// Get the transient storage value at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        byte[] GetTransientState(StorageCell storageCell);
+        byte[] GetTransientState(in StorageCell storageCell);
 
         /// <summary>
         /// Set the provided value to transient storage at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        void SetTransientState(StorageCell storageCell, byte[] newValue);
+        void SetTransientState(in StorageCell storageCell, byte[] newValue);
 
         /// <summary>
         /// Reset all storage

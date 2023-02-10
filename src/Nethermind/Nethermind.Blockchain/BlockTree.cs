@@ -38,11 +38,11 @@ namespace Nethermind.Blockchain
 
         private const int CacheSize = 64;
 
-        private readonly ICache<Keccak, Block>
-            _blockCache = new LruCache<Keccak, Block>(CacheSize, CacheSize, "blocks");
+        private readonly LruCache<KeccakKey, Block>
+            _blockCache = new(CacheSize, CacheSize, "blocks");
 
-        private readonly ICache<Keccak, BlockHeader> _headerCache =
-            new LruCache<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
+        private readonly LruCache<KeccakKey, BlockHeader> _headerCache =
+            new(CacheSize, CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
 
@@ -53,8 +53,8 @@ namespace Nethermind.Blockchain
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
 
-        private readonly ICache<Keccak, Block> _invalidBlocks =
-            new LruCache<Keccak, Block>(128, 128, "invalid blocks");
+        private readonly LruCache<KeccakKey, Block> _invalidBlocks =
+            new(128, 128, "invalid blocks");
 
         private readonly BlockDecoder _blockDecoder = new();
         private readonly HeaderDecoder _headerDecoder = new();

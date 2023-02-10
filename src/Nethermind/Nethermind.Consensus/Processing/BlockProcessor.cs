@@ -264,7 +264,8 @@ namespace Nethermind.Consensus.Processing
                 bh.Number,
                 bh.GasLimit,
                 bh.Timestamp,
-                bh.ExtraData)
+                bh.ExtraData,
+                bh.ExcessDataGas)
             {
                 Bloom = Bloom.Empty,
                 Author = bh.Author,
@@ -277,8 +278,8 @@ namespace Nethermind.Consensus.Processing
                 AuRaSignature = bh.AuRaSignature,
                 ReceiptsRoot = bh.ReceiptsRoot,
                 BaseFeePerGas = bh.BaseFeePerGas,
+                WithdrawalsRoot = bh.WithdrawalsRoot,
                 IsPostMerge = bh.IsPostMerge,
-                WithdrawalsRoot = bh.WithdrawalsRoot
             };
 
             return suggestedBlock.CreateCopy(headerForProcessing);

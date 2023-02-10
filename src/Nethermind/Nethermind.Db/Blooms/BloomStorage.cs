@@ -237,7 +237,7 @@ namespace Nethermind.Db.Blooms
 
             private readonly IFileStore _fileStore;
             private readonly bool _migrationStatistics;
-            private readonly ICache<long, Bloom> _cache;
+            private readonly LruCache<long, Bloom> _cache;
 
             public BloomStorageLevel(IFileStore fileStore, in byte level, in int levelElementSize, in int levelMultiplier, bool migrationStatistics)
             {
