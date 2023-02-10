@@ -803,6 +803,9 @@ namespace Nethermind.Trie
                         _data = new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount];
                         break;
                     case NodeType.Leaf:
+                        // _data[0] - path,
+                        // _data[1] - value,
+                        // _data[2] -> StorageRoot
                         _data = new object[3];
                         break;
                     default:
