@@ -10,6 +10,7 @@ internal class Program
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
     };
+
     private static void Main(string[] args)
     {
         CommandLineApplication cli = CreateCommandLineInterface();
@@ -25,83 +26,93 @@ internal class Program
 
     static CommandLineApplication CreateCommandLineInterface()
     {
-        CommandLineApplication cli = new()
-        {
-            Name = "HiveCompare"
-        };
+        CommandLineApplication cli = new() { Name = "HiveCompare" };
         cli.HelpOption("-?|-h|--help");
         CommandOption firstFileOption = cli.Option("-f|--first-file", "first file to be used for comparison", CommandOptionType.SingleValue);
         CommandOption secondFileOption = cli.Option("-s|--second-file", "second file to be used for comparison", CommandOptionType.SingleValue);
+
         cli.OnExecute(() =>
         {
-            bool HasRequiredOption(CommandOption option, [NotNullWhen(false)]out int? code)
+            bool HasRequiredOption(CommandOption option)
             {
-                if (!option.HasValue() || string.IsNullOrEmpty(option.Value()))
-                {
-                    cli!.ShowHelp();
-                    code = 1;
-                    return false;
-                }
-                code = null;
-                return true;
+                if (option.HasValue() && !string.IsNullOrEmpty(option.Value())) return true;
+
+                cli.ShowHelp();
+                return false;
             }
-            bool RequiredFileExists(CommandOption option, [NotNullWhen(false)] out int? code)
+
+            bool RequiredFileExists(CommandOption option)
             {
-                if (!File.Exists(option.Value()))
-                {
-                    Console.WriteLine($"Could not find file '{option.Value()}'.");
-                    code = 2;
-                    return false;
-                }
-                code = null;
-                return true;
+                if (File.Exists(option.Value())) return true;
+
+                Console.WriteLine($"Could not find file '{option.Value()}'.");
+                return false;
+
             }
-            if (!HasRequiredOption(firstFileOption, out int? code))
-                return code.Value;
-            if (!HasRequiredOption(secondFileOption, out code))
-                return code.Value;
-            if (!RequiredFileExists(firstFileOption, out code))
-                return code.Value;
-            if (!RequiredFileExists(secondFileOption, out code))
-                return code.Value;
-            if (!ParseTests(firstFileOption.Value(), secondFileOption.Value(), out code))
-                return code.Value;
-            return 0;
+
+            return HasRequiredOption(firstFileOption) && HasRequiredOption(secondFileOption)
+                ? RequiredFileExists(firstFileOption) && RequiredFileExists(secondFileOption)
+                    ? ParseTests(firstFileOption.Value(), secondFileOption.Value())
+                        ? 0
+                        : 4
+                    : 2
+                : 1;
         });
+
         return cli;
     }
 
-    private static bool ParseTests(string firstFile, string secondFile, [NotNullWhen(false)]out int? code)
+    private static bool ParseTests(string firstFile, string secondFile)
     {
-        code = null;
-        Dictionary<string, TestCase> testCases1;
-        Dictionary<string, TestCase> testCases2;
-        try
+        static bool TryLoadTestCases(string file, [NotNullWhen(true)] out Dictionary<string, TestCase>? testCases)
         {
-            using Stream file1 = File.OpenRead(firstFile);
-            using Stream file2 = File.OpenRead(secondFile);
-
-            HiveTestResult? hiveTest1 = JsonSerializer.Deserialize<HiveTestResult>(file1, SERIALIZER_OPTIONS);
-            HiveTestResult? hiveTest2 = JsonSerializer.Deserialize<HiveTestResult>(file2, SERIALIZER_OPTIONS);
-
-            if (hiveTest1 is null || hiveTest2 is null)
+            bool Fail(out Dictionary<string, TestCase>? testCases)
             {
                 Console.WriteLine("Could not parse one of the files!");
-                code = 3;
+                testCases = null;
                 return false;
             }
-            testCases1 = hiveTest1.TestCases.Values.DistinctBy(v => v.Key).ToDictionary(v => v.Key);
-            testCases2 = hiveTest2.TestCases.Values.DistinctBy(v => v.Key).ToDictionary(v => v.Key);
+
+            try
+            {
+                using Stream fileStream = File.OpenRead(file);
+                HiveTestResult? hiveTest = JsonSerializer.Deserialize<HiveTestResult>(fileStream, SERIALIZER_OPTIONS);
+
+                if (hiveTest is null)
+                {
+                    return Fail(out testCases);
+                }
+
+                testCases = hiveTest.TestCases.Values.DistinctBy(v => v.Key).ToDictionary(v => v.Key);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+                return Fail(out testCases);
+            }
         }
-        catch (Exception ex)
+
+        return TryLoadTestCases(firstFile, out Dictionary<string, TestCase>? testCases1)
+               && TryLoadTestCases(secondFile, out Dictionary<string, TestCase>? testCases2)
+               && PrintOutDifferences(testCases1, testCases2);
+    }
+
+    private static bool PrintOutDifferences(Dictionary<string, TestCase> testCases1, Dictionary<string, TestCase> testCases2)
+    {
+        void PrintOutUniqueCases(ICollection<TestCase> testCases, int caseSet)
         {
-            Console.WriteLine(ex);
-            code = 4;
-            return false;
+            if (testCases.Count > 0)
+            {
+                Console.WriteLine($"============== Tests that are only in {caseSet} ==============");
+                foreach (TestCase testCase in testCases)
+                {
+                    Console.WriteLine(testCase);
+                }
+            }
         }
 
         List<TestCase> newInTest1 = new();
-        List<TestCase> newInTest2 = new();
 
         foreach (string key in testCases1.Keys)
         {
@@ -116,26 +127,18 @@ internal class Program
                     Console.WriteLine("From 2:");
                     Console.WriteLine(testCase2);
                 }
+
+                testCases2.Remove(key);
             }
             else
             {
                 newInTest1.Add(testCase1);
             }
         }
-        newInTest2 = testCases2
-            .Where(kv => !testCases1.ContainsKey(kv.Key))
-            .Select(kv => kv.Value)
-            .ToList();
-        Console.WriteLine("============== Tests that are only in 1 ==============");
-        foreach (TestCase testCase in newInTest1)
-        {
-            Console.WriteLine(testCase);
-        }
-        Console.WriteLine("============== Tests that are only in 2 ==============");
-        foreach (TestCase testCase in newInTest2)
-        {
-            Console.WriteLine(testCase);
-        }
+
+        PrintOutUniqueCases(newInTest1, 1);
+        PrintOutUniqueCases(testCases2.Values, 2);
+
         Console.ReadLine();
         return true;
     }

@@ -10,14 +10,11 @@ namespace HiveCompare.Models
 {
     public class HiveTestResult
     {
-
         public Dictionary<string, TestCase> TestCases { get; set;} = default!;
-
     }
 
     public class TestCase
     {
-
         public string Key => Name + Description;
         public string Name { get; set; } = default!;
         public string Description { get; set; } = default!;
@@ -26,30 +23,22 @@ namespace HiveCompare.Models
         [JsonIgnore]
         public Dictionary<string, ClientInfo>? clientInfo { get; set; }
 
-        public override string ToString()
-        {
-            return JsonSerializer.Serialize(this, Program.SERIALIZER_OPTIONS);
-        }
-
+        public override string ToString() => JsonSerializer.Serialize(this, Program.SERIALIZER_OPTIONS);
     }
 
     public class CaseResult
     {
-
         public bool Pass { get; set; }
 
         [JsonIgnore]
         public string Details { get; set; } = default!;
-
     }
 
     public class ClientInfo
     {
-
         public string Id { get; set; } = default!;
         public string Ip { get; set; } = default!;
         public string Name { get; set; } = default!;
         public string logFile { get; set; } = default!;
-
     }
 }
