@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -125,11 +127,16 @@ public class PivotUpdator
             try
             {
                 if (_logger.IsInfo) _logger.Info($"Asking peer {peer.SyncPeer.Node.ClientId} for header of pivot block");
-                long finalizedBlockNumber = (await peer.SyncPeer.GetHeadBlockHeader(finalizedBlockHash, cancellationToken))?.Number ?? 0;
-                if (finalizedBlockNumber != 0)
+                BlockHeader? finalizedHeader = await peer.SyncPeer.GetHeadBlockHeader(finalizedBlockHash, cancellationToken);
+                long finalizedBlockNumber = finalizedHeader?.Number ?? 0;
+                if (finalizedBlockNumber != 0 && finalizedHeader is not null)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Received header of pivot block from peer {peer.SyncPeer.Node.ClientId}");
-                    return finalizedBlockNumber;
+                    if (HeaderValidator.ValidateHash(finalizedHeader))
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Received header of pivot block from peer {peer.SyncPeer.Node.ClientId}");
+                        return finalizedBlockNumber;
+                    }
+                    else if (_logger.IsInfo) _logger.Info($"Hash of header received from peer {peer.SyncPeer.Node.ClientId} is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
                 }
             }
             catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
