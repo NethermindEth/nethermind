@@ -49,7 +49,7 @@ namespace Nethermind.Trie
 
         public Keccak? Keccak { get; internal set; }
 
-        public byte[]? FullRlp { get; internal set; }
+        public byte[]? FullRlp => _rlpStream?.Data;
 
         private long _value;
 
@@ -234,7 +234,6 @@ namespace Nethermind.Trie
         public TrieNode(NodeType nodeType, byte[] rlp, bool isDirty = false)
         {
             NodeType = nodeType;
-            FullRlp = rlp;
             IsDirty = isDirty;
 
             _rlpStream = rlp.AsRlpStream();
@@ -281,19 +280,20 @@ namespace Nethermind.Trie
         {
             try
             {
+                byte[]? fullRlp = FullRlp;
                 if (NodeType == NodeType.Unknown)
                 {
-                    if (FullRlp is null)
+                    if (fullRlp is null)
                     {
                         if (Keccak is null)
                         {
                             throw new TrieException("Unable to resolve node without Keccak");
                         }
 
-                        FullRlp = tree.LoadRlp(Keccak);
+                        fullRlp = tree.LoadRlp(Keccak);
                         IsPersisted = true;
 
-                        if (FullRlp is null)
+                        if (fullRlp is null)
                         {
                             throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
                         }
@@ -304,7 +304,7 @@ namespace Nethermind.Trie
                     return;
                 }
 
-                _rlpStream = FullRlp.AsRlpStream();
+                _rlpStream = fullRlp.AsRlpStream();
                 if (_rlpStream is null)
                 {
                     throw new InvalidAsynchronousStateException(
@@ -365,19 +365,21 @@ namespace Nethermind.Trie
                 return;
             }
 
-            if (FullRlp is null || IsDirty)
+            byte[]? fullRlp = FullRlp;
+
+            if (fullRlp is null || IsDirty)
             {
-                FullRlp = RlpEncode(tree);
-                _rlpStream = FullRlp.AsRlpStream();
+                fullRlp = RlpEncode(tree);
+                _rlpStream = fullRlp.AsRlpStream();
             }
 
             /* nodes that are descendants of other nodes are stored inline
              * if their serialized length is less than Keccak length
              * */
-            if (FullRlp.Length >= 32 || isRoot)
+            if (fullRlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                Keccak = Keccak.Compute(FullRlp);
+                Keccak = Keccak.Compute(fullRlp);
             }
         }
 
@@ -559,9 +561,6 @@ namespace Nethermind.Trie
                 Keccak is null
                     ? MemorySizes.RefSize
                     : MemorySizes.RefSize + Keccak.MemorySize;
-            long fullRlpSize =
-                MemorySizes.RefSize +
-                (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
             long rlpStreamSize =
                 MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0)
                 - (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
@@ -602,7 +601,6 @@ namespace Nethermind.Trie
             }
 
             long unaligned = keccakSize +
-                             fullRlpSize +
                              rlpStreamSize +
                              dataSize +
                              valuesOverhead +
@@ -632,7 +630,6 @@ namespace Nethermind.Trie
 
             if (FullRlp is not null)
             {
-                trieNode.FullRlp = FullRlp;
                 trieNode._rlpStream = FullRlp.AsRlpStream();
             }
 
