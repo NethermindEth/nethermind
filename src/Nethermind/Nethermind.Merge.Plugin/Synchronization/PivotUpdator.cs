@@ -166,10 +166,10 @@ public class PivotUpdator
         {
             if (HeaderValidator.ValidateHash(finalizedBlock.Header))
             {
-                if (_logger.IsInfo) _logger.Error("Found pivot block in block cache");
+                if (_logger.IsDebug) _logger.Debug("Found pivot block in block cache");
                 return finalizedBlock.Header.Number;
             }
-            if (_logger.IsInfo) _logger.Info($"Hash of header found in block cache is {finalizedBlock.Header.Hash} when expecting {finalizedBlockHash}");
+            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block cache is {finalizedBlock.Header.Hash} when expecting {finalizedBlockHash}");
         }
 
         return null;
@@ -183,10 +183,10 @@ public class PivotUpdator
         {
             if (HeaderValidator.ValidateHash(finalizedHeader))
             {
-                if (_logger.IsInfo) _logger.Info("Found header of pivot block in block tree");
+                if (_logger.IsDebug) _logger.Debug("Found header of pivot block in block tree");
                 return finalizedHeader.Number;
             }
-            if (_logger.IsInfo) _logger.Info($"Hash of header found in block tree is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
+            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block tree is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
         }
 
         return null;
@@ -242,7 +242,8 @@ public class PivotUpdator
             return true;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer too far from head. PivotBlockNumber: {finalizedBlockNumber}, TargetBlockNumber: {targetBlock}, difference: {targetBlock - finalizedBlockNumber} blocks. Max difference allowed: {Constants.MaxDistanceFromHead}");
+        if (!isCloseToHead && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer too far from head. PivotBlockNumber: {finalizedBlockNumber}, TargetBlockNumber: {targetBlock}, difference: {targetBlock - finalizedBlockNumber} blocks. Max difference allowed: {Constants.MaxDistanceFromHead}");
+        if (!newPivotHigherThanOld && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer isn't higher than pivot from initial config. New PivotBlockNumber: {finalizedBlockNumber}, old: {_syncConfig.PivotNumber}");
         return false;
     }
 }
