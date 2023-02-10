@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -177,6 +178,35 @@ namespace Nethermind.Db.Test
                 WriteBufferNumber = 4,
                 WriteBufferSize = (ulong)1.KiB()
             };
+        }
+
+        [Test]
+        public void Test_columndb_put_and_get_span_correctly_store_value()
+        {
+            string path = Path.Join(Path.GetTempPath(), "test");
+            Directory.CreateDirectory(path);
+            try
+            {
+                IDbConfig config = new DbConfig();
+                using ColumnsDb<ReceiptsColumns> columnDb = new(path, GetRocksDbSettings("blocks", "Blocks"), config,
+                    LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
+
+                using IDbWithSpan db = columnDb.GetColumnDb(ReceiptsColumns.Blocks);
+
+                Keccak key = Keccak.Compute("something");
+                Keccak value = Keccak.Compute("something");
+
+                db.KeyExists(key.Bytes).Should().BeFalse();
+                db.PutSpan(key.Bytes, value.Bytes);
+                db.KeyExists(key.Bytes).Should().BeTrue();
+                Span<byte> data = db.GetSpan(key.Bytes);
+                data.SequenceEqual(value.Bytes);
+                db.DangerousReleaseMemory(data);
+            }
+            finally
+            {
+                Directory.Delete(path, true);
+            }
         }
     }
 

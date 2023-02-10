@@ -16,6 +16,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="Ckzg.Bindings" Version="0.1.1.57" />
       <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="7.0.2" />
       <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="7.0.2" />
       <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="7.0.2" />
@@ -40,6 +41,12 @@
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
       <Content Include="runtimes\win-x64\native\shamatar.dll">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+      <Content Include="kzg_trusted_setup.txt">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
     </ItemGroup>
