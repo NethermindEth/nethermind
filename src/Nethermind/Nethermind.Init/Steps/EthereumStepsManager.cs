@@ -184,7 +184,6 @@ namespace Nethermind.Init.Steps
             finally
             {
                 stopwatch.Stop();
-                stepInfo.Stage = StepInitializationStage.Complete;
                 _autoResetEvent.Set();
 
                 if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} complete");
