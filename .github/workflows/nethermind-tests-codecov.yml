@@ -1,4 +1,4 @@
-name: '[RUN] Nethermind/Ethereum tests with code coverage'
+name: 'Nethermind/Ethereum tests with code coverage'
 
 on:
   push:

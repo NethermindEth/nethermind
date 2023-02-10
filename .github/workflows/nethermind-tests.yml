@@ -1,13 +1,13 @@
-name: '[RUN] Nethermind/Ethereum tests'
+name: 'Nethermind/Ethereum tests'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 on:
+  pull_request:
   push:
     branches: [master]
-  pull_request:
   workflow_dispatch:
 
 env:
