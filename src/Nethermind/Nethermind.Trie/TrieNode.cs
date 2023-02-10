@@ -572,6 +572,7 @@ namespace Nethermind.Trie
                     : MemorySizes.Align(_data.Length * MemorySizes.RefSize + MemorySizes.ArrayOverhead));
             int objectOverhead = MemorySizes.SmallObjectOverhead - MemorySizes.SmallObjectFreeDataSize;
 
+            // _value
             int valuesOverhead = 8;
 
             for (int i = 0; i < (_data?.Length ?? 0); i++)

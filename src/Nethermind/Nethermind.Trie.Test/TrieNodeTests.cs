@@ -511,14 +511,14 @@ namespace Nethermind.Trie.Test
         public void Size_of_a_heavy_leaf_is_correct()
         {
             Context ctx = new();
-            Assert.AreEqual(232, ctx.HeavyLeaf.GetMemorySize(false));
+            Assert.AreEqual(240, ctx.HeavyLeaf.GetMemorySize(false));
         }
 
         [Test]
         public void Size_of_a_tiny_leaf_is_correct()
         {
             Context ctx = new();
-            Assert.AreEqual(152, ctx.TiniestLeaf.GetMemorySize(false));
+            Assert.AreEqual(160, ctx.TiniestLeaf.GetMemorySize(false));
         }
 
         [Test]
@@ -532,7 +532,7 @@ namespace Nethermind.Trie.Test
                 node.SetChild(i, ctx.AccountLeaf);
             }
 
-            Assert.AreEqual(3664, node.GetMemorySize(true));
+            Assert.AreEqual(3792, node.GetMemorySize(true));
             Assert.AreEqual(208, node.GetMemorySize(false));
         }
 
@@ -555,7 +555,7 @@ namespace Nethermind.Trie.Test
             trieNode.Key = new byte[] { 1 };
             trieNode.SetChild(0, ctx.TiniestLeaf);
 
-            Assert.AreEqual(280, trieNode.GetMemorySize(true));
+            Assert.AreEqual(288, trieNode.GetMemorySize(true));
             Assert.AreEqual(128, trieNode.GetMemorySize(false));
         }
 
@@ -594,7 +594,7 @@ namespace Nethermind.Trie.Test
         {
             TrieNode trieNode = new(NodeType.Leaf);
             trieNode.Value = new byte[7];
-            trieNode.GetMemorySize(false).Should().Be(128);
+            trieNode.GetMemorySize(false).Should().Be(136);
         }
 
         [Test]
