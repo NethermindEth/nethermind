@@ -562,8 +562,7 @@ namespace Nethermind.Trie
                     ? MemorySizes.RefSize
                     : MemorySizes.RefSize + Keccak.MemorySize;
             long rlpStreamSize =
-                MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0)
-                - (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
+                MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0);
             long dataSize =
                 MemorySizes.RefSize +
                 (_data is null

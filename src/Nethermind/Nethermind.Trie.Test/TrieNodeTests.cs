@@ -602,7 +602,7 @@ namespace Nethermind.Trie.Test
         public void Size_of_an_unknown_node_with_full_rlp_is_correct()
         {
             TrieNode trieNode = new(NodeType.Unknown, new byte[7]);
-            trieNode.GetMemorySize(false).Should().Be(80);
+            trieNode.GetMemorySize(false).Should().Be(112);
         }
 
         [Test]
