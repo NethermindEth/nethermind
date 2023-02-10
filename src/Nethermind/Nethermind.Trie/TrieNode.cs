@@ -25,7 +25,7 @@ namespace Nethermind.Trie
 
         public int Id = Interlocked.Increment(ref _idCounter);
 #endif
-        private TrieNode? _storageRoot;
+
         private static object _nullNode = new();
         private static TrieNodeDecoder _nodeDecoder = new();
         private static AccountDecoder _accountDecoder = new();
@@ -100,6 +100,20 @@ namespace Nethermind.Trie
         {
             get => _value >> LastSeenShift;
             set => _value = (_value & ((1L << LastSeenShift) - 1)) | (value << LastSeenShift);
+        }
+
+        private TrieNode? StorageRoot
+        {
+            get
+            {
+                return _data?[2] as TrieNode;
+            }
+            set
+            {
+                if (_data is null)
+                    InitData();
+                _data![2] = value;
+            }
         }
 
         public byte[]? Key
@@ -687,10 +701,10 @@ namespace Nethermind.Trie
             }
             else
             {
-                TrieNode? storageRoot = _storageRoot;
+                TrieNode? storageRoot = StorageRoot;
                 if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, out storageRoot)))
                 {
-                    if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
+                    if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {storageRoot} of {this}");
                     storageRoot!.CallRecursively(action, resolver, skipPersisted, logger);
                 }
             }
@@ -738,9 +752,9 @@ namespace Nethermind.Trie
                     }
                 }
             }
-            else if (_storageRoot?.IsPersisted == true)
+            else if (StorageRoot?.IsPersisted == true)
             {
-                _storageRoot = null;
+                StorageRoot = null;
             }
 
             // else
@@ -756,7 +770,7 @@ namespace Nethermind.Trie
         private bool TryResolveStorageRoot(ITrieNodeResolver resolver, out TrieNode? storageRoot)
         {
             bool hasStorage = false;
-            storageRoot = _storageRoot;
+            storageRoot = StorageRoot;
 
             if (IsLeaf)
             {
@@ -770,7 +784,7 @@ namespace Nethermind.Trie
                     if (storageRootKey != Keccak.EmptyTreeHash)
                     {
                         hasStorage = true;
-                        _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey);
+                        StorageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey);
                     }
                 }
             }
@@ -789,6 +803,9 @@ namespace Nethermind.Trie
                             $"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
                     case NodeType.Branch:
                         _data = new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount];
+                        break;
+                    case NodeType.Leaf:
+                        _data = new object[3];
                         break;
                     default:
                         _data = new object[2];
