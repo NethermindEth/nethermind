@@ -9,7 +9,10 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -23,7 +26,9 @@ public class PivotUpdator
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly ISyncPeerPool _syncPeerPool;
     private readonly ISyncConfig _syncConfig;
+    private readonly IBlockCacheService _blockCacheService;
     private readonly IBeaconSyncStrategy _beaconSyncStrategy;
+    private readonly IDb _metadataDb;
     private readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cancellation = new();
@@ -36,18 +41,56 @@ public class PivotUpdator
         ISyncModeSelector syncModeSelector,
         ISyncPeerPool syncPeerPool,
         ISyncConfig syncConfig,
+        IBlockCacheService blockCacheService,
         IBeaconSyncStrategy beaconSyncStrategy,
+        IDb metadataDb,
         ILogManager logManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
         _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+        _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
         _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
+        _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
         _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
-        _syncModeSelector.Changed += OnSyncModeChanged;
+
+        if (!TryUpdateSyncConfigUsingDataFromDb())
+        {
+            _syncModeSelector.Changed += OnSyncModeChanged;
+        }
+    }
+
+    private bool TryUpdateSyncConfigUsingDataFromDb()
+    {
+        try
+        {
+            if (_metadataDb.KeyExists(MetadataDbKeys.UpdatedPivotNumber) && _metadataDb.KeyExists(MetadataDbKeys.UpdatedPivotHash))
+            {
+                byte[]? numberFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotNumber);
+                RlpStream numberStream = new(numberFromDb!);
+                long updatedPivotBlockNumber = numberStream.DecodeLong();
+
+                byte[]? hashFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotHash);
+                RlpStream hashStream = new(hashFromDb!);
+                Keccak updatedPivotBlockHash = hashStream.DecodeKeccak()!;
+
+                _syncConfig.PivotNumber = updatedPivotBlockNumber.ToString();
+                _syncConfig.PivotHash = updatedPivotBlockHash.ToString();
+                _syncConfig.MaxAttemptsToUpdatePivot = 0;
+
+                if (_logger.IsWarn) _logger.Warn($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
+                return true;
+            }
+        }
+        catch (RlpException)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot decode pivot block number or hash");
+        }
+
+        return false;
     }
 
     private async void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs syncMode)
@@ -70,6 +113,14 @@ public class PivotUpdator
                 if (_logger.IsWarn) _logger.Warn("Failed to update pivot block, skipping it.");
             }
         }
+
+        // if sync mode is different than UpdatePivot, it means it will never be in UpdatePivot
+        if ((syncMode.Current & SyncMode.UpdatingPivot) == 0 && Interlocked.Read(ref _updateInProgress) == 0)
+        {
+            _syncModeSelector.Changed -= OnSyncModeChanged;
+            _syncConfig.MaxAttemptsToUpdatePivot = 0;
+            if (_logger.IsWarn) _logger.Warn("Skipping pivot update");
+        }
     }
 
     private async Task<bool> TrySetFreshPivot(CancellationToken cancellationToken)
@@ -81,7 +132,8 @@ public class PivotUpdator
             return false;
         }
 
-        long? finalizedBlockNumber = TryGetFinalizedBlockNumberFromBlockTree(finalizedBlockHash);
+        long? finalizedBlockNumber = TryGetFinalizedBlockNumberFromBlockCache(finalizedBlockHash);
+        finalizedBlockNumber ??= TryGetFinalizedBlockNumberFromBlockTree(finalizedBlockHash);
         finalizedBlockNumber ??= await TryGetFinalizedBlockNumberFromPeers(finalizedBlockHash, cancellationToken);
 
         return finalizedBlockNumber is not null && TryOverwritePivot(finalizedBlockHash, (long)finalizedBlockNumber);
@@ -100,20 +152,44 @@ public class PivotUpdator
 
         if (_alreadyAnnouncedNewPivotHash != finalizedBlockHash)
         {
-            if (_logger.IsInfo) _logger.Info($"New pivot block hash: {finalizedBlockHash}");
+            if (_logger.IsInfo) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}");
             _alreadyAnnouncedNewPivotHash = finalizedBlockHash;
         }
 
         return finalizedBlockHash;
     }
 
+    private long? TryGetFinalizedBlockNumberFromBlockCache(Keccak finalizedBlockHash)
+    {
+        if (_logger.IsDebug) _logger.Debug("Looking for pivot block in block cache");
+        if (_blockCacheService.BlockCache.TryGetValue(finalizedBlockHash, out Block? finalizedBlock))
+        {
+            if (HeaderValidator.ValidateHash(finalizedBlock.Header))
+            {
+                if (_logger.IsInfo) _logger.Error("Found pivot block in block cache");
+                return finalizedBlock.Header.Number;
+            }
+            if (_logger.IsInfo) _logger.Info($"Hash of header found in block cache is {finalizedBlock.Header.Hash} when expecting {finalizedBlockHash}");
+        }
+
+        return null;
+    }
+
     private long? TryGetFinalizedBlockNumberFromBlockTree(Keccak finalizedBlockHash)
     {
         if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in blockTree");
-        long? finalizedBlockNumber = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number ?? null;
-        if (finalizedBlockNumber is not null && _logger.IsInfo) _logger.Info("Found header of pivot block in blockTree");
+        BlockHeader? finalizedHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        if (finalizedHeader is not null)
+        {
+            if (HeaderValidator.ValidateHash(finalizedHeader))
+            {
+                if (_logger.IsInfo) _logger.Info("Found header of pivot block in block tree");
+                return finalizedHeader.Number;
+            }
+            if (_logger.IsInfo) _logger.Info($"Hash of header found in block tree is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
+        }
 
-        return finalizedBlockNumber;
+        return null;
     }
 
     private async Task<long?> TryGetFinalizedBlockNumberFromPeers(Keccak finalizedBlockHash, CancellationToken cancellationToken)
@@ -126,17 +202,16 @@ public class PivotUpdator
             }
             try
             {
-                if (_logger.IsInfo) _logger.Info($"Asking peer {peer.SyncPeer.Node.ClientId} for header of pivot block");
+                if (_logger.IsInfo) _logger.Info($"Asking peer {peer.SyncPeer.Node.ClientId} for header of pivot block {finalizedBlockHash}");
                 BlockHeader? finalizedHeader = await peer.SyncPeer.GetHeadBlockHeader(finalizedBlockHash, cancellationToken);
-                long finalizedBlockNumber = finalizedHeader?.Number ?? 0;
-                if (finalizedBlockNumber != 0 && finalizedHeader is not null)
+                if (finalizedHeader is not null)
                 {
                     if (HeaderValidator.ValidateHash(finalizedHeader))
                     {
                         if (_logger.IsInfo) _logger.Info($"Received header of pivot block from peer {peer.SyncPeer.Node.ClientId}");
-                        return finalizedBlockNumber;
+                        return finalizedHeader.Number;
                     }
-                    else if (_logger.IsInfo) _logger.Info($"Hash of header received from peer {peer.SyncPeer.Node.ClientId} is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
+                    if (_logger.IsInfo) _logger.Info($"Hash of header received from peer {peer.SyncPeer.Node.ClientId} is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
                 }
             }
             catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
@@ -146,6 +221,7 @@ public class PivotUpdator
             }
         }
 
+        if (_logger.IsInfo) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}. Waiting for pivot block header. {_attemptsLeft} attempts left");
         return null;
     }
 
@@ -160,6 +236,8 @@ public class PivotUpdator
             _syncConfig.PivotHash = finalizedBlockHash.ToString();
             _syncConfig.PivotNumber = finalizedBlockNumber.ToString();
             _syncConfig.MaxAttemptsToUpdatePivot = 0;
+            _metadataDb.Set(MetadataDbKeys.UpdatedPivotNumber, Rlp.Encode(finalizedBlockNumber).Bytes);
+            _metadataDb.Set(MetadataDbKeys.UpdatedPivotHash, Rlp.Encode(finalizedBlockHash).Bytes);
             if (_logger.IsWarn) _logger.Warn($"New pivot block has been set based on FCU from CL. Pivot block number: {finalizedBlockNumber}, hash: {finalizedBlockHash}");
             return true;
         }

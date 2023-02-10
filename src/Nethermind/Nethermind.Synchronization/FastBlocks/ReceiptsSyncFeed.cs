@@ -78,9 +78,6 @@ namespace Nethermind.Synchronization.FastBlocks
             if (_pivotNumber < _syncConfig.PivotNumberParsed)
             {
                 _pivotNumber = _syncConfig.PivotNumberParsed;
-                // we are setting LowestInsertedReceiptBlockNumber to new pivot number to avoid gaps in case of restart
-                // (updated pivot would be lost and we will download receipts only up to old pivot number)
-                _receiptStorage.LowestInsertedReceiptBlockNumber = _syncConfig.PivotNumberParsed;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
             }

@@ -406,12 +406,14 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.LogManager);
             _api.Pivot = _beaconPivot;
 
-            PivotUpdator pivotUpdator = new PivotUpdator(
+            PivotUpdator pivotUpdator = new(
                 _api.BlockTree,
                 _api.SyncModeSelector,
                 _api.SyncPeerPool,
                 _syncConfig,
+                _blockCacheService,
                 _beaconSync,
+                _api.DbProvider.GetDb<IDb>(DbNames.Metadata),
                 _api.LogManager);
 
             SyncReport syncReport = new(_api.SyncPeerPool, _api.NodeStatsManager, _api.SyncModeSelector, _syncConfig, _beaconPivot, _api.LogManager);
