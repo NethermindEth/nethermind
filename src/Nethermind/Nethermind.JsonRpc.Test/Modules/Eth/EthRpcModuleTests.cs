@@ -971,7 +971,8 @@ public partial class EthRpcModuleTests
     public async Task Send_raw_transaction_will_send_transaction(string rawTransaction)
     {
         using Context ctx = await Context.Create();
-        ITxSender txSender = Substitute.ForPartsOf<TxPoolSender>(ctx.Test.TxPool, ctx.Test.TxSealer);
+        ITxSender txSender = Substitute.ForPartsOf<TxPoolSender>(ctx.Test.TxPool, ctx.Test.TxSealer,
+            ctx.Test.NonceManager, ctx.Test.EthereumEcdsa);
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         string serialized = ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);

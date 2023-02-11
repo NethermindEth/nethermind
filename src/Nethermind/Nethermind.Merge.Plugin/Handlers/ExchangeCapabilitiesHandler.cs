@@ -4,72 +4,41 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class ExchangeCapabilitiesHandler : IAsyncHandler<IEnumerable<string>, IEnumerable<string>>
+public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumerable<string>>
 {
-    private static IDictionary<string, bool> _capabilities = new Dictionary<string, bool>();
     private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(1);
 
     private readonly ILogger _logger;
+    private readonly IRpcCapabilitiesProvider _engineRpcCapabilitiesProvider;
 
-    public ExchangeCapabilitiesHandler(ISpecProvider specProvider, ILogManager logManager)
+    public ExchangeCapabilitiesHandler(IRpcCapabilitiesProvider engineRpcCapabilitiesProvider, ISpecProvider specProvider, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(logManager);
 
         _logger = logManager.GetClassLogger();
-
-        if (_capabilities.Count == 0)
-        {
-            var spec = specProvider.GetSpec((long.MaxValue, ulong.MaxValue));
-
-            #region The Merge
-            _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_executionStatus)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = true;
-            #endregion
-
-            #region Shanghai
-            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV2)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV2)] = spec.WithdrawalsEnabled;
-            #endregion
-        }
+        _engineRpcCapabilitiesProvider = engineRpcCapabilitiesProvider;
     }
 
-    public async Task<ResultWrapper<IEnumerable<string>>> HandleAsync(IEnumerable<string> methods)
+    public ResultWrapper<IEnumerable<string>> Handle(IEnumerable<string> methods)
     {
-        var task = Task.Run(() => CheckCapabilities(methods));
+        var capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
+        CheckCapabilities(methods, capabilities);
 
-        try
-        {
-            await task.WaitAsync(_timeout);
-
-            return ResultWrapper<IEnumerable<string>>.Success(_capabilities.Keys);
-        }
-        catch (TimeoutException)
-        {
-            if (_logger.IsWarn) _logger.Warn($"{nameof(IEngineRpcModule.engine_exchangeCapabilities)} timed out");
-
-            return ResultWrapper<IEnumerable<string>>.Fail("Timed out", ErrorCodes.Timeout);
-        }
+        return ResultWrapper<IEnumerable<string>>.Success(capabilities.Keys);
     }
 
-    private void CheckCapabilities(IEnumerable<string> methods)
+    private void CheckCapabilities(IEnumerable<string> methods, IReadOnlyDictionary<string, bool> capabilities)
     {
         var missing = new List<string>();
 
-        foreach (var capability in _capabilities)
+        foreach (var capability in capabilities)
         {
             var found = false;
 

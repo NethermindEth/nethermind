@@ -151,7 +151,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingStorage)
@@ -160,7 +160,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingStorage)
