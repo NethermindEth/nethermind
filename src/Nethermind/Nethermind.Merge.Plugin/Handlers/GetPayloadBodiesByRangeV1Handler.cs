@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.JsonRpc;
@@ -45,10 +44,10 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
             return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        var bestSuggestedNumber = _blockTree.BestSuggestedBody?.Number ?? 0;
+        var headNumber = _blockTree.Head?.Number ?? 0;
         var payloadBodies = new List<ExecutionPayloadBodyV1Result?>((int)count);
 
-        for (long i = start, c = Math.Min(start + count, bestSuggestedNumber + 1); i < c; i++)
+        for (long i = start, c = Math.Min(start + count - 1, headNumber); i <= c; i++)
         {
             var block = _blockTree.FindBlock(i);
 
