@@ -208,7 +208,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(0, false)]
         public async Task Can_sync_with_peer_when_it_times_out_on_full_batch(int ignoredBlocks, bool mergeDownloader)
         {
-            Context ctx = mergeDownloader ? new MergeContext() : new Context();
+            Context ctx = mergeDownloader ? new PostMergeContext() : new Context();
             SyncBatchSize syncBatchSize = new SyncBatchSize(LimboLogs.Instance);
             syncBatchSize.ExpandUntilMax();
             ctx.SyncBatchSize = syncBatchSize;
@@ -246,7 +246,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(32, 16, 100, false)]
         public async Task Can_sync_partially_when_only_some_bodies_is_available(int blockCount, int availableBlock, int minResponseLength, bool mergeDownloader)
         {
-            Context ctx = mergeDownloader ? new MergeContext() : new Context();
+            Context ctx = mergeDownloader ? new PostMergeContext() : new Context();
             BlockDownloader downloader = ctx.BlockDownloader;
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -1016,6 +1016,7 @@ namespace Nethermind.Synchronization.Test
         private class SyncPeerMock : ISyncPeer
         {
             private readonly bool _withReceipts;
+            private readonly bool _withWithdrawals;
             private readonly BlockHeadersMessageSerializer _headersSerializer = new();
             private readonly BlockBodiesMessageSerializer _bodiesSerializer = new();
             private readonly ReceiptsMessageSerializer _receiptsSerializer = new(RopstenSpecProvider.Instance);
@@ -1026,16 +1027,18 @@ namespace Nethermind.Synchronization.Test
 
             public Response Flags { get; set; }
 
-            public SyncPeerMock(long chainLength, bool withReceipts, Response flags)
+            public SyncPeerMock(long chainLength, bool withReceipts, Response flags, bool withWithdrawals = false)
             {
                 _withReceipts = withReceipts;
+                _withWithdrawals = withWithdrawals;
                 Flags = flags;
                 BuildTree(chainLength, withReceipts);
             }
 
-            public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty)
+            public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty, bool withWithdrawals = false)
             {
                 _withReceipts = withReceipts;
+                _withWithdrawals = withWithdrawals;
                 Flags = flags;
                 BlockTree = blockTree;
                 HeadNumber = BlockTree.Head.Number;
@@ -1052,7 +1055,7 @@ namespace Nethermind.Synchronization.Test
                     builder = builder.WithTransactions(_receiptStorage);
                 }
 
-                builder = builder.OfChainLength((int)chainLength);
+                builder = builder.OfChainLength((int)chainLength, 0, 0, _withWithdrawals);
                 BlockTree = builder.TestObject;
 
                 HeadNumber = BlockTree.Head.Number;
