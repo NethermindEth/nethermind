@@ -42,6 +42,9 @@ namespace Nethermind.Network
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
 
+        Func<PublicKey, (Node Node, ConcurrentDictionary<PublicKey, Peer> Statics), Peer> _createNewNodePeer;
+        Func<PublicKey, (NetworkNode Node, ConcurrentDictionary<PublicKey, Peer> Statics), Peer> _createNewNetworkNodePeer;
+
         public PeerPool(
             INodeSource nodeSource,
             INodeStatsManager nodeStatsManager,
@@ -55,6 +58,10 @@ namespace Nethermind.Network
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            // Early explicit closure
+            _createNewNodePeer = CreateNew;
+            _createNewNetworkNodePeer = CreateNew;
 
             _nodeSource.NodeAdded += NodeSourceOnNodeAdded;
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
@@ -73,7 +80,12 @@ namespace Nethermind.Network
 
         public Peer GetOrAdd(Node node)
         {
-            return Peers.GetOrAdd(node.Id, CreateNew, (node, _staticPeers));
+            return Peers.GetOrAdd(node.Id, valueFactory: _createNewNodePeer, (node, _staticPeers));
+        }
+
+        public Peer GetOrAdd(NetworkNode node)
+        {
+            return Peers.GetOrAdd(node.NodeId, valueFactory: _createNewNetworkNodePeer, (node, _staticPeers));
         }
 
         private Peer CreateNew(PublicKey key, (Node Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
@@ -83,12 +95,19 @@ namespace Nethermind.Network
                 if (_logger.IsDebug) _logger.Debug(
                     $"Adding a {(arg.Node.IsBootnode ? "bootnode" : "stored")} candidate peer {arg.Node:s}");
             }
-
             Peer peer = new(arg.Node);
             if (arg.Node.IsStatic)
             {
                 arg.Statics.TryAdd(arg.Node.Id, peer);
             }
+
+            PeerAdded?.Invoke(this, new PeerEventArgs(peer));
+            return peer;
+        }
+
+        private Peer CreateNew(PublicKey key, (NetworkNode Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
+        {
+            Peer peer = new(new(arg.Node));
 
             PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             return peer;
@@ -117,7 +136,7 @@ namespace Nethermind.Network
 
         public Peer Replace(ISession session)
         {
-            if (Peers.TryGetValue(session.ObsoleteRemoteNodeId, out Peer previousPeer))
+            if (Peers.TryRemove(session.ObsoleteRemoteNodeId, out Peer previousPeer))
             {
                 // this should happen
                 if (previousPeer.InSession == session || previousPeer.OutSession == session)
@@ -130,11 +149,11 @@ namespace Nethermind.Network
                     // (what with the other session?)
 
                     _staticPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
-                    Peers.TryRemove(session.ObsoleteRemoteNodeId, out Peer oldPeer);
-                    if (oldPeer is not null)
+
+                    if (previousPeer is not null)
                     {
-                        oldPeer.InSession = null;
-                        oldPeer.OutSession = null;
+                        previousPeer.InSession = null;
+                        previousPeer.OutSession = null;
                     }
                 }
                 else
@@ -226,8 +245,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                Node node = new(networkNode);
-                Peer peer = GetOrAdd(node);
+                Peer peer = GetOrAdd(networkNode);
                 long newRep = _stats.GetNewPersistedReputation(peer.Node);
                 if (newRep != networkNode.Reputation)
                 {

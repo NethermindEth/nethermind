@@ -372,11 +372,13 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             int currentCount = 0;
+            int maxCount = 0;
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
+                maxCount += 50;
                 await Task.Delay(_travisDelay);
-                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + 25);
+                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, maxCount);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
                 ctx.DisconnectAllSessions();

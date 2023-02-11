@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -18,8 +19,11 @@ namespace Nethermind.Network
     {
         private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
+        private readonly List<NetworkNode> _nodesList = new();
+        private readonly HashSet<PublicKey> _nodePublicKeys = new();
         private long _updateCounter;
         private long _removeCounter;
+        private NetworkNode[] _nodes;
 
         public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
         {
@@ -31,13 +35,21 @@ namespace Nethermind.Network
         {
             get
             {
-                return _fullDb.Values.Count;
+                NetworkNode[] nodes = _nodes;
+                return nodes?.Length ?? _fullDb.Count;
             }
         }
 
         public NetworkNode[] GetPersistedNodes()
         {
-            List<NetworkNode> nodes = new();
+            NetworkNode[] nodes = _nodes;
+            return nodes is not null ? nodes : GenerateNodes();
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        private NetworkNode[] GenerateNodes()
+        {
+            _nodesList.Clear();
             foreach (byte[]? nodeRlp in _fullDb.Values)
             {
                 if (nodeRlp is null)
@@ -47,7 +59,7 @@ namespace Nethermind.Network
 
                 try
                 {
-                    nodes.Add(GetNode(nodeRlp));
+                    _nodesList.Add(GetNode(nodeRlp));
                 }
                 catch (Exception e)
                 {
@@ -55,13 +67,22 @@ namespace Nethermind.Network
                 }
             }
 
-            return nodes.ToArray();
+            NetworkNode[] nodes = _nodes = _nodesList.ToArray();
+            return nodes;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdateNode(NetworkNode node)
         {
             (_currentBatch ?? (IKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
             _updateCounter++;
+
+            if (!_nodePublicKeys.Contains(node.NodeId))
+            {
+                _nodePublicKeys.Add(node.NodeId);
+                // New node clear the cache
+                _nodes = null;
+            }
         }
 
         public void UpdateNodes(IEnumerable<NetworkNode> nodes)
@@ -76,6 +97,24 @@ namespace Nethermind.Network
         {
             (_currentBatch ?? (IKeyValueStore)_fullDb)[nodeId.Bytes] = null;
             _removeCounter++;
+
+            RemoveLocal(nodeId);
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        private void RemoveLocal(PublicKey nodeId)
+        {
+            int length = _nodesList.Count;
+            for (int i = 0; i < length; i++)
+            {
+                if (nodeId == _nodesList[i].NodeId)
+                {
+                    _nodesList.RemoveAt(i);
+                    _nodes = _nodesList.ToArray();
+                    _nodePublicKeys.Remove(nodeId);
+                    return;
+                }
+            }
         }
 
         private IBatch? _currentBatch;
