@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -47,7 +49,19 @@ namespace Nethermind.Db
 
         public byte[] this[ReadOnlySpan<byte> key]
         {
-            get => _cache[key.ToArray()];
+            get
+            {
+                byte[] asBytes = ArrayPool<byte>.Shared.RentExact(key.Length);
+                try
+                {
+                    key.CopyTo(asBytes);
+                    return _cache[asBytes];
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.ReturnExact(asBytes);
+                }
+            }
             set
             {
                 if (value is null)
@@ -66,12 +80,31 @@ namespace Nethermind.Db
         public void Remove(ReadOnlySpan<byte> key)
         {
             _hasPendingChanges = true;
-            _cache.TryRemove(key.ToArray(), out _);
+
+            byte[] asBytes = ArrayPool<byte>.Shared.RentExact(key.Length);
+            try
+            {
+                key.CopyTo(asBytes);
+                _cache.TryRemove(asBytes, out _);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.ReturnExact(asBytes);
+            }
         }
 
         public bool KeyExists(ReadOnlySpan<byte> key)
         {
-            return _cache.ContainsKey(key.ToArray());
+            byte[] asBytes = ArrayPool<byte>.Shared.RentExact(key.Length);
+            try
+            {
+                key.CopyTo(asBytes);
+                return _cache.ContainsKey(asBytes);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.ReturnExact(asBytes);
+            }
         }
 
         public IDb Innermost => this;

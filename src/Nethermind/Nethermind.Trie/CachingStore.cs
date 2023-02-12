@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Trie
 {
@@ -33,7 +35,8 @@ namespace Nethermind.Trie
         {
             get
             {
-                byte[] keyAsArray = key.ToArray(); // TODO: make this more efficient
+                byte[] keyAsArray = ArrayPool<byte>.Shared.RentExact(key.Length);
+                key.CopyTo(keyAsArray);
                 if (!_cache.TryGet(keyAsArray, out byte[] value))
                 {
                     value = _wrappedStore[key];
@@ -41,6 +44,7 @@ namespace Nethermind.Trie
                 }
                 else
                 {
+                    ArrayPool<byte>.Shared.ReturnExact(keyAsArray);
                     // TODO: a hack assuming that we cache only one thing, accepted unanimously by Lukasz, Marek, and Tomasz
                     Pruning.Metrics.LoadedFromRlpCacheNodesCount++;
                 }
