@@ -128,7 +128,7 @@ namespace Nethermind.HealthChecks
 
             _nodeHealthService = new NodeHealthService(_api.SyncServer,
                 _api.BlockchainProcessor!, _api.BlockProducer!, _healthChecksConfig, _api.HealthHintService!,
-                _api.EthSyncingInfo!, _api, drives, _initConfig.IsMining);
+                _api.EthSyncingInfo!, _api.RpcCapabilitiesProvider, _api, drives, _initConfig.IsMining);
 
             if (_healthChecksConfig.Enabled)
             {

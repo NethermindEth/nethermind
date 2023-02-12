@@ -18,10 +18,10 @@ namespace Nethermind.State
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
             => throw new InvalidOperationException(ErrorMessage);
     }
 }

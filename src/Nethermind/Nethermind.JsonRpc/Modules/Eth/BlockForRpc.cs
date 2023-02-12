@@ -55,6 +55,11 @@ public class BlockForRpc
             {
                 BaseFeePerGas = block.Header.BaseFeePerGas;
             }
+
+            if (spec.IsEip4844Enabled)
+            {
+                ExcessDataGas = block.Header.ExcessDataGas;
+            }
         }
 
         Number = block.Number;
@@ -118,4 +123,7 @@ public class BlockForRpc
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
     public Keccak? WithdrawalsRoot { get; set; }
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public UInt256? ExcessDataGas { get; set; }
 }

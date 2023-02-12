@@ -245,6 +245,15 @@ namespace Nethermind.Init.Steps
 
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
+
+            // TODO: can take the tx sender from plugin here maybe
+            ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
+            TxSealer nonceReservingTxSealer =
+                new(txSigner, getApi.Timestamper);
+            INonceManager nonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
+            setApi.NonceManager = nonceManager;
+            setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
+
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
@@ -264,12 +273,6 @@ namespace Nethermind.Init.Steps
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
             setApi.EthSyncingInfo = new EthSyncingInfo(getApi.BlockTree, getApi.ReceiptStorage!, syncConfig, getApi.LogManager);
-
-            // TODO: can take the tx sender from plugin here maybe
-            ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
-            NonceReservingTxSealer nonceReservingTxSealer =
-                new(txSigner, getApi.Timestamper, txPool, getApi.EthereumEcdsa!);
-            setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer);
 
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);

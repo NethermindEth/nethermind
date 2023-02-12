@@ -46,10 +46,9 @@ public static class NettyMemoryEstimator
     // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
     private const uint PageSize = 8192;
 
-    public static long Estimate(uint cpuCount, int arenaOrder)
+    public static long Estimate(uint arenaCount, int arenaOrder)
     {
-        // do not remember why there is 2 in front
-        return 2L * cpuCount * (1L << arenaOrder) * PageSize;
+        return arenaCount * (1L << arenaOrder) * PageSize;
     }
 }
 
@@ -98,7 +97,6 @@ public class InitializeNetwork : IStep
             NetworkDiagTracer.Start(_api.LogManager);
         }
 
-        Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
         CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
         ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
@@ -498,7 +496,7 @@ public class InitializeNetwork : IStep
         _api.StaticNodesManager = new StaticNodesManager(initConfig.StaticNodesPath, _api.LogManager);
         await _api.StaticNodesManager.InitAsync();
 
-        // ToDo: PeersDB is register outside dbProvider - bad
+        // ToDo: PeersDB is registered outside dbProvider
         string dbName = "PeersDB";
         IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
             ? new MemDb(dbName)
@@ -547,7 +545,7 @@ public class InitializeNetwork : IStep
             _networkConfig,
             _api.LogManager);
 
-        string chainName = ChainId.GetChainName(_api.ChainSpec!.ChainId).ToLowerInvariant();
+        string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
         string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
 #pragma warning disable CS4014
         enrDiscovery.SearchTree(domain).ContinueWith(t =>

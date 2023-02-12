@@ -199,6 +199,24 @@ namespace Nethermind.Network.Test
             Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
         }
 
+
+        [TestCase(2ul, 3ul, 2ul, 3ul)]
+        [TestCase(2ul, null, 2ul, 2ul)]
+        [TestCase(null, 3ul, 3ul, 3ul)]
+        [TestCase(null, null, 1ul, 1ul)]
+        public void Chain_id_and_network_id_have_proper_default_values(ulong? specNetworkId, ulong? specChainId, ulong expectedNetworkId, ulong expectedChainId)
+        {
+            ChainSpecLoader loader = new(new EthereumJsonSerializer());
+
+            ChainSpec spec = loader.Load($"{{\"params\":{{\"networkID\":{specNetworkId?.ToString() ?? "null"},\"chainId\":{specChainId?.ToString() ?? "null"}}},\"engine\":{{\"NethDev\":{{}}}}}}");
+            ChainSpecBasedSpecProvider provider = new(spec);
+
+            spec.ChainId.Should().Be(expectedChainId);
+            spec.NetworkId.Should().Be(expectedNetworkId);
+            provider.ChainId.Should().Be(expectedChainId);
+            provider.NetworkId.Should().Be(expectedNetworkId);
+        }
+
         private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
         {
             Test(head, headTimestamp, genesisHash, forkHashHex, next, description, specProvider);

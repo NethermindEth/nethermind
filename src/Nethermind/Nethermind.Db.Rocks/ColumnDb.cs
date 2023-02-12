@@ -128,7 +128,7 @@ public class ColumnDb : IDbWithSpan
 
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
-        _rocksDb.Put(key, value);
+        _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _rocksDb.DangerousReleaseMemory(span);
