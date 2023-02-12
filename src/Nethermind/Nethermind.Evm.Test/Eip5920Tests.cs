@@ -19,7 +19,7 @@ namespace Nethermind.Evm.Test
                 .Done;
             
             // Prepare address to have 150 wei
-            TestState.CreateAccount(TestItem.AddressF, 150.Ether());
+            TestState.CreateAccount(TestItem.AddressF, 150);
 
             // Execute bytecode in the context of addressF
             TestAllTracerWithOutput result = Execute(code, TestItem.AddressF);
@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             // Prepare address to have 70 wei
-            TestState.CreateAccount(TestItem.AddressF, 70.Ether());
+            TestState.CreateAccount(TestItem.AddressF, 70);
 
             // Execute bytecode in the context of addressF
             TestAllTracerWithOutput result = Execute(code, TestItem.AddressF);
@@ -62,8 +62,8 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             // Prepare addressF to have 150 wei and addressG to have 20 wei
-            TestState.CreateAccount(TestItem.AddressF, 150.Ether());
-            TestState.CreateAccount(TestItem.AddressG, 20.Ether());
+            TestState.CreateAccount(TestItem.AddressF, 150);
+            TestState.CreateAccount(TestItem.AddressG, 20);
 
             // Execute bytecode in the context of addressF
             TestAllTracerWithOutput result = Execute(code, TestItem.AddressF);
@@ -86,8 +86,8 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             // Prepare addressF to have 70 wei and addressG to have 20 wei
-            TestState.CreateAccount(TestItem.AddressF, 70.Ether());
-            TestState.CreateAccount(TestItem.AddressG, 20.Ether());
+            TestState.CreateAccount(TestItem.AddressF, 70);
+            TestState.CreateAccount(TestItem.AddressG, 20);
 
             // Execute bytecode in the context of addressF
             TestAllTracerWithOutput result = Execute(code, TestItem.AddressF);
