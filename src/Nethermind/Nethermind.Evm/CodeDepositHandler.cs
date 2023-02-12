@@ -25,7 +25,7 @@ namespace Nethermind.Evm
             if (spec.IsEip3540Enabled)
             {
                 //fromVersion = (execType is ExecutionType.Create1 or ExecutionType.Create2) ? fromVersion : 0; //// hmmmm
-                int codeVersion = EvmObjectFormat.GetCodeVersion(code);
+                int codeVersion = EvmObjectFormat.IsEof(code) ? EvmObjectFormat.GetCodeVersion(code) : 0;
                 valid &= codeVersion >= fromVersion
                       && (EvmObjectFormat.IsEof(code) ?  // this needs test cases
                            EvmObjectFormat.IsValidEof(code, out _) :

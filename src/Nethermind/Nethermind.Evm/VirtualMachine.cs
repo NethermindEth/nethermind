@@ -2395,13 +2395,6 @@ namespace Nethermind.Evm
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
                             // if container is EOF init code must be EOF
-                            if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
 
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                             if (value > balance)
@@ -2442,6 +2435,13 @@ namespace Nethermind.Evm
 
                             _state.IncrementNonce(env.ExecutingAccount);
 
+                            if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
+                            {
+                                _txTracer.ReportOperationError(EvmExceptionType.InvalidCode);
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
+                            }
 
                             Snapshot snapshot = _worldState.TakeSnapshot();
 
