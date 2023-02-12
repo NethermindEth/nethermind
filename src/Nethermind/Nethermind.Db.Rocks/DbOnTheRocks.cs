@@ -55,6 +55,7 @@ public class DbOnTheRocks : IDbWithSpan
     private readonly RocksDbSharp.Native _rocksDbNative;
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
+    private IntPtr? _rateLimiter = null;
 
     protected static void InitCache(IDbConfig dbConfig)
     {
@@ -225,7 +226,18 @@ public class DbOnTheRocks : IDbWithSpan
          */
         options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
 
-        //options.SetMaxOpenFiles(32);
+        if (_perTableDbConfig.MaxOpenFiles.HasValue)
+        {
+            options.SetMaxOpenFiles(_perTableDbConfig.MaxOpenFiles.Value);
+        }
+
+        if (_perTableDbConfig.MaxWriteBytesPerSec.HasValue)
+        {
+            _rateLimiter =
+                _rocksDbNative.rocksdb_ratelimiter_create(_perTableDbConfig.MaxWriteBytesPerSec.Value, 1000, 10);
+            _rocksDbNative.rocksdb_options_set_ratelimiter(options.Handle, _rateLimiter.Value);
+        }
+
         ulong writeBufferSize = _perTableDbConfig.WriteBufferSize;
         options.SetWriteBufferSize(writeBufferSize);
         int writeBufferNumber = (int)_perTableDbConfig.WriteBufferNumber;
@@ -699,6 +711,11 @@ public class DbOnTheRocks : IDbWithSpan
         }
 
         _db.Dispose();
+
+        if (_rateLimiter.HasValue)
+        {
+            _rocksDbNative.rocksdb_ratelimiter_destroy(_rateLimiter.Value);
+        }
     }
 
     public void Dispose()
