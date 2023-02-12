@@ -300,7 +300,12 @@ public class DiscoveryApp : IDiscoveryApp
                 if (_logger.IsDebug) _logger.Debug($"Running discovery with interval {_discoveryTimer.Interval}");
                 _discoveryTimer.Enabled = false;
                 RunDiscoveryProcess();
-                int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
+                int nodesCountAfterDiscovery = 0;
+                foreach (NodeBucket bucket in _nodeTable.Buckets)
+                {
+                    nodesCountAfterDiscovery += bucket.Count;
+                }
+
                 _discoveryTimer.Interval =
                     nodesCountAfterDiscovery < 16
                         ? 10

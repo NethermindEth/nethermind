@@ -176,7 +176,7 @@ public class DiscoveryManager : IDiscoveryManager
         }
     }
 
-    public async Task<bool> WasMessageReceived(Keccak senderIdHash, MsgType msgType, int timeout)
+    public async ValueTask<bool> WasMessageReceived(Keccak senderIdHash, MsgType msgType, int timeout)
     {
         TaskCompletionSource<DiscoveryMsg> completionSource = GetCompletionSource(senderIdHash, (int)msgType);
         CancellationTokenSource delayCancellation = new();

@@ -9,7 +9,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto
 {
-    public unsafe struct ValueKeccak
+    public unsafe struct ValueKeccak : IEquatable<ValueKeccak>
     {
         internal const int Size = 32;
         public fixed byte Bytes[Size];
@@ -21,6 +21,18 @@ namespace Nethermind.Core.Crypto
         /// </returns>
         public static readonly ValueKeccak OfAnEmptyString = InternalCompute(new byte[] { });
 
+        public static bool operator ==(in ValueKeccak a, in ValueKeccak b) => Extensions.Bytes.AreEqual(a.BytesAsSpan, b.BytesAsSpan);
+        public static bool operator ==(in ValueKeccak a, Keccak? b) => b is not null && Extensions.Bytes.AreEqual(a.BytesAsSpan, b.Bytes);
+        public static bool operator ==(Keccak? a, in ValueKeccak b) => a is not null && Extensions.Bytes.AreEqual(a.Bytes, b.BytesAsSpan);
+        public static bool operator !=(Keccak? a, in ValueKeccak b) => !(a == b);
+        public static bool operator !=(in ValueKeccak a, Keccak? b) => !(a == b);
+        public static bool operator !=(in ValueKeccak a, in ValueKeccak b) => !(a == b);
+
+        public override bool Equals(object? obj) => obj is ValueKeccak other && other == this;
+
+        public bool Equals(ValueKeccak other) => other == this;
+
+        public override int GetHashCode() => Keccak.GetHashCode(ref Unsafe.As<ValueKeccak, byte>(ref this));
 
         [DebuggerStepThrough]
         public static ValueKeccak Compute(ReadOnlySpan<byte> input)
@@ -89,23 +101,14 @@ namespace Nethermind.Core.Crypto
 
         public override bool Equals(object? obj)
         {
-            return obj is KeccakKey && Equals((KeccakKey)obj);
+            return obj is KeccakKey key && Equals(key);
         }
 
         public override int GetHashCode()
         {
             if (Bytes is null) return 0;
 
-            long v0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(Bytes));
-            long v1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long)));
-            long v2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 2));
-            long v3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 3));
-
-            v0 ^= v1;
-            v2 ^= v3;
-            v0 ^= v2;
-
-            return (int)v0 ^ (int)(v0 >> 32);
+            return Keccak.GetHashCode(ref MemoryMarshal.GetArrayDataReference(Bytes));
         }
     }
 
@@ -237,10 +240,15 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            long v0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(Bytes));
-            long v1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long)));
-            long v2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 2));
-            long v3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 3));
+            return GetHashCode(ref MemoryMarshal.GetArrayDataReference(Bytes));
+        }
+
+        internal static int GetHashCode(ref byte keccak)
+        {
+            long v0 = Unsafe.ReadUnaligned<long>(ref keccak);
+            long v1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref keccak, sizeof(long)));
+            long v2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref keccak, sizeof(long) * 2));
+            long v3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref keccak, sizeof(long) * 3));
             v0 ^= v1;
             v2 ^= v3;
             v0 ^= v2;

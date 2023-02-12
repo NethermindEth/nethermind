@@ -1,16 +1,19 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Diagnostics;
+
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable;
 
-[DebuggerDisplay("{BondedItemsCount} bonded item(s)")]
-public class NodeBucket
+[DebuggerDisplay("{Count} bonded item(s)")]
+public class NodeBucket : IEnumerable<NodeBucketItem>
 {
     private readonly object _nodeBucketLock = new();
     private readonly LinkedList<NodeBucketItem> _items;
+    private int _count;
 
     public NodeBucket(int distance, int bucketSize)
     {
@@ -26,50 +29,7 @@ public class NodeBucket
 
     public int BucketSize { get; }
 
-    public IEnumerable<NodeBucketItem> BondedItems
-    {
-        get
-        {
-            lock (_nodeBucketLock)
-            {
-                LinkedListNode<NodeBucketItem>? node = _items.Last;
-                while (node is not null)
-                {
-                    if (!node.Value.IsBonded)
-                    {
-                        break;
-                    }
-
-                    yield return node.Value;
-                    node = node.Previous;
-                }
-            }
-        }
-    }
-
-    public int BondedItemsCount
-    {
-        get
-        {
-            lock (_nodeBucketLock)
-            {
-                int result = _items.Count;
-                LinkedListNode<NodeBucketItem>? node = _items.Last;
-                while (node is not null)
-                {
-                    if (node.Value.IsBonded)
-                    {
-                        break;
-                    }
-
-                    node = node.Previous;
-                    result--;
-                }
-
-                return result;
-            }
-        }
-    }
+    public int Count => _count;
 
     public NodeAddResult AddNode(Node node)
     {
@@ -81,6 +41,7 @@ public class NodeBucket
                 if (!_items.Contains(item))
                 {
                     _items.AddFirst(item);
+                    _count++;
                 }
 
                 return NodeAddResult.Added();
@@ -99,6 +60,7 @@ public class NodeBucket
             if (_items.Contains(item))
             {
                 _items.Remove(item);
+                _count--;
                 AddNode(nodeToAdd);
             }
             else
@@ -127,5 +89,55 @@ public class NodeBucket
     private NodeBucketItem GetEvictionCandidate()
     {
         return _items.Last();
+    }
+
+    public BondedItemsEnumerator GetEnumerator() => new(this);
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    IEnumerator<NodeBucketItem> IEnumerable<NodeBucketItem>.GetEnumerator() => GetEnumerator();
+
+    public struct BondedItemsEnumerator : IEnumerator<NodeBucketItem>
+    {
+        private LinkedListNode<NodeBucketItem>? _node;
+        private NodeBucketItem _current;
+        private readonly NodeBucket _bucket;
+
+        internal BondedItemsEnumerator(NodeBucket bucket)
+        {
+            _node = null;
+            _current = null!;
+            _bucket = bucket;
+        }
+
+        public NodeBucketItem Current => _current;
+
+        public bool MoveNext()
+        {
+            lock (_bucket._nodeBucketLock)
+            {
+                LinkedListNode<NodeBucketItem>? node = _node;
+                if (node is null)
+                {
+                    _node = node = _bucket._items.Last;
+                    if (node is null) return false;
+                }
+                else
+                {
+                    _node = node = node.Previous;
+                    if (node is null) return false;
+                }
+
+                if (!node.Value.IsBonded)
+                {
+                    return false;
+                }
+
+                _current = node.Value;
+                return true;
+            }
+        }
+
+        public void Dispose() { }
+        object IEnumerator.Current => Current;
+        void IEnumerator.Reset() => throw new NotSupportedException();
     }
 }

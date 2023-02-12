@@ -34,7 +34,7 @@ namespace Nethermind.Network.Discovery.Test
         private readonly INetworkConfig _networkConfig = new NetworkConfig();
         private IDiscoveryManager _discoveryManager = null!;
         private IMsgSender _msgSender = null!;
-        private INodeTable _nodeTable = null!;
+        private NodeTable _nodeTable = null!;
         private const int Port = 1;
         private const string Host = "192.168.1.17";
         private Node[] _nodes = null!;

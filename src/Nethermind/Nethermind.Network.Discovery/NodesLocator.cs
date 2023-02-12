@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -15,13 +15,14 @@ namespace Nethermind.Network.Discovery;
 
 public class NodesLocator : INodesLocator
 {
+    private static HashSet<Keccak>? s_triedNodesCache;
     private readonly ILogger _logger;
-    private readonly INodeTable _nodeTable;
+    private readonly NodeTable _nodeTable;
     private readonly IDiscoveryManager _discoveryManager;
     private readonly IDiscoveryConfig _discoveryConfig;
     private Node? _masterNode;
 
-    public NodesLocator(INodeTable? nodeTable, IDiscoveryManager? discoveryManager, IDiscoveryConfig? discoveryConfig, ILogManager? logManager)
+    public NodesLocator(NodeTable? nodeTable, IDiscoveryManager? discoveryManager, IDiscoveryConfig? discoveryConfig, ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
@@ -34,19 +35,17 @@ public class NodesLocator : INodesLocator
         _masterNode = masterNode;
     }
 
-    public async Task LocateNodesAsync(CancellationToken cancellationToken)
-    {
-        await LocateNodesAsync(null, cancellationToken);
-    }
+    public ValueTask LocateNodesAsync(CancellationToken cancellationToken) => LocateNodesAsync(null, cancellationToken);
 
-    public async Task LocateNodesAsync(byte[]? searchedNodeId, CancellationToken cancellationToken)
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
+    public async ValueTask LocateNodesAsync(byte[]? searchedNodeId, CancellationToken cancellationToken)
     {
         if (_masterNode is null)
         {
             throw new InvalidOperationException("Master node has not been initialized");
         }
 
-        ISet<Keccak> alreadyTriedNodes = new HashSet<Keccak>();
+        HashSet<Keccak> alreadyTriedNodes = Interlocked.Exchange(ref s_triedNodesCache, null) ?? new HashSet<Keccak>();
 
         if (_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId is not null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
         int nodesCountBeforeDiscovery = NodesCountBeforeDiscovery;
@@ -60,17 +59,15 @@ public class NodesLocator : INodesLocator
             int attemptsCount = 0;
             while (true)
             {
-                //if searched node is not specified master node is used
-                IEnumerable<Node> closestNodes = searchedNodeId is not null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
-
                 candidatesCount = 0;
-                foreach (Node closestNode in closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHash)))
+                if (searchedNodeId is null)
                 {
-                    tryCandidates[candidatesCount++] = closestNode;
-                    if (candidatesCount > tryCandidates.Length - 1)
-                    {
-                        break;
-                    }
+                    //if searched node is not specified master node is used
+                    _nodeTable.FillClosestNodes(tryCandidates, alreadyTriedNodes);
+                }
+                else
+                {
+                    _nodeTable.FillClosestNodes(searchedNodeId, tryCandidates, alreadyTriedNodes);
                 }
 
                 if (attemptsCount++ > 20 || candidatesCount > 0)
@@ -135,22 +132,32 @@ public class NodesLocator : INodesLocator
                 }
             }
         }
-        int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
+        int nodesCountAfterDiscovery = 0;
+        foreach (NodeBucket bucket in _nodeTable.Buckets)
+        {
+            nodesCountAfterDiscovery += bucket.Count;
+        }
+
         if (_logger.IsDebug) _logger.Debug($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
 
         if (_logger.IsTrace)
         {
             LogNodeTable();
         }
+
+        alreadyTriedNodes.Clear();
+        s_triedNodesCache = alreadyTriedNodes;
     }
 
     private IEnumerable<Task<Result>> SendFindNodes(
         byte[]? searchedNodeId,
         IEnumerable<Node?> nodesToSend,
-        ISet<Keccak> alreadyTriedNodes)
+        HashSet<Keccak> alreadyTriedNodes)
     {
-        foreach (Node? node in nodesToSend.Where(n => n is not null))
+        foreach (Node? node in nodesToSend)
         {
+            if (node is null) continue;
+
             alreadyTriedNodes.Add(node!.IdHash);
             yield return SendFindNode(node, searchedNodeId);
         }
@@ -164,7 +171,7 @@ public class NodesLocator : INodesLocator
             for (int index = 0; index < _nodeTable.Buckets.Length; index++)
             {
                 NodeBucket x = _nodeTable.Buckets[index];
-                nodesCountBeforeDiscovery += x.BondedItemsCount;
+                nodesCountBeforeDiscovery += x.Count;
             }
 
             return nodesCountBeforeDiscovery;
@@ -173,19 +180,20 @@ public class NodesLocator : INodesLocator
 
     private void LogNodeTable()
     {
-        IEnumerable<NodeBucket> nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.BondedItems.Any());
         StringBuilder sb = new();
 
         int length = 0;
         int bondedItemsCount = 0;
 
-        foreach (NodeBucket nodeBucket in nonEmptyBuckets)
+        foreach (NodeBucket nodeBucket in _nodeTable.Buckets)
         {
+            if (nodeBucket.Count == 0) continue;
+
             length++;
-            int itemsCount = nodeBucket.BondedItemsCount;
+            int itemsCount = nodeBucket.Count;
             bondedItemsCount += itemsCount;
             sb.AppendLine($"Bucket: {nodeBucket.Distance}, count: {itemsCount}");
-            foreach (NodeBucketItem bucketItem in nodeBucket.BondedItems)
+            foreach (NodeBucketItem bucketItem in nodeBucket)
             {
                 sb.AppendLine($"{bucketItem.Node}, LastContactTime: {bucketItem.LastContactTime:yyyy-MM-dd HH:mm:ss:000}");
             }

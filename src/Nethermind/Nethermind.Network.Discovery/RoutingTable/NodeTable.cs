@@ -73,47 +73,200 @@ public class NodeTable : INodeTable
         bucket.RefreshNode(node);
     }
 
-    public IEnumerable<Node> GetClosestNodes()
+    public int FillClosestNodes(Node[] nodes, HashSet<Keccak>? filter = null)
     {
-        int count = 0;
-        int bucketSize = _discoveryConfig.BucketSize;
+        if (nodes.Length == 0) return 0;
 
+        int count = 0;
         foreach (NodeBucket nodeBucket in Buckets)
         {
-            foreach (NodeBucketItem nodeBucketItem in nodeBucket.BondedItems)
+            // Fast count check, don't create enumerator if nodeBucket is empty
+            if (nodeBucket.Count == 0) continue;
+
+            foreach (NodeBucketItem nodeBucketItem in nodeBucket)
             {
-                if (count < bucketSize)
+                if (nodeBucketItem.Node is Node node &&
+                    !(filter?.Contains(node.IdHash) ?? false))
                 {
+                    nodes[count] = node;
                     count++;
-                    if (nodeBucketItem.Node is not null)
-                    {
-                        yield return nodeBucketItem.Node;
-                    }
-                }
-                else
-                {
-                    yield break;
+
+                    // Complete when nodes is full
+                    if (count >= nodes.Length) return count;
                 }
             }
         }
+
+        return count;
     }
 
-    public IEnumerable<Node> GetClosestNodes(byte[] nodeId)
+    public IEnumerable<Node> GetClosestNodes(HashSet<Keccak>? filter = null)
     {
+        int maxSize = _discoveryConfig.BucketSize;
+        Node[] nodes = new Node[maxSize];
+        int count = FillClosestNodes(nodes, filter);
+        if (count < maxSize)
+        {
+            Array.Resize(ref nodes, count);
+        }
+        return nodes;
+    }
+
+    [ThreadStatic]
+    private static DistanceComparer? s_distanceComparerCache;
+    private static DistanceComparer NodeDistanceComparer => s_distanceComparerCache ??= new DistanceComparer();
+
+    public int FillClosestNodes(byte[] nodeId, Node[] nodes, HashSet<Keccak>? filter = null)
+    {
+        if (nodes.Length == 0) return 0;
+
         CheckInitialization();
 
-        Keccak idHash = Keccak.Compute(nodeId);
-        return Buckets.SelectMany(x => x.BondedItems)
-            .Where(x => x.Node?.IdHash != idHash && x.Node is not null)
-            .Select(x => new { x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node!.Id.Bytes, nodeId) })
-            .OrderBy(x => x.Distance)
-            .Take(_discoveryConfig.BucketSize)
-            .Select(x => x.Node!);
+        ValueKeccak idHash = ValueKeccak.Compute(nodeId);
+        DistanceComparer comparer = NodeDistanceComparer;
+        comparer.Initialize(nodeId, _nodeDistanceCalculator);
+
+        int count = 0;
+        foreach (NodeBucket nodeBucket in Buckets)
+        {
+            // Fast count check, don't create enumerator if nodeBucket is empty
+            if (nodeBucket.Count == 0) continue;
+
+            foreach (NodeBucketItem nodeBucketItem in nodeBucket)
+            {
+                if (nodeBucketItem.Node is not Node node ||
+                    node.IdHash == idHash ||
+                    (filter?.Contains(node.IdHash) ?? false))
+                {
+                    // Null node, same node or filtered node; skip.
+                    continue;
+                }
+
+                if (count + 1 == nodes.Length)
+                {
+                    nodes[count] = node;
+                    count++;
+                    // Just filled, sort the array
+                    Array.Sort<Node>(nodes, comparer);
+                }
+                else if (count == nodes.Length)
+                {
+                    // Full array, so evict furthest if closer
+                    ref Node last = ref nodes[count - 1];
+                    int distance = _nodeDistanceCalculator.CalculateDistance(node.Id.Bytes, nodeId);
+                    if (comparer.Compare(last, distance) >= 0)
+                    {
+                        // Not closer than furthest; skip.
+                        continue;
+                    }
+
+                    // Drop last element
+                    last = null!;
+                    // Insert new one at correct sort index
+                    MoveUp(node, distance, count - 1);
+                }
+                else
+                {
+                    // Not full yet, just add to next slot
+                    nodes[count] = node;
+                    count++;
+                }
+            }
+        }
+
+        comparer.Clear();
+        return count;
+
+        void MoveUp(Node node, int distance, int nodeIndex)
+        {
+            // Instead of swapping items all the way to the root, we will perform
+            // a similar optimization as in insertion sort.
+            while (nodeIndex > 0)
+            {
+                int parentIndex = GetParentIndex(nodeIndex);
+                Node parent = nodes[parentIndex];
+
+                if (comparer.Compare(parent, distance) > 0)
+                {
+                    nodes[nodeIndex] = parent;
+                    nodeIndex = parentIndex;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            nodes[nodeIndex] = node;
+        }
+
+        static int GetParentIndex(int index)
+        {
+            const int log2Arity = 2;
+            return (index - 1) >> log2Arity;
+        }
+    }
+
+    public IEnumerable<Node> GetClosestNodes(byte[] nodeId, HashSet<Keccak>? filter = null)
+    {
+        int maxSize = _discoveryConfig.BucketSize;
+        Node[] nodes = new Node[maxSize];
+        int count = FillClosestNodes(nodeId, nodes, filter);
+        if (count < maxSize)
+        {
+            Array.Resize(ref nodes, count);
+        }
+        return nodes;
     }
 
     public void Initialize(PublicKey masterNodeKey)
     {
         MasterNode = new Node(masterNodeKey, _networkConfig.ExternalIp, _networkConfig.DiscoveryPort);
         if (_logger.IsTrace) _logger.Trace($"Created MasterNode: {MasterNode}");
+    }
+
+    private class DistanceComparer : IComparer<Node>
+    {
+        byte[]? _nodeId;
+        INodeDistanceCalculator? _nodeDistanceCalculator;
+
+        public void Initialize(byte[] nodeId, INodeDistanceCalculator nodeDistanceCalculator)
+        {
+            _nodeId = nodeId;
+            _nodeDistanceCalculator = nodeDistanceCalculator ?? throw new ArgumentNullException(nameof(nodeDistanceCalculator));
+        }
+
+        public void Clear()
+        {
+            _nodeId = null;
+            _nodeDistanceCalculator = null;
+        }
+
+        public int Compare(Node? x, Node? y)
+        {
+            if (x is null)
+            {
+                return y is null ? 0 : -1;
+            }
+
+            if (y is null) return 1;
+
+            int dx = _nodeDistanceCalculator!.CalculateDistance(x!.Id.Bytes, _nodeId!);
+            int dy = _nodeDistanceCalculator.CalculateDistance(y!.Id.Bytes, _nodeId!);
+
+            return dx.CompareTo(dy);
+        }
+
+        public int Compare(Node? x, int distance)
+        {
+            if (x is null)
+            {
+                return -1;
+            }
+
+            int dx = _nodeDistanceCalculator!.CalculateDistance(x!.Id.Bytes, _nodeId!);
+
+            return dx.CompareTo(distance);
+        }
     }
 }

@@ -12,7 +12,7 @@ namespace Nethermind.Network.Discovery.Lifecycle;
 
 public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
 {
-    private readonly INodeTable _nodeTable;
+    private readonly NodeTable _nodeTable;
     private readonly ILogger _logger;
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly ITimestamper _timestamper;
@@ -20,7 +20,7 @@ public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
     private readonly INodeStatsManager _nodeStatsManager;
     private readonly NodeRecord _selfNodeRecord;
 
-    public NodeLifecycleManagerFactory(INodeTable nodeTable,
+    public NodeLifecycleManagerFactory(NodeTable nodeTable,
         IEvictionManager evictionManager,
         INodeStatsManager nodeStatsManager,
         NodeRecord self,

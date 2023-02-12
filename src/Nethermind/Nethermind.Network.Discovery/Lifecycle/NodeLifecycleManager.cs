@@ -17,7 +17,7 @@ namespace Nethermind.Network.Discovery.Lifecycle;
 public class NodeLifecycleManager : INodeLifecycleManager
 {
     private readonly IDiscoveryManager _discoveryManager;
-    private readonly INodeTable _nodeTable;
+    private readonly NodeTable _nodeTable;
     private readonly ILogger _logger;
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly ITimestamper _timestamper;
@@ -39,7 +39,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     public NodeLifecycleManager(Node node,
         IDiscoveryManager discoveryManager,
-        INodeTable nodeTable,
+        NodeTable nodeTable,
         IEvictionManager evictionManager,
         INodeStats nodeStats,
         NodeRecord nodeRecord,
@@ -197,7 +197,14 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
         RefreshNodeContactTime();
 
-        Node[] nodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId).ToArray();
+        int maxSize = _discoveryConfig.BucketSize;
+        Node[] nodes = new Node[maxSize];
+        int count = _nodeTable.FillClosestNodes(msg.SearchedNodeId, nodes);
+        if (count < maxSize)
+        {
+            Array.Resize(ref nodes, count);
+        }
+
         SendNeighbors(nodes);
     }
 

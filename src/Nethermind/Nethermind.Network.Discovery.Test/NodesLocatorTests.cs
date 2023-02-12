@@ -87,7 +87,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public void Throws_when_uninitialized()
         {
-            Assert.ThrowsAsync<InvalidOperationException>(() => _nodesLocator!.LocateNodesAsync(CancellationToken.None));
+            Assert.ThrowsAsync<InvalidOperationException>(async () => await _nodesLocator!.LocateNodesAsync(CancellationToken.None));
         }
     }
 }

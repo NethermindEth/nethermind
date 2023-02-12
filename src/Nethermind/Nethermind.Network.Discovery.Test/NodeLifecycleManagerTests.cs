@@ -37,7 +37,7 @@ namespace Nethermind.Network.Discovery.Test
         private IDiscoveryManager _discoveryManager = null!;
         private IDiscoveryManager _discoveryManagerMock = null!;
         private IDiscoveryConfig _discoveryConfigMock = null!;
-        private INodeTable _nodeTable = null!;
+        private NodeTable _nodeTable = null!;
         private IEvictionManager _evictionManagerMock = null!;
         private ILogger _loggerMock = null!;
         private int _port = 1;
@@ -173,7 +173,7 @@ namespace Nethermind.Network.Discovery.Test
             }
 
             //table should contain 3 active nodes
-            IEnumerable<Node> closestNodes = _nodeTable.GetClosestNodes().ToArray();
+            Node[] closestNodes = _nodeTable.GetClosestNodes().ToArray();
             Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 0);
             Assert.IsTrue(closestNodes.Count(x => x.Host == managers[1].ManagedNode.Host) == 0);
             Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 0);
@@ -204,7 +204,7 @@ namespace Nethermind.Network.Discovery.Test
 
             //Assert.AreEqual(NodeLifecycleState.ActiveExcluded, candidateManager.State);
             //Assert.AreEqual(NodeLifecycleState.Active, evictionCandidate.State);
-            closestNodes = _nodeTable.GetClosestNodes();
+            closestNodes = _nodeTable.GetClosestNodes().ToArray();
             Assert.That(() => closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1, Is.True.After(100, 50));
             Assert.That(() => closestNodes.Count(x => x.Host == managers[1].ManagedNode.Host) == 1, Is.True.After(100, 50));
             Assert.That(() => closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 1, Is.True.After(100, 50));

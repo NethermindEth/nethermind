@@ -18,10 +18,10 @@ public interface INodeTable
     /// <summary>
     /// GetClosestNodes to MasterNode
     /// </summary>
-    IEnumerable<Node> GetClosestNodes();
+    IEnumerable<Node> GetClosestNodes(HashSet<Keccak>? filter = null);
 
     /// <summary>
     /// GetClosestNodes to provided Node
     /// </summary>
-    IEnumerable<Node> GetClosestNodes(byte[] nodeId);
+    IEnumerable<Node> GetClosestNodes(byte[] nodeId, HashSet<Keccak>? filter = null);
 }

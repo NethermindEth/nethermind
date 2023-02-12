@@ -26,7 +26,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             nodeBucket.AddNode(_node);
             nodeBucket.AddNode(_node2);
             nodeBucket.AddNode(_node3);
-            nodeBucket.BondedItemsCount.Should().Be(3);
+            nodeBucket.Count.Should().Be(3);
         }
 
         [Test]
@@ -36,7 +36,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             nodeBucket.AddNode(_node);
             nodeBucket.AddNode(_node2);
             nodeBucket.AddNode(_node3);
-            nodeBucket.BondedItems.Should().HaveCount(3);
+            nodeBucket.Should().HaveCount(3);
         }
 
         [Test]
@@ -52,8 +52,8 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             NodeBucket nodeBucket = new(1, 16);
             AddNodes(nodeBucket, 32);
 
-            nodeBucket.BondedItemsCount.Should().Be(16);
-            nodeBucket.BondedItems.Should().HaveCount(16);
+            nodeBucket.Count.Should().Be(16);
+            nodeBucket.Should().HaveCount(16);
         }
 
         [Test]
@@ -67,12 +67,12 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
                 IPAddress.Broadcast.ToString(),
                 30001);
 
-            Node existing = nodeBucket.BondedItems.First().Node!;
+            Node existing = nodeBucket.First().Node!;
             nodeBucket.ReplaceNode(existing, node);
-            nodeBucket.BondedItemsCount.Should().Be(16);
-            nodeBucket.BondedItems.Should().HaveCount(16);
-            nodeBucket.BondedItems.Should().Contain(bi => bi.Node == node);
-            nodeBucket.BondedItems.Should().NotContain(bi => bi.Node == existing);
+            nodeBucket.Count.Should().Be(16);
+            nodeBucket.Should().HaveCount(16);
+            nodeBucket.Should().Contain(bi => bi.Node == node);
+            nodeBucket.Should().NotContain(bi => bi.Node == existing);
         }
 
         [TestCase(2)]
@@ -83,10 +83,10 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             NodeBucket nodeBucket = new(1, 16);
             AddNodes(nodeBucket, nodesInTheBucket);
 
-            Node existing1 = nodeBucket.BondedItems.First().Node!;
+            Node existing1 = nodeBucket.First().Node!;
             nodeBucket.RefreshNode(existing1);
 
-            nodeBucket.BondedItems.Should().HaveCount(Math.Min(nodeBucket.BucketSize, nodesInTheBucket));
+            nodeBucket.Should().HaveCount(Math.Min(nodeBucket.BucketSize, nodesInTheBucket));
         }
 
         [TestCase(0)]
