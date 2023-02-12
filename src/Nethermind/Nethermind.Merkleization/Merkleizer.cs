@@ -5,10 +5,14 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
+using CoreUInt256 = Nethermind.Int256.UInt256;
+using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 
 namespace Nethermind.Merkleization
 {
@@ -78,6 +82,12 @@ namespace Nethermind.Merkleization
         public void Feed(ulong value)
         {
             Merkle.Ize(out _chunks[^1], value);
+            Feed(_chunks[^1]);
+        }
+
+        public void Feed(Address value)
+        {
+            Merkle.Ize(out _chunks[^1], value.Bytes);
             Feed(_chunks[^1]);
         }
 
@@ -170,6 +180,19 @@ namespace Nethermind.Merkleization
 
             Merkle.Ize(out _chunks[^1], subRoots, maxLength);
             Merkle.MixIn(ref _chunks[^1], value.Count);
+            Feed(_chunks[^1]);
+        }
+
+        public void Feed(Withdrawal[] value, ulong maxLength)
+        {
+            UInt256[] subRoots = new UInt256[value.Length];
+            for (int i = 0; i < value.Length; i++)
+            {
+                Merkle.Ize(out subRoots[i], value[i]);
+            }
+
+            Merkle.Ize(out _chunks[^1], subRoots, maxLength);
+            Merkle.MixIn(ref _chunks[^1], value.Length);
             Feed(_chunks[^1]);
         }
 
@@ -311,6 +334,24 @@ namespace Nethermind.Merkleization
             Feed(_chunks[^1]);
         }
 
+        public void Feed(IReadOnlyList<Withdrawal> value, ulong maxLength)
+        {
+            if (value is null)
+            {
+                return;
+            }
+
+            UInt256[] subRoots = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
+            {
+                Merkle.Ize(out subRoots[i], value[i]);
+            }
+
+            Merkle.Ize(out _chunks[^1], subRoots, maxLength);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
+            Feed(_chunks[^1]);
+        }
+
         public void Feed(Gwei[]? value, ulong maxLength)
         {
             if (value is null)
@@ -441,6 +482,17 @@ namespace Nethermind.Merkleization
             Feed(_chunks[^1]);
         }
 
+        public void Feed(Withdrawal? value)
+        {
+            if (value is null)
+            {
+                return;
+            }
+
+            Merkle.Ize(out _chunks[^1], value);
+            Feed(_chunks[^1]);
+        }
+
         public void Feed(Ref<DepositData> value)
         {
             if (value.Root is null)
@@ -543,7 +595,7 @@ namespace Nethermind.Merkleization
 
         public void Feed(IReadOnlyList<Bytes32> value, ulong maxLength)
         {
-            // TODO: If UInt256 is the correct memory layout 
+            // TODO: If UInt256 is the correct memory layout
             UInt256[] subRoots = new UInt256[value.Count];
             for (int i = 0; i < value.Count; i++)
             {
@@ -566,6 +618,21 @@ namespace Nethermind.Merkleization
             Merkle.Ize(out _chunks[^1], input);
             Feed(_chunks[^1]);
         }
+
+        //public void Feed(Address? value)
+        //{
+        //    if (value is null)
+        //    {
+        //        Merkle.Ize(out UInt256 root, new byte[64]);
+        //        Feed(root);
+        //    }
+        //    else
+        //    {
+        //        Merkle.Ize(out UInt256 root, value);
+        //     //   Merkle.Ize(out UInt256 rooot, new UInt256[] { root, new UInt256(1) });
+        //        Feed(root);
+        //    }
+        //}
 
         public void Feed(IReadOnlyList<Root> value, ulong maxLength)
         {
