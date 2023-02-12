@@ -56,7 +56,7 @@ namespace Nethermind.Evm
 
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly ISpecProvider _specProvider;
-        private static readonly ICache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+        private static readonly LruCache<KeccakKey, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
         private IWorldState _worldState;
         private IStateProvider _state;
@@ -192,7 +192,14 @@ namespace Nethermind.Evm
                             {
                                 if (currentState.ExecutionType.IsAnyCreate() && currentState.GasAvailable < codeDepositGasCost)
                                 {
-                                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                    if (spec.ChargeForTopLevelCreate)
+                                    {
+                                        _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                                    }
+                                    else
+                                    {
+                                        _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output);
+                                    }
                                 }
                                 // Reject code starting with 0xEF if EIP-3541 is enabled.
                                 else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output))
@@ -435,6 +442,8 @@ namespace Nethermind.Evm
                 [PairingPrecompile.Instance.Address] = new(PairingPrecompile.Instance),
                 [MapToG1Precompile.Instance.Address] = new(MapToG1Precompile.Instance),
                 [MapToG2Precompile.Instance.Address] = new(MapToG2Precompile.Instance),
+
+                [PointEvaluationPrecompile.Instance.Address] = new(PointEvaluationPrecompile.Instance),
             };
         }
 
@@ -1718,6 +1727,32 @@ namespace Nethermind.Evm
 
                             UInt256 baseFee = txCtx.Header.BaseFeePerGas;
                             stack.PushUInt256(in baseFee);
+                            break;
+                        }
+                    case Instruction.DATAHASH:
+                        {
+                            if (!spec.IsEip4844Enabled)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
+
+                            if (!UpdateGas(GasCostOf.DataHash, ref gasAvailable))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            stack.PopUInt256(out UInt256 blobIndex);
+
+                            if (txCtx.BlobVersionedHashes is not null && blobIndex < txCtx.BlobVersionedHashes.Length)
+                            {
+                                stack.PushBytes(txCtx.BlobVersionedHashes[blobIndex.u0]);
+                            }
+                            else
+                            {
+                                stack.PushZero();
+                            }
                             break;
                         }
                     case Instruction.POP:

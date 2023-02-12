@@ -11,11 +11,11 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="FluentAssertions" Version="6.8.0" />
+        <PackageReference Include="FluentAssertions" Version="6.9.0" />
         <PackageReference Include="NSubstitute" Version="4.4.0" />
         <PackageReference Include="NUnit" Version="3.13.3" />
         <PackageReference Include="NUnit3TestAdapter" Version="4.3.1" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.4.0" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.4.1" />
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\Nethermind.Analytics\Nethermind.Analytics.csproj" />
@@ -48,9 +48,6 @@
         </Content>
         <Content Include="..\Chains\ropsten.json" CopyToOutputDirectory="PreserveNewest">
             <Link>Chains\ropsten.json</Link>
-        </Content>
-        <Content Include="..\Chains\sokol.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\sokol.json</Link>
         </Content>
         <Content Include="..\Chains\spaceneth.json" CopyToOutputDirectory="PreserveNewest">
             <Link>Chains\spaceneth.json</Link>

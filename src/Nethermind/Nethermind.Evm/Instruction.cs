@@ -67,6 +67,7 @@ namespace Nethermind.Evm
         CHAINID = 0x46,
         SELFBALANCE = 0x47,
         BASEFEE = 0x48,
+        DATAHASH = 0x49,
 
         POP = 0x50,
         MLOAD = 0x51,

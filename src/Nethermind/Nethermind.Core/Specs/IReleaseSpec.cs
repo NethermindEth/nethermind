@@ -258,6 +258,11 @@ namespace Nethermind.Core.Specs
         bool IsEip4895Enabled { get; }
 
         /// <summary>
+        /// Blob transactions
+        /// </summary>
+        bool IsEip4844Enabled { get; }
+
+        /// <summary>
         /// Gets or sets a value indicating whether the
         /// <see href="https://eips.ethereum.org/EIPS/eip-5920">EIP-5920</see>
         /// PAY opcode is enabled.
@@ -272,7 +277,9 @@ namespace Nethermind.Core.Specs
 
         public ulong WithdrawalTimestamp { get; }
 
-        // STATE related
+        public ulong Eip4844TransitionTimestamp { get; }
+
+        // STATE related 
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM

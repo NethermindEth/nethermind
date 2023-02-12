@@ -138,6 +138,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip3855TransitionTimestamp = chainSpecJson.Params.Eip3855TransitionTimestamp,
                 Eip3860TransitionTimestamp = chainSpecJson.Params.Eip3860TransitionTimestamp,
                 Eip4895TransitionTimestamp = chainSpecJson.Params.Eip4895TransitionTimestamp,
+                Eip4844TransitionTimestamp = chainSpecJson.Params.Eip4844TransitionTimestamp,
                 Eip5920TransitionTimestamp = chainSpecJson.Params.Eip5920TransitionTimestamp,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
@@ -375,6 +376,10 @@ namespace Nethermind.Specs.ChainSpecStyle
             bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
             if (withdrawalsEnabled)
                 genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
+
+            bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
+            if (isEip4844Enabled)
+                genesisHeader.ExcessDataGas ??= 0;
 
             genesisHeader.AuRaStep = step;
             genesisHeader.AuRaSignature = auRaSignature;

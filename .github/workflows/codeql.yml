@@ -1,0 +1,41 @@
+name: 'CodeQL analysis'
+
+on:
+  push:
+    tags: ['*']
+  schedule:
+  - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['csharp']
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+    - name: Update submodules
+      run: git submodule update --init src/tests
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: ${{ matrix.language }}
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
+    - name: Build Nethermind
+      working-directory: src/Nethermind
+      run: dotnet build Nethermind.sln -c release
+    - name: Perform CodeQL analysis
+      uses: github/codeql-action/analyze@v2
+      with:
+        category: '/language:${{ matrix.language }}'

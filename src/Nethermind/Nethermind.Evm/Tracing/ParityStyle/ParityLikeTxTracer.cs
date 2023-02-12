@@ -387,7 +387,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
             Dictionary<UInt256, ParityStateChange<byte[]>> storage = null;
             if (!_trace.StateChanges.ContainsKey(storageCell.Address))
@@ -405,7 +405,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
         }
 

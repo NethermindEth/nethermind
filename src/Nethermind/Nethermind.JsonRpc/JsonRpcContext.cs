@@ -15,10 +15,12 @@ namespace Nethermind.JsonRpc
             RpcEndpoint = rpcEndpoint;
             DuplexClient = duplexClient;
             Url = url;
+            IsAuthenticated = Url?.IsAuthenticated == true || RpcEndpoint == RpcEndpoint.IPC;
         }
 
         public RpcEndpoint RpcEndpoint { get; }
         public IJsonRpcDuplexClient? DuplexClient { get; }
         public JsonRpcUrl? Url { get; }
+        public bool IsAuthenticated { get; }
     }
 }

@@ -12,6 +12,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc;
 using Nethermind.Synchronization;
 
 namespace Nethermind.HealthChecks
@@ -29,10 +30,10 @@ namespace Nethermind.HealthChecks
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IBlockProducer _blockProducer;
         private readonly IHealthChecksConfig _healthChecksConfig;
-        private readonly IInitConfig _initConfig;
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly INethermindApi _api;
+        private readonly IRpcCapabilitiesProvider _rpcCapabilitiesProvider;
         private readonly IDriveInfo[] _drives;
         private readonly bool _isMining;
 
@@ -42,6 +43,7 @@ namespace Nethermind.HealthChecks
             IHealthChecksConfig healthChecksConfig,
             IHealthHintService healthHintService,
             IEthSyncingInfo ethSyncingInfo,
+            IRpcCapabilitiesProvider rpcCapabilitiesProvider,
             INethermindApi api,
             IDriveInfo[] drives,
             bool isMining)
@@ -49,11 +51,11 @@ namespace Nethermind.HealthChecks
             _syncServer = syncServer;
             _isMining = isMining;
             _healthChecksConfig = healthChecksConfig;
-            _initConfig = api.Config<IInitConfig>();
             _healthHintService = healthHintService;
             _blockchainProcessor = blockchainProcessor;
             _blockProducer = blockProducer;
             _ethSyncingInfo = ethSyncingInfo;
+            _rpcCapabilitiesProvider = rpcCapabilitiesProvider;
             _api = api;
             _drives = drives;
         }
@@ -144,37 +146,34 @@ namespace Nethermind.HealthChecks
         public bool CheckClAlive()
         {
             var now = _api.Timestamper.UtcNow;
-            bool forkchoice = CheckMethodInvoked("engine_forkchoiceUpdatedV1", now);
-            bool newPayload = CheckMethodInvoked("engine_newPayloadV1", now);
-            bool exchangeTransition = CheckMethodInvoked("engine_exchangeTransitionConfigurationV1", now);
-            return forkchoice || newPayload || exchangeTransition;
+            var capabilities = _rpcCapabilitiesProvider.GetEngineCapabilities();
+            bool result = false;
+            foreach (var capability in capabilities)
+            {
+                if (capability.Value)
+                {
+                    result |= UpdateStatsAndCheckInvoked(capability.Key, now);
+                }
+            }
+            return result;
         }
 
-        private readonly ConcurrentDictionary<string, bool> _previousMethodCheckResult = new();
         private readonly ConcurrentDictionary<string, DateTime> _previousSuccessfulCheckTime = new();
         private readonly ConcurrentDictionary<string, int> _previousMethodCallSuccesses = new();
 
-        private bool CheckMethodInvoked(string methodName, DateTime now)
+        private bool UpdateStatsAndCheckInvoked(string methodName, DateTime now)
         {
             var methodCallSuccesses = _api.JsonRpcLocalStats!.GetMethodStats(methodName).Successes;
-            var previousCheckResult = _previousMethodCheckResult.GetOrAdd(methodName, true);
             var previousSuccesses = _previousMethodCallSuccesses.GetOrAdd(methodName, 0);
             var lastSuccessfulCheckTime = _previousSuccessfulCheckTime.GetOrAdd(methodName, now);
 
             if (methodCallSuccesses == previousSuccesses)
             {
                 int diff = (int)(Math.Floor((now - lastSuccessfulCheckTime).TotalSeconds));
-                if (diff > _healthChecksConfig.MaxIntervalClRequestTime)
-                {
-                    _previousMethodCheckResult[methodName] = false;
-                    return false;
-                }
-
-                return previousCheckResult;
+                return diff <= _healthChecksConfig.MaxIntervalClRequestTime;
             }
 
             _previousSuccessfulCheckTime[methodName] = now;
-            _previousMethodCheckResult[methodName] = true;
             _previousMethodCallSuccesses[methodName] = methodCallSuccesses;
             return true;
         }
