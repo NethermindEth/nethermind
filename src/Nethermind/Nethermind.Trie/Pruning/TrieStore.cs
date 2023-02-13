@@ -648,7 +648,7 @@ namespace Nethermind.Trie.Pruning
 
             if (currentNode.Keccak is not null)
             {
-                Debug.Assert(currentNode.LastSeen != TrieNode.LastSeenNotSet, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
+                Debug.Assert(blockNumber == TrieNode.LastSeenNotSet || currentNode.LastSeen != TrieNode.LastSeenNotSet, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
