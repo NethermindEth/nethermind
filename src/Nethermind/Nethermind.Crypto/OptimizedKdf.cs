@@ -18,7 +18,7 @@ namespace Nethermind.Crypto
         {
             byte[] counterData = BitConverter.IsLittleEndian ? Bytes.Reverse(BitConverter.GetBytes(1)) : BitConverter.GetBytes(1);
             byte[] dataToHash = new byte[36];
-            counterData.AsSpan().CopyTo(dataToHash.AsSpan().Slice(0, 4));
+            counterData.AsSpan().CopyTo(dataToHash.AsSpan(0, 4));
             return dataToHash;
         }
 
@@ -30,7 +30,7 @@ namespace Nethermind.Crypto
         public byte[] Derive(byte[] key)
         {
             byte[] dataToHash = _dataToHash.Value;
-            key.AsSpan().CopyTo(dataToHash.AsSpan().Slice(4, 32));
+            key.AsSpan().CopyTo(dataToHash.AsSpan(4, 32));
             return _sha256.Value.ComputeHash(dataToHash);
         }
     }
