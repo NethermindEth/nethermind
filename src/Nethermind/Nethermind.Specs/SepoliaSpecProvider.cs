@@ -41,7 +41,7 @@ public class SepoliaSpecProvider : ISpecProvider
     public ulong NetworkId => Core.BlockchainIds.Rinkeby;
     public ulong ChainId => NetworkId;
 
-    public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)1735371 };
+    public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)1735371, new ForkActivation(1735371, 1677557088) };
 
     private SepoliaSpecProvider() { }
 
