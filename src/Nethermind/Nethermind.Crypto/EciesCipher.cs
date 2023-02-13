@@ -54,11 +54,20 @@ namespace Nethermind.Crypto
             IIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
             byte[] cipher = iesEngine.ProcessBlock(plainText, 0, plainText.Length, macData);
 
-            using MemoryStream memoryStream = new();
-            memoryStream.Write(ephemeralPrivateKey.PublicKey.PrefixedBytes, 0, ephemeralPrivateKey.PublicKey.PrefixedBytes.Length);
-            memoryStream.Write(iv, 0, iv.Length);
-            memoryStream.Write(cipher, 0, cipher.Length);
-            return memoryStream.ToArray();
+            byte[] prefixedBytes = ephemeralPrivateKey.PublicKey.PrefixedBytes;
+
+            byte[] outputArray = new byte[prefixedBytes.Length + iv.Length + cipher.Length];
+            Span<byte> outputSpan = outputArray;
+
+            prefixedBytes.AsSpan().CopyTo(outputSpan);
+            outputSpan = outputSpan[prefixedBytes.Length..];
+
+            iv.AsSpan().CopyTo(outputSpan);
+            outputSpan = outputSpan[iv.Length..];
+
+            cipher.AsSpan().CopyTo(outputSpan);
+
+            return outputArray;
         }
 
         private OptimizedKdf _optimizedKdf = new();
