@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
 
@@ -20,6 +18,7 @@ public class EofCodeInfo : ICodeInfo
     public ReadOnlyMemory<byte> TypeSection { get; }
     public ReadOnlyMemory<byte> CodeSection { get; }
     public ReadOnlyMemory<byte> DataSection { get; }
+    public int SectionOffset(int sectionId) => _header.CodeSections[sectionId].Start;
 
     public bool ValidateJump(int destination, bool isSubroutine)
     {

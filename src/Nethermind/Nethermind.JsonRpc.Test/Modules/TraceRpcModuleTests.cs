@@ -614,8 +614,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task trace_replayBlockTransactions_zeroGasUsed_test()
         {
             Context context = new();
-            OverridableReleaseSpec releaseSpec = new(London.Instance);
-            releaseSpec.Eip1559TransitionBlock = 1;
+            OverridableReleaseSpec releaseSpec = new(London.Instance)
+            {
+                Eip1559TransitionBlock = 1
+            };
             TestSpecProvider specProvider = new(releaseSpec) { ChainId = ChainId.Mainnet };
             await context.Build(specProvider, isAura: true);
             TestRpcBlockchain blockchain = context.Blockchain;

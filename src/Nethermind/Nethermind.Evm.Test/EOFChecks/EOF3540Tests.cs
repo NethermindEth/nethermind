@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -22,10 +9,10 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
-using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 using static Nethermind.Evm.Test.EofTestsBase;
+using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 
-namespace Nethermind.Evm.Test.EOFChecks
+namespace Nethermind.Evm.Test
 {
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
@@ -34,8 +21,13 @@ namespace Nethermind.Evm.Test.EOFChecks
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
         private IReleaseSpec ShanghaiSpec = new OverridableReleaseSpec(Shanghai.Instance) { IsEip3670Enabled = false };
-        private ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, ShanghaiSpec);
 
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
+        {
+            IsEip3670Enabled = false,
+            IsEip4200Enabled = false,
+            IsEip4750Enabled = false,
+        });
         // valid code
         public static IEnumerable<TestCase> Eip3540FmtTestCases
         {
@@ -111,13 +103,26 @@ namespace Nethermind.Evm.Test.EOFChecks
         [Test]
         public void EOF_parsing_tests([ValueSource(nameof(Eip3540FmtTestCases))] TestCase testcase)
         {
-            Instance.EOF_contract_header_parsing_tests(testcase, ShanghaiSpec);
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
+            {
+                IsEip4200Enabled = false,
+                IsEip3670Enabled = false
+            };
+
+            Instance.EOF_contract_header_parsing_tests(testcase, TargetReleaseSpec);
         }
 
         [Test]
         public void Eip3540_contract_deployment_tests([ValueSource(nameof(Eip3540TxTestCases))] TestCase testcase)
         {
-            Instance.EOF_contract_deployment_tests(testcase, ShanghaiSpec);
+            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
+            {
+                IsEip3670Enabled = false,
+                IsEip4200Enabled = false,
+                IsEip4750Enabled = false,
+            };
+
+            Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);
         }
 
     }

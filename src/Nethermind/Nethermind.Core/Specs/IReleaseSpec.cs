@@ -260,6 +260,16 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip3670Enabled { get; }
 
+        /// <summary>
+        /// Static Relative Jumps
+        /// </summary>
+        bool IsEip4200Enabled { get; }
+
+        /// <summary>
+        /// Function Sections
+        /// </summary>
+        bool IsEip4750Enabled { get; }
+
 
         /// <summary>
         /// Should transactions be validated against chainId.
@@ -310,6 +320,9 @@ namespace Nethermind.Core.Specs
         public bool ShiftOpcodesEnabled => IsEip145Enabled;
 
         public bool SubroutinesEnabled => IsEip2315Enabled;
+        public bool StaticRelativeJumpsEnabled => IsEip4200Enabled;
+
+        public bool FunctionSections => IsEip4750Enabled;
 
         public bool RevertOpcodeEnabled => IsEip140Enabled;
 

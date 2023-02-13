@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -35,8 +35,8 @@ namespace Nethermind.Evm
                 byte version = codeInfo.EofVersion();
                 if (version > 0 && version != EvmObjectFormat.GetCodeVersion(initCode))
                     return false;
-                if (EvmObjectFormat.IsEof(initCode)) // this needs test cases
-                    return EvmObjectFormat.IsValidEof(initCode, out _);
+                if (codeInfo.IsEof()) // this needs test cases
+                    return EvmObjectFormat.IsEof(initCode) && EvmObjectFormat.IsValidEof(initCode, out _);
             }
 
             return true;

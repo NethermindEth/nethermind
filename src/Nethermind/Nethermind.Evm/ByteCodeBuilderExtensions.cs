@@ -4,11 +4,14 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Asn1.Mozilla;
 
 namespace Nethermind.Evm
@@ -49,6 +52,15 @@ namespace Nethermind.Evm
             for (int i = 0; i < args.Length; i++)
             {
                 @this.PushSingle(args[i]);
+            }
+            return @this;
+        }
+
+        internal static Prepare DataTable(this Prepare @this, short[] table)
+        {
+            for (int i = 0; i < table.Length; i++)
+            {
+                @this.Data(BitConverter.GetBytes(table[i]).Reverse().ToArray());
             }
             return @this;
         }
@@ -100,6 +112,8 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.GAS);
         public static Prepare JUMPDEST(this Prepare @this)
             => @this.Op(Instruction.JUMPDEST);
+        public static Prepare NOP(this Prepare @this)
+            => @this.Op(Instruction.NOP);
         public static Prepare MSIZE(this Prepare @this)
             => @this.Op(Instruction.MSIZE);
         public static Prepare SWAPx(this Prepare @this, byte i)
@@ -124,8 +138,6 @@ namespace Nethermind.Evm
         public static Prepare JUMPSUB(this Prepare @this, UInt256? pos = null)
             => @this.PushSingle(pos)
                     .Op(Instruction.JUMPSUB);
-        public static Prepare PUSHx(this Prepare @this, byte[] args)
-            => @this.PushData(args);
         public static Prepare MLOAD(this Prepare @this, UInt256? pos = null)
             => @this.PushSingle(pos)
                     .Op(Instruction.MLOAD);
@@ -138,6 +150,18 @@ namespace Nethermind.Evm
         public static Prepare JUMP(this Prepare @this, UInt256? to = null)
             => @this.PushSingle(to)
                     .Op(Instruction.JUMP);
+        public static Prepare RJUMP(this Prepare @this, Int16 to)
+            => @this.Op(Instruction.RJUMP)
+                    .Data(BitConverter.GetBytes(to).Reverse().ToArray());
+        public static Prepare RJUMPV(this Prepare @this, Int16[] table, UInt256? to = null)
+            => @this.PushSingle(to)
+                    .Op(Instruction.RJUMPV)
+                    .Data((byte)table.Length)
+                    .DataTable(table);
+
+        public static Prepare RETF(this Prepare @this)
+            => @this.Op(Instruction.RETF);
+
         public static Prepare BLOCKHASH(this Prepare @this, UInt256? target = null)
             => @this.PushSingle(target)
                     .Op(Instruction.BLOCKHASH);
@@ -317,6 +341,22 @@ namespace Nethermind.Evm
             => @this.PushSequence(len, src, dest)
                     .PushSingle(codeSrc)
                     .Op(Instruction.EXTCODECOPY);
+        #endregion
+
+        #region opcodes_with_immediates
+        public static Prepare CALLF(this Prepare @this, UInt16 sectionId)
+            => @this.Op(Instruction.CALLF)
+                .Data(BitConverter.GetBytes(sectionId).Reverse().ToArray());
+        public static Prepare CALLF(this Prepare @this, UInt16 sectionId, params byte[] arguments)
+            => @this.PushData(arguments)
+                    .Op(Instruction.CALLF)
+                    .Data(BitConverter.GetBytes(sectionId));
+        public static Prepare PUSHx(this Prepare @this, byte[] args)
+            => @this.PushData(args);
+        public static Prepare RJUMPI(this Prepare @this, Int16 to, byte[] cond = null)
+            => @this.PushSingle(cond)
+                        .Op(Instruction.RJUMPI)
+                        .Data(BitConverter.GetBytes(to).Reverse().ToArray());
         #endregion
     }
 }
