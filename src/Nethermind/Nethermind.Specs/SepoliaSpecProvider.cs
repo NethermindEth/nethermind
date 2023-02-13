@@ -26,7 +26,14 @@ public class SepoliaSpecProvider : ISpecProvider
     public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
     public IReleaseSpec GenesisSpec => London.Instance;
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) => London.Instance;
+    public const ulong ShanghaiBlockTimestamp = 1677557088;
+
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+        forkActivation switch
+        {
+            { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => London.Instance,
+            _ => Shanghai.Instance
+        };
 
     public long? DaoBlockNumber => null;
 
