@@ -21,7 +21,6 @@ namespace Nethermind.Specs
             SpecToReturn = finalSpecToReturn;
             GenesisSpec = initialSpecToReturn;
         }
-
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)

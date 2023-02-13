@@ -74,7 +74,10 @@ namespace Nethermind.Specs
         public UInt256? Eip1559BaseFeeMinValue { get; set; }
         public bool IsEip1153Enabled { get; set; }
         public bool IsEip3651Enabled { get; set; }
+        public bool IsEip3670Enabled { get; set; }
         public bool IsEip3855Enabled { get; set; }
         public bool IsEip3860Enabled { get; set; }
+        public bool IsEip4200Enabled { get; set; }
+        public bool IsEip4750Enabled { get; set; }
     }
 }

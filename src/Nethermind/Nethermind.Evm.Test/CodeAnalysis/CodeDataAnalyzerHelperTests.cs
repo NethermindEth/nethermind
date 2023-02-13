@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
@@ -13,6 +14,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Validate_CodeBitmap_With_Push10()
         {
+            IReleaseSpec spec = GrayGlacier.Instance;
             byte[] code =
             {
                 (byte)Instruction.PUSH10,
@@ -20,7 +22,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code);
+            var bitmap = BitmapHelper.CreateCodeBitmap(code);
             bitmap[0].Should().Be(127);
             bitmap[1].Should().Be(224);
         }
@@ -28,6 +30,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Validate_CodeBitmap_With_Push30()
         {
+            IReleaseSpec spec = GrayGlacier.Instance;
             byte[] code =
             {
                 (byte)Instruction.PUSH30,
@@ -35,7 +38,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 (byte)Instruction.JUMPDEST
             };
 
-            var bitmap = CodeDataAnalyzerHelper.CreateCodeBitmap(code);
+            var bitmap = BitmapHelper.CreateCodeBitmap(code);
             bitmap[0].Should().Be(127);
             bitmap[1].Should().Be(255);
             bitmap[2].Should().Be(255);

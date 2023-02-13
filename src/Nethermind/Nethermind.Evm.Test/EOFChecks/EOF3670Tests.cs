@@ -17,51 +17,31 @@ namespace Nethermind.Evm.Test
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
     /// </summary>
-    public class EOF3540Tests
+    public class EOF3670Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
         private IReleaseSpec ShanghaiSpec = new OverridableReleaseSpec(Shanghai.Instance) { IsEip3670Enabled = false };
 
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
         {
-            IsEip3670Enabled = false,
             IsEip4200Enabled = false,
-            IsEip4750Enabled = false,
+            IsEip4750Enabled = false
         });
-        // valid code
-        public static IEnumerable<TestCase> Eip3540FmtTestCases
+
+        public static IEnumerable<TestCase> Eip3670BodyTestCases
         {
             get
             {
-                ScenarioCase baseCase = new(
-                    Functions: new[] {
-                        new FunctionCase(
-                            InputCount : 0,
-                            OutputCount : 0,
-                            MaxStack : 2,
-                            Body : Prepare.EvmCode
-                                    .PushData(0x2a)
-                                    .PushData(0x2b)
-                                    .Op(Instruction.MSTORE8)
-                                    .Op(Instruction.MSIZE)
-                                    .PushData(0x0)
-                                    .Op(Instruction.SSTORE)
-                                    .Op(Instruction.STOP)
-                                    .Done
-                            )
-                    },
-                    Data: new byte[] { 0xbb, 0xee, 0xee, 0xff }
-                );
-
-                FormatScenario[] scenarios = Enum.GetValues<FormatScenario>();
-                foreach (FormatScenario scenario in scenarios)
+                BodyScenario[] scenarios = Enum.GetValues<BodyScenario>();
+                for (int i = 0; i < 1 << (scenarios.Length - 1); i++)
                 {
-                    yield return baseCase.GenerateFormatScenarios(scenario);
+                    BodyScenario scenario = (BodyScenario)i;
+                    yield return ScenarioCase.CreateFromScenario(scenario);
                 }
             }
         }
 
-        public static IEnumerable<TestCase> Eip3540TxTestCases
+        public static IEnumerable<TestCase> Eip3670TxTestCases
         {
             get
             {
@@ -84,7 +64,7 @@ namespace Nethermind.Evm.Test
                 DeploymentContext[] contexts = Enum.GetValues<DeploymentContext>();
                 foreach (DeploymentContext context in contexts)
                 {
-                    for (int i = 2; i < 1 << (scenarios.Length + 1); i++)
+                    for (int i = 1; i < 1 << (scenarios.Length + 1); i++)
                     {
                         DeploymentScenario scenario = (DeploymentScenario)i;
                         yield return baseCase.GenerateDeploymentScenarios(scenario, context);
@@ -94,36 +74,49 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void EOF_execution_tests([ValueSource(nameof(Eip3540FmtTestCases))] TestCase testcase)
+        public void EOF_Opcode_Deprecation_checks()
+        {
+            Instruction[] staticRelativeJumpsOpcode =
+            {
+                Instruction.CALLCODE,
+                Instruction.SELFDESTRUCT,
+            };
+
+            foreach (Instruction opcode in staticRelativeJumpsOpcode)
+            {
+                Assert.False(opcode.IsValid(true));
+            }
+        }
+
+        [Test]
+        public void EOF_execution_tests([ValueSource(nameof(Eip3670BodyTestCases))] TestCase testcase)
         {
             TestAllTracerWithOutput receipts = Instance.EOF_contract_execution_tests(testcase.Bytecode);
+
             receipts.StatusCode.Should().Be(testcase.Result.Status, $"{testcase.Result.Msg}");
         }
 
         [Test]
-        public void EOF_parsing_tests([ValueSource(nameof(Eip3540FmtTestCases))] TestCase testcase)
+        public void EOF_validation_tests([ValueSource(nameof(Eip3670BodyTestCases))] TestCase testcase)
         {
             var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
-                IsEip4200Enabled = false,
-                IsEip3670Enabled = false
+                IsEip4200Enabled = false
             };
 
             Instance.EOF_contract_header_parsing_tests(testcase, TargetReleaseSpec);
         }
 
         [Test]
-        public void Eip3540_contract_deployment_tests([ValueSource(nameof(Eip3540TxTestCases))] TestCase testcase)
+        public void Eip3670_contract_deployment_tests([ValueSource(nameof(Eip3670TxTestCases))] TestCase testcase)
         {
             var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
-                IsEip3670Enabled = false,
                 IsEip4200Enabled = false,
-                IsEip4750Enabled = false,
+                IsEip4750Enabled = false
             };
 
             Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);
         }
-
     }
 }

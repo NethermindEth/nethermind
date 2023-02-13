@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -12,15 +12,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Int256;
+using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls.Shamatar;
 using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using System.ComponentModel.DataAnnotations;
-using Nethermind.Evm.EOF;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
@@ -622,8 +621,10 @@ namespace Nethermind.Evm
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
+            int sectionIndex = 0;
             ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
             ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
+            ReadOnlySpan<byte> typeSection = env.CodeInfo.TypeSection.Span;
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
@@ -643,6 +644,26 @@ namespace Nethermind.Evm
                 if (_txTracer.IsTracingStack)
                 {
                     _txTracer.SetOperationStack(stackValue.GetStackTrace());
+                }
+            }
+
+            void RemoveInBetween(ref EvmStack stack, int height, int argsCount)
+            {
+                List<UInt256> arguments = new();
+                for (int i = 0; i < argsCount; i++)
+                {
+                    stack.PopUInt256(out var item);
+                    arguments.Add(item);
+                }
+
+                while (stack.Head > height)
+                {
+                    stack.PopUInt256(out _);
+                }
+
+                for (int i = argsCount - 1; i >= 0; i--)
+                {
+                    stack.PushUInt256(arguments[i]);
                 }
             }
 
@@ -2894,73 +2915,210 @@ namespace Nethermind.Evm
 
                             break;
                         }
-                    case Instruction.BEGINSUB:
+                    case Instruction.RJUMP | Instruction.BEGINSUB:
                         {
-                            if (!spec.SubroutinesEnabled)
+                            if (spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
                             {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
+                                if (!UpdateGas(GasCostOf.RJump, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
 
-                            // why do we even need the cost of it?
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                                short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
+                                programCounter += EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + offset;
+                                break;
+                            }
+                            else
                             {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
+                                if (!spec.SubroutinesEnabled)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                    return CallResult.InvalidInstructionException;
+                                }
 
-                            EndInstructionTraceError(EvmExceptionType.InvalidSubroutineEntry);
-                            return CallResult.InvalidSubroutineEntry;
+                                // why do we even need the cost of it?
+                                if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                EndInstructionTraceError(EvmExceptionType.InvalidSubroutineEntry);
+                                return CallResult.InvalidSubroutineEntry;
+                            }
                         }
-                    case Instruction.RETURNSUB:
+                    case Instruction.RJUMPI | Instruction.RETURNSUB:
                         {
-                            if (!spec.SubroutinesEnabled)
+                            if (spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
                             {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
+                                if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
 
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
+                                Span<byte> condition = stack.PopBytes();
+                                short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
+                                if (!condition.SequenceEqual(BytesZero32))
+                                {
+                                    programCounter += offset;
+                                }
+                                programCounter += EvmObjectFormat.Eof1.TWO_BYTE_LENGTH;
+                            }
+                            else
                             {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
+                                if (!spec.SubroutinesEnabled)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                    return CallResult.InvalidInstructionException;
+                                }
 
-                            if (vmState.ReturnStackHead == 0)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.InvalidSubroutineReturn);
-                                return CallResult.InvalidSubroutineReturn;
-                            }
+                                if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
 
-                            programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
+                                if (vmState.ReturnStackHead == 0)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.InvalidSubroutineReturn);
+                                    return CallResult.InvalidSubroutineReturn;
+                                }
+
+                                programCounter = vmState.ReturnStack[--vmState.ReturnStackHead].Offset;
+                            }
                             break;
                         }
-                    case Instruction.JUMPSUB:
+                    case Instruction.RJUMPV | Instruction.JUMPSUB:
                         {
-                            if (!spec.SubroutinesEnabled)
+                            if (spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
+                            {
+                                if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                var case_v = stack.PopByte();
+                                var count = codeSection[programCounter];
+                                var immediateValueSize = EvmObjectFormat.Eof1.ONE_BYTE_LENGTH + count * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH;
+                                if (case_v >= count)
+                                {
+                                    programCounter += immediateValueSize;
+                                }
+                                else
+                                {
+                                    int caseOffset = codeSection.Slice(
+                                        programCounter + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH + case_v * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH,
+                                        EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
+                                    programCounter += immediateValueSize + caseOffset;
+                                }
+                            }
+                            else
+                            {
+                                if (!spec.SubroutinesEnabled)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                    return CallResult.InvalidInstructionException;
+                                }
+
+                                if (!UpdateGas(GasCostOf.High, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.StackOverflow);
+                                    return CallResult.StackOverflowException;
+                                }
+
+                                vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
+                                {
+                                    Offset = programCounter
+                                };
+
+                                stack.PopUInt256(out UInt256 jumpDest);
+                                Jump(jumpDest, true);
+                                programCounter++;
+                            }
+                            break;
+                        }
+                    case Instruction.CALLF:
+                        {
+                            if (!spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
                             {
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
                                 return CallResult.InvalidInstructionException;
                             }
 
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable))
+                            if (!UpdateGas(GasCostOf.Callf, ref gasAvailable))
                             {
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
                             }
 
-                            if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
+                            var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
+                            var inputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE];
+
+                            if (vmState.ReturnStackHead > EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
                             {
-                                EndInstructionTraceError(EvmExceptionType.StackOverflow);
                                 return CallResult.StackOverflowException;
                             }
 
-                            vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
+                            stack.EnsureDepth(inputCount);
+                            vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
+                            {
+                                Index = sectionIndex,
+                                Height = stack.Head - inputCount,
+                                Offset = programCounter + EvmObjectFormat.Eof1.TWO_BYTE_LENGTH
+                            };
 
-                            stack.PopUInt256(out UInt256 jumpDest);
-                            Jump(jumpDest, true);
-                            programCounter++;
+                            sectionIndex = index;
+                            programCounter = env.CodeInfo.SectionOffset(index);
+                            break;
+                        }
+                    case Instruction.RETF:
+                        {
+                            if (!spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
 
+                            if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) // still undecided in EIP
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            var index = sectionIndex;
+                            var outputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + 1];
+                            if (--vmState.ReturnStackHead == 0)
+                            {
+                                break;
+                            }
+                            var stackFrame = vmState.ReturnStack[vmState.ReturnStackHead];
+                            if (stack.Head == stackFrame.Height + outputCount)
+                            {
+                                sectionIndex = stackFrame.Index;
+                                programCounter = stackFrame.Offset;
+                            }
+                            else
+                            {
+                                if (stack.Head > stackFrame.Height + outputCount)
+                                {
+                                    RemoveInBetween(ref stack, stack.Head, outputCount);
+                                }
+                                else
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.InvalidStackState);
+                                    return CallResult.AccessViolationException;
+
+                                }
+                            }
                             break;
                         }
                     default:

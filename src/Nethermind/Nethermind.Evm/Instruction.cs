@@ -1,10 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.EOF;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm
 {
@@ -35,9 +36,9 @@ namespace Nethermind.Evm
         XOR = 0x18,
         NOT = 0x19,
         BYTE = 0x1a,
-        SHL = 0x1b, // EIP-145
-        SHR = 0x1c, // EIP-145
-        SAR = 0x1d, // EIP-145
+        SHL = 0x1b, // ShiftOpcodesEnabled
+        SHR = 0x1c, // ShiftOpcodesEnabled
+        SAR = 0x1d, // ShiftOpcodesEnabled
 
         SHA3 = 0x20,
 
@@ -54,9 +55,9 @@ namespace Nethermind.Evm
         GASPRICE = 0x3a,
         EXTCODESIZE = 0x3b,
         EXTCODECOPY = 0x3c,
-        RETURNDATASIZE = 0x3d,
-        RETURNDATACOPY = 0x3e,
-        EXTCODEHASH = 0x3f,
+        RETURNDATASIZE = 0x3d, // ReturnDataOpcodesEnabled
+        RETURNDATACOPY = 0x3e, // ReturnDataOpcodesEnabled
+        EXTCODEHASH = 0x3f, // ExtCodeHashOpcodeEnabled
 
         BLOCKHASH = 0x40,
         COINBASE = 0x41,
@@ -64,9 +65,9 @@ namespace Nethermind.Evm
         NUMBER = 0x43,
         PREVRANDAO = 0x44,
         GASLIMIT = 0x45,
-        CHAINID = 0x46,
-        SELFBALANCE = 0x47,
-        BASEFEE = 0x48,
+        CHAINID = 0x46, // ChainIdOpcodeEnabled
+        SELFBALANCE = 0x47, // SelfBalanceOpcodeEnabled
+        BASEFEE = 0x48, // BaseFeeEnabled
 
         POP = 0x50,
         MLOAD = 0x51,
@@ -79,12 +80,16 @@ namespace Nethermind.Evm
         PC = 0x58,
         MSIZE = 0x59,
         GAS = 0x5a,
+        NOP = 0x5b,
         JUMPDEST = 0x5b,
-        BEGINSUB = 0x5c,
-        RETURNSUB = 0x5d,
-        JUMPSUB = 0x5e,
+        RJUMP = 0x5c, // RelativeStaticJumps
+        RJUMPI = 0x5d, // RelativeStaticJumps
+        RJUMPV = 0x5e, // RelativeStaticJumps
+        BEGINSUB = 0x5c, // SubroutinesEnabled
+        RETURNSUB = 0x5d, // SubroutinesEnabled
+        JUMPSUB = 0x5e, // SubroutinesEnabled
 
-        PUSH0 = 0x5f, // EIP-3855
+        PUSH0 = 0x5f, // IncludePush0Instruction
         PUSH1 = 0x60,
         PUSH2 = 0x61,
         PUSH3 = 0x62,
@@ -159,29 +164,72 @@ namespace Nethermind.Evm
         LOG4 = 0xa4,
 
         // EIP-1153
-        TLOAD = 0xb3,
-        TSTORE = 0xb4,
+        TLOAD = 0xb3, // TransientStorageEnabled
+        TSTORE = 0xb4, //TransientStorageEnabled
 
         CREATE = 0xf0,
         CALL = 0xf1,
+        CALLF = 0xb0, // FunctionSection
+        RETF = 0xb1, // FunctionSection
         CALLCODE = 0xf2,
         RETURN = 0xf3,
-        DELEGATECALL = 0xf4,
-        CREATE2 = 0xf5,
-        STATICCALL = 0xfa,
-        REVERT = 0xfd,
+        DELEGATECALL = 0xf4, // DelegateCallEnabled
+        CREATE2 = 0xf5, // Create2OpcodeEnabled
+        STATICCALL = 0xfa, // StaticCallEnabled
+        REVERT = 0xfd, // RevertOpcodeEnabled
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
     }
 
     public static class InstructionExtensions
     {
-        public static string? GetName(this Instruction instruction, bool isPostMerge = false) =>
-            (instruction == Instruction.PREVRANDAO && !isPostMerge)
-                ? "DIFFICULTY"
-                : FastEnum.IsDefined(instruction)
-                    ? FastEnum.GetName(instruction)
-                    : null;
+        public static int GetImmediateCount(this Instruction instruction, bool IsEofContext, byte jumpvCount = 0)
+            => instruction switch
+            {
+                Instruction.RJUMP or Instruction.RJUMPI => IsEofContext ? EvmObjectFormat.Eof1.TWO_BYTE_LENGTH : 0,
+                Instruction.RJUMPV => IsEofContext ? jumpvCount * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH : 0,
+                >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
+                _ => 0
+            };
+        public static bool IsTerminating(this Instruction instruction) => instruction switch
+        {
+            Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
+            // Instruction.SELFDESTRUCT => true
+            _ => false
+        };
+
+        public static bool IsValid(this Instruction instruction, bool IsEofContext)
+        {
+            if (!FastEnum.IsDefined(instruction))
+            {
+                return false;
+            }
+
+            return instruction switch
+            {
+                Instruction.CALLCODE or Instruction.SELFDESTRUCT or Instruction.PC or Instruction.JUMP or Instruction.JUMPI => !IsEofContext,
+                _ => true
+            };
+        }
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
+        {
+            spec ??= Frontier.Instance;
+            return instruction switch
+            {
+                Instruction.PREVRANDAO => isPostMerge ? "PREVRANDAO" : "DIFFICULTY",
+                Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? "RJUMP" : "BEGINSUB",
+                Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? "RJUMPI" : "RETURNSUB",
+                Instruction.RJUMPV => spec.StaticRelativeJumpsEnabled ? "RJUMPV" : "JUMPSUB",
+                Instruction.JUMPDEST => spec.FunctionSections ? "NOP" : "JUMPDEST",
+                _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
+            };
+        }
+
+        public static bool IsOnlyForEofBytecode(this Instruction instruction) => instruction switch
+        {
+            Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
+            Instruction.RETF or Instruction.CALLF => true,
+            _ => false
+        };
     }
 }
-

@@ -20,6 +20,7 @@ namespace Nethermind.Specs.Forks
             IsEip2930Enabled = true;
         }
 
+
         public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Berlin());
     }
 }

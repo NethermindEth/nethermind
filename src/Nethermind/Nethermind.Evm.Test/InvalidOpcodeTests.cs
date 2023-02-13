@@ -95,9 +95,14 @@ namespace Nethermind.Evm.Test
         private static readonly Instruction[] ShanghaiInstructions =
             LondonInstructions.Union(
                 new Instruction[]
-                {
-                    Instruction.PUSH0
-                }
+                    {
+                        Instruction.PUSH0,
+                        Instruction.RJUMP,
+                        Instruction.RJUMPI,
+                        Instruction.RJUMPV,
+                        Instruction.CALLF,
+                        Instruction.RETF
+                    }
             ).ToArray();
 
         private static readonly Instruction[] CancunInstructions =
@@ -108,6 +113,21 @@ namespace Nethermind.Evm.Test
                     Instruction.TLOAD
                 }
             ).ToArray();
+
+        private static readonly Instruction[] InstructionsWithImmediates =
+            new[]
+            {
+                Instruction.PUSH1, Instruction.PUSH2, Instruction.PUSH3,
+                Instruction.PUSH4, Instruction.PUSH5, Instruction.PUSH6, Instruction.PUSH7, Instruction.PUSH8,
+                Instruction.PUSH9, Instruction.PUSH10, Instruction.PUSH11, Instruction.PUSH12, Instruction.PUSH13,
+                Instruction.PUSH14, Instruction.PUSH15, Instruction.PUSH16, Instruction.PUSH17, Instruction.PUSH18,
+                Instruction.PUSH19, Instruction.PUSH20, Instruction.PUSH21, Instruction.PUSH22, Instruction.PUSH23,
+                Instruction.PUSH24, Instruction.PUSH25, Instruction.PUSH26, Instruction.PUSH27, Instruction.PUSH28,
+                Instruction.PUSH29, Instruction.PUSH30, Instruction.PUSH31, Instruction.PUSH32,
+
+                Instruction.RJUMP, Instruction.RJUMPI, Instruction.RJUMPV,
+                Instruction.CALLF
+            };
 
         private Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
@@ -157,21 +177,28 @@ namespace Nethermind.Evm.Test
             for (int i = 0; i <= byte.MaxValue; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
-                byte[] code = Prepare.EvmCode
-                    .Op((byte)i)
-                    .Done;
+                Instruction instruction = (Instruction)i;
+                Prepare prepCode = Prepare.EvmCode
+                    .Op(instruction);
 
-                bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
-                TestAllTracerWithOutput result = Execute(blockNumber, 1_000_000, code, timestamp: timestamp ?? 0);
+                bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains(instruction);
 
-                if (isValidOpcode)
+                byte[] code;
+                if (!instruction.IsOnlyForEofBytecode())
                 {
-                    result.Error.Should().NotBe(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
-                }
-                else
-                {
-                    result.Error.Should().Be(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
-                    result.StatusCode.Should().Be(0, ((Instruction)i).ToString());
+                    code = prepCode.Done;
+
+                    TestAllTracerWithOutput result = Execute(blockNumber, 1_000_000, code, timestamp: timestamp ?? 0);
+
+                    if (isValidOpcode)
+                    {
+                        result.Error.Should().NotBe(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
+                    }
+                    else
+                    {
+                        result.Error.Should().Be(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
+                        result.StatusCode.Should().Be(0, ((Instruction)i).ToString());
+                    }
                 }
             }
         }
