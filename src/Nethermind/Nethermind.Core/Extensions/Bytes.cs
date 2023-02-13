@@ -235,14 +235,7 @@ namespace Nethermind.Core.Extensions
         }
 
         public static byte[] PadLeft(this byte[] bytes, int length, byte padding = 0)
-        {
-            if (bytes.Length == length)
-            {
-                return bytes;
-            }
-
-            return PadLeft(bytes.AsSpan(), length, padding);
-        }
+            => bytes.Length == length ? bytes : bytes.AsSpan().PadLeft(length, padding);
 
         public static byte[] PadLeft(this Span<byte> bytes, int length, byte padding = 0)
         {
