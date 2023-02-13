@@ -178,7 +178,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             List<ForkActivation> forkActivationsToTest = new()
             {
-                (ForkActivation)120_000_000, // far in the future
+                new ForkActivation(2, 0),
+                new ForkActivation(120_000_000, 0),
+                new ForkActivation(1735372, 3),
+                new ForkActivation(1735372, 1677557088),
+                new ForkActivation(1735372, 1677557087)
             };
 
             CompareSpecProviders(sepolia, provider, forkActivationsToTest);
