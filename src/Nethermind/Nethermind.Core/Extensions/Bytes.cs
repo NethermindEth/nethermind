@@ -252,7 +252,7 @@ namespace Nethermind.Core.Extensions
             }
 
             byte[] result = new byte[length];
-            bytes.CopyTo(result.AsSpan().Slice(length - bytes.Length));
+            bytes.CopyTo(result);
 
             if (padding != 0)
             {
