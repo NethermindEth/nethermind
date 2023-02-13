@@ -59,6 +59,8 @@ namespace Nethermind.State
             KeccakHash.ComputeHashBytesToSpan(key, key);
         }
 
+
+        [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Keccak? storageRoot = null)
         {
             Span<byte> key = stackalloc byte[32];
@@ -74,6 +76,7 @@ namespace Nethermind.State
             return rlp.DecodeByteArray();
         }
 
+        [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
         {
             Span<byte> key = stackalloc byte[32];
