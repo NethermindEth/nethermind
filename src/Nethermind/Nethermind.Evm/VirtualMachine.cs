@@ -621,8 +621,10 @@ namespace Nethermind.Evm
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
+            int sectionIndex = 0;
             ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
             ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
+            ReadOnlySpan<byte> typeSection = env.CodeInfo.TypeSection.Span;
 
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
@@ -642,6 +644,26 @@ namespace Nethermind.Evm
                 if (_txTracer.IsTracingStack)
                 {
                     _txTracer.SetOperationStack(stackValue.GetStackTrace());
+                }
+            }
+
+            void RemoveInBetween(ref EvmStack stack, int height, int argsCount)
+            {
+                List<UInt256> arguments = new();
+                for (int i = 0; i < argsCount; i++)
+                {
+                    stack.PopUInt256(out var item);
+                    arguments.Add(item);
+                }
+
+                while (stack.Head > height)
+                {
+                    stack.PopUInt256(out _);
+                }
+
+                for (int i = argsCount - 1; i >= 0; i--)
+                {
+                    stack.PushUInt256(arguments[i]);
                 }
             }
 
@@ -2937,7 +2959,7 @@ namespace Nethermind.Evm
                                 }
 
                                 Span<byte> condition = stack.PopBytes();
-                                short offset = codeSection.Slice(programCounter, 2).ReadEthInt16();
+                                short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
                                 if (!condition.SequenceEqual(BytesZero32))
                                 {
                                     programCounter += offset;
@@ -2964,7 +2986,7 @@ namespace Nethermind.Evm
                                     return CallResult.InvalidSubroutineReturn;
                                 }
 
-                                programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
+                                programCounter = vmState.ReturnStack[--vmState.ReturnStackHead].Offset;
                             }
                             break;
                         }
@@ -3013,11 +3035,89 @@ namespace Nethermind.Evm
                                     return CallResult.StackOverflowException;
                                 }
 
-                                vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
+                                vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
+                                {
+                                    Offset = programCounter
+                                };
 
                                 stack.PopUInt256(out UInt256 jumpDest);
                                 Jump(jumpDest, true);
                                 programCounter++;
+                            }
+                            break;
+                        }
+                    case Instruction.CALLF:
+                        {
+                            if (!spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
+
+                            if (!UpdateGas(GasCostOf.Callf, ref gasAvailable))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
+                            var inputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE];
+
+                            if (vmState.ReturnStackHead > EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
+                            {
+                                return CallResult.StackOverflowException;
+                            }
+
+                            stack.EnsureDepth(inputCount);
+                            vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
+                            {
+                                Index = sectionIndex,
+                                Height = stack.Head - inputCount,
+                                Offset = programCounter + EvmObjectFormat.Eof1.TWO_BYTE_LENGTH
+                            };
+
+                            sectionIndex = index;
+                            programCounter = env.CodeInfo.SectionOffset(index);
+                            break;
+                        }
+                    case Instruction.RETF:
+                        {
+                            if (!spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
+
+                            if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) // still undecided in EIP
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            var index = sectionIndex;
+                            var outputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + 1];
+                            if (--vmState.ReturnStackHead == 0)
+                            {
+                                break;
+                            }
+                            var stackFrame = vmState.ReturnStack[vmState.ReturnStackHead];
+                            if (stack.Head == stackFrame.Height + outputCount)
+                            {
+                                sectionIndex = stackFrame.Index;
+                                programCounter = stackFrame.Offset;
+                            }
+                            else
+                            {
+                                if (stack.Head > stackFrame.Height + outputCount)
+                                {
+                                    RemoveInBetween(ref stack, stack.Head, outputCount);
+                                }
+                                else
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.InvalidStackState);
+                                    return CallResult.AccessViolationException;
+
+                                }
                             }
                             break;
                         }

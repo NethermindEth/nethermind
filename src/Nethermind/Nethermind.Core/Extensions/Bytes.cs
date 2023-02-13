@@ -328,7 +328,6 @@ namespace Nethermind.Core.Extensions
         {
             return new(bytes, true, true);
         }
-
         public static uint ReadEthUInt32(this Span<byte> bytes)
         {
             return ReadEthUInt32((ReadOnlySpan<byte>)bytes);

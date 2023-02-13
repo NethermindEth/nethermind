@@ -25,6 +25,7 @@ namespace Nethermind.Evm.Test
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
         {
             IsEip4200Enabled = false,
+            IsEip4750Enabled = false
         });
 
         public static IEnumerable<TestCase> Eip3670BodyTestCases
@@ -111,7 +112,8 @@ namespace Nethermind.Evm.Test
         {
             var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
             {
-                IsEip4200Enabled = false
+                IsEip4200Enabled = false,
+                IsEip4750Enabled = false
             };
 
             Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);

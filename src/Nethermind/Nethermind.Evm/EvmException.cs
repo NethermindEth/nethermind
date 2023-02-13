@@ -14,6 +14,7 @@ namespace Nethermind.Evm
     {
         None,
         BadInstruction,
+        InvalidStackState,
         StackOverflow,
         StackUnderflow,
         OutOfGas,

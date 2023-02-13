@@ -100,6 +100,8 @@ namespace Nethermind.Evm.Test
                         Instruction.RJUMP,
                         Instruction.RJUMPI,
                         Instruction.RJUMPV,
+                        Instruction.CALLF,
+                        Instruction.RETF
                     }
             ).ToArray();
 
@@ -124,6 +126,7 @@ namespace Nethermind.Evm.Test
                 Instruction.PUSH29, Instruction.PUSH30, Instruction.PUSH31, Instruction.PUSH32,
 
                 Instruction.RJUMP, Instruction.RJUMPI, Instruction.RJUMPV,
+                Instruction.CALLF
             };
 
         private Dictionary<ForkActivation, Instruction[]> _validOpcodes

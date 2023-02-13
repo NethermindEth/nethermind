@@ -12,7 +12,7 @@ using NUnit.Framework;
 using static Nethermind.Evm.Test.EofTestsBase;
 using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 
-namespace Nethermind.Evm.Test.EOFChecks
+namespace Nethermind.Evm.Test
 {
     /// <summary>
     /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
@@ -26,6 +26,7 @@ namespace Nethermind.Evm.Test.EOFChecks
         {
             IsEip3670Enabled = false,
             IsEip4200Enabled = false,
+            IsEip4750Enabled = false,
         });
         // valid code
         public static IEnumerable<TestCase> Eip3540FmtTestCases
@@ -118,6 +119,7 @@ namespace Nethermind.Evm.Test.EOFChecks
             {
                 IsEip3670Enabled = false,
                 IsEip4200Enabled = false,
+                IsEip4750Enabled = false,
             };
 
             Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);

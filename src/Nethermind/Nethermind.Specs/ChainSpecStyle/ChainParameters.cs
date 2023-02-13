@@ -133,5 +133,10 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// Static Relative Jumps
         /// </summary>
         public ulong? Eip4200TransitionTimestamp { get; set; }
+
+        /// <summary>
+        /// EOF Function Sections
+        /// </summary>
+        public ulong? Eip4750TransitionTimestamp { get; set; }
     }
 }

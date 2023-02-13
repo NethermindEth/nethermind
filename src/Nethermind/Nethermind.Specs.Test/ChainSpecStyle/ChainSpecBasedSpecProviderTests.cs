@@ -13,9 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Specs.Forks;
 using NSubstitute;
-using NSubstitute.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle

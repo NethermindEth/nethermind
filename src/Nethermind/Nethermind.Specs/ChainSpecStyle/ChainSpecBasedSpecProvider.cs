@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -233,6 +234,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip3540Enabled = (chainSpec.Parameters.Eip3540TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip3670Enabled = (chainSpec.Parameters.Eip3670TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip4200Enabled = (chainSpec.Parameters.Eip4200TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip4750Enabled = (chainSpec.Parameters.Eip4750TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             return releaseSpec;
         }
 

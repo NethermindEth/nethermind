@@ -20,7 +20,11 @@ namespace Nethermind.Evm.Test
     public class EOF4200Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
-        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance));
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
+        {
+            IsEip4200Enabled = true,
+            IsEip4750Enabled = false
+        });
 
         public static IEnumerable<TestCase> Eip4200TxTestCases
         {
@@ -28,7 +32,8 @@ namespace Nethermind.Evm.Test
             {
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMP(1)
                                 .INVALID()
                                 .JUMPDEST()
@@ -36,14 +41,16 @@ namespace Nethermind.Evm.Test
                                 .RETURN(0, 1)
                                 .RJUMP(-13)
                                 .STOP()
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.Classical,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMP(1)
                                 .INVALID()
                                 .JUMPDEST()
@@ -51,14 +58,16 @@ namespace Nethermind.Evm.Test
                                 .RETURN(0, 1)
                                 .RJUMP(-13)
                                 .STOP()
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Static Jump Opcode RJUMP not valid in Non-Eof bytecodes")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPI(1, new byte[] { 1 })
                                 .INVALID()
                                 .JUMPDEST()
@@ -66,14 +75,16 @@ namespace Nethermind.Evm.Test
                                 .RETURN(0, 1)
                                 .RJUMP(-13)
                                 .STOP()
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.Classical,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPI(1, new byte[] { 1 })
                                 .INVALID()
                                 .JUMPDEST()
@@ -81,14 +92,16 @@ namespace Nethermind.Evm.Test
                                 .RETURN(0, 1)
                                 .RJUMP(-13)
                                 .STOP()
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Static Jump Opcode RJUMPI not valid in Non-Eof bytecodes")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 1, 2, 4 }, 1)
                                 .INVALID()
                                 .INVALID()
@@ -96,14 +109,16 @@ namespace Nethermind.Evm.Test
                                 .PushData(3)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.Classical,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 1, 2, 4 }, 1)
                                 .INVALID()
                                 .INVALID()
@@ -111,65 +126,75 @@ namespace Nethermind.Evm.Test
                                 .PushData(3)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Static Jump Opcode RJUMPV not valid in Non-Eof bytecodes")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMP(11)
                                 .INVALID()
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
                                 .RJUMP(-13)
                                 .STOP()
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMP(0)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPI(10, new byte[] { 1 })
                                 .MSTORE8(0, new byte[] { 2 })
                                 .RETURN(0, 1)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPI(10, new byte[] { 0 })
                                 .MSTORE8(0, new byte[] { 2 })
                                 .RETURN(0, 1)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMP(11)
                                 .COINBASE()
                                 .MSTORE8(0, new byte[] { 1 })
@@ -177,14 +202,16 @@ namespace Nethermind.Evm.Test
                                 .RJUMPI(-16, new byte[] { 1 })
                                 .MSTORE8(0, new byte[] { 2 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMP(11)
                                 .COINBASE()
                                 .MSTORE8(0, new byte[] { 1 })
@@ -192,75 +219,88 @@ namespace Nethermind.Evm.Test
                                 .RJUMPI(-16, new byte[] { 0 })
                                 .MSTORE8(0, new byte[] { 2 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPI(0, new byte[] { 0 })
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPI(0, new byte[] { 1 })
                                 .MSTORE8(0, new byte[] { 1 })
-                                .RETURN(0, 1).Done,
+                                .RETURN(0, 1).Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 1, 6 }, 0)
                                 .INVALID()
                                 .ADD(2, 3)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 0, 5 }, 4)
                                 .ADD(2, 3)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Success, null)
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { }, 0)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Scenario : Truncated Jumptable")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 1 }, 0)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Jumpv to Push Immediate")
                 );
@@ -268,11 +308,13 @@ namespace Nethermind.Evm.Test
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPI(1, new byte[] { 1 })
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "JumpI to Push Immediate")
                 );
@@ -280,65 +322,79 @@ namespace Nethermind.Evm.Test
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMP(1)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Jump to Push Immediate")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 1 }, 0)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Jumpv cant be last Instruction")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMP(0)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Jump cant be last Instruction")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPI(0, new byte[] { 0 })
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "JumpI cant be last Instruction")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 5 }, 0)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Jumpv Destination Outside of Bounds")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .RJUMP(100)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Jump outside Code boundaries")
                 );
 
                 yield return ScenarioCase.CreateFromBytecode(
                     BytecodeTypes.EvmObjectFormat,
-                    bytecode: Prepare.EvmCode
+                    bytecodes: new[] {
+                        Prepare.EvmCode
                                 .Op(Instruction.RJUMP)
-                                .Done,
+                                .Done
+                    },
                     databytes: Array.Empty<byte>(),
                     expectedResults: (StatusCode.Failure, "Jump truncated bytecode")
                 );

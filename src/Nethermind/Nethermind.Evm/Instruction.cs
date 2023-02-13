@@ -80,6 +80,7 @@ namespace Nethermind.Evm
         PC = 0x58,
         MSIZE = 0x59,
         GAS = 0x5a,
+        NOP = 0x5b,
         JUMPDEST = 0x5b,
         RJUMP = 0x5c, // RelativeStaticJumps
         RJUMPI = 0x5d, // RelativeStaticJumps
@@ -168,6 +169,8 @@ namespace Nethermind.Evm
 
         CREATE = 0xf0,
         CALL = 0xf1,
+        CALLF = 0xb0, // FunctionSection
+        RETF = 0xb1, // FunctionSection
         CALLCODE = 0xf2,
         RETURN = 0xf3,
         DELEGATECALL = 0xf4, // DelegateCallEnabled
@@ -190,7 +193,8 @@ namespace Nethermind.Evm
             };
         public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
-            Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
+            Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
+            // Instruction.SELFDESTRUCT => true
             _ => false
         };
 
@@ -203,7 +207,7 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
-                Instruction.CALLCODE or Instruction.SELFDESTRUCT => !IsEofContext,
+                Instruction.CALLCODE or Instruction.SELFDESTRUCT or Instruction.PC or Instruction.JUMP or Instruction.JUMPI => !IsEofContext,
                 _ => true
             };
         }
@@ -216,6 +220,7 @@ namespace Nethermind.Evm
                 Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? "RJUMP" : "BEGINSUB",
                 Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? "RJUMPI" : "RETURNSUB",
                 Instruction.RJUMPV => spec.StaticRelativeJumpsEnabled ? "RJUMPV" : "JUMPSUB",
+                Instruction.JUMPDEST => spec.FunctionSections ? "NOP" : "JUMPDEST",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
             };
         }
@@ -223,6 +228,7 @@ namespace Nethermind.Evm
         public static bool IsOnlyForEofBytecode(this Instruction instruction) => instruction switch
         {
             Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
+            Instruction.RETF or Instruction.CALLF => true,
             _ => false
         };
     }

@@ -157,12 +157,12 @@ namespace Nethermind.Evm.Test
         public record FunctionCase(int InputCount, int OutputCount, int MaxStack, byte[] Body);
         public record ScenarioCase(FunctionCase[] Functions, byte[] Data)
         {
-            public static TestCase CreateFromBytecode(BytecodeTypes bytecodeType, byte[] bytecode, byte[] databytes, int idx = -1, (byte Status, String Message)? expectedResults = null)
+            public static TestCase CreateFromBytecode(BytecodeTypes bytecodeType, byte[][] bytecodes, byte[] databytes, int idx = -1, (byte Status, String Message)? expectedResults = null)
             {
                 var caseBytecode = bytecodeType switch
                 {
-                    BytecodeTypes.EvmObjectFormat => new ScenarioCase(new FunctionCase[] { new FunctionCase(0, 0, 1024, bytecode) }, databytes).Bytecode,
-                    BytecodeTypes.Classical => bytecode,
+                    BytecodeTypes.EvmObjectFormat => new ScenarioCase(bytecodes.Select(sectionCode => new FunctionCase(0, 0, 1023, sectionCode)).ToArray(), databytes).Bytecode,
+                    BytecodeTypes.Classical => bytecodes[0],
                     _ => throw new UnreachableException()
                 };
 
@@ -178,14 +178,12 @@ namespace Nethermind.Evm.Test
             public static TestCase CreateFromScenario(BodyScenario scenario)
             {
                 Prepare prepare = Prepare.EvmCode;
-                int opcodeCount = 0;
+                int stackHeight = 0;
                 if (!scenario.HasFlag(BodyScenario.WithEmptyCodeSection))
                 {
                     if (scenario.HasFlag(BodyScenario.UseDeprecatedOpcode))
                     {
                         prepare = prepare.CALLCODE();
-                        opcodeCount += 2;
-
                     }
 
                     if (scenario.HasFlag(BodyScenario.UseUndefinedOpcode))
@@ -196,24 +194,25 @@ namespace Nethermind.Evm.Test
                             opcode++;
                         }
                         prepare = prepare.Op(opcode);
-                        opcodeCount += 1;
                     }
 
                     if (scenario.HasFlag(BodyScenario.EndWithTruncatedPush))
                     {
                         prepare.Op(Instruction.PUSH32)
                             .Data(Enumerable.Range(0, 23).Select(i => (byte)i).ToArray());
+                        stackHeight++;
                     }
                     else
                     {
                         prepare.Op(Instruction.PUSH32)
                             .Data(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray());
+                        stackHeight++;
                     }
                 }
 
                 byte[] bytecode = prepare.Done;
                 byte[] databytes = scenario.HasFlag(BodyScenario.WithDataSection) ? new byte[] { 0xde, 0xad, 0xbe, 0xef } : Array.Empty<byte>();
-                var resultCase = new ScenarioCase(new[] { new FunctionCase(0, 0, 1024, bytecode) }, databytes);
+                var resultCase = new ScenarioCase(new[] { new FunctionCase(0, 0, stackHeight, bytecode) }, databytes);
                 bytecode = resultCase.Bytecode;
                 bool validCase = scenario is BodyScenario.None || scenario is BodyScenario.WithDataSection;
                 return new TestCase(scenario.ToInt32())
@@ -519,7 +518,7 @@ namespace Nethermind.Evm.Test
                     if (hasEofInitCode)
                     {
                         initcode = new ScenarioCase(
-                            new[] { new FunctionCase(0, 0, 1024, initcode) },
+                            new[] { new FunctionCase(0, 0, 1023, initcode) },
                             Array.Empty<byte>()
                         ).Bytecode;
                     }
@@ -562,7 +561,7 @@ namespace Nethermind.Evm.Test
                     if (hasEofContainer)
                     {
                         result = new ScenarioCase(
-                            new[] { new FunctionCase(0, 0, 1024, result) },
+                            new[] { new FunctionCase(0, 0, 1023, result) },
                             Array.Empty<byte>()
                         ).Bytecode;
                     }
