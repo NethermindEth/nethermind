@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Test
         [Flags]
         public enum FormatScenario
         {
-            None = 0,
+            None = 1,
 
             OmitTypeSectionHeader = 1 << 1,
             OmitCodeSectionsHeader = 1 << 2,
@@ -79,16 +79,12 @@ namespace Nethermind.Evm.Test
         [Flags]
         public enum DeploymentScenario
         {
+            None = 1,
             EofInitCode = 1 << 1,
             EofDeployedCode = 1 << 2,
-            EofContainer = 1 << 3,
 
-            CorruptInitCode = 1 << 4,
-            CorruptDeployedCode = 1 << 5,
-            CorruptContainer = 1 << 6,
-
-            ContainerInitcodeVersionMismatch = EofInitCode | EofContainer | 1 << 7,
-            InitcodeDeploycodeVersionMismatch = EofInitCode | EofDeployedCode | 1 << 8,
+            CorruptInitCode = 1 << 3,
+            CorruptDeployedCode = 1 << 4,
         }
 
         [Flags]
@@ -127,6 +123,15 @@ namespace Nethermind.Evm.Test
 
         public void EOF_contract_deployment_tests(TestCase testcase, IReleaseSpec spec)
         {
+            Transaction createTx(ref Transaction transaction, byte[] code, Address address)
+            {
+                transaction.GasPrice = 20.GWei();
+                transaction.To = address;
+                transaction.Data = code;
+                transaction.Nonce = address is not null ? transaction.Nonce + 1 : transaction.Nonce;
+                return transaction;
+            }
+
             TestState.CreateAccount(TestItem.AddressC, 200.Ether());
             byte[] createContract = testcase.Bytecode;
 
@@ -134,23 +139,32 @@ namespace Nethermind.Evm.Test
             TestSpecProvider customSpecProvider = new(Frontier.Instance, spec);
             Machine = new VirtualMachine(TestBlockhashProvider.Instance, customSpecProvider, logManager);
             _processor = new TransactionProcessor(customSpecProvider, TestState, Storage, Machine, LimboLogs.Instance);
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, createContract);
+            (Block block, Transaction transaction) = PrepareInitTx(BlockNumber, 100000, createContract);
 
+            var tracer1 = CreateBlockTracer();
+            tracer1.StartNewTxTrace(transaction);
+            tracer1.StartNewBlockTrace(block);
 
-            transaction.GasPrice = 20.GWei();
-            transaction.To = null;
-            transaction.Data = createContract;
-            TestAllTracerWithOutput tracer = CreateTracer();
+            _processor.Execute(transaction, block.Header, tracer1);
 
-            _processor.Execute(transaction, block.Header, tracer);
+            if (testcase.Ctx is not DeploymentContext.UseCreateTx)
+            {
+                var cont_transaction = createTx(ref transaction, tracer1.TxReceipts[0].ReturnValue, tracer1.TxReceipts[0].ContractAddress);
+                TestAllTracerWithOutput tracer2 = CreateTracer();
+                _processor.Execute(cont_transaction, block.Header, tracer2);
+                Assert.AreEqual(testcase.Result.Status, tracer2.ReportedActionErrors.Count > 0 ? StatusCode.Failure : StatusCode.Success, testcase.Result.Msg);
+            }
+            else
+            {
+                Assert.AreEqual(testcase.Result.Status, tracer1.TxReceipts[0].StatusCode, testcase.Result.Msg);
+            }
 
-            var result = tracer.ReportedActionErrors.Any(x => x == EvmExceptionType.InvalidCode || x == EvmExceptionType.BadInstruction) ? StatusCode.Failure : StatusCode.Success;
-            Assert.AreEqual(testcase.Result.Status, result, testcase.Result.Msg);
         }
 
         public record TestCase(int Index)
         {
             public byte[] Bytecode;
+            public DeploymentContext Ctx;
             public (byte Status, string Msg) Result;
         }
 
@@ -530,81 +544,84 @@ namespace Nethermind.Evm.Test
                         initcode = CorruptBytecode(hasEofInitCode, initcode);
                     }
 
-                    if (scenarios.HasFlag(DeploymentScenario.InitcodeDeploycodeVersionMismatch))
-                    {
-                        initcode[2] = 01; deployed[2] = 02;
-                    }
-                    else
-                    {
-
-                        if (hasEofInitCode && hasEofCode)
-                            initcode[2] = deployed[2];
-                    }
-
                     // wrap initcode in container
-                    byte[] result = ctx switch
+                    byte[] result = Array.Empty<byte>();
+                    switch (ctx)
                     {
-                        DeploymentContext.UseCreate => Prepare.EvmCode.Create(initcode, UInt256.Zero).STOP().Done,
-                        DeploymentContext.UseCreate2 => Prepare.EvmCode.Create2(initcode, salt, UInt256.Zero).STOP().Done,
-                        DeploymentContext.UseCreateTx => initcode,
-                        _ => throw new UnreachableException()
-                    };
+                        case DeploymentContext.UseCreate or DeploymentContext.UseCreate2:
+                            {
+                                var prep = Prepare.EvmCode;
 
-                    if (ctx is DeploymentContext.UseCreateTx)
-                    {
-                        scenarios &= ~DeploymentScenario.EofContainer;
-                        scenarios &= ~DeploymentScenario.CorruptContainer;
-                        return result;
-                    }
+                                byte[] returnCode =
+                                    ctx is DeploymentContext.UseCreate
+                                        ? Prepare.EvmCode.Create(initcode, UInt256.Zero).STOP().Done
+                                        : Prepare.EvmCode.Create2(initcode, salt, UInt256.Zero).STOP().Done;
 
-                    Instruction createOpcode = ctx is DeploymentContext.UseCreate ? Instruction.CREATE : Instruction.CREATE2;
-                    // if container should be EOF
-                    bool hasEofContainer = scenarios.HasFlag(DeploymentScenario.EofContainer);
-                    if (hasEofContainer)
-                    {
-                        result = new ScenarioCase(
-                            new[] { new FunctionCase(0, 0, createOpcode.StackRequirements().InputCount, result) },
-                            Array.Empty<byte>()
-                        ).Bytecode;
+                                int offset = 0;
+                                var chunks = returnCode.Chunk(32);
+                                foreach (var chunk in chunks)
+                                {
+                                    if (chunk.Length == 32)
+                                    {
+                                        prep.MSTORE((UInt256)offset, chunk);
+                                    }
+                                    else
+                                    {
+                                        int leftover = 32 - chunk.Length;
+                                        var newchunk = new byte[32];
+                                        chunk.CopyTo(newchunk, 0);
+                                        prep.MSTORE((UInt256)offset, newchunk);
+                                    }
+                                    offset += chunk.Length;
+                                }
+                                result = prep.Return(returnCode.Length, 0)
+                                    .Done;
+                                break;
+                            }
+                        case DeploymentContext.UseCreateTx:
+                            result = initcode;
+                            break;
                     }
-
-                    // if container should be corrupt
-                    if (scenarios.HasFlag(DeploymentScenario.CorruptContainer))
-                    {
-                        result = CorruptBytecode(hasEofContainer, result);
-                    }
-
-                    if (scenarios.HasFlag(DeploymentScenario.ContainerInitcodeVersionMismatch))
-                    {
-                        initcode[2] = 02; result[2] = 01;
-                    }
-                    else
-                    {
-                        if (hasEofContainer && hasEofInitCode)
-                            result[2] = initcode[2];
-                    }
-
                     return result;
                 }
 
                 bool isValid = ctx is DeploymentContext.UseCreateTx
                     ? !scenarios.HasFlag(DeploymentScenario.CorruptInitCode) && (
-                        scenarios.HasFlag(DeploymentScenario.EofInitCode) ||
-                        !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode))
-                    : !scenarios.HasFlag(DeploymentScenario.CorruptContainer) && (
-                        scenarios.HasFlag(DeploymentScenario.EofContainer) || (
-                            !scenarios.HasFlag(DeploymentScenario.CorruptInitCode) && (
-                            scenarios.HasFlag(DeploymentScenario.EofInitCode) ||
-                            !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode))));
+                        scenarios.HasFlag(DeploymentScenario.EofInitCode)
+                        ? scenarios.HasFlag(DeploymentScenario.EofDeployedCode) && !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode)
+                        : !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode))
+                    : scenarios.HasFlag(DeploymentScenario.CorruptInitCode)
+                        ? true
+                        : !scenarios.HasFlag(DeploymentScenario.EofInitCode)
+                            ? !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode)
+                            : scenarios.HasFlag(DeploymentScenario.EofDeployedCode)
+                                && !scenarios.HasFlag(DeploymentScenario.CorruptDeployedCode);
+
+
 
                 byte[] bytecode = EmitBytecode();
-                string message = $"EOF1 execution : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {scenarios.FastToString()}, \nContext : {ctx.FastToString()}";
+                string message = $"EOF1 execution : \nbytecode {bytecode.ToHexString(true)} : \nScenario : {EnumToDetailedString(scenarios)}, \nContext : {ctx.FastToString()}";
                 return new TestCase(scenarios.ToInt32())
                 {
                     Bytecode = bytecode,
+                    Ctx = ctx,
                     Result = (isValid ? StatusCode.Success : StatusCode.Failure, message),
                 };
             }
+        }
+
+        static string EnumToDetailedString<TEnum>(TEnum value) where TEnum : struct, Enum
+        {
+            List<String> sb = new();
+            var fieldsInTEnum = FastEnum.GetValues<TEnum>();
+            foreach (var field in fieldsInTEnum)
+            {
+                if (value.HasFlag(field))
+                {
+                    sb.Add(field.ToString());
+                }
+            }
+            return String.Join(", ", sb);
         }
 
         public static IEnumerable<IReleaseSpec> Specs
@@ -612,7 +629,7 @@ namespace Nethermind.Evm.Test
             get
             {
                 yield return GrayGlacier.Instance;
-                yield return Shanghai.Instance;
+                yield return Cancun.Instance;
             }
         }
 

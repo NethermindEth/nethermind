@@ -1,18 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
-using Newtonsoft.Json.Linq;
-using Org.BouncyCastle.Asn1.Mozilla;
 
 namespace Nethermind.Evm
 {
@@ -287,6 +279,11 @@ namespace Nethermind.Evm
         public static Prepare RETURN(this Prepare @this, UInt256? pos = null, UInt256? len = null)
             => @this.PushSequence(len, pos)
                     .Op(Instruction.RETURN);
+        public static Prepare RETURN(this Prepare @this, UInt256? pos, byte[] data)
+            => @this.MSTORE8(pos, data)
+                    .PushSequence((UInt256)data.Length, pos)
+                    .Op(Instruction.RETURN);
+
         public static Prepare REVERT(this Prepare @this, UInt256? pos = null, UInt256? len = null)
             => @this.PushSequence(len, pos)
                     .Op(Instruction.REVERT);

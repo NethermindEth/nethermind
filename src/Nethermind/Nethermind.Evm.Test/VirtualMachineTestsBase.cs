@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,15 +7,15 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -101,6 +101,7 @@ namespace Nethermind.Evm.Test
         }
 
         protected virtual TestAllTracerWithOutput CreateTracer() => new();
+        protected virtual BlockReceiptsTracer CreateBlockTracer() => new();
 
         protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
         {

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -299,7 +299,6 @@ namespace Nethermind.Evm.TransactionProcessing
             _stateProvider.SubtractFromBalance(caller, value, spec);
             byte statusCode = StatusCode.Failure;
             TransactionSubstate substate = null;
-
             Address? recipientOrNull = null;
             try
             {
@@ -379,16 +378,17 @@ namespace Nethermind.Evm.TransactionProcessing
                             throw new OutOfGasException();
                         }
 
-                        if (CodeDepositHandler.CodeIsInvalid(substate.Output.Span, spec))
-                        {
-                            throw new InvalidCodeException();
-                        }
-
                         if (unspentGas >= codeDepositGasCost)
                         {
                             Keccak codeHash = _stateProvider.UpdateCode(substate.Output);
                             _stateProvider.UpdateCodeHash(recipient, codeHash, spec);
                             unspentGas -= codeDepositGasCost;
+                        }
+
+                        if (CodeDepositHandler.CodeIsInvalid(substate.Output.Span, spec, substate.FromVersion))
+                        {
+                            _stateProvider.IncrementNonce(caller);
+                            throw new InvalidCodeException();
                         }
                     }
 
