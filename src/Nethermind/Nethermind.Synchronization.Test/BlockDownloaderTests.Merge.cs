@@ -314,7 +314,7 @@ public partial class BlockDownloaderTests
             .GoesLikeThis()
             .WithBlockTrees(4, (int)headNumber + 1)
             .InsertBeaconPivot(64)
-            .InsertBeaconHeaders(4,  128);
+            .InsertBeaconHeaders(4, 128);
         BlockTree syncedTree = blockTrees.SyncedTree;
         PostMergeContext ctx = new();
         ctx.BlockTreeScenario = blockTrees;
@@ -322,7 +322,9 @@ public partial class BlockDownloaderTests
         ctx.Feed = new FastSyncFeed(ctx.SyncModeSelector,
             new SyncConfig
             {
-                NoValidatorNode = true, DownloadBodiesInFastSync = false, DownloadReceiptsInFastSync = false
+                NoValidatorNode = true,
+                DownloadBodiesInFastSync = false,
+                DownloadReceiptsInFastSync = false
             }, LimboLogs.Instance);
 
         if (withBeaconPivot)
@@ -360,7 +362,6 @@ public partial class BlockDownloaderTests
         // h.Transactions[0];
     }
 
-    class MergeContext : Context
     [TestCase(DownloaderOptions.WithReceipts)]
     [TestCase(DownloaderOptions.None)]
     [TestCase(DownloaderOptions.Process)]
