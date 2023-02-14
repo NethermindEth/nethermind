@@ -13,7 +13,7 @@ public class PerTableDbConfigTests
     public void CanReadAllConfigForAllTable()
     {
         DbConfig dbConfig = new DbConfig();
-        string[] tables = new []
+        string[] tables = new[]
         {
             DbNames.Storage,
             DbNames.State,
