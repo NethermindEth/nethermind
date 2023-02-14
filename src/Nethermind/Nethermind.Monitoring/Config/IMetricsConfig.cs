@@ -22,5 +22,8 @@ namespace Nethermind.Monitoring.Config
 
         [ConfigItem(Description = "Name displayed in the Grafana dashboard", DefaultValue = "\"Nethermind\"")]
         string NodeName { get; }
+
+        [ConfigItem(Description = "[TECHNICAL] Enable additional detailed dotnet metrics.", DefaultValue = "false")]
+        bool EnableDotNetMetrics { get; set; }
     }
 }

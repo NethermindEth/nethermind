@@ -27,6 +27,7 @@ using Nethermind.Hive;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
+using Nethermind.NETMetrics;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
@@ -130,6 +131,7 @@ namespace Nethermind.Runner
                 typeof(EthashPlugin),
                 typeof(NethDevPlugin),
                 typeof(HivePlugin),
+                typeof(NETMetricsPlugin),
                 typeof(UPnPPlugin)
             );
 

@@ -20,7 +20,8 @@ namespace Nethermind.Monitoring.Metrics
         private Timer _timer;
         private readonly Dictionary<Type, (PropertyInfo, string)[]> _propertiesCache = new();
         private readonly Dictionary<Type, (FieldInfo, string)[]> _fieldsCache = new();
-        private readonly Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
+        private Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicLongPropCache = new();
+        private Dictionary<Type, (string DictName, IDictionary<string, double> Dict)> _dynamicDoublePropCache = new();
         private readonly HashSet<Type> _metricTypes = new();
 
         public readonly Dictionary<string, Gauge> _gauges = new();
@@ -84,12 +85,33 @@ namespace Nethermind.Monitoring.Metrics
                     f => (f, GetGaugeNameKey(type.Name, f.Name))).ToArray();
             }
 
-            if (!_dynamicPropCache.ContainsKey(type))
+            if (!_dynamicLongPropCache.ContainsKey(type))
             {
                 var p = type.GetProperties().FirstOrDefault(p => p.PropertyType.IsAssignableTo(typeof(IDictionary<string, long>)));
                 if (p != null)
                 {
-                    _dynamicPropCache[type] = (p.Name, (IDictionary<string, long>)p.GetValue(null));
+                    _dynamicLongPropCache[type] = (p.Name, (IDictionary<string, long>)p.GetValue(null));
+                }
+
+                var f = type.GetFields().FirstOrDefault(p => p.FieldType.IsAssignableTo(typeof(IDictionary<string, long>)));
+                if (f != null)
+                {
+                    _dynamicLongPropCache[type] = (f.Name, (IDictionary<string, long>)f.GetValue(null));
+                }
+            }
+
+            if (!_dynamicDoublePropCache.ContainsKey(type))
+            {
+                var p = type.GetProperties().FirstOrDefault(p => p.PropertyType.IsAssignableTo(typeof(IDictionary<string, double>)));
+                if (p != null)
+                {
+                    _dynamicDoublePropCache[type] = (p.Name, (IDictionary<string, double>)p.GetValue(null));
+                }
+
+                var f = type.GetFields().FirstOrDefault(p => p.FieldType.IsAssignableTo(typeof(IDictionary<string, double>)));
+                if (f != null)
+                {
+                    _dynamicDoublePropCache[type] = (f.Name, (IDictionary<string, double>)f.GetValue(null));
                 }
             }
         }
@@ -137,12 +159,27 @@ namespace Nethermind.Monitoring.Metrics
                 ReplaceValueIfChanged(value, gaugeName);
             }
 
-            if (_dynamicPropCache.TryGetValue(type, out var dict))
+            if (_dynamicLongPropCache.TryGetValue(type, out var dictLong))
             {
-                foreach (var kvp in dict.Dict)
+                foreach (var kvp in dictLong.Dict)
                 {
                     double value = Convert.ToDouble(kvp.Value);
-                    var gaugeName = GetGaugeNameKey(dict.DictName, kvp.Key);
+                    var gaugeName = GetGaugeNameKey(dictLong.DictName, kvp.Key);
+
+                    if (ReplaceValueIfChanged(value, gaugeName) is null)
+                    {
+                        var gauge = CreateGauge(BuildGaugeName(kvp.Key));
+                        _gauges[gaugeName] = gauge;
+                        gauge.Set(value);
+                    }
+                }
+            }
+            if (_dynamicDoublePropCache.TryGetValue(type, out var dictDouble))
+            {
+                foreach (var kvp in dictDouble.Dict)
+                {
+                    double value = kvp.Value;
+                    var gaugeName = GetGaugeNameKey(dictDouble.DictName, kvp.Key);
 
                     if (ReplaceValueIfChanged(value, gaugeName) is null)
                     {

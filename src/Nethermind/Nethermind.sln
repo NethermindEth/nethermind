@@ -229,6 +229,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UPnP", "UPnP", "{2EDE2554-5
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.UPnP.Plugin", "Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj", "{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.NETMetrics", "Nethermind.NETMetrics\Nethermind.NETMetrics.csproj", "{2D6073EB-9475-4D27-A299-59AD919B2619}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -607,6 +609,8 @@ Global
 		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2D6073EB-9475-4D27-A299-59AD919B2619}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2D6073EB-9475-4D27-A299-59AD919B2619}.Debug|Any CPU.Build.0 = Debug|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
