@@ -10,7 +10,7 @@ namespace HiveCompare.Models
 {
     public class HiveTestResult
     {
-        public Dictionary<string, TestCase> TestCases { get; set;} = default!;
+        public Dictionary<string, TestCase> TestCases { get; set; } = default!;
     }
 
     public class TestCase
