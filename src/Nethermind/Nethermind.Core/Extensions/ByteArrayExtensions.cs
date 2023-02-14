@@ -66,7 +66,7 @@ namespace Nethermind.Core.Extensions
 
             byte[] slice = new byte[length];
 
-            bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan().Slice(0, copiedFragmentLength));
+            bytes.Slice(startIndex, copiedFragmentLength).CopyTo(slice.AsSpan(0, copiedFragmentLength));
             return slice;
         }
     }

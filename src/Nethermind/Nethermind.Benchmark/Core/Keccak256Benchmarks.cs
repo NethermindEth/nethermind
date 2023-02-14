@@ -3,16 +3,15 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.HashLib;
+//using Nethermind.HashLib;
 
 namespace Nethermind.Benchmarks.Core
 {
     public class Keccak256Benchmarks
     {
-        private static HashLib.Crypto.SHA3.Keccak256 _hash = HashFactory.Crypto.SHA3.CreateKeccak256();
+        //private static HashLib.Crypto.SHA3.Keccak256 _hash = HashFactory.Crypto.SHA3.CreateKeccak256();
 
         private byte[] _a;
 
@@ -57,11 +56,10 @@ namespace Nethermind.Benchmarks.Core
             return Nethermind.Core.Crypto.ValueKeccak.Compute(_a).BytesAsSpan;
         }
 
-
-        [Benchmark]
-        public byte[] HashLib()
-        {
-            return _hash.ComputeBytes(_a).GetBytes();
-        }
+        //[Benchmark]
+        //public byte[] HashLib()
+        //{
+        //    return _hash.ComputeBytes(_a).GetBytes();
+        //}
     }
 }

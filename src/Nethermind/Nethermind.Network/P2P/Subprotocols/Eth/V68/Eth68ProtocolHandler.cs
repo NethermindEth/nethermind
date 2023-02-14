@@ -92,9 +92,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             return;
         }
 
-        ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
-        ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
-        ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        using ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
+        using ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        using ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
 
         foreach (Transaction tx in txs)
         {
