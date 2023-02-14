@@ -32,6 +32,8 @@ public class DbOnTheRocks : IDbWithSpan
     private readonly ConcurrentHashSet<IBatch> _currentBatches = new();
 
     internal readonly RocksDb _db;
+
+    private IntPtr? _rateLimiter;
     internal WriteOptions? WriteOptions { get; private set; }
 
     internal DbOptions? DbOptions { get; private set; }
@@ -55,7 +57,6 @@ public class DbOnTheRocks : IDbWithSpan
     private readonly RocksDbSharp.Native _rocksDbNative;
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
-    private IntPtr? _rateLimiter = null;
 
     protected static void InitCache(IDbConfig dbConfig)
     {

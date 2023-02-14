@@ -14,8 +14,8 @@ public class DbConfig : IDbConfig
     public ulong BlockCacheSize { get; set; } = (ulong)64.MiB();
     public bool CacheIndexAndFilterBlocks { get; set; } = false;
     public int? MaxOpenFiles { get; set; }
-
     public long? MaxWriteBytesPerSec { get; set; }
+
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 4;
     public ulong ReceiptsDbBlockCacheSize { get; set; } = (ulong)32.MiB();
