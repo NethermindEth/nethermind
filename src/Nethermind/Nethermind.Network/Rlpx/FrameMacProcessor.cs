@@ -17,7 +17,7 @@ namespace Nethermind.Network.Rlpx
     /// <summary>
     /// partially adapted from ethereumJ
     /// </summary>
-    public class FrameMacProcessor : IFrameMacProcessor
+    public sealed class FrameMacProcessor : IFrameMacProcessor
     {
         private readonly PublicKey _remoteNodeId;
         private readonly KeccakDigest _egressMac;
@@ -53,7 +53,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (isHeader)
             {
-                input.AsSpan().Slice(0, 32).CopyTo(_addMacBuffer);
+                input.AsSpan(0, 32).CopyTo(_addMacBuffer);
                 UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, offset, input, offset + length, true); // TODO: confirm header is seed 
             }
             else
@@ -75,7 +75,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (isHeader)
             {
-                input.AsSpan().CopyTo(_checkMacBuffer.AsSpan().Slice(0, 16));
+                input.AsSpan().CopyTo(_checkMacBuffer.AsSpan(0, 16));
             }
             else
             {
@@ -93,7 +93,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (isHeader)
             {
-                input.AsSpan().Slice(0, 16).CopyTo(_addMacBuffer.AsSpan().Slice(0, 16));
+                input.AsSpan(0, 16).CopyTo(_addMacBuffer);
                 UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, offset, output, outputOffset, true); // TODO: confirm header is seed 
             }
             else
@@ -151,7 +151,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (isHeader)
             {
-                input.AsSpan().Slice(0, 32).CopyTo(_checkMacBuffer.AsSpan());
+                input.AsSpan(0, 32).CopyTo(_checkMacBuffer);
                 UpdateMac(_ingressMac, _ingressMacCopy, _checkMacBuffer, offset, input, offset + length, false);
             }
             else
