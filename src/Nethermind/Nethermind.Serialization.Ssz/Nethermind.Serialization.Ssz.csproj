@@ -2,15 +2,17 @@
 
     <PropertyGroup>
         <TargetFramework>net7.0</TargetFramework>
-        <IsPackable>false</IsPackable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <OutputType>Library</OutputType>
+        <LangVersion>latest</LangVersion>
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.1.0" />
+    </ItemGroup>
+
+    <ItemGroup>
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-      <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
     </ItemGroup>
 
 </Project>
