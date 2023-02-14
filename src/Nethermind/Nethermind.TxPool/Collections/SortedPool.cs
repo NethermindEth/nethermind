@@ -35,6 +35,7 @@ namespace Nethermind.TxPool.Collections
 
         // worst element from every group, used to determine element that will be evicted when pool is full
         protected readonly DictionarySortedSet<TValue, TKey> _worstSortedValues;
+        private TValue[]? _snapshot;
 
         /// <summary>
         /// Constructor
@@ -81,7 +82,13 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetSnapshot()
         {
-            return _buckets.SelectMany(b => b.Value).ToArray();
+            TValue[]? snapshot = _snapshot;
+            if (snapshot is null)
+            {
+                snapshot = _snapshot = _buckets.SelectMany(b => b.Value).ToArray();
+            }
+
+            return snapshot;
         }
 
         /// <summary>
@@ -189,6 +196,7 @@ namespace Nethermind.TxPool.Collections
                             {
                                 UpdateSortedValues(bucketSet, last);
                             }
+                            _snapshot = null;
 
                             return true;
                         }
@@ -322,6 +330,7 @@ namespace Nethermind.TxPool.Collections
             {
                 _cacheMap[key] = value;
                 UpdateSortedValues(bucket, last);
+                _snapshot = null;
                 Inserted?.Invoke(this, new SortedPoolEventArgs(key, value, groupKey));
             }
         }
@@ -343,7 +352,16 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Actual removal mechanism.
         /// </summary>
-        protected virtual bool Remove(TKey key, TValue value) => _cacheMap.Remove(key);
+        protected virtual bool Remove(TKey key, TValue value)
+        {
+            if (_cacheMap.Remove(key))
+            {
+                _snapshot = null;
+                return true;
+            }
+
+            return false;
+        }
 
 
         [MethodImpl(MethodImplOptions.Synchronized)]

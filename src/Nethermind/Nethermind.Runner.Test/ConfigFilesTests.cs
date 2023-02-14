@@ -368,7 +368,7 @@ namespace Nethermind.Runner.Test
         [TestCase("*")]
         public void Arena_order_is_default(string configWildcard)
         {
-            Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, 11);
+            Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, -1);
         }
 
         [TestCase("^mainnet ^goerli", false)]

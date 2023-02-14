@@ -200,6 +200,7 @@ namespace Nethermind.Runner.JsonRpc
                                                 // We reached the limit and don't want to responded to more request in the batch
                                                 if (!jsonRpcContext.IsAuthenticated && responseSize > jsonRpcConfig.MaxBatchResponseBodySize)
                                                 {
+                                                    if (logger.IsWarn) logger.Warn($"The max batch response body size exceeded. The current response size {responseSize}, and the config setting is JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {jsonRpcConfig.MaxBatchResponseBodySize}");
                                                     enumerator.IsStopped = true;
                                                 }
                                             }
