@@ -980,46 +980,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()
-        {
-            _txPool = CreatePool();
-            var nonceA1 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
-            var nonceA2 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
-            var nonceA3 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
-            var nonceB1 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
-            var nonceB2 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
-            var nonceB3 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
-
-            nonceA1.Should().Be(0);
-            nonceA2.Should().Be(1);
-            nonceA3.Should().Be(2);
-            nonceB1.Should().Be(0);
-            nonceB2.Should().Be(1);
-            nonceB3.Should().Be(2);
-        }
-
-        [Test]
-        public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
-        {
-            TransactionBuilder<Transaction> builder = new TransactionBuilder<Transaction>();
-            const int reservationsCount = 1000;
-            _txPool = CreatePool();
-            ConcurrentQueue<UInt256> nonces = new();
-
-            var result = Parallel.For(0, reservationsCount, i =>
-            {
-                nonces.Enqueue(_txPool.ReserveOwnTransactionNonce(TestItem.AddressA));
-            });
-
-            result.IsCompleted.Should().BeTrue();
-            UInt256 nonce = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
-            nonces.Enqueue(nonce);
-            nonce.Should().Be(new UInt256(reservationsCount));
-            nonces.OrderBy(n => n).Should().BeEquivalentTo(Enumerable.Range(0, reservationsCount + 1).Select(i => new UInt256((uint)i)));
-        }
-
-        [Test]
-        public void should_return_own_nonce_already_used_result_when_trying_to_send_transaction_with_same_nonce_for_same_address()
+        public void should_return_feeTooLowTooCompete_result_when_trying_to_send_transaction_with_same_nonce_for_same_address()
         {
             _txPool = CreatePool();
             var result1 = _txPool.SubmitTx(GetTransaction(TestItem.PrivateKeyA, TestItem.AddressA), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
@@ -1027,7 +988,7 @@ namespace Nethermind.TxPool.Test
             _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
             var result2 = _txPool.SubmitTx(GetTransaction(TestItem.PrivateKeyA, TestItem.AddressB), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
-            result2.Should().Be(AcceptTxResult.OwnNonceAlreadyUsed);
+            result2.Should().Be(AcceptTxResult.FeeTooLowToCompete);
             _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
         }
@@ -1379,6 +1340,105 @@ namespace Nethermind.TxPool.Test
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
             _txPool.SubmitTx(expensiveTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+        }
+
+        [Test]
+        public void should_increase_nonce_when_transaction_not_included_in_txPool_but_broadcasted()
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(new TxPoolConfig { Size = 2 }, specProvider);
+
+            ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+            peer.Id.Returns(TestItem.PublicKeyA);
+
+            _txPool.AddPeer(peer);
+
+            // Add two transactions with high gas price
+            Transaction firstTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(100)
+                .WithMaxPriorityFeePerGas(100)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction secondTx = Build.A.Transaction
+                .WithNonce(1)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(100)
+                .WithMaxPriorityFeePerGas(100)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _txPool.SubmitTx(firstTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            peer.Received().SendNewTransaction(firstTx);
+            _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            peer.Received().SendNewTransaction(secondTx);
+
+            // Send cheap transaction => Not included in txPool
+            Transaction cheapTx = Build.A.Transaction
+                .WithNonce(2)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(1)
+                .WithMaxPriorityFeePerGas(1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            peer.Received().SendNewTransaction(cheapTx);
+
+            // Send transaction with increased nonce => NonceGap should not appear as previous transaction is broadcasted, should be accepted
+            Transaction fourthTx = Build.A.Transaction
+                .WithNonce(3)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(1)
+                .WithMaxPriorityFeePerGas(1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            _txPool.SubmitTx(fourthTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            peer.Received().SendNewTransaction(fourthTx);
+        }
+
+        [Test]
+        public async Task should_include_transaction_after_removal()
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(new TxPoolConfig { Size = 2 }, specProvider);
+
+            // Send cheap transaction
+            Transaction txA = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(1)
+                .WithMaxPriorityFeePerGas(1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            _txPool.SubmitTx(txA, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            Transaction expensiveTx1 = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(100)
+                .WithMaxPriorityFeePerGas(100)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction expensiveTx2 = Build.A.Transaction
+                .WithNonce(1)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(100)
+                .WithMaxPriorityFeePerGas(100)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            // Send two transactions with high gas price => txA removed from pool
+            _txPool.SubmitTx(expensiveTx1, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(expensiveTx2, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            // Rise new block event to cleanup cash and remove one expensive tx
+            _blockTree.BlockAddedToMain +=
+                Raise.Event<EventHandler<BlockReplacementEventArgs>>(this,
+                    new BlockReplacementEventArgs(Build.A.Block.WithTransactions(expensiveTx1).TestObject));
+
+            // Wait four event processing
+            await Task.Delay(100);
+
+            // Send txA again => should be Accepted
+            _txPool.SubmitTx(txA, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)

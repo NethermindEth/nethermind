@@ -5,15 +5,16 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nethermind.Core.Collections
 {
-    public class ArrayPoolList<T> : IList<T>, IReadOnlyList<T>, IDisposable
+    public sealed class ArrayPoolList<T> : IList<T>, IReadOnlyList<T>, IDisposable
     {
         private readonly ArrayPool<T> _arrayPool;
-        protected T[] _array;
+        private T[] _array;
         private int _count = 0;
         private int _capacity;
         private bool _disposed;
@@ -44,7 +45,16 @@ namespace Nethermind.Core.Collections
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void GuardDispose()
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
+            if (_disposed)
+            {
+                ThrowObjectDisposed();
+            }
+
+            [DoesNotReturn]
+            static void ThrowObjectDisposed()
+            {
+                throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
+            }
         }
 
         IEnumerator IEnumerable.GetEnumerator()
@@ -160,20 +170,23 @@ namespace Nethermind.Core.Collections
         private bool GuardIndex(int index, bool shouldThrow = true, bool allowEqualToCount = false)
         {
             GuardDispose();
-            if (index < 0)
+            int count = _count;
+            if ((uint)index > (uint)count || (!allowEqualToCount && index == count))
             {
-                return shouldThrow
-                    ? throw new ArgumentOutOfRangeException($"Index {index} is below 0.")
-                    : false;
-            }
-            else if (index >= _count && (!allowEqualToCount || index > _count))
-            {
-                return shouldThrow
-                    ? throw new ArgumentOutOfRangeException($"Index {index} is above count {_count}.")
-                    : false;
+                if (shouldThrow)
+                {
+                    ThrowArgumentOutOfRangeException();
+                }
+                return false;
             }
 
             return true;
+
+            [DoesNotReturn]
+            static void ThrowArgumentOutOfRangeException()
+            {
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
         }
 
         private struct ArrayPoolListEnumerator : IEnumerator<T>

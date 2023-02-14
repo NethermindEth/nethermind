@@ -12,52 +12,33 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumerable<string>>
 {
-    private static IDictionary<string, bool> _capabilities = null!;
-    private readonly ILogger _logger;
+    private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(1);
 
-    public ExchangeCapabilitiesHandler(ISpecProvider specProvider, ILogManager logManager)
+    private readonly ILogger _logger;
+    private readonly IRpcCapabilitiesProvider _engineRpcCapabilitiesProvider;
+
+    public ExchangeCapabilitiesHandler(IRpcCapabilitiesProvider engineRpcCapabilitiesProvider, ISpecProvider specProvider, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(logManager);
 
         _logger = logManager.GetClassLogger();
-
-        if (_capabilities is null)
-        {
-            var spec = specProvider.GetSpec((long.MaxValue, ulong.MaxValue));
-
-            _capabilities = new Dictionary<string, bool>
-            {
-                #region The Merge
-                [nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = true,
-                [nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = true,
-                [nameof(IEngineRpcModule.engine_getPayloadV1)] = true,
-                [nameof(IEngineRpcModule.engine_newPayloadV1)] = true,
-                #endregion
-
-                #region Shanghai
-                [nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)] = spec.WithdrawalsEnabled,
-                [nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1)] = spec.WithdrawalsEnabled,
-                [nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)] = spec.WithdrawalsEnabled,
-                [nameof(IEngineRpcModule.engine_getPayloadV2)] = spec.WithdrawalsEnabled,
-                [nameof(IEngineRpcModule.engine_newPayloadV2)] = spec.WithdrawalsEnabled
-                #endregion
-            };
-        }
+        _engineRpcCapabilitiesProvider = engineRpcCapabilitiesProvider;
     }
 
     public ResultWrapper<IEnumerable<string>> Handle(IEnumerable<string> methods)
     {
-        CheckCapabilities(methods);
+        var capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
+        CheckCapabilities(methods, capabilities);
 
-        return ResultWrapper<IEnumerable<string>>.Success(_capabilities.Keys);
+        return ResultWrapper<IEnumerable<string>>.Success(capabilities.Keys);
     }
 
-    private void CheckCapabilities(IEnumerable<string> methods)
+    private void CheckCapabilities(IEnumerable<string> methods, IReadOnlyDictionary<string, bool> capabilities)
     {
         var missing = new List<string>();
 
-        foreach (var capability in _capabilities)
+        foreach (var capability in capabilities)
         {
             var found = false;
 

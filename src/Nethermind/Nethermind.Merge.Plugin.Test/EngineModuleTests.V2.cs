@@ -487,7 +487,7 @@ public partial class EngineModuleTests
     {
         var blockTree = Substitute.For<IBlockTree>();
 
-        blockTree.BestSuggestedBody.Returns(Build.A.Block.WithNumber(5).TestObject);
+        blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
         blockTree.FindBlock(Arg.Any<long>()).Returns(input.Impl);
 
         using var chain = await CreateShanghaiBlockChain();
@@ -506,7 +506,7 @@ public partial class EngineModuleTests
 
         blockTree.FindBlock(Arg.Any<long>())
             .Returns(i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
-        blockTree.BestSuggestedBody.Returns(Build.A.Block.WithNumber(5).TestObject);
+        blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
         using var chain = await CreateShanghaiBlockChain();
         chain.BlockTree = blockTree;
