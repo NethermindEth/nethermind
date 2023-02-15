@@ -477,123 +477,6 @@ namespace Nethermind.Synchronization.Peers
                    lowestInsertedHeader > 1 && lowestInsertedHeader < blockNumber;
         }
 
-        internal void DropUselessPeers(bool force = false)
-        {
-            if (!force && DateTime.UtcNow - _lastUselessPeersDropTime < TimeSpan.FromSeconds(30))
-                // give some time to monitoring nodes
-                // (monitoring nodes are nodes that are investigating the network but are not synced themselves)
-                return;
-
-            if (_logger.IsTrace) _logger.Trace($"Reviewing {PeerCount} peer usefulness");
-
-            int peersDropped = 0;
-            _lastUselessPeersDropTime = DateTime.UtcNow;
-
-            long ourNumber = _blockTree.BestSuggestedHeader?.Number ?? 0L;
-            UInt256 ourDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
-            foreach (PeerInfo peerInfo in NonStaticPeers)
-            {
-                if (peerInfo.HeadNumber == 0
-                    && peerInfo.IsInitialized
-                    && ourNumber != 0
-                    && peerInfo.PeerClientType != NodeClientType.Nethermind
-                    && peerInfo.PeerClientType != NodeClientType.Trinity)
-                // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
-                {
-                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
-                    {
-                        peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.UselessInFastBlocks, "PEER REVIEW / HEAD 0");
-                    }
-                }
-                else if (peerInfo.HeadNumber == 1920000 && _blockTree.NetworkId == BlockchainIds.Mainnet) // mainnet, stuck Geth nodes
-                {
-                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
-                    {
-                        peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.UselessInFastBlocks, "PEER REVIEW / 1920000");
-                    }
-                }
-                else if (peerInfo.HeadNumber == 7280022 && _blockTree.NetworkId == BlockchainIds.Mainnet) // mainnet, stuck Geth nodes
-                {
-                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
-                    {
-                        peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.UselessInFastBlocks, "PEER REVIEW / 7280022");
-                    }
-                }
-                else if (peerInfo.HeadNumber > ourNumber + 1024L && _betterPeerStrategy.IsLowerThanTerminalTotalDifficulty(peerInfo.TotalDifficulty) && peerInfo.TotalDifficulty < ourDifficulty)
-                {
-                    if (!CanBeUsefulForFastBlocks(MainnetSpecProvider.Instance.DaoBlockNumber ?? 0))
-                    {
-                        // probably Ethereum Classic nodes tht remain connected after we went pass the DAO
-                        // worth to find a better way to discard them at the right time
-                        peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(InitiateDisconnectReason.UselessInFastBlocks, "STRAY PEER");
-                    }
-                }
-            }
-
-            if (PeerCount == PeerMaxCount)
-            {
-                peersDropped += DropWorstPeer();
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
-        }
-
-        private int DropWorstPeer()
-        {
-            string? IsPeerWorstWithReason(PeerInfo currentPeer, PeerInfo toCompare)
-            {
-                if (toCompare.HeadNumber < currentPeer.HeadNumber)
-                {
-                    return "LOWEST NUMBER";
-                }
-
-                if (toCompare.TotalDifficulty < currentPeer.TotalDifficulty)
-                {
-                    return "LOWEST DIFFICULTY";
-                }
-
-                if ((_stats.GetOrAdd(toCompare.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue) >
-                    (_stats.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue))
-                {
-                    return "HIGHEST PING";
-                }
-
-                return null;
-            }
-
-            bool canDropPriorityPeer = PriorityPeerCount >= PriorityPeerMaxCount;
-
-            PeerInfo? worstPeer = null;
-            string? worstReason = "DEFAULT";
-
-            foreach (PeerInfo peerInfo in NonStaticPeers)
-            {
-                if (peerInfo.SyncPeer.IsPriority && !canDropPriorityPeer)
-                {
-                    continue;
-                }
-
-                if (worstPeer is null)
-                {
-                    worstPeer = peerInfo;
-                }
-
-                string? peerWorstReason = IsPeerWorstWithReason(worstPeer, peerInfo);
-                if (peerWorstReason is not null)
-                {
-                    worstPeer = peerInfo;
-                    worstReason = peerWorstReason;
-                }
-            }
-
-            worstPeer?.SyncPeer.Disconnect(InitiateDisconnectReason.DropWorstPeer, $"PEER REVIEW / {worstReason}");
-            return 1;
-        }
-
         public void SignalPeersChanged()
         {
             if (!_signals.SafeWaitHandle.IsClosed)
@@ -674,7 +557,6 @@ namespace Nethermind.Synchronization.Peers
         /// <exception cref="InvalidOperationException">Thrown if an irreplaceable allocation is being replaced by this method (internal implementation error).</exception>
         private void UpgradeAllocations()
         {
-            DropUselessPeers();
             WakeUpPeerThatSleptEnough();
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
             {
