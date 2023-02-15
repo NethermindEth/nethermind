@@ -139,7 +139,7 @@ namespace Nethermind.Db
                     try
                     {
                         var rlpValueContext = data.AsRlpValueContext();
-                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraData);
+                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                     }
                     finally
                     {
@@ -154,7 +154,7 @@ namespace Nethermind.Db
                         return null;
                     }
 
-                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
+                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraBytes);
                 }
             }
 
@@ -182,7 +182,7 @@ namespace Nethermind.Db
                     try
                     {
                         var rlpValueContext = data.AsRlpValueContext();
-                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraData);
+                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                     }
                     finally
                     {
@@ -197,7 +197,7 @@ namespace Nethermind.Db
                         return null;
                     }
 
-                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
+                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraBytes);
                 }
             }
 
