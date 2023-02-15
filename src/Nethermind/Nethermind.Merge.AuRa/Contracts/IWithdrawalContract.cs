@@ -7,5 +7,5 @@ namespace Nethermind.Merge.AuRa.Contracts;
 
 public interface IWithdrawalContract
 {
-    void Withdraw(BlockHeader blockHeader, ulong[] amounts, Address[] addresses);
+    void ExecuteWithdrawals(BlockHeader blockHeader, ulong[] amounts, Address[] addresses);
 }

@@ -49,7 +49,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
             }
 
             // TODO: check for a failure to invalidate block
-            _contract.Withdraw(block.Header, amounts, addresses);
+            _contract.ExecuteWithdrawals(block.Header, amounts, addresses);
 
             ArrayPool<ulong>.Shared.Return(amounts);
             ArrayPool<Address>.Shared.Return(addresses);

@@ -17,12 +17,12 @@ public class WithdrawalContract : CallableContract, IWithdrawalContract
         Address contractAddress)
         : base(transactionProcessor, abiEncoder, contractAddress) { }
 
-    public void Withdraw(BlockHeader blockHeader, ulong[] amounts, Address[] addresses)
+    public void ExecuteWithdrawals(BlockHeader blockHeader, ulong[] amounts, Address[] addresses)
     {
         ArgumentNullException.ThrowIfNull(blockHeader);
         ArgumentNullException.ThrowIfNull(amounts);
         ArgumentNullException.ThrowIfNull(addresses);
 
-        Call(blockHeader, "withdraw", Address.SystemUser, UnlimitedGas, amounts, addresses);
+        Call(blockHeader, "executeSystemWithdrawals", Address.SystemUser, UnlimitedGas, amounts, addresses);
     }
 }

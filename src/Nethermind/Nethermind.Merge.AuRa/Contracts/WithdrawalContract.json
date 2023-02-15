@@ -12,7 +12,7 @@
         "type": "address[]"
       }
     ],
-    "name": "withdraw",
+    "name": "executeSystemWithdrawals",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
