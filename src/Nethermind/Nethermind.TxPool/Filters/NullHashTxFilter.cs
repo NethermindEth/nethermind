@@ -10,7 +10,7 @@ namespace Nethermind.TxPool.Filters
     /// This generally should never happen as there should be no way for a transaction to be decoded
     /// without hash when coming from devp2p.
     /// </summary>
-    internal class NullHashTxFilter : IIncomingTxFilter
+    internal sealed class NullHashTxFilter : IIncomingTxFilter
     {
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {

@@ -12,12 +12,12 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions which gas payments overflow uint256 or simply exceed sender balance
     /// </summary>
-    internal class TooExpensiveTxFilter : IIncomingTxFilter
+    internal sealed class BalanceTooLowFilter : IIncomingTxFilter
     {
         private readonly TxDistinctSortedPool _txs;
         private readonly ILogger _logger;
 
-        public TooExpensiveTxFilter(TxDistinctSortedPool txs, ILogger logger)
+        public BalanceTooLowFilter(TxDistinctSortedPool txs, ILogger logger)
         {
             _txs = txs;
             _logger = logger;
@@ -27,6 +27,13 @@ namespace Nethermind.TxPool.Filters
         {
             Account account = state.SenderAccount;
             UInt256 balance = account.Balance;
+
+            if (balance.IsZero)
+            {
+                Metrics.PendingTransactionsZeroBalance++;
+                return AcceptTxResult.InsufficientFunds.WithMessage("Account balance: 0");
+            }
+
             UInt256 cumulativeCost = UInt256.Zero;
             bool overflow = false;
             Transaction[] transactions = _txs.GetBucketSnapshot(tx.SenderAddress!); // since unknownSenderFilter will run before this one
@@ -64,6 +71,8 @@ namespace Nethermind.TxPool.Filters
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
+
+                Metrics.PendingTransactionsTooLowBalance++;
                 return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, cumulative cost: {cumulativeCost}");
             }
 

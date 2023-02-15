@@ -95,14 +95,14 @@ namespace Nethermind.TxPool
             _headInfo.HeadChanged += OnHeadChange;
 
             _filterPipeline.Add(new NullHashTxFilter());
+            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, _logger));
             _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache, _logger));
             _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
             _filterPipeline.Add(new LowNonceFilter(_logger)); // has to be after UnknownSenderFilter as it uses sender
             _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
-            _filterPipeline.Add(new TooExpensiveTxFilter(_transactions, _logger));
-            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, logManager));
+            _filterPipeline.Add(new BalanceTooLowFilter(_transactions, _logger));
             if (incomingTxFilter is not null)
             {
                 _filterPipeline.Add(incomingTxFilter);
@@ -176,9 +176,10 @@ namespace Nethermind.TxPool
             if (previousBlock is not null)
             {
                 bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Header).IsEip155Enabled;
-                for (int i = 0; i < previousBlock.Transactions.Length; i++)
+                Transaction[] txs = previousBlock.Transactions;
+                for (int i = 0; i < txs.Length; i++)
                 {
-                    Transaction tx = previousBlock.Transactions[i];
+                    Transaction tx = txs[i];
                     _hashCache.Delete(tx.Hash!);
                     SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
@@ -308,7 +309,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    Metrics.PendingTransactionsTooLowFee++;
+                    Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
                     return AcceptTxResult.FeeTooLowToCompete;
                 }
             }
@@ -549,6 +550,60 @@ namespace Nethermind.TxPool
             ThisNodeInfo.AddInfo("Mem est tx   :",
                 $"{(LruCache<KeccakKey, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB"
                     .PadLeft(8));
+        }
+
+        public static void WriteTxnPoolReport(ILogger logger)
+        {
+            if (!logger.IsInfo)
+            {
+                return;
+            }
+
+            float preStateDiscards = (float)(Metrics.PendingTransactionsTooLowFee + Metrics.PendingTransactionsKnown + Metrics.PendingTransactionsGasLimitTooHigh) / Metrics.PendingTransactionsDiscarded;
+            float receivedDiscarded = (float)Metrics.PendingTransactionsDiscarded / Metrics.PendingTransactionsReceived;
+
+            // Set divisions by zero to 0
+            if (float.IsNaN(preStateDiscards)) preStateDiscards = 0;
+            if (float.IsNaN(receivedDiscarded)) receivedDiscarded = 0;
+
+            logger.Info(@$"Txn Pool State ({Metrics.TransactionCount:0} txns queued)
+------------------------------------------
+Sent
+* Transactions:         {Metrics.PendingTransactionsSent,18:0}
+* Hashes:               {Metrics.PendingTransactionsHashesSent,18:0}
+------------------------------------------
+Total Received:         {Metrics.PendingTransactionsReceived,18:0}
+------------------------------------------
+Discarded at Filter Stage:        
+1.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,18:0}
+2.  Already Known:      {Metrics.PendingTransactionsKnown,18:0}
+3.  Malformed           {Metrics.PendingTransactionsMalformed,18:0}
+4.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,18:0}
+5.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,18:0}
+6.  Nonce used:         {Metrics.PendingTransactionsLowNonce,18:0}
+7.  Nonces skipped:     {Metrics.PendingTransactionsNonceGap,18:0}
+8.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,18:0}
+9.  Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,18:0}
+10. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,18:0}
+------------------------------------------
+Validated via State:    {Metrics.PendingTransactionsWithExpensiveFiltering,18:0}
+------------------------------------------
+Total Discarded:        {Metrics.PendingTransactionsDiscarded,18:0}
+Ratios:
+* Pre-state Discards:   {preStateDiscards,18:P5}
+* Received Discarded:   {receivedDiscarded,18:P5}
+------------------------------------------
+Total Added:            {Metrics.PendingTransactionsAdded,18:0}
+* Eip1559 Added:        {Metrics.Pending1559TransactionsAdded,18:0}
+------------------------------------------
+Total Evicted:          {Metrics.PendingTransactionsEvicted,18:0}
+------------------------------------------
+Ratios:
+* Eip1559 Transactions: {Metrics.Eip1559TransactionsRatio,18:P5}
+* DarkPool Level1:      {Metrics.DarkPoolRatioLevel1,18:P5}
+* DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,18:P5}
+------------------------------------------
+");
         }
     }
 }

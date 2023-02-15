@@ -5,7 +5,7 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool.Filters
 {
-    public class NullIncomingTxFilter : IIncomingTxFilter
+    public sealed class NullIncomingTxFilter : IIncomingTxFilter
     {
         private NullIncomingTxFilter() { }
 

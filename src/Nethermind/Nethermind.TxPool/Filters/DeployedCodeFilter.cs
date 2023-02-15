@@ -9,7 +9,7 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions that sender has any code deployed. If <see cref="IReleaseSpec.IsEip3607Enabled"/> is enabled.
     /// </summary>
-    internal class DeployedCodeFilter : IIncomingTxFilter
+    internal sealed class DeployedCodeFilter : IIncomingTxFilter
     {
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IAccountStateProvider _stateProvider;

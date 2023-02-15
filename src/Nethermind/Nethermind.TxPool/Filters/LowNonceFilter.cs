@@ -10,7 +10,7 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions where nonce is lower than the current sender account nonce.
     /// </summary>
-    internal class LowNonceFilter : IIncomingTxFilter
+    internal sealed class LowNonceFilter : IIncomingTxFilter
     {
         private readonly ILogger _logger;
 
@@ -30,6 +30,7 @@ namespace Nethermind.TxPool.Filters
             if (tx.Nonce < currentNonce)
             {
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
+                Metrics.PendingTransactionsLowNonce++;
                 return AcceptTxResult.OldNonce.WithMessage($"Current nonce: {currentNonce}, nonce of rejected tx: {tx.Nonce}");
             }
 
