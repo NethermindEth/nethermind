@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -16,10 +15,7 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
 
-    private readonly IAsyncHandler<IEnumerable<string>, IEnumerable<string>> _capabilitiesHandler;
-    private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
-    private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result?[]> _executionGetPayloadBodiesByHashV1Handler;
-    private readonly IGetPayloadBodiesByRangeV1Handler _executionGetPayloadBodiesByRangeV1Handler;
+    private readonly IHandler<IEnumerable<string>, IEnumerable<string>> _capabilitiesHandler;
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
 
@@ -28,11 +24,10 @@ public partial class EngineRpcModule : IEngineRpcModule
         IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV2,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
-        IHandler<ExecutionStatusResult> executionStatusHandler,
-        IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result?[]> executionGetPayloadBodiesByHashV1Handler,
+        IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
         IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
-        IAsyncHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
+        IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         ISpecProvider specProvider,
         ILogManager logManager)
     {
@@ -41,7 +36,6 @@ public partial class EngineRpcModule : IEngineRpcModule
         _getPayloadHandlerV2 = getPayloadHandlerV2;
         _newPayloadV1Handler = newPayloadV1Handler;
         _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
-        _executionStatusHandler = executionStatusHandler;
         _executionGetPayloadBodiesByHashV1Handler = executionGetPayloadBodiesByHashV1Handler;
         _executionGetPayloadBodiesByRangeV1Handler = executionGetPayloadBodiesByRangeV1Handler;
         _transitionConfigurationHandler = transitionConfigurationHandler;
@@ -49,14 +43,6 @@ public partial class EngineRpcModule : IEngineRpcModule
         _logger = logManager.GetClassLogger();
     }
 
-    public Task<ResultWrapper<IEnumerable<string>>> engine_exchangeCapabilities(IEnumerable<string> methods)
-        => _capabilitiesHandler.HandleAsync(methods);
-
-    public ResultWrapper<ExecutionStatusResult> engine_executionStatus() => _executionStatusHandler.Handle();
-
-    public Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByHashV1(Keccak[] blockHashes)
-        => _executionGetPayloadBodiesByHashV1Handler.HandleAsync(blockHashes);
-
-    public Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> engine_getPayloadBodiesByRangeV1(long start, long count)
-        => _executionGetPayloadBodiesByRangeV1Handler.Handle(start, count);
+    public ResultWrapper<IEnumerable<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
+        => _capabilitiesHandler.Handle(methods);
 }

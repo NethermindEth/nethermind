@@ -54,11 +54,6 @@ configs = {
         "blockReduced": 1000,
         "multiplierRequirement": 1000
     },
-    "sokol": {
-        "url": "https://sokol.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
     "energyweb": {
         "url": "https://rpc.energyweb.org",
         "blockReduced": 8192,
