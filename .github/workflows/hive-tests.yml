@@ -43,6 +43,7 @@ on:
 jobs:
   test:
     name: Build and run tests
+    timeout-minutes: 2400
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -92,7 +93,7 @@ jobs:
         if: env.LIMIT == ''
         continue-on-error: true
         working-directory: hive
-        run: ./hive --client nethermind --sim $TEST_SUITE --sim.loglevel $LOG_LEVEL
+        run: ./hive --client nethermind --sim $TEST_SUITE --sim.loglevel $LOG_LEVEL --sim.parallelism 16
       - name: Run Hive with limit
         if: env.LIMIT != ''
         continue-on-error: true
