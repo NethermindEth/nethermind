@@ -469,14 +469,6 @@ namespace Nethermind.Synchronization.Peers
             upgradeTimer.Start();
         }
 
-        private bool CanBeUsefulForFastBlocks(long blockNumber)
-        {
-            long lowestInsertedBody = _blockTree.LowestInsertedBodyNumber ?? long.MaxValue;
-            long lowestInsertedHeader = _blockTree.LowestInsertedHeader?.Number ?? long.MaxValue;
-            return lowestInsertedBody > 1 && lowestInsertedBody < blockNumber ||
-                   lowestInsertedHeader > 1 && lowestInsertedHeader < blockNumber;
-        }
-
         public void SignalPeersChanged()
         {
             if (!_signals.SafeWaitHandle.IsClosed)
