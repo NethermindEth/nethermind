@@ -55,7 +55,7 @@ namespace Nethermind.Serialization.Rlp
             LogEntry[] entries = new LogEntry[numberOfReceipts];
             for (int i = 0; i < numberOfReceipts; i++)
             {
-                entries[i] = Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraData);
+                entries[i] = Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraBytes);
             }
 
             txReceipt.Logs = entries;
