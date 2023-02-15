@@ -3,8 +3,6 @@
 
 using Nethermind.Core.Crypto;
 
-using Org.BouncyCastle.Crypto.Digests;
-
 namespace Nethermind.Network.Rlpx
 {
     public class EncryptionSecrets
