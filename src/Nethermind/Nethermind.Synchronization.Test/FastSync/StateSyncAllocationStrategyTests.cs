@@ -8,6 +8,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
@@ -25,19 +26,19 @@ public class StateSyncAllocationStrategyTests
     [Test]
     public void Can_allocate_node_with_snap()
     {
-        IsNodeAllocated(67, true).Should().BeTrue();
+        IsNodeAllocated(EthVersions.Eth67, true).Should().BeTrue();
     }
 
     [Test]
     public void Can_allocate_pre_eth67_node()
     {
-        IsNodeAllocated(66, false).Should().BeTrue();
+        IsNodeAllocated(EthVersions.Eth66, false).Should().BeTrue();
     }
 
     [Test]
     public void Cannot_allocated_eth67_with_no_snap()
     {
-        IsNodeAllocated(67, false).Should().BeFalse();
+        IsNodeAllocated(EthVersions.Eth67, false).Should().BeFalse();
     }
 
     private bool IsNodeAllocated(int version, bool hasSnap)
@@ -46,7 +47,7 @@ public class StateSyncAllocationStrategyTests
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.Node.Returns(node);
         syncPeer.ProtocolVersion.Returns((byte)version);
-        syncPeer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
+        syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer>()).Returns(
             x =>
             {
                 if (hasSnap)
