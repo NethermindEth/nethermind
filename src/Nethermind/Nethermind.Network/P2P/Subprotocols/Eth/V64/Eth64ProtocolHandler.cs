@@ -5,6 +5,7 @@ using System;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
@@ -35,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
 
         public override string Name => "eth64";
 
-        public override byte ProtocolVersion => 64;
+        public override byte ProtocolVersion => EthVersions.Eth64;
 
         protected override void EnrichStatusMessage(StatusMessage statusMessage)
         {

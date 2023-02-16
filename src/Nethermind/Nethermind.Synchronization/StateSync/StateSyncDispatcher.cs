@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.StateSync
             Task<byte[][]> task = null;
             HashList? hashList = null;
             // Use GETNODEDATA if possible
-            if (peer.Node.EthDetails.Equals("eth66"))
+            if (peerInfo.CanGetNodeData())
             {
                 hashList = HashList.Rent(batch.RequestedNodes);
                 task = peer.GetNodeData(hashList, cancellationToken);
@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.StateSync
 
             if (task is null)
             {
-                return;
+                throw new InvalidOperationException("State sync dispatch was scheduled to a peer unable to serve state sync.");
             }
 
             try
