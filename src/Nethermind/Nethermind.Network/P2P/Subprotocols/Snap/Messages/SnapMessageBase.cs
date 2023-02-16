@@ -8,7 +8,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public abstract class SnapMessageBase : P2PMessage
     {
-        public override string Protocol => Nethermind.Network.P2P.Protocol.Snap;
+        public override string Protocol => Contract.P2P.Protocol.Snap;
 
         /// <summary>
         /// Request ID to match up responses with
