@@ -48,6 +48,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\energyweb.json = Chains\energyweb.json
 		Chains\foundation.json = Chains\foundation.json
 		Chains\genesis.json = Chains\genesis.json
+		Chains\gnosis_withdrawals_devnet.json = Chains\gnosis_withdrawals_devnet.json
 		Chains\goerli.json = Chains\goerli.json
 		Chains\kovan.json = Chains\kovan.json
 		Chains\poacore.json = Chains\poacore.json
