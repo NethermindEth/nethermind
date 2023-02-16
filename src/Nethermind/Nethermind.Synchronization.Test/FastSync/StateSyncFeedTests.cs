@@ -5,6 +5,8 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -12,8 +14,11 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync
@@ -345,6 +350,58 @@ namespace Nethermind.Synchronization.Test.FastSync
 
 
             dbContext.CompareTrees("END");
+        }
+
+        [Test]
+        public async Task When_empty_response_received_return_lesser_quality()
+        {
+            DbContext dbContext = new(_logger, _logManager);
+            dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
+            dbContext.RemoteStateTree.Commit(0);
+
+            SafeContext ctx = new SafeContext();
+            ctx = new SafeContext();
+
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)StateSyncFeedTestsBase.BlockTree.BestSuggestedHeader.Number).TestObject;
+
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.FastSync = true;
+            ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
+            ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
+
+            StateSyncBatch? request = await ctx.Feed.PrepareRequest();
+            request.Should().NotBeNull();
+
+            ctx.Feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>()))
+                .Should().Be(SyncResponseHandlingResult.LesserQuality);
+        }
+
+        [Test]
+        public async Task When_empty_response_received_with_no_peer_return_not_allocated()
+        {
+            DbContext dbContext = new(_logger, _logManager);
+            dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
+            dbContext.RemoteStateTree.Commit(0);
+
+            SafeContext ctx = new SafeContext();
+            ctx = new SafeContext();
+
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)StateSyncFeedTestsBase.BlockTree.BestSuggestedHeader.Number).TestObject;
+
+            SyncConfig syncConfig = new SyncConfig();
+            syncConfig.FastSync = true;
+            ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
+            ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
+
+            StateSyncBatch? request = await ctx.Feed.PrepareRequest();
+            request.Should().NotBeNull();
+
+            ctx.Feed.HandleResponse(request, null)
+                .Should().Be(SyncResponseHandlingResult.NotAssigned);
         }
 
         // [Test, Retry(5)]
