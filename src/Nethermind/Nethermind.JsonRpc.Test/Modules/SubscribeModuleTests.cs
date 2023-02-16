@@ -239,7 +239,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase("True")]
         [TestCase("false")]
         [TestCase("False")]
-        public void NewHeadSubscription_with_includeTransactions_arg_just_bool(string boolArg)
+        public void NewHeadSubscription_with_bool_arg(string boolArg)
         {
             string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", boolArg);
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
@@ -738,7 +738,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void NewPendingTransactionsSubscription_creating_result_with_arg()
+        public void NewPendingTransactionsSubscription_creating_result_with_includeTransactions_arg()
         {
             string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions", "{\"includeTransactions\":true}");
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
