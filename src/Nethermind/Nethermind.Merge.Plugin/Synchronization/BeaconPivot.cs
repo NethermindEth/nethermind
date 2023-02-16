@@ -107,7 +107,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     if (_logger.IsInfo) _logger.Info($"BeaconPivot was null. Setting beacon pivot to {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
                 }
 
-                // ToDo Sarah in some cases this could be wrong
                 if (beaconPivotExists && (PivotNumber > blockHeader.Number || blockHeader.Hash == PivotHash))
                 {
                     return;
