@@ -12,8 +12,15 @@ public class TransactionsOption : IJsonRpcParam
 
     public void ReadJson(JsonSerializer serializer, string jsonValue)
     {
-        JObject jObject = serializer.Deserialize<JObject>(jsonValue.ToJsonTextReader());
-        IncludeTransactions = GetIncludeTransactions(jObject["includeTransactions"]);
+        if (jsonValue.ToLower().Equals("true") || jsonValue.ToLower().Equals("false"))
+        {
+            IncludeTransactions = jsonValue.ToLower().Equals("true");
+        }
+        else
+        {
+            JObject jObject = serializer.Deserialize<JObject>(jsonValue.ToJsonTextReader());
+            IncludeTransactions = GetIncludeTransactions(jObject["includeTransactions"]);
+        }
     }
 
     private static bool GetIncludeTransactions(JToken? token) => token switch
