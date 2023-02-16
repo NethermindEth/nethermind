@@ -306,13 +306,12 @@ public partial class BlockDownloaderTests
         cts.Dispose();
     }
 
-    // [TestCase(32L, DownloaderOptions.MoveToMain, 32, false)]
-    [TestCase(128L, DownloaderOptions.MoveToMain, 32, true)]
-    public async Task No_old_bodies_and_receipts(long headNumber, int options, int threshold, bool withBeaconPivot)
+    [Test]
+    public async Task No_old_bodies_and_receipts()
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(4, (int)headNumber + 1)
+            .WithBlockTrees(4, 129)
             .InsertBeaconPivot(64)
             .InsertBeaconHeaders(4, 128);
         BlockTree syncedTree = blockTrees.SyncedTree;
@@ -327,8 +326,7 @@ public partial class BlockDownloaderTests
                 DownloadReceiptsInFastSync = false
             }, LimboLogs.Instance);
 
-        if (withBeaconPivot)
-            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(64, BlockTreeLookupOptions.None));
+        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(64, BlockTreeLookupOptions.None));
 
         BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -356,10 +354,6 @@ public partial class BlockDownloaderTests
         cts.Cancel();
 
         ctx.BlockTree.BestKnownNumber.Should().Be(96);
-
-        var h = ctx.BlockTree.FindBlock(96, BlockTreeLookupOptions.None);
-
-        // h.Transactions[0];
     }
 
     [TestCase(DownloaderOptions.WithReceipts)]
