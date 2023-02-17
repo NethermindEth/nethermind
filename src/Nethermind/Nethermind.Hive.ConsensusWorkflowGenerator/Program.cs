@@ -22,6 +22,9 @@ public static class Program
         fileContent.AppendLine("jobs:");
 
         Dictionary<string, long> filesToBeTested = new();
+        Dictionary<string, long> directoriesToBeTested = new();
+        const long targetSize = 12_000_000;
+
 
         List<List<string>> accumulatedData = new();
         List<string> accumulator = new();
@@ -30,6 +33,8 @@ public static class Program
         int jobsCreated = 0;
         foreach (string directory in directories)
         {
+            long subsum = 0;
+
             string parentDirectory = Directory.GetParent(directory).ToString();
             string prefix = Path.GetFileName(parentDirectory)[..2];
             if (!prefix.Equals("st") && !prefix.Equals("bc"))
@@ -38,38 +43,78 @@ public static class Program
 
                 foreach (string file in Directory.GetFiles(directory))
                 {
-                    string fileName = Path.GetFileName(file);
                     long fileSize = (new FileInfo(file)).Length;
-                    if (filesToBeTested.TryGetValue(fileName, out long size))
-                    {
-                        size += fileSize;
-                    }
-                    else
-                    {
-                        filesToBeTested.Add(fileName, fileSize);
-                    }
-
-                    sum += fileSize;
+                    subsum += fileSize;
                 }
 
+                if (subsum < targetSize)
+                {
+                    directoriesToBeTested.Add(directory, subsum);
+                }
+                else
+                {
+                    foreach (string file in Directory.GetFiles(directory))
+                    {
+                        string fileName = Path.GetFileName(file);
+                        long fileSize = (new FileInfo(file)).Length;
+                        if (filesToBeTested.TryGetValue(fileName, out long size))
+                        {
+                            size += fileSize;
+                        }
+                        else
+                        {
+                            filesToBeTested.Add(fileName, fileSize);
+                        }
+
+                        // sum += fileSize;
+                    }
+                }
             }
         }
 
-        long targetSize = sum / 100;
 
-        sum = 0;
-
-        foreach (var fileToBeTested in filesToBeTested)
+        foreach (var directory in directoriesToBeTested)
         {
-            accumulator.Add(fileToBeTested.Key);
-            sum += fileToBeTested.Value;
-
-            if (sum > targetSize)
+            if (directory.Value > 0 && sum + directory.Value > targetSize)
             {
                 accumulatedData.Add(new List<string>(accumulator));
                 accumulator.Clear();
                 sum = 0;
             }
+
+            string dirName = Path.GetFileName(directory.Key);
+            accumulator.Add(dirName);
+            sum += directory.Value;
+        }
+
+        if (accumulator.Count > 0)
+        {
+            accumulatedData.Add(new List<string>(accumulator));
+            accumulator.Clear();
+            sum = 0;
+        }
+
+
+        sum = 0;
+
+        foreach (var fileToBeTested in filesToBeTested)
+        {
+            if (fileToBeTested.Value > 0 && sum + fileToBeTested.Value > targetSize)
+            {
+                accumulatedData.Add(new List<string>(accumulator));
+                accumulator.Clear();
+                sum = 0;
+            }
+
+            accumulator.Add(fileToBeTested.Key);
+            sum += fileToBeTested.Value;
+        }
+
+        if (accumulator.Count > 0)
+        {
+            accumulatedData.Add(new List<string>(accumulator));
+            accumulator.Clear();
+            sum = 0;
         }
 
         foreach (List<string> run in accumulatedData)
@@ -126,10 +171,13 @@ public static class Program
 
         foreach (string test in tests)
         {
-            fileContent.AppendLine($"      - name: Run {test}");
+            string[] testSplitted = test.Split('.');
+            string testWithoutJson = testSplitted.First();
+            string parallelism = testSplitted.Length > 1 ? "" : " --sim.parallelism 16";
+            fileContent.AppendLine($"      - name: Run {testWithoutJson}");
             fileContent.AppendLine("        continue-on-error: true");
             fileContent.AppendLine("        working-directory: hive");
-            fileContent.AppendLine($"        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /{test} --sim.parallelism 16");
+            fileContent.AppendLine($"        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /{testWithoutJson}{parallelism}");
         }
 
         fileContent.AppendLine("      - name: Upload results");
