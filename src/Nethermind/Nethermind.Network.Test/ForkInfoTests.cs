@@ -374,8 +374,7 @@ namespace Nethermind.Network.Test
 
             ForkInfo forkInfo = new(specProvider, KnownHashes.MainnetGenesis);
 
-            forkInfo.ValidateForkId(new ForkId(Bytes.FromHexString(hash), next), head.Header).Should().Be(result);
-            forkInfo.ValidateForkId2(new ForkId(Bytes.FromHexString(hash), next), head.Header).Should().Be(result);
+            forkInfo.ValidateForkId(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next), head.Header).Should().Be(result);
         }
 
 
@@ -412,14 +411,14 @@ namespace Nethermind.Network.Test
 
         private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider)
         {
-            byte[] expectedForkHash = Bytes.FromHexString(forkHashHex);
+            uint expectedForkHash = Bytes.ReadEthUInt32(Bytes.FromHexString(forkHashHex));
 
             ForkId forkId = new ForkInfo(specProvider, genesisHash).GetForkId(head, headTimestamp);
-            byte[] forkHash = forkId.ForkHash;
-            forkHash.Should().BeEquivalentTo(expectedForkHash, description);
+            uint forkHash = forkId.ForkHash;
+            forkHash.Should().Be(expectedForkHash);
 
             forkId.Next.Should().Be(next);
-            forkId.ForkHash.Should().BeEquivalentTo(expectedForkHash);
+            forkId.ForkHash.Should().Be(expectedForkHash);
         }
     }
 }

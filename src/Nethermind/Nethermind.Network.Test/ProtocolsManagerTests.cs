@@ -208,7 +208,7 @@ namespace Nethermind.Network.Test
                 msg.GenesisHash = _blockTree.Genesis.Hash;
                 msg.BestHash = _blockTree.Genesis.Hash;
                 msg.ProtocolVersion = 66;
-                msg.ForkId = new ForkId(Array.Empty<byte>(), 0);
+                msg.ForkId = new ForkId(0, 0);
 
                 return ReceiveStatus(msg);
             }

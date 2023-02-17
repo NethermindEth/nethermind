@@ -31,28 +31,25 @@ namespace Nethermind.Network
             Forks = new (ForkActivation Activation, ForkId Id)[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
             uint crc = 0;
-            byte[] hash = CalculateHash(ref crc, genesisHash.Bytes);
+            CalculateHash(ref crc, genesisHash.Bytes);
             // genesis fork activation
-            (ForkActivation Activation, ForkId Id) toAdd = ((0, null), new ForkId(hash, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0));
+            (ForkActivation Activation, ForkId Id) toAdd = ((0, null), new ForkId(crc, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0));
             Forks[0] = toAdd;
-            DictForks.Add(BitConverter.ToUInt32(hash), toAdd);
+            DictForks.Add(crc, toAdd);
             for (int index = 0; index < transitionActivations.Length; index++)
             {
                 ForkActivation forkActivation = transitionActivations[index];
                 BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, forkActivation.Activation);
-                hash = CalculateHash(ref crc, blockNumberBytes);
-                toAdd = (forkActivation, new ForkId(hash, GetNextActivation(index, transitionActivations)));
+                CalculateHash(ref crc, blockNumberBytes);
+                toAdd = (forkActivation, new ForkId(crc, GetNextActivation(index, transitionActivations)));
                 Forks[index + 1] = toAdd;
-                DictForks.Add(BitConverter.ToUInt32(hash), toAdd);
+                DictForks.Add(crc, toAdd);
             }
         }
 
-        private static byte[] CalculateHash(ref uint crc, byte[] bytes)
+        private static void CalculateHash(ref uint crc, byte[] bytes)
         {
             crc = Crc32Algorithm.Append(crc, bytes);
-            byte[] forkHash = new byte[4];
-            BinaryPrimitives.TryWriteUInt32BigEndian(forkHash, crc);
-            return forkHash;
         }
 
         private static ulong GetNextActivation(int index, ForkActivation[] transitionActivations)
@@ -83,103 +80,16 @@ namespace Nethermind.Network
             activation.CompareTo(transition.Activation);
 
         /// <summary>
-        /// Verify that the forkid from peer matches our forks. Code is largely copied from Geth.
+        /// Verify that the forkid from peer matches our forks.
         /// </summary>
         /// <param name="peerId"></param>
         /// <returns></returns>
         public ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head)
         {
-            // Run the fork checksum validation ruleset:
-            //   1. If local and remote FORK_CSUM matches, compare local head to FORK_NEXT.
-            //        The two nodes are in the same fork state currently. They might know
-            //        of differing future forks, but that's not relevant until the fork
-            //        triggers (might be postponed, nodes might be updated to match).
-            //      1a. A remotely announced but remotely not passed block is already passed
-            //          locally, disconnect, since the chains are incompatible.
-            //      1b. No remotely announced fork; or not yet passed locally, connect.
-            //   2. If the remote FORK_CSUM is a subset of the local past forks and the
-            //      remote FORK_NEXT matches with the locally following fork block number,
-            //      connect.
-            //        Remote node is currently syncing. It might eventually diverge from
-            //        us, but at this current point in time we don't have enough information.
-            //   3. If the remote FORK_CSUM is a superset of the local past forks and can
-            //      be completed with locally known future forks, connect.
-            //        Local node is currently syncing. It might eventually diverge from
-            //        the remote, but at this current point in time we don't have enough
-            //        information.
-            //   4. Reject in all other cases.
             if (head == null) return ValidationResult.Valid;
-
-            for (int i = 0; i < Forks.Length; i++)
+            if (!DictForks.TryGetValue(peerId.ForkHash, out (ForkActivation Activation, ForkId Id) found))
             {
-                (ForkActivation forkActivation, ForkId forkId) = Forks[i];
-                bool usingTimestamp = (forkId.Next == 0
-                || forkId.Next >= TimstampThreshold)
-                && (peerId.Next == 0
-                || peerId.Next >= TimstampThreshold);
-                ulong headActivation = (usingTimestamp ? head.Timestamp : (ulong)head.Number);
-
-                // If our head is beyond this fork, continue to the next (we have a dummy
-                // fork of maxuint64 as the last item to always fail this check eventually).
-                if (i + 1 < Forks.Length && headActivation >= Forks[i + 1].Activation.Activation) continue;
-
-                // Found the first unpassed fork block, check if our current state matches
-                // the remote checksum (rule #1).
-                if (Bytes.AreEqual(forkId.ForkHash, peerId.ForkHash))
-                {
-                    // Fork checksum matched, check if a remote future fork block already passed
-                    // locally without the local node being aware of it (rule #1a).
-                    if (peerId.Next > 0 && headActivation >= peerId.Next)
-                    {
-                        return ValidationResult.IncompatibleOrStale;
-                    }
-                    // Haven't passed locally a remote-only fork, accept the connection (rule #1b).
-                    return ValidationResult.Valid;
-                }
-
-                // The local and remote nodes are in different forks currently, check if the
-                // remote checksum is a subset of our local forks (rule #2).
-                for (int j = 0; j < i; j++)
-                {
-                    if (Bytes.AreEqual(Forks[j].Id.ForkHash, peerId.ForkHash))
-                    {
-                        // Remote checksum is a subset, validate based on the announced next fork
-                        if (Forks[j + 1].Activation.Activation != peerId.Next)
-                        {
-                            return ValidationResult.RemoteStale;
-                        }
-
-                        return ValidationResult.Valid;
-                    }
-                }
-
-                // Remote chain is not a subset of our local one, check if it's a superset by
-                // any chance, signalling that we're simply out of sync (rule #3).
-                for (int j = i + 1; j < Forks.Length; j++)
-                {
-                    if (Bytes.AreEqual(Forks[j].Id.ForkHash, peerId.ForkHash))
-                    {
-                        // Yay, remote checksum is a superset, ignore upcoming forks
-                        return ValidationResult.Valid;
-                    }
-                }
-                // No exact, subset or superset match. We are on differing chains, reject.
-                return ValidationResult.IncompatibleOrStale;
-            }
-
-            throw new InvalidOperationException();
-        }
-
-        /// <summary>
-        /// Verify that the forkid from peer matches our forks.
-        /// </summary>
-        /// <param name="peerId"></param>
-        /// <returns></returns>
-        public ValidationResult ValidateForkId2(ForkId peerId, BlockHeader? head)
-        {
-            if (head == null) return ValidationResult.Valid;
-            if (!DictForks.TryGetValue(BitConverter.ToUInt32(peerId.ForkHash), out (ForkActivation Activation, ForkId Id) found))
-            {
+                // Remote is on fork that does not exist for local. remote is incompatible or local is stale.
                 return ValidationResult.IncompatibleOrStale;
             }
             bool usingTimestamp = (found.Id.Next == 0
@@ -188,30 +98,20 @@ namespace Nethermind.Network
                 || peerId.Next >= TimstampThreshold);
             ulong headActivation = (usingTimestamp ? head.Timestamp : (ulong)head.Number);
 
-            // my approach is to accept all peers except the ones we dont like. which is the oposite of what
-            // geth does. they reject all except ones they think are right.
-
             if (found.Id.Next != peerId.Next)
             {
                 if (peerId.Next == 0
                     && found.Id.Next > 0
                     && headActivation >= found.Id.Next)
                 {
+                    // Remote does not know about a fork that local has already went through. remote is stale.
                     return ValidationResult.RemoteStale;
                 }
                 if (peerId.Next > 0
-                    && headActivation > found.Activation.Activation)
+                    && headActivation >= peerId.Next)
                 {
-                    if (headActivation >= peerId.Next)
-                    {
-                        return ValidationResult.IncompatibleOrStale;
-                    }
-                    if (found.Id.Next > 0
-                        && headActivation >= found.Id.Next
-                        && peerId.Next != found.Id.Next)
-                    {
-                        return ValidationResult.IncompatibleOrStale;
-                    }
+                    // remote is expecting a fork that we passed but did not go through. remote is incompatible or local is stale.
+                    return ValidationResult.IncompatibleOrStale;
                 }
             }
             return ValidationResult.Valid;
