@@ -171,13 +171,11 @@ public static class Program
 
         foreach (string test in tests)
         {
-            string[] testSplitted = test.Split('.');
-            string testWithoutJson = testSplitted.First();
-            string parallelism = testSplitted.Length > 1 ? "" : " --sim.parallelism 16";
+            string testWithoutJson = test.Split('.').First();
             fileContent.AppendLine($"      - name: Run {testWithoutJson}");
             fileContent.AppendLine("        continue-on-error: true");
             fileContent.AppendLine("        working-directory: hive");
-            fileContent.AppendLine($"        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /{testWithoutJson}{parallelism}");
+            fileContent.AppendLine($"        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /{testWithoutJson} --sim.parallelism 16");
         }
 
         fileContent.AppendLine("      - name: Upload results");
