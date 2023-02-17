@@ -3,6 +3,7 @@ name: 'Hive tests'
 on:
   push:
     tags: ['*']
+  workflow_dispatch:
 
 jobs:
   stCreate2:
