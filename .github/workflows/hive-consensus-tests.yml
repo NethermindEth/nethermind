@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test1
+  test1:
     name: stArgsZeroOneBalance
     runs-on: ubuntu-latest
     steps:
