@@ -28,7 +28,9 @@ namespace Nethermind.Blockchain.Synchronization
         UInt256 TotalDifficulty { get; set; }
         bool IsInitialized { get; set; }
         bool IsPriority { get; set; }
-        void Disconnect(DisconnectReason reason, string details);
+        byte ProtocolVersion { get; }
+        string ProtocolCode { get; }
+        void Disconnect(InitiateDisconnectReason reason, string details);
         Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token);

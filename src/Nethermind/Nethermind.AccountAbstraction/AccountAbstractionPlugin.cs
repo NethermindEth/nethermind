@@ -32,7 +32,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Network.Config;
 using Nethermind.Consensus.Producers;
-
+using Nethermind.Config;
+using Nethermind.Network.Contract.P2P;
 
 namespace Nethermind.AccountAbstraction
 {
@@ -136,7 +137,8 @@ namespace Nethermind.AccountAbstraction
                 _whitelistedPaymasters.ToArray(),
                 getFromApi.SpecProvider!,
                 getFromApi.Timestamper,
-                getFromApi.LogManager);
+                getFromApi.LogManager,
+                getFromApi.Config<IBlocksConfig>());
 
             return _userOperationSimulators[entryPoint];
         }

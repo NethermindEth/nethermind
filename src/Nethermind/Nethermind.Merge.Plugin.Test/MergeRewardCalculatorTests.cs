@@ -10,7 +10,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -134,8 +133,8 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void No_block_rewards_calculator()
         {
-            Block block = Build.A.Block.WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
-            Block block2 = Build.A.Block.WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
 
             PoSSwitcher poSSwitcher = CreatePosSwitcher();
             poSSwitcher.TryUpdateTerminalBlock(block.Header);

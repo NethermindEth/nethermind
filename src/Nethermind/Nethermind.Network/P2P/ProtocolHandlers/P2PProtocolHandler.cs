@@ -12,6 +12,7 @@ using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
@@ -219,8 +220,9 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
         if (_agreedCapabilities.Count == 0)
         {
+            _nodeStatsManager.ReportFailedValidation(Session.Node, CompatibilityValidationType.Capabilities);
             Session.InitiateDisconnect(
-                DisconnectReason.UselessPeer,
+                InitiateDisconnectReason.NoCapabilityMatched,
                 $"capabilities: {string.Join(", ", capabilities)}");
         }
 

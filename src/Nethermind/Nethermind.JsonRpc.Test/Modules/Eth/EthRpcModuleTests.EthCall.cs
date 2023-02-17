@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -103,7 +103,7 @@ public partial class EthRpcModuleTests
     public async Task should_not_reject_transactions_with_deployed_code_when_eip3607_enabled()
     {
         OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1, IsEip3607Enabled = true };
-        TestSpecProvider specProvider = new(releaseSpec) { ChainId = ChainId.Mainnet, AllowTestChainOverride = false };
+        TestSpecProvider specProvider = new(releaseSpec) { AllowTestChainOverride = false };
         using Context ctx = await Context.Create(specProvider);
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;

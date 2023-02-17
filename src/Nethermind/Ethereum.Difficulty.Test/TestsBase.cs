@@ -68,9 +68,9 @@ namespace Ethereum.Difficulty.Test
             return new DifficultyTests(
                 fileName,
                 name,
-                ToUInt256(json.ParentTimestamp),
+                (ulong)ToUInt256(json.ParentTimestamp),
                 ToUInt256(json.ParentDifficulty),
-                ToUInt256(json.CurrentTimestamp),
+                (ulong)ToUInt256(json.CurrentTimestamp),
                 (long)ToUInt256(json.CurrentBlockNumber),
                 ToUInt256(json.CurrentDifficulty),
                 !string.IsNullOrWhiteSpace(json.ParentUncles) && new Keccak(json.ParentUncles) != noUnclesHash);

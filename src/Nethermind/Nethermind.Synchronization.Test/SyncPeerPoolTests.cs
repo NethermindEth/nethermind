@@ -64,10 +64,12 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; } = 1;
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
+            public byte ProtocolVersion { get; }
+            public string ProtocolCode { get; }
 
             public bool DisconnectRequested { get; set; }
 
-            public void Disconnect(DisconnectReason reason, string details)
+            public void Disconnect(InitiateDisconnectReason reason, string details)
             {
                 DisconnectRequested = true;
             }
@@ -585,7 +587,7 @@ namespace Nethermind.Synchronization.Test
             await using Context ctx = new();
             var peers = await SetupPeers(ctx, 3);
             var peerInfo = ctx.Pool.InitializedPeers.First();
-            ctx.Pool.ReportBreachOfProtocol(peerInfo, "issue details");
+            ctx.Pool.ReportBreachOfProtocol(peerInfo, InitiateDisconnectReason.Other, "issue details");
 
             Assert.True(((SimpleSyncPeerMock)peerInfo.SyncPeer).DisconnectRequested);
         }

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -98,7 +98,7 @@ namespace Nethermind.Consensus.AuRa
         {
             private const int MaxCacheSize = 10;
 
-            internal ICache<Keccak, long?> GasLimitCache { get; } = new LruCache<Keccak, long?>(MaxCacheSize, "BlockGasLimit");
+            internal LruCache<KeccakKey, long?> GasLimitCache { get; } = new(MaxCacheSize, "BlockGasLimit");
         }
 
         public bool IsGasLimitValid(BlockHeader parentHeader, in long gasLimit, out long? expectedGasLimit)

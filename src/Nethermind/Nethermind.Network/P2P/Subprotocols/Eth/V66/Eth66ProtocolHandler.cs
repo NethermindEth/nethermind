@@ -8,8 +8,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Collections;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -41,9 +42,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
-            ISpecProvider specProvider,
+            ForkInfo forkInfo,
             ILogManager logManager)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, specProvider, logManager)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, BlockBody[]>(Send);
@@ -54,7 +55,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         public override string Name => "eth66";
 
-        public override byte ProtocolVersion => 66;
+        public override byte ProtocolVersion => EthVersions.Eth66;
 
         public override void HandleMessage(ZeroPacket message)
         {
@@ -147,9 +148,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private void Handle(GetPooledTransactionsMessage getPooledTransactions)
         {
-            V65.Messages.PooledTransactionsMessage pooledTransactionsMessage =
-                FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage);
-            Send(new PooledTransactionsMessage(getPooledTransactions.RequestId, pooledTransactionsMessage));
+            using ArrayPoolList<Transaction> txsToSend = new(1024);
+
+            Send(new PooledTransactionsMessage(getPooledTransactions.RequestId,
+                FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage, txsToSend)));
         }
 
         private void Handle(GetReceiptsMessage getReceiptsMessage)

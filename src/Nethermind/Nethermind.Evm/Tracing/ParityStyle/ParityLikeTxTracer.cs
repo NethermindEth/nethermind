@@ -387,7 +387,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
             Dictionary<UInt256, ParityStateChange<byte[]>> storage = null;
             if (!_trace.StateChanges.ContainsKey(storageCell.Address))
@@ -397,31 +397,34 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
             storage = _trace.StateChanges[storageCell.Address].Storage ?? (_trace.StateChanges[storageCell.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
 
-            if (storage.ContainsKey(storageCell.Index))
+            if (storage.TryGetValue(storageCell.Index, out ParityStateChange<byte[]> value))
             {
-                before = storage[storageCell.Index].Before ?? before;
+                before = value.Before ?? before;
             }
 
             storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
         }
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
-            ParityTraceAction action = new();
-            action.IsPrecompiled = isPrecompileCall;
-            action.IncludeInTrace = !isPrecompileCall || callType == ExecutionType.Transaction;
-            action.From = @from;
-            action.To = to;
-            action.Value = value;
-            action.Input = input.ToArray();
-            action.Gas = gas;
-            action.CallType = GetCallType(callType);
-            action.Type = GetActionType(callType);
-            action.CreationMethod = GetCreateMethod(callType);
+            ParityTraceAction action = new ParityTraceAction
+            {
+                IsPrecompiled = isPrecompileCall,
+                // ignore pre compile calls with Zero value that originates from contracts
+                IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.Transaction && value.IsZero),
+                From = from,
+                To = to,
+                Value = value,
+                Input = input.ToArray(),
+                Gas = gas,
+                CallType = GetCallType(callType),
+                Type = GetActionType(callType),
+                CreationMethod = GetCreateMethod(callType)
+            };
 
             if (_currentOperation is not null && callType.IsAnyCreate())
             {

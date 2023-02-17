@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 
@@ -21,14 +21,6 @@ namespace Nethermind.JsonRpc
     public interface IJsonRpcLocalStats
     {
         void ReportCall(in RpcReport report, long elapsedMicroseconds = 0, long? size = null);
-
-        public void ReportCalls(in IReadOnlyList<RpcReport> reports)
-        {
-            for (int i = 0; i < reports.Count; i++)
-            {
-                ReportCall(reports[i]);
-            }
-        }
 
         MethodStats GetMethodStats(string methodName);
     }

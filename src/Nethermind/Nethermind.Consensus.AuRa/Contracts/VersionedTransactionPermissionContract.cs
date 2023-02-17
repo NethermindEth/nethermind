@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Linq;
@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Address contractAddress,
             long activation,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ICache<Keccak, UInt256> cache,
+            LruCache<KeccakKey, UInt256> cache,
             ILogManager logManager,
             ISpecProvider specProvider)
             : base(

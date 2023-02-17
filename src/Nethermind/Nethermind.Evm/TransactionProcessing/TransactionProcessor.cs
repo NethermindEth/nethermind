@@ -128,7 +128,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer,
             ExecutionOptions executionOptions)
         {
-            IReleaseSpec spec = _specProvider.GetSpec((block.Number, block.Timestamp));
+            IReleaseSpec spec = _specProvider.GetSpec(block);
             bool eip658NotEnabled = !spec.IsEip658Enabled;
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
@@ -191,10 +191,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            if (transaction.IsContractCreation && spec.IsEip3860Enabled && transaction.Data.Length > spec.MaxInitCodeSize)
+            if (transaction.IsAboveInitCode(spec))
             {
-                TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.Data.Length} > {spec.MaxInitCodeSize}");
-                QuickFail(transaction, block, txTracer, eip658NotEnabled, "eip-3860 - transaction size over max init code size");
+                TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.DataLength} > {spec.MaxInitCodeSize}");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "EIP-3860 - transaction size over max init code size");
                 return;
             }
 
@@ -321,7 +321,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 recipientOrNull = recipient;
 
                 ExecutionEnvironment env = new();
-                env.TxExecutionContext = new TxExecutionContext(block, caller, effectiveGasPrice);
+                env.TxExecutionContext = new TxExecutionContext(block, caller, effectiveGasPrice, transaction.BlobVersionedHashes);
                 env.Value = value;
                 env.TransferValue = value;
                 env.Caller = caller;
@@ -333,7 +333,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     : new CodeInfo(machineCode);
 
                 ExecutionType executionType =
-                    transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
+                    transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Transaction;
                 using (EvmState state =
                     new(unspentGas, env, executionType, true, snapshot, false))
                 {

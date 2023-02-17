@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -34,7 +35,11 @@ namespace Nethermind.AuRa.Test.Transactions
         [TestCaseSource(nameof(IsAllowedTestCases))]
         public bool is_allowed_returns_correct(Address address, ulong gasLimit)
         {
-            IMinGasPriceTxFilter minGasPriceFilter = new MinGasPriceTxFilter(UInt256.One, Substitute.For<ISpecProvider>());
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = UInt256.One
+            };
+            IMinGasPriceTxFilter minGasPriceFilter = new MinGasPriceTxFilter(blocksConfig, Substitute.For<ISpecProvider>());
             IDictionaryContractDataStore<TxPriorityContract.Destination> dictionaryContractDataStore = Substitute.For<IDictionaryContractDataStore<TxPriorityContract.Destination>>();
             dictionaryContractDataStore.TryGetValue(
                     Arg.Any<BlockHeader>(),

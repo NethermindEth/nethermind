@@ -14,6 +14,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Benchmarks
 {
@@ -87,7 +88,7 @@ namespace Nethermind.Network.Benchmarks
                 return (IByteBuffer)result[0];
             }
 
-            public TestZeroDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
+            public TestZeroDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor)
                 : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
             {
             }

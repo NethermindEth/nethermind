@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Benchmark
     {
         public static byte[] ByteCode { get; set; }
 
-        private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.IstanbulBlockNumber);
+        private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
         private IVirtualMachine _virtualMachine;
@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Benchmark
                 CodeInfo = new CodeInfo(ByteCode),
                 Value = 0,
                 TransferValue = 0,
-                TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0)
+                TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0, null)
             };
 
             _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.Transaction, true, _worldState.TakeSnapshot(), false);

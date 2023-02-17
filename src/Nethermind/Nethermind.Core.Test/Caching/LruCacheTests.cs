@@ -90,8 +90,9 @@ namespace Nethermind.Core.Test.Caching
         public void Can_set_and_then_set_null()
         {
             ICache<Address, Account> cache = Create();
-            cache.Set(_addresses[0], _accounts[0]);
-            cache.Set(_addresses[0], null!);
+            cache.Set(_addresses[0], _accounts[0]).Should().BeTrue();
+            cache.Set(_addresses[0], _accounts[0]).Should().BeFalse();
+            cache.Set(_addresses[0], null!).Should().BeTrue();
             cache.Get(_addresses[0]).Should().Be(null);
         }
 
@@ -100,8 +101,9 @@ namespace Nethermind.Core.Test.Caching
         {
             ICache<Address, Account> cache = Create();
             cache.Set(_addresses[0], _accounts[0]);
-            cache.Delete(_addresses[0]);
+            cache.Delete(_addresses[0]).Should().BeTrue();
             cache.Get(_addresses[0]).Should().Be(null);
+            cache.Delete(_addresses[0]).Should().BeFalse();
         }
 
         [Test]

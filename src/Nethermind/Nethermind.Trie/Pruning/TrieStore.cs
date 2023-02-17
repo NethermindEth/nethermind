@@ -129,6 +129,10 @@ namespace Nethermind.Trie.Pruning
 
         private readonly DirtyNodesCache _dirtyNodes;
 
+        private bool _lastPersistedReachedReorgBoundary;
+        private Task _pruningTask = Task.CompletedTask;
+        private CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
         {
@@ -220,13 +224,13 @@ namespace Nethermind.Trie.Pruning
                     throw new TrieStoreException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
                 }
 
-                if (node!.LastSeen.HasValue)
+                if (node!.LastSeen != TrieNode.LastSeenNotSet)
                 {
                     throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
                 }
 
                 node = SaveOrReplaceInDirtyNodesCache(nodeCommitInfo, node);
-                node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
+                node.LastSeen = Math.Max(blockNumber, node.LastSeen);
 
                 if (!_pruningStrategy.PruningEnabled)
                 {
@@ -294,6 +298,10 @@ namespace Nethermind.Trie.Pruning
                     }
 
                     CurrentPackage = null;
+                    if (_pruningStrategy.PruningEnabled && Monitor.IsEntered(_dirtyNodes))
+                    {
+                        Monitor.Exit(_dirtyNodes);
+                    }
                 }
             }
             finally
@@ -301,6 +309,8 @@ namespace Nethermind.Trie.Pruning
                 _currentBatch?.Dispose();
                 _currentBatch = null;
             }
+
+            Prune();
         }
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
@@ -360,31 +370,44 @@ namespace Nethermind.Trie.Pruning
                 return new TrieNode(NodeType.Unknown, hash);
             }
 
-            if (isReadOnly)
-            {
-                return _dirtyNodes.FromCachedRlpOrUnknown(hash);
-            }
-            else
-            {
-                return _dirtyNodes.FindCachedOrUnknown(hash);
-            }
+            return isReadOnly ? _dirtyNodes.FromCachedRlpOrUnknown(hash) : _dirtyNodes.FindCachedOrUnknown(hash);
         }
 
         public void Dump() => _dirtyNodes.Dump();
 
         public void Prune()
         {
-            while (true)
+            if (_pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache) && _pruningTask.IsCompleted)
             {
-                if (!_pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                _pruningTask = Task.Run(() =>
                 {
-                    break;
-                }
+                    try
+                    {
+                        lock (_dirtyNodes)
+                        {
+                            using (_dirtyNodes.AllNodes.AcquireLock())
+                            {
+                                if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
-                PruneCache();
+                                while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                                {
+                                    PruneCache();
 
-                if (CanPruneCacheFurther()) continue;
-                break;
+                                    if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
+                                    {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (_logger.IsDebug) _logger.Debug($"Pruning finished. Unlocked {nameof(TrieStore)}.");
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
+                    }
+                });
             }
         }
 
@@ -473,7 +496,6 @@ namespace Nethermind.Trie.Pruning
                 if (node.IsPersisted)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
-                    toRemove.Add(node);
                     if (node.Keccak is null)
                     {
                         node.ResolveKey(this, true); // TODO: hack
@@ -482,17 +504,19 @@ namespace Nethermind.Trie.Pruning
                             throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                         }
                     }
+                    toRemove.Add(node);
 
                     Metrics.PrunedPersistedNodesCount++;
                 }
                 else if (IsNoLongerNeeded(node))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
-                    toRemove.Add(node);
                     if (node.Keccak is null)
                     {
                         throw new InvalidOperationException($"Removed {node}");
                     }
+
+                    toRemove.Add(node);
 
                     Metrics.PrunedTransientNodesCount++;
                 }
@@ -503,14 +527,15 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            foreach (TrieNode trieNode in toRemove)
+            for (int index = 0; index < toRemove.Count; index++)
             {
+                TrieNode trieNode = toRemove[index];
                 if (trieNode.Keccak is null)
                 {
                     throw new InvalidOperationException($"{trieNode} has a null key");
                 }
 
-                _dirtyNodes.Remove(trieNode.Keccak!);
+                _dirtyNodes.Remove(trieNode.Keccak);
             }
 
             MemoryUsedByDirtyCache = newMemory;
@@ -529,6 +554,8 @@ namespace Nethermind.Trie.Pruning
         public void Dispose()
         {
             if (_logger.IsDebug) _logger.Debug("Disposing trie");
+            _pruningTaskCancellationTokenSource.Cancel();
+            _pruningTask.Wait();
             PersistOnShutdown();
         }
 
@@ -571,7 +598,6 @@ namespace Nethermind.Trie.Pruning
             LatestCommittedBlockNumber = Math.Max(blockNumber, LatestCommittedBlockNumber);
             AnnounceReorgBoundaries();
             DequeueOldCommitSets();
-            Prune();
 
             CurrentPackage = commitSet;
             Debug.Assert(ReferenceEquals(CurrentPackage, commitSet), $"Current {nameof(BlockCommitSet)} is not same as the new package just after adding");
@@ -622,7 +648,7 @@ namespace Nethermind.Trie.Pruning
 
             if (currentNode.Keccak is not null)
             {
-                Debug.Assert(currentNode.LastSeen.HasValue, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
+                Debug.Assert(blockNumber == TrieNode.LastSeenNotSet || currentNode.LastSeen != TrieNode.LastSeenNotSet, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
@@ -631,7 +657,7 @@ namespace Nethermind.Trie.Pruning
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
                 _currentBatch[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
-                currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
+                currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen);
                 PersistedNodesCount++;
             }
             else
@@ -643,7 +669,7 @@ namespace Nethermind.Trie.Pruning
 
         private bool IsNoLongerNeeded(TrieNode node)
         {
-            Debug.Assert(node.LastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
+            Debug.Assert(node.LastSeen != TrieNode.LastSeenNotSet, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
             return node.LastSeen < LastPersistedBlockNumber
                    && node.LastSeen < LatestCommittedBlockNumber - Reorganization.MaxDepth;
         }
@@ -668,6 +694,11 @@ namespace Nethermind.Trie.Pruning
         {
             if (CurrentPackage is null)
             {
+                if (_pruningStrategy.PruningEnabled && !Monitor.IsEntered(_dirtyNodes))
+                {
+                    Monitor.Enter(_dirtyNodes);
+                }
+
                 CreateCommitSet(blockNumber);
             }
         }
@@ -710,8 +741,6 @@ namespace Nethermind.Trie.Pruning
                 _lastPersistedReachedReorgBoundary = true;
             }
         }
-
-        private bool _lastPersistedReachedReorgBoundary;
 
         private void PersistOnShutdown()
         {

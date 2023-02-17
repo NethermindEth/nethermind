@@ -334,7 +334,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             var networkNode = new NetworkNode(ctx.GenerateEnode());
-            ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.ChainId);
+            ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.NetworkId);
 
             ctx.PeerPool.GetOrAdd(networkNode);
 

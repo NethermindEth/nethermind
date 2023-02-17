@@ -8,7 +8,7 @@ namespace Nethermind.Core.Specs
     /// <summary>
     /// https://github.com/ethereum/EIPs
     /// </summary>
-    public interface IReleaseSpec
+    public interface IReleaseSpec : IEip1559Spec, IReceiptSpec
     {
         public string Name { get; }
         long MaximumExtraDataSize { get; }
@@ -120,11 +120,6 @@ namespace Nethermind.Core.Specs
         bool IsEip649Enabled { get; }
 
         /// <summary>
-        /// Byzantium Embedding transaction return data in receipts
-        /// </summary>
-        bool IsEip658Enabled { get; }
-
-        /// <summary>
         /// Constantinople SHL, SHR, SAR instructions
         /// </summary>
         bool IsEip145Enabled { get; }
@@ -221,11 +216,6 @@ namespace Nethermind.Core.Specs
         bool IsEip158IgnoredAccount(Address address);
 
         /// <summary>
-        /// Gas target and base fee, and fee burning.
-        /// </summary>
-        bool IsEip1559Enabled { get; }
-
-        /// <summary>
         /// BaseFee opcode
         /// </summary>
         bool IsEip3198Enabled { get; }
@@ -244,11 +234,6 @@ namespace Nethermind.Core.Specs
         /// Reject transactions where senders have non-empty code hash
         /// </summary>
         bool IsEip3607Enabled { get; }
-
-        /// <summary>
-        /// Upgrade consensus to Proof-of-Stake
-        /// </summary>
-        bool IsEip3675Enabled { get; }
 
         /// <summary>
         /// Warm COINBASE
@@ -272,18 +257,26 @@ namespace Nethermind.Core.Specs
         bool IsEip3860Enabled { get; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the
+        /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>
+        /// validator withdrawals are enabled.
+        /// </summary>
+        bool IsEip4895Enabled { get; }
+
+        /// <summary>
+        /// Blob transactions
+        /// </summary>
+        bool IsEip4844Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateChainId => true;
 
-        /// <summary>
-        /// Should validate ReceiptsRoot.
-        /// </summary>
-        /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
-        bool ValidateReceipts => true;
+        public ulong WithdrawalTimestamp { get; }
 
-        public long Eip1559TransitionBlock { get; }
+        public ulong Eip4844TransitionTimestamp { get; }
 
         // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
@@ -350,10 +343,8 @@ namespace Nethermind.Core.Specs
         // EVM Related
         public bool IncludePush0Instruction => IsEip3855Enabled;
 
-        public Address? Eip1559FeeCollector => null;
-
-        public UInt256? Eip1559BaseFeeMinValue => null;
-
         public bool TransientStorageEnabled => IsEip1153Enabled;
+
+        public bool WithdrawalsEnabled => IsEip4895Enabled;
     }
 }

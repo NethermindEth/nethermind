@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (_blockTree.BestSuggestedHeader?.Number > _bestHeader.Number)
             {
-                LogPivotChanged("to many empty responses");
+                LogPivotChanged("too many empty responses");
                 _bestHeader = _blockTree.BestSuggestedHeader;
             }
         }

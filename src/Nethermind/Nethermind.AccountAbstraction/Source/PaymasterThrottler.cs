@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -121,7 +121,7 @@ namespace Nethermind.AccountAbstraction.Source
          */
         public uint GetPaymasterOpsSeen(Address paymaster)
         {
-            return _opsSeen.ContainsKey(paymaster) ? _opsSeen[paymaster] : 0;
+            return _opsSeen.TryGetValue(paymaster, out uint value) ? value : 0;
         }
 
         /* @dev Includes a paymaster in the throttler's "included operations" dictionary if it was not previously there,
@@ -130,7 +130,7 @@ namespace Nethermind.AccountAbstraction.Source
          */
         public uint GetPaymasterOpsIncluded(Address paymaster)
         {
-            return _opsIncluded.ContainsKey(paymaster) ? _opsIncluded[paymaster] : 0;
+            return _opsIncluded.TryGetValue(paymaster, out uint value) ? value : 0;
         }
 
         /* @dev Updates the throttler's dictionaries with an exponential-moving-average (EMA) pattern.

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Core
 {
@@ -7,6 +7,7 @@ namespace Nethermind.Core
     {
         Legacy = 0,
         AccessList = 1,
-        EIP1559 = 2
+        EIP1559 = 2,
+        Blob = 5,
     }
 }

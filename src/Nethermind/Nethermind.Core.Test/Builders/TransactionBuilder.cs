@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> To(Address address)
+        public TransactionBuilder<T> To(Address? address)
         {
             TestObjectInternal.To = address;
             return this;
@@ -131,6 +131,18 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public TransactionBuilder<T> WithMaxFeePerDataGas(UInt256? maxFeePerDataGas)
+        {
+            TestObjectInternal.MaxFeePerDataGas = maxFeePerDataGas;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobVersionedHashes(byte[][] blobVersionedHashes)
+        {
+            TestObjectInternal.BlobVersionedHashes = blobVersionedHashes;
+            return this;
+        }
+
         public TransactionBuilder<T> WithSignature(Signature signature)
         {
             TestObjectInternal.Signature = signature;
@@ -155,7 +167,7 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> SignedAndResolved(PrivateKey? privateKey = null)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
-            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? ChainId.Mainnet, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId, LimboLogs.Instance);
             ecdsa.Sign(privateKey, TestObjectInternal, true);
             TestObjectInternal.SenderAddress = privateKey.Address;
             return this;

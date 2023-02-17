@@ -7,9 +7,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
-using DotNetty.Codecs;
 using DotNetty.Common.Concurrency;
-using DotNetty.Common.Utilities;
 using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
@@ -65,7 +63,7 @@ namespace Nethermind.Network.Rlpx
                 Packet auth = _service.Auth(RemoteId, _handshake);
 
                 if (_logger.IsTrace) _logger.Trace($"Sending AUTH to {RemoteId} @ {context.Channel.RemoteAddress}");
-                IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(auth.Data.Length);
+                IByteBuffer buffer = context.Allocator.Buffer(auth.Data.Length);
                 buffer.WriteBytes(auth.Data);
                 context.WriteAndFlushAsync(buffer);
                 Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);
@@ -145,7 +143,7 @@ namespace Nethermind.Network.Rlpx
 
                 //_p2PSession.RemoteNodeId = _remoteId;
                 if (_logger.IsTrace) _logger.Trace($"Sending ACK to {RemoteId} @ {context.Channel.RemoteAddress}");
-                IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(ack.Data.Length);
+                IByteBuffer buffer = context.Allocator.Buffer(ack.Data.Length);
                 buffer.WriteBytes(ack.Data);
                 context.WriteAndFlushAsync(buffer);
                 Interlocked.Add(ref Metrics.P2PBytesSent, ack.Data.Length);
@@ -162,20 +160,23 @@ namespace Nethermind.Network.Rlpx
             _initCompletionSource?.SetResult(input);
             _session.Handshake(_handshake.RemoteNodeId);
 
-            FrameCipher frameCipher = new(_handshake.Secrets.AesSecret);
-            FrameMacProcessor macProcessor = new(_session.RemoteNodeId, _handshake.Secrets);
-
             if (_role == HandshakeRole.Recipient)
             {
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(LengthFieldBasedFrameDecoder)}  for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(OneTimeLengthFieldBasedFrameDecoder)}  for {RemoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
             }
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ReadTimeoutHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ReadTimeoutHandler(TimeSpan.FromSeconds(30))); // read timeout instead of session monitoring
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-            context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor, _logManager));
-            if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-            context.Channel.Pipeline.AddLast(new ZeroFrameEncoder(frameCipher, macProcessor, _logManager));
+
+            using (FrameMacProcessor macProcessor = new(_session.RemoteNodeId, _handshake.Secrets))
+            {
+                FrameCipher frameCipher = new(_handshake.Secrets.AesSecret);
+                context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor, _logManager));
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(new ZeroFrameEncoder(frameCipher, macProcessor, _logManager));
+            }
+
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ZeroFrameMerger(_logManager));
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
@@ -193,8 +194,8 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsTrace) _logger.Trace($"Removing {nameof(NettyHandshakeHandler)}");
             context.Channel.Pipeline.Remove(this);
-            if (_logger.IsTrace) _logger.Trace($"Removing {nameof(LengthFieldBasedFrameDecoder)}");
-            context.Channel.Pipeline.Remove<LengthFieldBasedFrameDecoder>();
+            if (_logger.IsTrace) _logger.Trace($"Removing {nameof(OneTimeLengthFieldBasedFrameDecoder)}");
+            context.Channel.Pipeline.Remove<OneTimeLengthFieldBasedFrameDecoder>();
         }
 
         public override void HandlerRemoved(IChannelHandlerContext context)

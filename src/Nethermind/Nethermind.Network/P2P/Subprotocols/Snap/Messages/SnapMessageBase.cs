@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Common.Utilities;
 using Nethermind.Network.P2P.Messages;
@@ -8,7 +8,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public abstract class SnapMessageBase : P2PMessage
     {
-        public override string Protocol => Nethermind.Network.P2P.Protocol.Snap;
+        public override string Protocol => Contract.P2P.Protocol.Snap;
 
         /// <summary>
         /// Request ID to match up responses with

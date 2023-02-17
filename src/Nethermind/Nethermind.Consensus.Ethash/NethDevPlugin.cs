@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
@@ -7,10 +7,12 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -49,7 +51,7 @@ namespace Nethermind.Consensus.Ethash
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
                 .WithBaseFeeFilter(getFromApi.SpecProvider)
                 .WithNullTxFilter()
-                .WithMinGasPriceFilter(_nethermindApi.Config<IBlocksConfig>().MinGasPrice, getFromApi.SpecProvider)
+                .WithMinGasPriceFilter(_nethermindApi.Config<IBlocksConfig>(), getFromApi.SpecProvider)
                 .Build;
 
             TxPoolTxSource txPoolTxSource = new(
@@ -60,7 +62,7 @@ namespace Nethermind.Consensus.Ethash
                 txFilterPipeline);
 
             ILogger logger = getFromApi.LogManager.GetClassLogger();
-            if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");
+            if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
 
             ReadOnlyTxProcessingEnv producerEnv = new(

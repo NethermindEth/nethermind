@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only 
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -22,7 +22,7 @@ namespace Nethermind.State.Witnesses
         [ThreadStatic]
         private static bool _collectWitness;
 
-        private readonly LruCache<Keccak, Keccak[]> _witnessCache = new(256, "Witnesses");
+        private readonly LruCache<KeccakKey, Keccak[]> _witnessCache = new(256, "Witnesses");
 
         public IReadOnlyCollection<Keccak> Collected => _collected;
 

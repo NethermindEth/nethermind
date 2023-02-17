@@ -49,7 +49,8 @@ namespace Nethermind.Trie.Test
             [DebuggerStepThrough]
             private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy)
             {
-                _logManager = new TestLogManager(LogLevel.Trace);
+                _logManager = LimboLogs.Instance;
+                //new TestLogManager(LogLevel.Trace);
                 _logger = _logManager.GetClassLogger();
                 _dbProvider = TestMemDbProvider.Init();
                 _persistenceStrategy = persistenceStrategy;

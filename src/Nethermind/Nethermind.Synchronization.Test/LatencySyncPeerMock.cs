@@ -54,8 +54,10 @@ namespace Nethermind.Synchronization.Test
         public UInt256 TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; } = true;
         public bool IsPriority { get; set; }
+        public byte ProtocolVersion { get; }
+        public string ProtocolCode { get; }
 
-        public void Disconnect(DisconnectReason reason, string details)
+        public void Disconnect(InitiateDisconnectReason reason, string details)
         {
             throw new NotImplementedException();
         }

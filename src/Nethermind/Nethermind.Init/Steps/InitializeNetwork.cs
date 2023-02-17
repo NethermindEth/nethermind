@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
@@ -46,10 +47,9 @@ public static class NettyMemoryEstimator
     // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
     private const uint PageSize = 8192;
 
-    public static long Estimate(uint cpuCount, int arenaOrder)
+    public static long Estimate(uint arenaCount, int arenaOrder)
     {
-        // do not remember why there is 2 in front
-        return 2L * cpuCount * (1L << arenaOrder) * PageSize;
+        return arenaCount * (1L << arenaOrder) * PageSize;
     }
 }
 
@@ -98,7 +98,6 @@ public class InitializeNetwork : IStep
             NetworkDiagTracer.Start(_api.LogManager);
         }
 
-        Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
         CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
         ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
@@ -167,7 +166,7 @@ public class InitializeNetwork : IStep
 
         _api.DisposeStack.Push(_api.Synchronizer);
 
-        _api.SyncServer = new SyncServer(
+        ISyncServer syncServer = _api.SyncServer = new SyncServer(
             _api.TrieStore!,
             _api.DbProvider.CodeDb,
             _api.BlockTree!,
@@ -183,8 +182,8 @@ public class InitializeNetwork : IStep
             _api.LogManager,
             cht);
 
-        _ = _api.SyncServer.BuildCHT();
-        _api.DisposeStack.Push(_api.SyncServer);
+        _ = syncServer.BuildCHT();
+        _api.DisposeStack.Push(syncServer);
 
         InitDiscovery();
         if (cancellationToken.IsCancellationRequested)
@@ -207,9 +206,11 @@ public class InitializeNetwork : IStep
             // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
             // no longer available). Eth67 should be added if snap is enabled OR sync is finished
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+
+            // eth68 is disabled for now, as spec has draft status and can change (https://eips.ethereum.org/EIPS/eip-5793)
+            // _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
         }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
+        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
 
         if (_syncConfig.SnapSync && !stateSyncFinished)
         {
@@ -496,7 +497,7 @@ public class InitializeNetwork : IStep
         _api.StaticNodesManager = new StaticNodesManager(initConfig.StaticNodesPath, _api.LogManager);
         await _api.StaticNodesManager.InitAsync();
 
-        // ToDo: PeersDB is register outside dbProvider - bad
+        // ToDo: PeersDB is registered outside dbProvider
         string dbName = "PeersDB";
         IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
             ? new MemDb(dbName)
@@ -507,9 +508,10 @@ public class InitializeNetwork : IStep
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree!, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);
+        ISyncServer syncServer = _api.SyncServer!;
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
-            _api.SyncServer!,
+            syncServer,
             _api.TxPool,
             pooledTxsRequestor,
             _api.DiscoveryApp!,
@@ -518,7 +520,7 @@ public class InitializeNetwork : IStep
             _api.NodeStatsManager,
             protocolValidator,
             peerStorage,
-            _api.SpecProvider!,
+            new ForkInfo(_api.SpecProvider!, syncServer.Genesis.Hash!),
             _api.GossipPolicy,
             _api.LogManager);
 
@@ -544,7 +546,7 @@ public class InitializeNetwork : IStep
             _networkConfig,
             _api.LogManager);
 
-        string chainName = ChainId.GetChainName(_api.ChainSpec!.ChainId).ToLowerInvariant();
+        string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
         string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
 #pragma warning disable CS4014
         enrDiscovery.SearchTree(domain).ContinueWith(t =>
