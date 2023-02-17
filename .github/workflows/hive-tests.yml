@@ -25,7 +25,7 @@ on:
 
 jobs:
   stCreate2:
-    name: Build and run tests
+    name: stCreate2
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -72,7 +72,7 @@ jobs:
       - name: Run Hive
         continue-on-error: true
         working-directory: hive
-        run: ./hive --client nethermind --sim ethereum/consensus --sim.loglevel $LOG_LEVEL --sim.limit /stCreate2
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.loglevel $LOG_LEVEL --sim.limit /stCreate2 --sim.parallelism 16
       - name: Upload results
         uses: actions/upload-artifact@v3
         with:
@@ -84,7 +84,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   bcUncleTest:
-      name: Build and run tests
+      name: bcUncleTest
       runs-on: ubuntu-latest
       steps:
           - name: Set up parameters
@@ -131,7 +131,7 @@ jobs:
           - name: Run Hive
             continue-on-error: true
             working-directory: hive
-            run: ./hive --client nethermind --sim ethereum/consensus --sim.loglevel $LOG_LEVEL --sim.limit /bcUncleTest
+            run: ./hive --client nethermind --sim ethereum/consensus --sim.loglevel $LOG_LEVEL --sim.limit /bcUncleTest --sim.parallelism 16
           - name: Upload results
             uses: actions/upload-artifact@v3
             with:
