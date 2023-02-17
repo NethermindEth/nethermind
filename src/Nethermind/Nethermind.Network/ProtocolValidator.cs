@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats;

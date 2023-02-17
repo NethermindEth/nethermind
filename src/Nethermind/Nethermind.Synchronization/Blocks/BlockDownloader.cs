@@ -349,7 +349,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (downloadReceipts)
                     {
                         TxReceipt[]? contextReceiptsForBlock = context.ReceiptsForBlocks![blockIndex];
-                        if (currentBlock.Header.HasBody && contextReceiptsForBlock is null)
+                        if (currentBlock.Header.HasTransactions && contextReceiptsForBlock is null)
                         {
                             throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }
@@ -369,7 +369,7 @@ namespace Nethermind.Synchronization.Blocks
                             else
                             {
                                 // this shouldn't now happen with new validation above, still lets keep this check
-                                if (currentBlock.Header.HasBody)
+                                if (currentBlock.Header.HasTransactions)
                                 {
                                     if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
                                 }

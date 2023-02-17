@@ -48,7 +48,7 @@ namespace Nethermind.Db
             }
         }
 
-        public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<Keccak> keys)
+        public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<KeccakKey> keys)
         {
             var k = keys.Select(k => k.Bytes).ToArray();
             return db[k];
@@ -123,7 +123,7 @@ namespace Nethermind.Db
             db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());
         }
 
-        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, ICache<Keccak, TItem> cache = null, bool shouldCache = true) where TItem : class
+        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<KeccakKey, TItem> cache = null, bool shouldCache = true) where TItem : class
         {
             TItem item = cache?.Get(key);
             if (item is null)
@@ -139,7 +139,7 @@ namespace Nethermind.Db
                     try
                     {
                         var rlpValueContext = data.AsRlpValueContext();
-                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraData);
+                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                     }
                     finally
                     {
@@ -154,7 +154,7 @@ namespace Nethermind.Db
                         return null;
                     }
 
-                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
+                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraBytes);
                 }
             }
 
@@ -166,7 +166,7 @@ namespace Nethermind.Db
             return item;
         }
 
-        public static TItem? Get<TItem>(this IDb db, long key, IRlpStreamDecoder<TItem>? decoder, ICache<long, TItem>? cache = null, bool shouldCache = true) where TItem : class
+        public static TItem? Get<TItem>(this IDb db, long key, IRlpStreamDecoder<TItem>? decoder, LruCache<long, TItem>? cache = null, bool shouldCache = true) where TItem : class
         {
             TItem? item = cache?.Get(key);
             if (item is null)
@@ -182,7 +182,7 @@ namespace Nethermind.Db
                     try
                     {
                         var rlpValueContext = data.AsRlpValueContext();
-                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraData);
+                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                     }
                     finally
                     {
@@ -197,7 +197,7 @@ namespace Nethermind.Db
                         return null;
                     }
 
-                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
+                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraBytes);
                 }
             }
 

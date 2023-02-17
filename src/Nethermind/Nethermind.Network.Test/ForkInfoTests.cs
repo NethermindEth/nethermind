@@ -155,7 +155,9 @@ namespace Nethermind.Network.Test
 
         [TestCase(0, 0ul, "0xFE3366E7", 1735371ul, "Sepolia genesis")]
         [TestCase(1735370, 0ul, "0xFE3366E7", 1735371ul, "Sepolia Last block before MergeForkIdTranstion")]
-        [TestCase(1735371, 0ul, "0xb96cbd13", 0ul, "First block - Sepolia MergeForkIdTransition")]
+        [TestCase(1735371, 0ul, "0xb96cbd13", 1677557088UL, "First block - Sepolia MergeForkIdTransition")]
+        [TestCase(1735372, 1677557088ul, "0xf7f9bc08", 0ul, "Shanghai")]
+        [TestCase(1735372, 2677557088ul, "0xf7f9bc08", 0ul, "Future Shanghai")]
         public void Fork_id_and_hash_as_expected_on_sepolia(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
         {
             Test(head, headTimestamp, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");

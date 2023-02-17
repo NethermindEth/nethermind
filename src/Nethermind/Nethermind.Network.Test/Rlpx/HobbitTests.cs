@@ -30,10 +30,10 @@ namespace Nethermind.Network.Test.Rlpx
         private byte[] _frame;
 
         private IFrameCipher _frameCipherA;
-        private IFrameMacProcessor _macProcessorA;
+        private FrameMacProcessor _macProcessorA;
 
         private IFrameCipher _frameCipherB;
-        private IFrameMacProcessor _macProcessorB;
+        private FrameMacProcessor _macProcessorB;
 
         [SetUp]
         public void Setup()

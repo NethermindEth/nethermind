@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -21,6 +22,8 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -1560,14 +1563,14 @@ namespace Nethermind.Blockchain.Test
             blockTree.CanAcceptNewBlocks.Should().BeTrue();
         }
 
-        [TestCase(10, 10000000ul)]
-        [TestCase(4, 4000000ul)]
-        [TestCase(10, null)]
-        public void Recovers_total_difficulty(int chainLength, ulong? expectedTotalDifficulty)
+        [TestCase(10, false, 10000000ul)]
+        [TestCase(4, false, 4000000ul)]
+        [TestCase(10, true, 10000000ul)]
+        public void Recovers_total_difficulty(int chainLength, bool deleteAllLevels, ulong expectedTotalDifficulty)
         {
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(chainLength);
             BlockTree blockTree = blockTreeBuilder.TestObject;
-            int chainLeft = expectedTotalDifficulty.HasValue ? 1 : 0;
+            int chainLeft = deleteAllLevels ? 0 : 1;
             for (int i = chainLength - 1; i >= chainLeft; i--)
             {
                 ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
@@ -1587,20 +1590,15 @@ namespace Nethermind.Blockchain.Test
                 }
             }
 
-            if (expectedTotalDifficulty.HasValue)
+            blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should()
+                .Be(new UInt256(expectedTotalDifficulty));
+
+            for (int i = chainLength - 1; i >= 0; i--)
             {
-                blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(new UInt256(expectedTotalDifficulty.Value));
-                for (int i = chainLength - 1; i >= chainLeft; i--)
-                {
-                    ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
-                    level.Should().NotBeNull();
-                    level.BlockInfos.Should().HaveCount(1);
-                }
-            }
-            else
-            {
-                Action action = () => blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None);
-                action.Should().Throw<InvalidOperationException>();
+                ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
+
+                level.Should().NotBeNull();
+                level.BlockInfos.Should().HaveCount(1);
             }
         }
 
@@ -1658,6 +1656,19 @@ namespace Nethermind.Blockchain.Test
             ValueTask<AddBlockResult> suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
             await suggest;
             suggest.IsCompleted.Should().Be(true);
+        }
+
+        [Test]
+        public void SuggestBlock_should_work_with_zero_difficulty()
+        {
+            Block genesisWithZeroDifficulty = Build.A.Block.WithDifficulty(0).WithNumber(0).TestObject;
+            CustomSpecProvider specProvider = new(((ForkActivation)0, GrayGlacier.Instance));
+            specProvider.UpdateMergeTransitionInfo(null, 0);
+            BlockTree blockTree = Build.A.BlockTree(genesisWithZeroDifficulty, specProvider).OfChainLength(1).TestObject;
+
+            Block block = Build.A.Block.WithDifficulty(0).WithParent(genesisWithZeroDifficulty).TestObject;
+            blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            blockTree.SuggestBlock(Build.A.Block.WithParent(block).WithDifficulty(0).TestObject).Should().Be(AddBlockResult.Added);
         }
 
         public static IEnumerable<TestCaseData> InvalidBlockTestCases

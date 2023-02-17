@@ -25,12 +25,13 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
+            bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != TxHandlingOptions.PersistentBroadcast;
             int numberOfSenderTxsInPending = _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
             bool isTxPoolFull = _txs.IsFull();
             UInt256 currentNonce = state.SenderAccount.Nonce;
             long nextNonceInOrder = (long)currentNonce + numberOfSenderTxsInPending;
             bool isTxNonceNextInOrder = tx.Nonce <= nextNonceInOrder;
-            if (isTxPoolFull && !isTxNonceNextInOrder)
+            if (isNotLocal && isTxPoolFull && !isTxNonceNextInOrder)
             {
                 Metrics.PendingTransactionsNonceGap++;
                 if (_logger.IsTrace)

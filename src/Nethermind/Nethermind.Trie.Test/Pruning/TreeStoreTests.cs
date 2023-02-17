@@ -253,7 +253,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
-            trieStore.CommitNode(0, new NodeCommitInfo(a));
+            trieStore.CommitNode(1, new NodeCommitInfo(a));
             trieStore.FinishBlockCommit(TrieType.State, 0, a);
             trieStore.FinishBlockCommit(TrieType.State, 1, a);
             trieStore.FinishBlockCommit(TrieType.State, 2, a);
@@ -274,7 +274,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), No.Persistence, _logManager);
 
-            trieStore.CommitNode(0, new NodeCommitInfo(a));
+            trieStore.CommitNode(1, new NodeCommitInfo(a));
             trieStore.FinishBlockCommit(TrieType.State, 0, a);
             trieStore.FinishBlockCommit(TrieType.State, 1, a);
             trieStore.FinishBlockCommit(TrieType.State, 2, a);
@@ -430,7 +430,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = HexPrefix.Leaf("abc");
+            a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new();
@@ -464,7 +464,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = HexPrefix.Leaf("abc");
+            a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode b = new(NodeType.Leaf, new byte[1]);
@@ -503,7 +503,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = HexPrefix.Leaf("abc");
+            a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode storage2 = new(NodeType.Leaf, new byte[32]);
@@ -512,7 +512,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode b = new(NodeType.Leaf);
             Account accountB = new(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
             b.Value = _accountDecoder.Encode(accountB).Bytes;
-            b.Key = HexPrefix.Leaf("abcd");
+            b.Key = Bytes.FromHexString("abcd");
             b.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode branch = new(NodeType.Branch);
@@ -553,14 +553,14 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode node = new(NodeType.Leaf);
             Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
-            node.Key = HexPrefix.Leaf("abc");
+            node.Key = Bytes.FromHexString("abc");
             node.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb originalStore = new MemDb();
             WitnessCollector witnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
             IKeyValueStoreWithBatching store = originalStore.WitnessedBy(witnessCollector);
             using TrieStore trieStore = new(store, new TestPruningStrategy(false), No.Persistence, _logManager);
-            trieStore.CommitNode(0, new NodeCommitInfo(node));
+            trieStore.CommitNode(1, new NodeCommitInfo(node));
             trieStore.FinishBlockCommit(TrieType.State, 0, node);
 
             IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly(originalStore);
@@ -632,11 +632,11 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode node = new(NodeType.Leaf);
             Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
-            node.Key = HexPrefix.Leaf("abc");
+            node.Key = Bytes.FromHexString("abc");
             node.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(pruning), No.Persistence, _logManager);
-            trieStore.CommitNode(0, new NodeCommitInfo(node));
+            trieStore.CommitNode(1, new NodeCommitInfo(node));
             trieStore.FinishBlockCommit(TrieType.State, 0, node);
             var originalNode = trieStore.FindCachedOrUnknown(node.Keccak);
 

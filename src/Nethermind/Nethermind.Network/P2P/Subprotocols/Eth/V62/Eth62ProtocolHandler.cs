@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -49,7 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _floodController.IsEnabled = false;
         }
 
-        public override byte ProtocolVersion => 62;
+        public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
         public override int MessageIdSpaceSize => 8;
         public override string Name => "eth62";

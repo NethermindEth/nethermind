@@ -64,5 +64,11 @@ namespace Nethermind.Core.Specs
         IReleaseSpec GetSpec(ForkActivation forkActivation);
         IReleaseSpec GetSpec(long blockNumber, ulong? timestamp) => GetSpec((blockNumber, timestamp));
         IReleaseSpec GetSpec(BlockHeader blockHeader) => GetSpec((blockHeader.Number, blockHeader.Timestamp));
+
+        /// <summary>
+        /// Resolves a spec for all planned forks applied.
+        /// </summary>
+        /// <returns>A spec for all planned forks applied</returns>
+        IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue, ulong.MaxValue);
     }
 }

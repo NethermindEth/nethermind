@@ -65,7 +65,7 @@ namespace Nethermind.HealthChecks.Test
             IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig, LimboLogs.Instance);
             NodeHealthService nodeHealthService =
                 new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
-                    healthHintService, ethSyncingInfo, api, new[] { drive }, test.IsMining);
+                    healthHintService, ethSyncingInfo, new EngineRpcCapabilitiesProvider(api.SpecProvider), api, new[] { drive }, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
             Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
@@ -75,6 +75,9 @@ namespace Nethermind.HealthChecks.Test
         [Test]
         public void post_merge_health_checks([ValueSource(nameof(CheckHealthPostMergeTestCases))] CheckHealthPostMergeTest test)
         {
+            Assert.AreEqual(test.EnabledCapabilities.Length, test.EnabledCapabilitiesUpdatedCalls.Length);
+            Assert.AreEqual(test.DisabledCapabilities.Length, test.DisabledCapabilitiesUpdatedCalls.Length);
+
             IBlockTree blockFinder = Substitute.For<IBlockTree>();
             ISyncServer syncServer = Substitute.For<ISyncServer>();
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
@@ -85,11 +88,21 @@ namespace Nethermind.HealthChecks.Test
             ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
             api.Timestamper.Returns(timestamper);
             api.JsonRpcLocalStats = Substitute.For<IJsonRpcLocalStats>();
-            MethodStats methodStats = new();
-            methodStats.Successes = 0;
-            api.JsonRpcLocalStats!.GetMethodStats("engine_forkchoiceUpdatedV1").Returns(methodStats);
-            api.JsonRpcLocalStats!.GetMethodStats("engine_newPayloadV1").Returns(methodStats);
-            api.JsonRpcLocalStats!.GetMethodStats("engine_exchangeTransitionConfigurationV1").Returns(methodStats);
+
+            MethodStats[] enabledMethodStats = new MethodStats[test.EnabledCapabilities.Length];
+            for (int i = 0; i < enabledMethodStats.Length; i++)
+            {
+                enabledMethodStats[i] = new MethodStats();
+                api.JsonRpcLocalStats!.GetMethodStats(test.EnabledCapabilities[i]).Returns(enabledMethodStats[i]);
+            }
+
+            MethodStats[] disabledMethodStats = new MethodStats[test.DisabledCapabilities.Length];
+            for (int i = 0; i < disabledMethodStats.Length; i++)
+            {
+                disabledMethodStats[i] = new MethodStats();
+                api.JsonRpcLocalStats!.GetMethodStats(test.DisabledCapabilities[i]).Returns(disabledMethodStats[i]);
+            }
+
             syncServer.GetPeerCount().Returns(test.PeerCount);
             IDriveInfo drive = Substitute.For<IDriveInfo>();
             drive.AvailableFreeSpace.Returns(_freeSpaceBytes);
@@ -111,14 +124,24 @@ namespace Nethermind.HealthChecks.Test
                 blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
             }
 
+            CustomRpcCapabilitiesProvider customProvider =
+                new(test.EnabledCapabilities, test.DisabledCapabilities);
             IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, new InMemoryReceiptStorage(), new SyncConfig(), new TestLogManager());
             NodeHealthService nodeHealthService =
                 new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
-                    healthHintService, ethSyncingInfo, api, new[] { drive }, false);
+                    healthHintService, ethSyncingInfo, customProvider, api, new[] { drive }, false);
             nodeHealthService.CheckHealth();
 
             timestamper.Add(TimeSpan.FromSeconds(test.TimeSpanSeconds));
-            methodStats.Successes = test.ForkchoiceUpdatedCalls;
+            for (int i = 0; i < enabledMethodStats.Length; i++)
+            {
+                enabledMethodStats[i].Successes = test.EnabledCapabilitiesUpdatedCalls[i];
+            }
+
+            for (int i = 0; i < disabledMethodStats.Length; i++)
+            {
+                disabledMethodStats[i].Successes = test.DisabledCapabilitiesUpdatedCalls[i];
+            }
 
             CheckHealthResult result = nodeHealthService.CheckHealth();
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
@@ -139,7 +162,13 @@ namespace Nethermind.HealthChecks.Test
 
             public string ExpectedLongMessage { get; set; }
 
-            public int ForkchoiceUpdatedCalls { get; set; }
+            public int[] EnabledCapabilitiesUpdatedCalls { get; set; }
+
+            public int[] DisabledCapabilitiesUpdatedCalls { get; set; } = Array.Empty<int>();
+
+            public string[] EnabledCapabilities { get; set; }
+
+            public string[] DisabledCapabilities { get; set; } = Array.Empty<string>();
 
             public int TimeSpanSeconds { get; set; }
             public double AvailableDiskSpacePercent { get; set; } = 11;
@@ -291,7 +320,8 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 10. No messages from CL.",
                     TimeSpanSeconds = 301,
-                    ForkchoiceUpdatedCalls = 0,
+                    EnabledCapabilities = new[] { "A", "B", "C" },
+                    EnabledCapabilitiesUpdatedCalls = new[] { 0, 0, 0 },
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10. No new messages from CL after last check."
                 };
                 yield return new CheckHealthPostMergeTest()
@@ -302,7 +332,8 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = true,
                     ExpectedMessage = "Fully synced. Peers: 10.",
                     TimeSpanSeconds = 15,
-                    ForkchoiceUpdatedCalls = 0,
+                    EnabledCapabilities = new[] { "A", "B", "C" },
+                    EnabledCapabilitiesUpdatedCalls = new[] { 0, 0, 0 },
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
                 };
                 yield return new CheckHealthPostMergeTest()
@@ -313,7 +344,8 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = true,
                     ExpectedMessage = "Fully synced. Peers: 10.",
                     TimeSpanSeconds = 301,
-                    ForkchoiceUpdatedCalls = 1,
+                    EnabledCapabilities = new[] { "A", "B", "C" },
+                    EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
                 };
                 yield return new CheckHealthPostMergeTest()
@@ -324,7 +356,36 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = true,
                     ExpectedMessage = "Fully synced. Peers: 10.",
                     TimeSpanSeconds = 15,
-                    ForkchoiceUpdatedCalls = 1,
+                    EnabledCapabilities = new[] { "A", "B", "C" },
+                    EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
+                    ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
+                };
+                yield return new CheckHealthPostMergeTest()
+                {
+                    Lp = 4,
+                    IsSyncing = false,
+                    PeerCount = 10,
+                    ExpectedHealthy = false,
+                    ExpectedMessage = "Fully synced. Peers: 10. No messages from CL.",
+                    TimeSpanSeconds = 301,
+                    EnabledCapabilities = new[] { "A", "B", "C" },
+                    EnabledCapabilitiesUpdatedCalls = new[] { 0, 0, 0 },
+                    DisabledCapabilities = new[] { "X", "Y", "Z" },
+                    DisabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
+                    ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10. No new messages from CL after last check."
+                };
+                yield return new CheckHealthPostMergeTest()
+                {
+                    Lp = 4,
+                    IsSyncing = false,
+                    PeerCount = 10,
+                    ExpectedHealthy = true,
+                    ExpectedMessage = "Fully synced. Peers: 10.",
+                    TimeSpanSeconds = 301,
+                    EnabledCapabilities = new[] { "A", "B", "C" },
+                    EnabledCapabilitiesUpdatedCalls = new[] { 0, 1, 0 },
+                    DisabledCapabilities = new[] { "X", "Y", "Z" },
+                    DisabledCapabilitiesUpdatedCalls = new[] { 0, 0, 0 },
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
                 };
                 yield return new CheckHealthPostMergeTest()
@@ -334,9 +395,22 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 10,
                     ExpectedHealthy = false,
                     ExpectedMessage = "Still syncing. Peers: 10.",
-                    TimeSpanSeconds = 15,
-                    ForkchoiceUpdatedCalls = 1,
+                    TimeSpanSeconds = 301,
+                    EnabledCapabilities = new[] { "A", "B", "C" },
+                    EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
                     ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 10."
+                };
+                yield return new CheckHealthPostMergeTest()
+                {
+                    Lp = 5,
+                    IsSyncing = false,
+                    PeerCount = 10,
+                    ExpectedHealthy = true,
+                    ExpectedMessage = "Fully synced. Peers: 10.",
+                    TimeSpanSeconds = 301,
+                    EnabledCapabilities = new[] { "engine_forkchoiceUpdatedV999", "engine_newPayloadV999" },
+                    EnabledCapabilitiesUpdatedCalls = new[] { 1, 1 },
+                    ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
                 };
                 yield return new CheckHealthPostMergeTest()
                 {
@@ -346,7 +420,8 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 10. Low free disk space.",
                     TimeSpanSeconds = 15,
-                    ForkchoiceUpdatedCalls = 1,
+                    EnabledCapabilities = new[] { "A", "B", "C" },
+                    EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
                     AvailableDiskSpacePercent = 4.73,
                     ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 10. The node is running out of free disk space in 'C:/' - only {1.50:F2} GB ({4.73:F2}%) left."
                 };
@@ -365,6 +440,29 @@ namespace Nethermind.HealthChecks.Test
             }
 
             return string.Empty;
+        }
+
+        private class CustomRpcCapabilitiesProvider : IRpcCapabilitiesProvider
+        {
+            private readonly Dictionary<string, bool> _capabilities = new();
+
+            public CustomRpcCapabilitiesProvider(IReadOnlyList<string> enabledCapabilities, IReadOnlyList<string> disabledCapabilities)
+            {
+                foreach (string capability in enabledCapabilities)
+                {
+                    _capabilities[capability] = true;
+                }
+
+                foreach (string capability in disabledCapabilities)
+                {
+                    _capabilities[capability] = false;
+                }
+            }
+
+            public IReadOnlyDictionary<string, bool> GetEngineCapabilities()
+            {
+                return _capabilities;
+            }
         }
     }
 }

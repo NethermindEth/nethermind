@@ -9,9 +9,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />
-      <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
-      <ProjectReference Include="..\Nethermind.Ssz\Nethermind.Ssz.csproj" />
+      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
     </ItemGroup>
 
 </Project>

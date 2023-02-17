@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -12,10 +13,10 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handler
 {
+    private const int MaxCount = 1024;
+
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
-
-    private const long MaxPayloadBodies = 1024;
 
     public GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, ILogManager logManager)
     {
@@ -23,22 +24,36 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
         _logger = logManager.GetClassLogger();
     }
 
-    public Task<ResultWrapper<ExecutionPayloadBodyV1Result?[]>> Handle(long start, long count)
+    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> Handle(long start, long count)
     {
-        if (count > MaxPayloadBodies)
+        if (start < 1 || count < 1)
         {
-            if (_logger.IsInfo) _logger.Info($"{nameof(GetPayloadBodiesByRangeV1Handler)}. Too many payloads requested. Count: {count}");
-            return ResultWrapper<ExecutionPayloadBodyV1Result?[]>.Fail("Too many payloads requested",
-                ErrorCodes.LimitExceeded);
+            var error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
+
+            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByRangeV1Handler)}: ${error}");
+
+            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error, ErrorCodes.InvalidParams);
         }
 
-        var payloadBodies = new ExecutionPayloadBodyV1Result?[count];
-        for (int i = 0; i < count; i++)
+        if (count > MaxCount)
         {
-            Block? block = _blockTree.FindBlock(start + i);
-            payloadBodies[i] = block is not null ? new ExecutionPayloadBodyV1Result(block.Transactions) : null;
+            var error = $"The number of requested bodies must not exceed {MaxCount}";
+
+            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByRangeV1Handler)}: {error}");
+
+            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        return ResultWrapper<ExecutionPayloadBodyV1Result?[]>.Success(payloadBodies);
+        var headNumber = _blockTree.Head?.Number ?? 0;
+        var payloadBodies = new List<ExecutionPayloadBodyV1Result?>((int)count);
+
+        for (long i = start, c = Math.Min(start + count - 1, headNumber); i <= c; i++)
+        {
+            var block = _blockTree.FindBlock(i);
+
+            payloadBodies.Add(block is null ? null : new(block.Transactions, block.Withdrawals));
+        }
+
+        return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(payloadBodies);
     }
 }
