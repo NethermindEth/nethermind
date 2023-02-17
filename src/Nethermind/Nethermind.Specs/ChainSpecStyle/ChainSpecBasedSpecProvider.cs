@@ -188,7 +188,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip1344Enabled = (chainSpec.Parameters.Eip1344Transition ?? long.MaxValue) <= releaseStartBlock;
             releaseSpec.IsEip1884Enabled = (chainSpec.Parameters.Eip1884Transition ?? long.MaxValue) <= releaseStartBlock;
             releaseSpec.IsEip2028Enabled = (chainSpec.Parameters.Eip2028Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip1706Enabled = (_chainSpec.Parameters.Eip1706Transition ?? long.MaxValue) <= releaseStartBlock;
+            releaseSpec.IsEip1706Enabled = (chainSpec.Parameters.Eip1706Transition ?? long.MaxValue) <= releaseStartBlock;
             releaseSpec.IsEip2200Enabled = (chainSpec.Parameters.Eip2200Transition ?? long.MaxValue) <= releaseStartBlock || (chainSpec.Parameters.Eip1706Transition ?? long.MaxValue) <= releaseStartBlock && releaseSpec.IsEip1283Enabled;
             releaseSpec.IsEip1559Enabled = (chainSpec.Parameters.Eip1559Transition ?? long.MaxValue) <= releaseStartBlock;
             releaseSpec.Eip1559TransitionBlock = chainSpec.Parameters.Eip1559Transition ?? long.MaxValue;
