@@ -17,7 +17,10 @@ public class GenesisBlock : Block
         BlockHeader blockHeader,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal> withdrawals = null) : base(blockHeader, transactions, uncles, withdrawals){ }
+        IEnumerable<Withdrawal> withdrawals = null)
+        : base(blockHeader, transactions, uncles, withdrawals)
+    {
+    }
 
     public GenesisBlock(BlockHeader blockHeader)
         : base(blockHeader)
