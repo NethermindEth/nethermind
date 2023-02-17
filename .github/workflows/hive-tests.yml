@@ -1,4 +1,4 @@
-name: 'Hive tests' 
+name: 'Hive consensus tests' 
 
 on:
   push:
@@ -3031,6 +3031,60 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test57:
+    name: stEIP3651
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stEIP3651 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stEIP3651-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test58:
     name: stEIP3855
     runs-on: ubuntu-latest
     steps:
@@ -3084,7 +3138,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test58:
+  test59:
     name: stEIP3860
     runs-on: ubuntu-latest
     steps:
@@ -3138,7 +3192,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test59:
+  test60:
     name: stEOF
     runs-on: ubuntu-latest
     steps:
@@ -3192,7 +3246,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test60:
+  test61:
     name: bc4895-withdrawals
     runs-on: ubuntu-latest
     steps:
@@ -3246,7 +3300,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test61:
+  test62:
     name: bcBlockGasLimitTest
     runs-on: ubuntu-latest
     steps:
@@ -3300,7 +3354,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test62:
+  test63:
     name: bcEIP1559
     runs-on: ubuntu-latest
     steps:
@@ -3354,7 +3408,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test63:
+  test64:
     name: bcEIP3675
     runs-on: ubuntu-latest
     steps:
@@ -3408,7 +3462,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test64:
+  test65:
     name: bcForgedTest
     runs-on: ubuntu-latest
     steps:
@@ -3462,7 +3516,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test65:
+  test66:
     name: bcInvalidHeaderTest
     runs-on: ubuntu-latest
     steps:
@@ -3516,7 +3570,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test66:
+  test67:
     name: bcMultiChainTest
     runs-on: ubuntu-latest
     steps:
@@ -3570,7 +3624,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test67:
+  test68:
     name: bcUncleHeaderValidity
     runs-on: ubuntu-latest
     steps:
@@ -3624,7 +3678,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test68:
+  test69:
     name: bcUncleSpecialTests
     runs-on: ubuntu-latest
     steps:
@@ -3678,7 +3732,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test69:
+  test70:
     name: bcUncleTest
     runs-on: ubuntu-latest
     steps:
@@ -3732,7 +3786,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test70:
+  test71:
     name: bcArrowGlacierToMerge
     runs-on: ubuntu-latest
     steps:
@@ -3786,7 +3840,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test71:
+  test72:
     name: bcBerlinToLondon
     runs-on: ubuntu-latest
     steps:
@@ -3840,7 +3894,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test72:
+  test73:
     name: bcByzantiumToConstantinopleFix
     runs-on: ubuntu-latest
     steps:
@@ -3894,7 +3948,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test73:
+  test74:
     name: bcEIP158ToByzantium
     runs-on: ubuntu-latest
     steps:
@@ -3948,7 +4002,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test74:
+  test75:
     name: bcFrontierToHomestead
     runs-on: ubuntu-latest
     steps:
@@ -4002,7 +4056,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test75:
+  test76:
     name: bcHomesteadToDao
     runs-on: ubuntu-latest
     steps:
@@ -4056,7 +4110,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test76:
+  test77:
     name: bcHomesteadToEIP150
     runs-on: ubuntu-latest
     steps:
@@ -4110,7 +4164,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test77:
+  test78:
     name: bcMergeToShanghai
     runs-on: ubuntu-latest
     steps:
@@ -4164,7 +4218,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test78:
+  test79:
     name: bcBlockGasLimitTest
     runs-on: ubuntu-latest
     steps:
@@ -4218,7 +4272,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test79:
+  test80:
     name: bcEIP1559
     runs-on: ubuntu-latest
     steps:
@@ -4272,7 +4326,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test80:
+  test81:
     name: bcEIP3675
     runs-on: ubuntu-latest
     steps:
@@ -4326,7 +4380,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test81:
+  test82:
     name: bcExample
     runs-on: ubuntu-latest
     steps:
@@ -4380,7 +4434,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test82:
+  test83:
     name: bcExploitTest
     runs-on: ubuntu-latest
     steps:
@@ -4434,7 +4488,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test83:
+  test84:
     name: bcForkStressTest
     runs-on: ubuntu-latest
     steps:
@@ -4488,7 +4542,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test84:
+  test85:
     name: bcGasPricerTest
     runs-on: ubuntu-latest
     steps:
@@ -4542,7 +4596,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test85:
+  test86:
     name: bcMultiChainTest
     runs-on: ubuntu-latest
     steps:
@@ -4596,7 +4650,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test86:
+  test87:
     name: bcRandomBlockhashTest
     runs-on: ubuntu-latest
     steps:
@@ -4650,7 +4704,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test87:
+  test88:
     name: bcStateTests
     runs-on: ubuntu-latest
     steps:
@@ -4704,7 +4758,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test88:
+  test89:
     name: bcTotalDifficultyTest
     runs-on: ubuntu-latest
     steps:
@@ -4758,7 +4812,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test89:
+  test90:
     name: bcUncleSpecialTests
     runs-on: ubuntu-latest
     steps:
@@ -4812,7 +4866,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test90:
+  test91:
     name: bcUncleTest
     runs-on: ubuntu-latest
     steps:
@@ -4866,7 +4920,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test91:
+  test92:
     name: bcValidBlockTest
     runs-on: ubuntu-latest
     steps:
@@ -4920,7 +4974,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test92:
+  test93:
     name: bcWalletTest
     runs-on: ubuntu-latest
     steps:
