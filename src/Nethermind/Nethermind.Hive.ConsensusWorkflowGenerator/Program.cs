@@ -21,6 +21,12 @@ public static class Program
         fileContent.AppendLine("");
         fileContent.AppendLine("jobs:");
 
+        Dictionary<string, long> filesToBeTested = new();
+
+        List<List<string>> accumulatedData = new();
+        List<string> accumulator = new();
+        long sum = 0;
+
         int jobsCreated = 0;
         foreach (string directory in directories)
         {
@@ -28,19 +34,57 @@ public static class Program
             string prefix = Path.GetFileName(parentDirectory)[..2];
             if (!prefix.Equals("st") && !prefix.Equals("bc"))
             {
-                CreateContent(fileContent, directory, ref jobsCreated);
+                //CreateContent(fileContent, directory, ref jobsCreated);
+
+                foreach (string file in Directory.GetFiles(directory))
+                {
+                    string fileName = Path.GetFileName(file);
+                    long fileSize = (new FileInfo(file)).Length;
+                    if (filesToBeTested.TryGetValue(fileName, out long size))
+                    {
+                        size += fileSize;
+                    }
+                    else
+                    {
+                        filesToBeTested.Add(fileName, fileSize);
+                    }
+
+                    sum += fileSize;
+                }
+
             }
         }
 
-        File.WriteAllText("hive-consensus-tests.yml", fileContent.ToString());
+        long targetSize = sum / 100;
+
+        sum = 0;
+
+        foreach (var fileToBeTested in filesToBeTested)
+        {
+            accumulator.Add(fileToBeTested.Key);
+            sum += fileToBeTested.Value;
+
+            if (sum > targetSize)
+            {
+                accumulatedData.Add(new List<string>(accumulator));
+                accumulator.Clear();
+                sum = 0;
+            }
+        }
+
+        foreach (List<string> run in accumulatedData)
+        {
+            CreateContent(fileContent, run, ref jobsCreated);
+        }
+
+        File.WriteAllText("testy.txt", fileContent.ToString());
     }
 
-    private static void CreateContent(StringBuilder fileContent, string directory, ref int jobsCreated)
+    private static void CreateContent(StringBuilder fileContent, List<string> tests, ref int jobsCreated)
     {
-        string directoryName = Path.GetFileName(directory);
 
         fileContent.AppendLine($"  test{++jobsCreated}:");
-        fileContent.AppendLine($"    name: {directoryName}");
+        fileContent.AppendLine($"    name: {jobsCreated}");
         fileContent.AppendLine("    runs-on: ubuntu-latest");
         fileContent.AppendLine("    steps:");
         fileContent.AppendLine("      - name: Check out Nethermind repository");
@@ -79,14 +123,19 @@ public static class Program
         fileContent.AppendLine("        run: go build .");
         fileContent.AppendLine("      - name: Load Docker image");
         fileContent.AppendLine("        run: docker load --input /tmp/image.tar");
-        fileContent.AppendLine("      - name: Run Hive");
-        fileContent.AppendLine("        continue-on-error: true");
-        fileContent.AppendLine("        working-directory: hive");
-        fileContent.AppendLine($"        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /{directoryName} --sim.parallelism 16");
+
+        foreach (string test in tests)
+        {
+            fileContent.AppendLine($"      - name: Run {test}");
+            fileContent.AppendLine("        continue-on-error: true");
+            fileContent.AppendLine("        working-directory: hive");
+            fileContent.AppendLine($"        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /{test} --sim.parallelism 16");
+        }
+
         fileContent.AppendLine("      - name: Upload results");
         fileContent.AppendLine("        uses: actions/upload-artifact@v3");
         fileContent.AppendLine("        with:");
-        fileContent.AppendLine($"          name: results-{directoryName}-${{ github.run_number }}-${{ github.run_attempt }}");
+        fileContent.AppendLine($"          name: results-{jobsCreated}-${{ github.run_number }}-${{ github.run_attempt }}");
         fileContent.AppendLine("          path: hive/workspace");
         fileContent.AppendLine("          retention-days: 7");
         fileContent.AppendLine("      - name: Print results");
