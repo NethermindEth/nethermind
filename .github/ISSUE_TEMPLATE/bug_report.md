@@ -11,7 +11,7 @@ assignees: ''
 Please provide a clear and concise description of the issue.
 
 **Steps to Reproduce**
-In order to replicate the behavior, please provide a detailed list of steps::
+In order to replicate the behavior, please provide a detailed list of steps:
 1. Go to '...'
 2. Click on '....'
 3. Scroll down to '....'
@@ -36,4 +36,4 @@ Please provide the following information regarding your setup:
 Please provide any additional context about the problem.
 
 **Logs**
-Please include any relevant logs that may help identify the issue.get better
+Please include any relevant logs that may help identify the issue.
