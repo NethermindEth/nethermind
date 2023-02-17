@@ -1,0 +1,5030 @@
+name: 'Hive tests' 
+
+on:
+  push:
+    tags: ['*']
+  workflow_dispatch:
+
+jobs:
+  test1:
+    name: stArgsZeroOneBalance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stArgsZeroOneBalance --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stArgsZeroOneBalance-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test2:
+    name: stAttackTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stAttackTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stAttackTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test3:
+    name: stBadOpcode
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stBadOpcode --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stBadOpcode-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test4:
+    name: stBugs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stBugs --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stBugs-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test5:
+    name: stCallCodes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stCallCodes --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stCallCodes-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test6:
+    name: stCallCreateCallCodeTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stCallCreateCallCodeTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stCallCreateCallCodeTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test7:
+    name: stCallDelegateCodesCallCodeHomestead
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stCallDelegateCodesCallCodeHomestead --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stCallDelegateCodesCallCodeHomestead-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test8:
+    name: stCallDelegateCodesHomestead
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stCallDelegateCodesHomestead --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stCallDelegateCodesHomestead-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test9:
+    name: stChainId
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stChainId --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stChainId-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test10:
+    name: stCodeCopyTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stCodeCopyTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stCodeCopyTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test11:
+    name: stCodeSizeLimit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stCodeSizeLimit --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stCodeSizeLimit-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test12:
+    name: stCreate2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stCreate2 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stCreate2-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test13:
+    name: stCreateTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stCreateTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stCreateTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test14:
+    name: stDelegatecallTestHomestead
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stDelegatecallTestHomestead --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stDelegatecallTestHomestead-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test15:
+    name: stEIP150singleCodeGasPrices
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stEIP150singleCodeGasPrices --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stEIP150singleCodeGasPrices-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test16:
+    name: stEIP150Specific
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stEIP150Specific --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stEIP150Specific-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test17:
+    name: stEIP1559
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stEIP1559 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stEIP1559-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test18:
+    name: stEIP158Specific
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stEIP158Specific --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stEIP158Specific-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test19:
+    name: stEIP2930
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stEIP2930 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stEIP2930-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test20:
+    name: stEIP3607
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stEIP3607 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stEIP3607-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test21:
+    name: stExample
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stExample --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stExample-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test22:
+    name: stExtCodeHash
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stExtCodeHash --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stExtCodeHash-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test23:
+    name: stHomesteadSpecific
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stHomesteadSpecific --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stHomesteadSpecific-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test24:
+    name: stInitCodeTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stInitCodeTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stInitCodeTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test25:
+    name: stLogTests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stLogTests --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stLogTests-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test26:
+    name: stMemExpandingEIP150Calls
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stMemExpandingEIP150Calls --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stMemExpandingEIP150Calls-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test27:
+    name: stMemoryStressTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stMemoryStressTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stMemoryStressTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test28:
+    name: stMemoryTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stMemoryTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stMemoryTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test29:
+    name: stNonZeroCallsTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stNonZeroCallsTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stNonZeroCallsTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test30:
+    name: stPreCompiledContracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stPreCompiledContracts --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stPreCompiledContracts-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test31:
+    name: stPreCompiledContracts2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stPreCompiledContracts2 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stPreCompiledContracts2-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test32:
+    name: stQuadraticComplexityTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stQuadraticComplexityTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stQuadraticComplexityTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test33:
+    name: stRandom
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stRandom --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stRandom-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test34:
+    name: stRandom2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stRandom2 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stRandom2-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test35:
+    name: stRecursiveCreate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stRecursiveCreate --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stRecursiveCreate-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test36:
+    name: stRefundTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stRefundTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stRefundTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test37:
+    name: stReturnDataTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stReturnDataTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stReturnDataTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test38:
+    name: stRevertTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stRevertTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stRevertTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test39:
+    name: stSelfBalance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stSelfBalance --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stSelfBalance-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test40:
+    name: stShift
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stShift --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stShift-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test41:
+    name: stSLoadTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stSLoadTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stSLoadTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test42:
+    name: stSolidityTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stSolidityTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stSolidityTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test43:
+    name: stSpecialTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stSpecialTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stSpecialTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test44:
+    name: stSStoreTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stSStoreTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stSStoreTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test45:
+    name: stStackTests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stStackTests --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stStackTests-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test46:
+    name: stStaticCall
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stStaticCall --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stStaticCall-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test47:
+    name: stStaticFlagEnabled
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stStaticFlagEnabled --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stStaticFlagEnabled-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test48:
+    name: stSystemOperationsTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stSystemOperationsTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stSystemOperationsTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test49:
+    name: stTimeConsuming
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stTimeConsuming --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stTimeConsuming-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test50:
+    name: stTransactionTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stTransactionTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stTransactionTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test51:
+    name: stTransitionTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stTransitionTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stTransitionTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test52:
+    name: stWalletTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stWalletTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stWalletTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test53:
+    name: stZeroCallsRevert
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stZeroCallsRevert --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stZeroCallsRevert-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test54:
+    name: stZeroCallsTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stZeroCallsTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stZeroCallsTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test55:
+    name: stZeroKnowledge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stZeroKnowledge --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stZeroKnowledge-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test56:
+    name: stZeroKnowledge2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stZeroKnowledge2 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stZeroKnowledge2-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test57:
+    name: stEIP3651
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stEIP3651 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stEIP3651-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test58:
+    name: stEIP3855
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stEIP3855 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stEIP3855-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test59:
+    name: stEIP3860
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stEIP3860 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stEIP3860-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test60:
+    name: stEOF
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /stEOF --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-stEOF-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test61:
+    name: bc4895-withdrawals
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bc4895-withdrawals --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bc4895-withdrawals-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test62:
+    name: bcBlockGasLimitTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcBlockGasLimitTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcBlockGasLimitTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test63:
+    name: bcEIP1559
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcEIP1559 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcEIP1559-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test64:
+    name: bcEIP3675
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcEIP3675 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcEIP3675-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test65:
+    name: bcForgedTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcForgedTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcForgedTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test66:
+    name: bcInvalidHeaderTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcInvalidHeaderTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcInvalidHeaderTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test67:
+    name: bcMultiChainTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcMultiChainTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcMultiChainTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test68:
+    name: bcUncleHeaderValidity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcUncleHeaderValidity --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcUncleHeaderValidity-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test69:
+    name: bcUncleSpecialTests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcUncleSpecialTests --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcUncleSpecialTests-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test70:
+    name: bcUncleTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcUncleTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcUncleTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test71:
+    name: bcArrowGlacierToMerge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcArrowGlacierToMerge --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcArrowGlacierToMerge-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test72:
+    name: bcBerlinToLondon
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcBerlinToLondon --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcBerlinToLondon-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test73:
+    name: bcByzantiumToConstantinopleFix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcByzantiumToConstantinopleFix --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcByzantiumToConstantinopleFix-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test74:
+    name: bcEIP158ToByzantium
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcEIP158ToByzantium --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcEIP158ToByzantium-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test75:
+    name: bcFrontierToHomestead
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcFrontierToHomestead --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcFrontierToHomestead-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test76:
+    name: bcHomesteadToDao
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcHomesteadToDao --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcHomesteadToDao-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test77:
+    name: bcHomesteadToEIP150
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcHomesteadToEIP150 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcHomesteadToEIP150-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test78:
+    name: bcMergeToShanghai
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcMergeToShanghai --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcMergeToShanghai-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test79:
+    name: bcBlockGasLimitTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcBlockGasLimitTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcBlockGasLimitTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test80:
+    name: bcEIP1559
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcEIP1559 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcEIP1559-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test81:
+    name: bcEIP3675
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcEIP3675 --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcEIP3675-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test82:
+    name: bcExample
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcExample --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcExample-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test83:
+    name: bcExploitTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcExploitTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcExploitTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test84:
+    name: bcForkStressTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcForkStressTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcForkStressTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test85:
+    name: bcGasPricerTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcGasPricerTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcGasPricerTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test86:
+    name: bcMultiChainTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcMultiChainTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcMultiChainTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test87:
+    name: bcRandomBlockhashTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcRandomBlockhashTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcRandomBlockhashTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test88:
+    name: bcStateTests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcStateTests --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcStateTests-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test89:
+    name: bcTotalDifficultyTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcTotalDifficultyTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcTotalDifficultyTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test90:
+    name: bcUncleSpecialTests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcUncleSpecialTests --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcUncleSpecialTests-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test91:
+    name: bcUncleTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcUncleTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcUncleTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test92:
+    name: bcValidBlockTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcValidBlockTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcValidBlockTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+  test93:
+    name: bcWalletTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v3
+        with:
+          path: nethermind
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Install Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Set up Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+          go-version: '>=1.17.0'
+      - name: Check out Hive repository
+        uses: actions/checkout@v3
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcWalletTest --sim.parallelism 16
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-bcWalletTest-${ github.run_number }-${ github.run_attempt }
+          path: hive/workspace
+          retention-days: 7
+      - name: Print results
+        run: |
+          chmod +x nethermind/scripts/hive-results.sh
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
