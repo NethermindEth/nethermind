@@ -131,8 +131,13 @@ namespace Nethermind.Db
                 if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
                 {
                     Span<byte> data = spanDb.GetSpan(key);
-                    if (data.IsNullOrEmpty())
+                    if (data.IsNull())
                     {
+                        return null;
+                    }
+                    else if (data.Length == 0)
+                    {
+                        spanDb.DangerousReleaseMemory(data);
                         return null;
                     }
 
@@ -174,8 +179,13 @@ namespace Nethermind.Db
                 if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
                 {
                     Span<byte> data = spanDb.GetSpan(key);
-                    if (data.IsNullOrEmpty())
+                    if (data.IsNull())
                     {
+                        return null;
+                    }
+                    else if (data.Length == 0)
+                    {
+                        spanDb.DangerousReleaseMemory(data);
                         return null;
                     }
 
