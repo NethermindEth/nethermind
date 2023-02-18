@@ -59,10 +59,3 @@ internal class FastBlockStatusList
         throw new IndexOutOfRangeException();
     }
 }
-
-internal enum FastBlockStatus : byte
-{
-    Unknown = 0,
-    Sent = 1,
-    Inserted = 2,
-}
