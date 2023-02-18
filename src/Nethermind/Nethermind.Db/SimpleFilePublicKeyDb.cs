@@ -13,7 +13,6 @@ using Microsoft.Win32.SafeHandles;
 
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.Db
