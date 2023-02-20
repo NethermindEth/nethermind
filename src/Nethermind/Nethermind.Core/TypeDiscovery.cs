@@ -81,15 +81,14 @@ namespace Nethermind.Core
         {
             // can potentially use https://docs.microsoft.com/en-us/dotnet/standard/assembly/unloadability
 
-            List<AssemblyName> missingRefs = loadedAssemblies
-                .SelectMany(x => x.GetReferencedAssemblies()
-                                  .Where(an => an.Name is not null
-                                               && !considered.ContainsKey(an.Name)
-                                               && an.Name.StartsWith("Nethermind")))
-                .ToList();
-
             // Closure capture the dictionary once
             Func<AssemblyName, bool> whereFilter = an => Filter(considered, an);
+
+            List<AssemblyName> missingRefs = loadedAssemblies
+                .SelectMany(x => x.GetReferencedAssemblies()
+                                  .Where(whereFilter))
+                .ToList();
+
             for (int i = 0; i < missingRefs.Count; i++)
             {
                 AssemblyName missingRef = missingRefs[i];
