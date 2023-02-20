@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Abstractions;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security;
@@ -58,7 +57,6 @@ namespace Nethermind.KeyStore
         private readonly ILogger _logger;
         private readonly Encoding _keyStoreEncoding;
         private readonly IKeyStoreIOSettingsProvider _keyStoreIOSettingsProvider;
-        private readonly IFileSystem _fileSystem;
 
         public FileKeyStore(
             IKeyStoreConfig keyStoreConfig,
@@ -66,8 +64,7 @@ namespace Nethermind.KeyStore
             ISymmetricEncrypter symmetricEncrypter,
             ICryptoRandom cryptoRandom,
             ILogManager logManager,
-            IKeyStoreIOSettingsProvider keyStoreIOSettingsProvider,
-            IFileSystem fileSystem)
+            IKeyStoreIOSettingsProvider keyStoreIOSettingsProvider)
         {
             _logger = logManager?.GetClassLogger<FileKeyStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
@@ -79,7 +76,6 @@ namespace Nethermind.KeyStore
                 : Encoding.GetEncoding(_config.KeyStoreEncoding);
             _privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);
             _keyStoreIOSettingsProvider = keyStoreIOSettingsProvider ?? throw new ArgumentNullException(nameof(keyStoreIOSettingsProvider));
-            _fileSystem = fileSystem;
         }
 
         public int Version => 3;
@@ -299,8 +295,8 @@ namespace Nethermind.KeyStore
         {
             try
             {
-                var files = _fileSystem.Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, "UTC--*--*");
-                var addresses = files.Select(_fileSystem.Path.GetFileName).Select(fn => fn.Split("--").LastOrDefault()).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
+                var files = Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, "UTC--*--*");
+                var addresses = files.Select(Path.GetFileName).Select(fn => fn.Split("--").LastOrDefault()).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
                 return (addresses, new Result { ResultType = ResultType.Success });
             }
             catch (Exception e)
@@ -335,7 +331,7 @@ namespace Nethermind.KeyStore
                 var keyFileName = _keyStoreIOSettingsProvider.GetFileName(address);
                 var storeDirectory = _keyStoreIOSettingsProvider.StoreDirectory;
                 var path = Path.Combine(storeDirectory, keyFileName);
-                _fileSystem.File.WriteAllText(path, serializedKey, _keyStoreEncoding);
+                File.WriteAllText(path, serializedKey, _keyStoreEncoding);
                 return new Result { ResultType = ResultType.Success };
             }
             catch (Exception e)
@@ -359,7 +355,7 @@ namespace Nethermind.KeyStore
 
                 foreach (string file in files)
                 {
-                    _fileSystem.File.Delete(file);
+                    File.Delete(file);
                 }
 
                 return new Result { ResultType = ResultType.Success };
@@ -384,11 +380,11 @@ namespace Nethermind.KeyStore
                 var files = FindKeyFiles(address);
                 if (files.Length == 0)
                 {
-                    if (_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {_fileSystem.Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory)}.");
+                    if (_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory)}.");
                     return null;
                 }
 
-                return _fileSystem.File.ReadAllText(files[0]);
+                return File.ReadAllText(files[0]);
             }
             catch (Exception e)
             {
@@ -400,7 +396,7 @@ namespace Nethermind.KeyStore
         internal string[] FindKeyFiles(Address address)
         {
             string addressString = address.ToString(false, false);
-            string[] files = _fileSystem.Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, $"*{addressString}*");
+            string[] files = Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, $"*{addressString}*");
             return files;
         }
     }

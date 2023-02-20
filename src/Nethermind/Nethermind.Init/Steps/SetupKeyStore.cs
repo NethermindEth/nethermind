@@ -41,8 +41,7 @@ namespace Nethermind.Init.Steps
                     encrypter,
                     get.CryptoRandom,
                     get.LogManager,
-                    new PrivateKeyStoreIOSettingsProvider(keyStoreConfig),
-                    get.FileSystem);
+                    new PrivateKeyStoreIOSettingsProvider(keyStoreConfig));
 
                 set.Wallet = get.Config<IInitConfig>() switch
                 {

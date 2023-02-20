@@ -54,7 +54,7 @@ namespace Nethermind.KeyStore.Test
                 Serializer = new EthereumJsonSerializer();
                 CryptoRandom = new CryptoRandom();
                 Store = new FileKeyStore(KeyStoreConfig, Serializer, new AesEncrypter(KeyStoreConfig, logger),
-                    CryptoRandom, logger, new PrivateKeyStoreIOSettingsProvider(KeyStoreConfig), new FileSystem());
+                    CryptoRandom, logger, new PrivateKeyStoreIOSettingsProvider(KeyStoreConfig));
             }
         }
 

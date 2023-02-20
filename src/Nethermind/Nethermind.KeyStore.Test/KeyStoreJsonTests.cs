@@ -44,7 +44,7 @@ namespace Nethermind.KeyStore.Test
             _serializer = new EthereumJsonSerializer();
             _cryptoRandom = new CryptoRandom();
             _store = new FileKeyStore(_config, _serializer, new AesEncrypter(_config, logManager), _cryptoRandom,
-                logManager, new PrivateKeyStoreIOSettingsProvider(_config), new FileSystem());
+                logManager, new PrivateKeyStoreIOSettingsProvider(_config));
 
             var testsContent = File.ReadAllText("basic_tests.json");
             _testsModel = _serializer.Deserialize<KeyStoreTestsModel>(testsContent);

@@ -40,8 +40,7 @@ namespace Nethermind.Wallet.Test
                             ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
                             Wallet = new DevKeyStoreWallet(
                                 new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(),
-                                    LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config),
-                                    new FileSystem()),
+                                    LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
                                 LimboLogs.Instance);
                             break;
                         }
@@ -57,8 +56,7 @@ namespace Nethermind.Wallet.Test
                             ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
                             ProtectedKeyStoreWallet wallet = new ProtectedKeyStoreWallet(
                                 new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(),
-                                    LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config),
-                                    new FileSystem()),
+                                    LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
                                 new ProtectedPrivateKeyFactory(new CryptoRandom(),
                                     Timestamper.Default, config.KeyStoreDirectory),
                                 Timestamper.Default,
