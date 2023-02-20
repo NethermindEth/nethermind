@@ -22,6 +22,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Blockchain.Test.Visitors
 {
@@ -45,7 +46,7 @@ namespace Nethermind.Blockchain.Test.Visitors
         }
 
         [Test]
-        public void Deletes_everything_after_the_missing_level()
+        public async Task Deletes_everything_after_the_missing_level()
         {
             MemDb blocksDb = new();
             MemDb blockInfosDb = new();
@@ -74,7 +75,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
             StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, new MemDb(), LimboNoErrorLogger.Instance);
-            tree.Accept(fixer, CancellationToken.None);
+            await tree.Accept(fixer, CancellationToken.None);
 
             Assert.Null(blockInfosDb.Get(3), "level 3");
             Assert.Null(blockInfosDb.Get(4), "level 4");
@@ -187,7 +188,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
         [Ignore("It is causing some trouble now. Disabling it while the restarts logic is under review")]
         [Test]
-        public void When_head_block_is_followed_by_a_block_bodies_gap_it_should_delete_all_levels_after_the_gap_start()
+        public async Task When_head_block_is_followed_by_a_block_bodies_gap_it_should_delete_all_levels_after_the_gap_start()
         {
             MemDb blocksDb = new();
             MemDb blockInfosDb = new();
@@ -210,7 +211,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree.UpdateMainChain(block2);
 
             StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, new MemDb(), LimboNoErrorLogger.Instance);
-            tree.Accept(fixer, CancellationToken.None);
+            await tree.Accept(fixer, CancellationToken.None);
 
             Assert.Null(blockInfosDb.Get(3), "level 3");
             Assert.Null(blockInfosDb.Get(4), "level 4");
