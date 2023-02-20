@@ -8,8 +8,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
-      <PackageReference Include="Websocket.Client" Version="4.4.43" />
+      <PackageReference Include="Newtonsoft.Json" />
+      <PackageReference Include="Websocket.Client" />
     </ItemGroup>
 
     <ItemGroup>

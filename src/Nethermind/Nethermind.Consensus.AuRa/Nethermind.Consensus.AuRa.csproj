@@ -17,7 +17,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Nito.Collections.Deque" Version="1.1.1" />
+        <PackageReference Include="Nito.Collections.Deque" />
     </ItemGroup>
 
     <ItemGroup>

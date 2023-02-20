@@ -16,12 +16,12 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Ckzg.Bindings" Version="0.1.1.57" />
-      <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="7.0.2" />
-      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="7.0.2" />
-      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="7.0.2" />
-      <PackageReference Include="Portable.BouncyCastle" Version="1.9.0" />
-      <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="7.0.0" />
+      <PackageReference Include="Ckzg.Bindings" />
+      <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
+      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" />
+      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
+      <PackageReference Include="Portable.BouncyCastle" />
+      <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     </ItemGroup>
 
     <ItemGroup>

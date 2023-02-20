@@ -8,10 +8,10 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
-    <PackageReference Include="System.IO.Abstractions" Version="19.1.5" />
-    <PackageReference Include="Jint" Version="2.11.58" />
-    <PackageReference Include="System.Linq.Async" Version="6.0.1" />
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="System.IO.Abstractions" />
+    <PackageReference Include="Jint" />
+    <PackageReference Include="System.Linq.Async" />
 
   </ItemGroup>
   <ItemGroup>

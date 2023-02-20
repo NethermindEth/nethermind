@@ -8,7 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.1.0" />
+      <PackageReference Include="Nethermind.Numerics.Int256" />
     </ItemGroup>
 
     <ItemGroup>

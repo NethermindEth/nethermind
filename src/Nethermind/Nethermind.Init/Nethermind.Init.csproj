@@ -17,7 +17,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="HardwareInformation" Version="5.0.2" />
+      <PackageReference Include="HardwareInformation" />
     </ItemGroup>
 
 </Project>
