@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO.Abstractions;
+using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -42,9 +42,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReceiptFinder ReceiptFinder { get; private set; } = null!;
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
 
-        public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, string.Empty);
+        public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
-            new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys, string.Empty),
+            new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
                 LimboLogs.Instance);
 
         public IFeeHistoryOracle? FeeHistoryOracle { get; private set; }

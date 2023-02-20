@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO.Abstractions;
+using System.IO;
 using System.Net;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -357,7 +357,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage,
                 new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, string.Empty),
+                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
                 MainnetSpecProvider.Instance, peerManager);
 
             string serialized = RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
@@ -387,7 +387,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage,
                 new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, string.Empty),
+                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
                 MainnetSpecProvider.Instance, peerManager);
             string serialized = RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":0,\"max\":0,\"peers\":[]},\"id\":67}";

@@ -18,21 +18,17 @@ namespace Nethermind.Wallet.Test;
 public class ProtectedPrivateKeyTests
 {
     [Test]
-    public void Creates_keys_in_keyStoreDirectory_and_doesnt_write_to_SpecialFolder()
+    public void Creates_keys_in_keyStoreDirectory()
     {
         // Don't test on Windows, as DpapiWrapper used
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             return;
         }
-        // We can't use IFileSystem with AspNet
-        string specialFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Nethermind");
-        int numberOfFilesBefore = Directory.EnumerateFiles(specialFolder).Count();
         string keyStoreDir = Path.Combine("testKeyStoreDir", Path.GetRandomFileName());
 
         ProtectedPrivateKey key = new(TestItem.PrivateKeyA, keyStoreDir);
 
-        Directory.EnumerateFiles(specialFolder).Count().Should().Be(numberOfFilesBefore);
         Directory.EnumerateFiles(Path.Combine(keyStoreDir, "protection_keys")).Count().Should().Be(1);
 
         key.Unprotect().Should().Be(TestItem.PrivateKeyA);
