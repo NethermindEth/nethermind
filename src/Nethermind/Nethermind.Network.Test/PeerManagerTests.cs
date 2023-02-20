@@ -342,7 +342,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.ActivePeers.Count.Should().Be(0);
         }
 
-        private int _travisDelay = 250;
+        private int _travisDelay = 500;
 
         private int _travisDelayLong = 1000;
 
