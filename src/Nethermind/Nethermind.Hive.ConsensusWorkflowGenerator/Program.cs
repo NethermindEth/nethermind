@@ -8,29 +8,37 @@ public static class Program
     {
         StringBuilder fileContent = new();
 
-        string testsDirectory = FindTestsDirectory();
-        List<string> directories = Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories).ToList();
-        directories.AddRange(Directory.GetDirectories(testsDirectory, "bc*", SearchOption.AllDirectories).ToList());
+        List<string> directories = GetTestsDirectories();
+        Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
+        List<List<string>> accumulatedJobs = SplitTestsToJobs(pathsToBeTested);
 
-        fileContent.AppendLine("name: 'Hive consensus tests' ");
-        fileContent.AppendLine("");
-        fileContent.AppendLine("on:");
-        fileContent.AppendLine("  push:");
-        fileContent.AppendLine("    tags: ['*']");
-        fileContent.AppendLine("  workflow_dispatch:");
-        fileContent.AppendLine("");
-        fileContent.AppendLine("jobs:");
+        // int i = 0;
+        // foreach (List<string> list in accumulatedData)
+        // {
+        //     foreach (string s in list)
+        //     {
+        //         i++;
+        //     }
+        // }
+        //
+        // fileContent.AppendLine(i.ToString());
 
-        Dictionary<string, long> filesToBeTested = new();
-        Dictionary<string, long> directoriesToBeTested = new();
-        const long targetSize = 12_000_000;
-
-
-        List<List<string>> accumulatedData = new();
-        List<string> accumulator = new();
-        long sum = 0;
+        WriteInitialLines(fileContent);
 
         int jobsCreated = 0;
+        foreach (List<string> job in accumulatedJobs)
+        {
+            WriteJobs(fileContent, job, ++jobsCreated);
+        }
+
+        File.WriteAllText("testy11.txt", fileContent.ToString());
+    }
+
+    private static Dictionary<string, long> GetPathsToBeTested(List<string> directories)
+    {
+        const long maxSizeWithoutSplitting = 35_000_000;
+        Dictionary<string, long> pathsToBeTested = new();
+
         foreach (string directory in directories)
         {
             long subsum = 0;
@@ -39,99 +47,107 @@ public static class Program
             string prefix = Path.GetFileName(parentDirectory)[..2];
             if (!prefix.Equals("st") && !prefix.Equals("bc"))
             {
-                //CreateContent(fileContent, directory, ref jobsCreated);
-
-                foreach (string file in Directory.GetFiles(directory))
+                foreach (string file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
                 {
                     long fileSize = (new FileInfo(file)).Length;
                     subsum += fileSize;
                 }
 
-                if (subsum < targetSize)
+                if (subsum < maxSizeWithoutSplitting)
                 {
-                    directoriesToBeTested.Add(directory, subsum);
+                    pathsToBeTested.Add(directory, subsum);
                 }
                 else
                 {
-                    foreach (string file in Directory.GetFiles(directory))
+                    foreach (string file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
                     {
                         string fileName = Path.GetFileName(file);
                         long fileSize = (new FileInfo(file)).Length;
-                        if (filesToBeTested.TryGetValue(fileName, out long size))
+                        if (pathsToBeTested.TryGetValue(fileName, out long size))
                         {
                             size += fileSize;
                         }
                         else
                         {
-                            filesToBeTested.Add(fileName, fileSize);
+                            pathsToBeTested.Add(fileName, fileSize);
                         }
-
-                        // sum += fileSize;
                     }
                 }
             }
         }
 
-
-        foreach (var directory in directoriesToBeTested)
-        {
-            if (directory.Value > 0 && sum + directory.Value > targetSize)
-            {
-                accumulatedData.Add(new List<string>(accumulator));
-                accumulator.Clear();
-                sum = 0;
-            }
-
-            string dirName = Path.GetFileName(directory.Key);
-            accumulator.Add(dirName);
-            sum += directory.Value;
-        }
-
-        if (accumulator.Count > 0)
-        {
-            accumulatedData.Add(new List<string>(accumulator));
-            accumulator.Clear();
-            sum = 0;
-        }
-
-
-        sum = 0;
-
-        foreach (var fileToBeTested in filesToBeTested)
-        {
-            if (fileToBeTested.Value > 0 && sum + fileToBeTested.Value > targetSize)
-            {
-                accumulatedData.Add(new List<string>(accumulator));
-                accumulator.Clear();
-                sum = 0;
-            }
-
-            accumulator.Add(fileToBeTested.Key);
-            sum += fileToBeTested.Value;
-        }
-
-        if (accumulator.Count > 0)
-        {
-            accumulatedData.Add(new List<string>(accumulator));
-            accumulator.Clear();
-            sum = 0;
-        }
-
-        foreach (List<string> run in accumulatedData)
-        {
-            CreateContent(fileContent, run, ref jobsCreated);
-        }
-
-        File.WriteAllText("testy.txt", fileContent.ToString());
+        return pathsToBeTested;
     }
 
-    private static void CreateContent(StringBuilder fileContent, List<string> tests, ref int jobsCreated)
+    private static List<List<string>> SplitTestsToJobs(Dictionary<string, long> pathsToBeTested)
     {
+        const long targetSize = 23_000_000;
+        const long penaltyForAdditionalInit = 300_000;
 
-        fileContent.AppendLine($"  test{++jobsCreated}:");
-        fileContent.AppendLine($"    name: {jobsCreated}");
+        List<List<string>> accumulatedJobs = new();
+        List<string> accumulator = new();
+        long sum = 0;
+
+        foreach (KeyValuePair<string, long> directory in pathsToBeTested)
+        {
+            string dirName = Path.GetFileName(directory.Key);
+
+            if (directory.Value > targetSize)
+            {
+                accumulatedJobs.Add(new List<string>() { dirName });
+                continue;
+            }
+
+            if (sum + directory.Value > targetSize)
+            {
+                accumulatedJobs.Add(new List<string>(accumulator));
+                accumulator.Clear();
+                sum = 0;
+            }
+
+            accumulator.Add(dirName);
+            sum += directory.Value;
+            sum += penaltyForAdditionalInit;
+        }
+
+        if (accumulator.Count > 0)
+        {
+            accumulatedJobs.Add(new List<string>(accumulator));
+        }
+
+        return accumulatedJobs;
+    }
+
+    private static void WriteInitialLines(StringBuilder fileContent)
+    {
+        fileContent.AppendLine("name: 'Hive consensus tests' ");
+        fileContent.AppendLine("");
+        fileContent.AppendLine("on:");
+        fileContent.AppendLine("  push:");
+        fileContent.AppendLine("    tags: ['*']");
+        fileContent.AppendLine("  workflow_dispatch:");
+        fileContent.AppendLine("    inputs:");
+        fileContent.AppendLine("      parallelism:");
+        fileContent.AppendLine("        description: 'number of concurrently running tests in each job. With just 1 there will be timeout. With 4 or more false-positive fails are likely. Recommended is 2 to avoid timeouts and flakiness'");
+        fileContent.AppendLine("        required: true");
+        fileContent.AppendLine("        default: '2'");
+        fileContent.AppendLine("        type: choice");
+        fileContent.AppendLine("        options: ['1', '2', '3', '4', '8', '16']");
+        fileContent.AppendLine("");
+        fileContent.AppendLine("jobs:");
+    }
+
+    private static void WriteJobs(StringBuilder fileContent, List<string> tests, int jobNumber)
+    {
+        string jobName = tests.Count > 1 ? $"{jobNumber}: Combined tests" : $"{jobNumber}: {tests.First().Split('.').First()}";
+
+        fileContent.AppendLine($"  test_{jobNumber}:");
+        fileContent.AppendLine($"    name: {jobName}");
         fileContent.AppendLine("    runs-on: ubuntu-latest");
         fileContent.AppendLine("    steps:");
+        fileContent.AppendLine("      - name: Set up parameters");
+        fileContent.AppendLine("        run: |");
+        fileContent.AppendLine("          echo \"PARALLELISM=${{ github.event.inputs.parallelism || '2' }}\" >> $GITHUB_ENV");
         fileContent.AppendLine("      - name: Check out Nethermind repository");
         fileContent.AppendLine("        uses: actions/checkout@v3");
         fileContent.AppendLine("        with:");
@@ -175,13 +191,13 @@ public static class Program
             fileContent.AppendLine($"      - name: Run {testWithoutJson}");
             fileContent.AppendLine("        continue-on-error: true");
             fileContent.AppendLine("        working-directory: hive");
-            fileContent.AppendLine($"        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /{testWithoutJson} --sim.parallelism 16");
+            fileContent.AppendLine($"        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /{testWithoutJson} --sim.parallelism $PARALLELISM");
         }
 
         fileContent.AppendLine("      - name: Upload results");
         fileContent.AppendLine("        uses: actions/upload-artifact@v3");
         fileContent.AppendLine("        with:");
-        fileContent.AppendLine($"          name: results-{jobsCreated}-${{ github.run_number }}-${{ github.run_attempt }}");
+        fileContent.AppendLine($"          name: results-{jobNumber}-${{ github.run_number }}-${{ github.run_attempt }}");
         fileContent.AppendLine("          path: hive/workspace");
         fileContent.AppendLine("          retention-days: 7");
         fileContent.AppendLine("      - name: Print results");
@@ -190,26 +206,37 @@ public static class Program
         fileContent.AppendLine("          nethermind/scripts/hive-results.sh \"hive/workspace/logs/*.json\"");
     }
 
-    private static string FindTestsDirectory()
+    private static List<string> GetTestsDirectories()
     {
-        string currentDir = Environment.CurrentDirectory;
-        do
+        string testsDirectory = FindTestsMainDirectory();
+
+        List<string> directories = Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories).ToList();
+        directories.AddRange(Directory.GetDirectories(testsDirectory, "bc*", SearchOption.AllDirectories).ToList());
+
+        return directories;
+
+
+        string FindTestsMainDirectory()
         {
-            if (currentDir == null)
+            string currentDir = Environment.CurrentDirectory;
+            do
             {
-                return null;
-            }
+                if (currentDir == null)
+                {
+                    return null;
+                }
 
-            var dir = Directory
-                .EnumerateDirectories(currentDir, "tests", SearchOption.TopDirectoryOnly)
-                .SingleOrDefault();
+                var dir = Directory
+                    .EnumerateDirectories(currentDir, "tests", SearchOption.TopDirectoryOnly)
+                    .SingleOrDefault();
 
-            if (dir != null)
-            {
-                return string.Concat(dir, "/BlockchainTests");
-            }
+                if (dir != null)
+                {
+                    return string.Concat(dir, "/BlockchainTests");
+                }
 
-            currentDir = Directory.GetParent(currentDir)?.FullName;
-        } while (true);
+                currentDir = Directory.GetParent(currentDir)?.FullName;
+            } while (true);
+        }
     }
 }
