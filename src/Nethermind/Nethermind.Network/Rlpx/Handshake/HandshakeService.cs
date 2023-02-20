@@ -7,7 +7,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
-using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
@@ -17,6 +16,7 @@ namespace Nethermind.Network.Rlpx.Handshake
     public class HandshakeService : IHandshakeService
     {
         private static int MacBitsSize = 256;
+        private static int MacBytesSize = MacBitsSize / 8;
 
         private readonly IPrivateKeyGenerator _ephemeralGenerator;
         private readonly ICryptoRandom _cryptoRandom;
@@ -229,13 +229,13 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.Secrets.AesSecret = aesSecret;
             handshake.Secrets.MacSecret = macSecret;
 
-            KeccakDigest mac1 = new(MacBitsSize);
-            mac1.BlockUpdate(macSecret.Xor(handshake.RecipientNonce), 0, macSecret.Length);
-            mac1.BlockUpdate(handshake.AuthPacket.Data, 0, handshake.AuthPacket.Data.Length);
+            KeccakHash mac1 = KeccakHash.Create(MacBytesSize);
+            mac1.Update(macSecret.Xor(handshake.RecipientNonce));
+            mac1.Update(handshake.AuthPacket.Data);
 
-            KeccakDigest mac2 = new(MacBitsSize);
-            mac2.BlockUpdate(macSecret.Xor(handshake.InitiatorNonce), 0, macSecret.Length);
-            mac2.BlockUpdate(handshake.AckPacket.Data, 0, handshake.AckPacket.Data.Length);
+            KeccakHash mac2 = KeccakHash.Create(MacBytesSize);
+            mac2.Update(macSecret.Xor(handshake.InitiatorNonce));
+            mac2.Update(handshake.AckPacket.Data);
 
             if (handshakeRole == HandshakeRole.Initiator)
             {
