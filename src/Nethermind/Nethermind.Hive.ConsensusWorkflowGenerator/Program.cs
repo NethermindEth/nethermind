@@ -4,44 +4,36 @@ namespace Nethermind.Hive.ConsensusWorkflowGenerator;
 
 public static class Program
 {
+    const long MaxSizeWithoutSplitting = 35_000_000;
+    const long TargetSize = 23_000_000;
+    const long PenaltyForAdditionalInit = 300_000;
+
     static void Main(string[] args)
     {
         StringBuilder fileContent = new();
 
         List<string> directories = GetTestsDirectories();
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
-        List<List<string>> accumulatedJobs = SplitTestsToJobs(pathsToBeTested);
-
-        // int i = 0;
-        // foreach (List<string> list in accumulatedData)
-        // {
-        //     foreach (string s in list)
-        //     {
-        //         i++;
-        //     }
-        // }
-        //
-        // fileContent.AppendLine(i.ToString());
+        List<List<string>> accumulatedJobs = GetTestsSplittedToJobs(pathsToBeTested);
 
         WriteInitialLines(fileContent);
 
         int jobsCreated = 0;
         foreach (List<string> job in accumulatedJobs)
         {
-            WriteJobs(fileContent, job, ++jobsCreated);
+            WriteJob(fileContent, job, ++jobsCreated);
         }
 
-        File.WriteAllText("testy11.txt", fileContent.ToString());
+        File.WriteAllText("hive-consensus-tests.yml", fileContent.ToString());
     }
 
     private static Dictionary<string, long> GetPathsToBeTested(List<string> directories)
     {
-        const long maxSizeWithoutSplitting = 35_000_000;
         Dictionary<string, long> pathsToBeTested = new();
 
         foreach (string directory in directories)
         {
-            long subsum = 0;
+            long sum = 0;
 
             string parentDirectory = Directory.GetParent(directory).ToString();
             string prefix = Path.GetFileName(parentDirectory)[..2];
@@ -50,12 +42,12 @@ public static class Program
                 foreach (string file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
                 {
                     long fileSize = (new FileInfo(file)).Length;
-                    subsum += fileSize;
+                    sum += fileSize;
                 }
 
-                if (subsum < maxSizeWithoutSplitting)
+                if (sum < MaxSizeWithoutSplitting)
                 {
-                    pathsToBeTested.Add(directory, subsum);
+                    pathsToBeTested.Add(directory, sum);
                 }
                 else
                 {
@@ -79,11 +71,8 @@ public static class Program
         return pathsToBeTested;
     }
 
-    private static List<List<string>> SplitTestsToJobs(Dictionary<string, long> pathsToBeTested)
+    private static List<List<string>> GetTestsSplittedToJobs(Dictionary<string, long> pathsToBeTested)
     {
-        const long targetSize = 23_000_000;
-        const long penaltyForAdditionalInit = 300_000;
-
         List<List<string>> accumulatedJobs = new();
         List<string> accumulator = new();
         long sum = 0;
@@ -92,13 +81,13 @@ public static class Program
         {
             string dirName = Path.GetFileName(directory.Key);
 
-            if (directory.Value > targetSize)
+            if (directory.Value > TargetSize)
             {
                 accumulatedJobs.Add(new List<string>() { dirName });
                 continue;
             }
 
-            if (sum + directory.Value > targetSize)
+            if (sum + directory.Value > TargetSize)
             {
                 accumulatedJobs.Add(new List<string>(accumulator));
                 accumulator.Clear();
@@ -107,7 +96,7 @@ public static class Program
 
             accumulator.Add(dirName);
             sum += directory.Value;
-            sum += penaltyForAdditionalInit;
+            sum += PenaltyForAdditionalInit;
         }
 
         if (accumulator.Count > 0)
@@ -137,7 +126,7 @@ public static class Program
         fileContent.AppendLine("jobs:");
     }
 
-    private static void WriteJobs(StringBuilder fileContent, List<string> tests, int jobNumber)
+    private static void WriteJob(StringBuilder fileContent, List<string> tests, int jobNumber)
     {
         string jobName = tests.Count > 1 ? $"{jobNumber}. Combined tests" : $"{jobNumber}. {tests.First().Split('.').First()}";
 
