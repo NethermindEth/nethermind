@@ -28,24 +28,24 @@ namespace Nethermind.Blockchain.Test.Visitors
 {
     public class StartupTreeFixerTests
     {
-        [Test, Ignore("Not implemented")]
+        [Test, Timeout(Timeout.MaxTestTime), Ignore("Not implemented")]
         public void Cleans_missing_references_from_chain_level_info()
         {
             // for now let us just look at the warnings (before we start adding cleanup)
         }
 
-        [Test, Ignore("Not implemented")]
+        [Test, Timeout(Timeout.MaxTestTime), Ignore("Not implemented")]
         public void Warns_when_blocks_are_marked_as_processed_but_there_are_no_bodies()
         {
             // for now let us just look at the warnings (before we start adding cleanup)
         }
 
-        [Test, Ignore("Not implemented")]
+        [Test, Timeout(Timeout.MaxTestTime), Ignore("Not implemented")]
         public void Warns_when_there_is_a_hole_in_processed_blocks()
         {
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Deletes_everything_after_the_missing_level()
         {
             MemDb blocksDb = new();
@@ -87,6 +87,8 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree.BestKnownNumber.Should().Be(2);
         }
 
+
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
@@ -124,6 +126,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             Assert.AreEqual(startingBlockNumber + suggestedBlocksAmount + 1, tree.Head!.Number);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
@@ -150,7 +153,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             Assert.AreEqual(BlockVisitOutcome.None, result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Fixer_should_not_suggest_block_with_null_block()
         {
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
@@ -187,7 +190,7 @@ namespace Nethermind.Blockchain.Test.Visitors
         }
 
         [Ignore("It is causing some trouble now. Disabling it while the restarts logic is under review")]
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task When_head_block_is_followed_by_a_block_bodies_gap_it_should_delete_all_levels_after_the_gap_start()
         {
             MemDb blocksDb = new();

@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.Test.Data
 {
     public class FileLocalDataSourceTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void correctly_reads_existing_file()
         {
             using (var tempFile = TempPath.GetTempFile())
@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Test.Data
         }
 
         [Ignore("flaky")]
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task correctly_updates_from_existing_file()
         {
             using (var tempFile = TempPath.GetTempFile())
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Test.Data
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         [Ignore("flaky test")]
         public async Task correctly_updates_from_new_file()
         {
@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Test.Data
 
         private static string GenerateStringJson(params string[] items) => $"[{string.Join(", ", items.Select(i => $"\"{i}\""))}]";
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void loads_default_when_failed_loading_file()
         {
             using var tempFile = TempPath.GetTempFile();
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Test.Data
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         [Retry(10)]
         [Ignore("Causing repeated pains on GitHub actions.")]
         public async Task retries_loading_file()
@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain.Test.Data
         }
 
         [Ignore("flaky test")]
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task loads_default_when_deleted_file()
         {
             using (var tempFile = TempPath.GetTempFile())

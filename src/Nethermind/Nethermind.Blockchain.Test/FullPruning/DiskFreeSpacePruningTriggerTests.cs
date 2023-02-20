@@ -15,6 +15,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
     [Parallelizable(ParallelScope.All)]
     public class DiskFreeSpacePruningTriggerTests
     {
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(999, ExpectedResult = true)]
         [TestCase(1000, ExpectedResult = false)]
         public bool triggers_on_low_free_space(int availableFreeSpace)
