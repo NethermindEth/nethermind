@@ -10,17 +10,15 @@ namespace Nethermind.Crypto
     {
         private readonly ICryptoRandom _random;
         private readonly ITimestamper _timestamper;
-        private readonly IFileSystem _fileSystem;
         private readonly string _keyStoreDir;
 
-        public ProtectedPrivateKeyFactory(ICryptoRandom random, ITimestamper timestamper, string keyStoreDir, IFileSystem fileSystem)
+        public ProtectedPrivateKeyFactory(ICryptoRandom random, ITimestamper timestamper, string keyStoreDir)
         {
             _random = random;
             _timestamper = timestamper;
             _keyStoreDir = keyStoreDir;
-            _fileSystem = fileSystem;
         }
 
-        public ProtectedPrivateKey Create(PrivateKey privateKey) => new(privateKey, _keyStoreDir, _fileSystem, _random, _timestamper);
+        public ProtectedPrivateKey Create(PrivateKey privateKey) => new(privateKey, _keyStoreDir, _random, _timestamper);
     }
 }

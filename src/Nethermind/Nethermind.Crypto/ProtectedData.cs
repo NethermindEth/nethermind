@@ -12,9 +12,9 @@ namespace Nethermind.Crypto
     {
         private readonly IProtector _protector;
 
-        protected ProtectedData(string keyStoreDir, IFileSystem fileSystem)
+        protected ProtectedData(string keyStoreDir)
         {
-            _protector = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : new AspNetWrapper(keyStoreDir, fileSystem);
+            _protector = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : new AspNetWrapper(keyStoreDir);
         }
 
         private interface IProtector

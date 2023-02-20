@@ -42,9 +42,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReceiptFinder ReceiptFinder { get; private set; } = null!;
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
 
-        public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, string.Empty, new FileSystem());
+        public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, string.Empty);
         public IWallet TestWallet { get; } =
-            new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys, string.Empty, new FileSystem()),
+            new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys, string.Empty),
                 LimboLogs.Instance);
 
         public IFeeHistoryOracle? FeeHistoryOracle { get; private set; }

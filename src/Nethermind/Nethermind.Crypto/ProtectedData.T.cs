@@ -20,8 +20,8 @@ namespace Nethermind.Crypto
         private DateTime _timestamp;
         private byte[] _encryptedData;
 
-        public ProtectedData(byte[] data, string keyStoreDir, IFileSystem fileSystem, ICryptoRandom? random = null,
-            ITimestamper? timestamper = null) : base(keyStoreDir, fileSystem)
+        protected ProtectedData(byte[] data, string keyStoreDir, ICryptoRandom? random = null, ITimestamper? timestamper = null)
+            : base(keyStoreDir)
         {
             _random = random ?? new CryptoRandom();
             _timestamper = timestamper ?? Timestamper.Default;

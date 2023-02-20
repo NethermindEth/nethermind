@@ -60,7 +60,7 @@ namespace Nethermind.Wallet.Test
                                     LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config),
                                     new FileSystem()),
                                 new ProtectedPrivateKeyFactory(new CryptoRandom(),
-                                    Timestamper.Default, config.KeyStoreDirectory, new FileSystem()),
+                                    Timestamper.Default, config.KeyStoreDirectory),
                                 Timestamper.Default,
                                 LimboLogs.Instance);
                             wallet.SetupTestAccounts(3);

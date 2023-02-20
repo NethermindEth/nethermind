@@ -18,12 +18,10 @@ namespace Nethermind.Crypto
             private const string ProtectionDir = "protection_keys";
 
             private readonly string _keyStoreDir;
-            private readonly IFileSystem _fileSystem;
 
-            public AspNetWrapper(string keyStoreDir, IFileSystem fileSystem)
+            public AspNetWrapper(string keyStoreDir)
             {
                 _keyStoreDir = keyStoreDir;
-                _fileSystem = fileSystem;
             }
 
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
@@ -45,25 +43,12 @@ namespace Nethermind.Crypto
                     : GetMachineProtector(optionalEntropy);
             }
 
-            /**
-             * Creates data protector with keys located in Environment.SpecialFolder.ApplicationData
-             * if we don't have permission to write to this folder keys will be stored at keyStore/protection_keys
-             */
             private IDataProtector GetUserProtector(byte[] optionalEntropy)
             {
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                var path = Path.Combine(appData, AppName);
-                try // Check if we have permission to write to directory SpecialFolder.ApplicationData
-                {
-                    using (_fileSystem.File.Create(Path.Combine(path, Path.GetRandomFileName()), 1, FileOptions.DeleteOnClose)) { }
-                }
-                catch // Change location of keys to keyStore/protection_keys directory
-                {
-                    path = Path.Combine(_keyStoreDir, ProtectionDir);
-                }
-                var info = new DirectoryInfo(path);
-                var provider = DataProtectionProvider.Create(info);
-                var purpose = CreatePurpose(optionalEntropy);
+                string path = Path.Combine(_keyStoreDir, ProtectionDir);
+                DirectoryInfo info = new(path);
+                IDataProtectionProvider provider = DataProtectionProvider.Create(info);
+                string purpose = CreatePurpose(optionalEntropy);
 
                 return provider.CreateProtector(purpose);
             }
