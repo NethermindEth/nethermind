@@ -135,14 +135,14 @@ namespace Nethermind.Db
                     {
                         return null;
                     }
-                    else if (data.Length == 0)
-                    {
-                        spanDb.DangerousReleaseMemory(data);
-                        return null;
-                    }
 
                     try
                     {
+                        if (data.Length == 0)
+                        {
+                            return null;
+                        }
+
                         var rlpValueContext = data.AsRlpValueContext();
                         item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                     }
@@ -183,14 +183,14 @@ namespace Nethermind.Db
                     {
                         return null;
                     }
-                    else if (data.Length == 0)
-                    {
-                        spanDb.DangerousReleaseMemory(data);
-                        return null;
-                    }
 
                     try
                     {
+                        if (data.Length == 0)
+                        {
+                            return null;
+                        }
+
                         var rlpValueContext = data.AsRlpValueContext();
                         item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                     }
