@@ -35,7 +35,7 @@ public static class Program
         {
             long sum = 0;
 
-            string parentDirectory = Directory.GetParent(directory).ToString();
+            string parentDirectory = Directory.GetParent(directory)?.ToString() ?? "";
             string prefix = Path.GetFileName(parentDirectory)[..2];
             if (!prefix.Equals("st") && !prefix.Equals("bc"))
             {
@@ -207,15 +207,15 @@ public static class Program
 
     private static string FindDirectory(string searchPattern)
     {
-        string currentDir = Environment.CurrentDirectory;
+        string? currentDir = Environment.CurrentDirectory;
         do
         {
             if (currentDir == null)
             {
-                return null;
+                return "";
             }
 
-            var dir = Directory
+            string? dir = Directory
                 .EnumerateDirectories(currentDir, searchPattern, SearchOption.TopDirectoryOnly)
                 .SingleOrDefault();
 
