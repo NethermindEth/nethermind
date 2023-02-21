@@ -24,7 +24,7 @@ public static class Program
             WriteJob(fileContent, job, ++jobsCreated);
         }
 
-        File.WriteAllText("hive-consensus-tests.yml", fileContent.ToString());
+        File.WriteAllText($"{FindDirectory("generatedWorkflow")}/hive-consensus-tests.yml", fileContent.ToString());
     }
 
     private static Dictionary<string, long> GetPathsToBeTested(List<string> directories)
@@ -197,35 +197,34 @@ public static class Program
 
     private static List<string> GetTestsDirectories()
     {
-        string testsDirectory = FindTestsMainDirectory();
+        string testsDirectory = string.Concat(FindDirectory("tests"), "/BlockchainTests");
 
         List<string> directories = Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories).ToList();
         directories.AddRange(Directory.GetDirectories(testsDirectory, "bc*", SearchOption.AllDirectories).ToList());
 
         return directories;
+    }
 
-
-        string FindTestsMainDirectory()
+    private static string FindDirectory(string searchPattern)
+    {
+        string currentDir = Environment.CurrentDirectory;
+        do
         {
-            string currentDir = Environment.CurrentDirectory;
-            do
+            if (currentDir == null)
             {
-                if (currentDir == null)
-                {
-                    return null;
-                }
+                return null;
+            }
 
-                var dir = Directory
-                    .EnumerateDirectories(currentDir, "tests", SearchOption.TopDirectoryOnly)
-                    .SingleOrDefault();
+            var dir = Directory
+                .EnumerateDirectories(currentDir, searchPattern, SearchOption.TopDirectoryOnly)
+                .SingleOrDefault();
 
-                if (dir != null)
-                {
-                    return string.Concat(dir, "/BlockchainTests");
-                }
+            if (dir != null)
+            {
+                return dir;
+            }
 
-                currentDir = Directory.GetParent(currentDir)?.FullName;
-            } while (true);
-        }
+            currentDir = Directory.GetParent(currentDir)?.FullName;
+        } while (true);
     }
 }
