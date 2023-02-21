@@ -66,7 +66,11 @@ namespace Nethermind.Consensus.Ethash
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
 
-            IReadOnlyTxProcessorSource producerEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, getFromApi.ReadOnlyTrieStore, readOnlyBlockTree, getFromApi.SpecProvider, getFromApi.LogManager);
+            IReadOnlyTxProcessorSource producerEnv;
+            if(_nethermindApi.SpecProvider.GenesisSpec.IsVerkleTreeEipEnabled)
+                producerEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, getFromApi.ReadOnlyVerkleTrieStore, readOnlyBlockTree, getFromApi.SpecProvider, getFromApi.LogManager);
+            else
+                producerEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, getFromApi.ReadOnlyTrieStore, readOnlyBlockTree, getFromApi.SpecProvider, getFromApi.LogManager);
 
             BlockProcessor producerProcessor = new(
                 getFromApi!.SpecProvider,

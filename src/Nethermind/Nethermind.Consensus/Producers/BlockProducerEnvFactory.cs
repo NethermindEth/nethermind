@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -9,7 +10,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
@@ -17,6 +17,8 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using Nethermind.Verkle;
+using Nethermind.Verkle.Tree;
 
 namespace Nethermind.Consensus.Producers
 {
@@ -25,6 +27,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly IDbProvider _dbProvider;
         protected readonly IBlockTree _blockTree;
         protected readonly IReadOnlyTrieStore _readOnlyTrieStore;
+        protected readonly ReadOnlyVerkleStateStore _readOnlyVerkleTrieStore;
         protected readonly ISpecProvider _specProvider;
         protected readonly IBlockValidator _blockValidator;
         protected readonly IRewardCalculatorSource _rewardCalculatorSource;
@@ -34,6 +37,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly ITransactionComparerProvider _transactionComparerProvider;
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
+        protected readonly TreeType _treeType;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 
@@ -63,6 +67,38 @@ namespace Nethermind.Consensus.Producers
             _transactionComparerProvider = transactionComparerProvider;
             _blocksConfig = blocksConfig;
             _logManager = logManager;
+            _treeType = TreeType.MerkleTree;
+
+            TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
+        }
+
+        public BlockProducerEnvFactory(
+            IDbProvider dbProvider,
+            IBlockTree blockTree,
+            ReadOnlyVerkleStateStore readOnlyTrieStore,
+            ISpecProvider specProvider,
+            IBlockValidator blockValidator,
+            IRewardCalculatorSource rewardCalculatorSource,
+            IReceiptStorage receiptStorage,
+            IBlockPreprocessorStep blockPreprocessorStep,
+            ITxPool txPool,
+            ITransactionComparerProvider transactionComparerProvider,
+            IBlocksConfig blocksConfig,
+            ILogManager logManager)
+        {
+            _dbProvider = dbProvider;
+            _blockTree = blockTree;
+            _readOnlyVerkleTrieStore = readOnlyTrieStore;
+            _specProvider = specProvider;
+            _blockValidator = blockValidator;
+            _rewardCalculatorSource = rewardCalculatorSource;
+            _receiptStorage = receiptStorage;
+            _blockPreprocessorStep = blockPreprocessorStep;
+            _txPool = txPool;
+            _transactionComparerProvider = transactionComparerProvider;
+            _blocksConfig = blocksConfig;
+            _logManager = logManager;
+            _treeType = TreeType.VerkleTree;
 
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
         }
@@ -107,8 +143,16 @@ namespace Nethermind.Consensus.Producers
             };
         }
 
-        protected virtual IReadOnlyTxProcessorSource CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider, ReadOnlyBlockTree readOnlyBlockTree) =>
-            new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyTrieStore, readOnlyBlockTree, _specProvider, _logManager);
+        protected IReadOnlyTxProcessorSource CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider, ReadOnlyBlockTree readOnlyBlockTree)
+        {
+            return _treeType switch
+            {
+                TreeType.MerkleTree => new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyTrieStore, readOnlyBlockTree, _specProvider, _logManager),
+                TreeType.VerkleTree => new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyVerkleTrieStore, readOnlyBlockTree, _specProvider, _logManager),
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,
@@ -142,15 +186,8 @@ namespace Nethermind.Consensus.Producers
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptStorage,
             ILogManager logManager, IBlocksConfig blocksConfig) =>
-            new(specProvider,
-                blockValidator,
-                rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-                readOnlyTxProcessingEnv.WorldState,
-                receiptStorage,
-                NullWitnessCollector.Instance,
-                logManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
-
+            new BlockProcessor(specProvider, blockValidator, rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
+                TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv), readOnlyTxProcessingEnv.WorldState, receiptStorage, NullWitnessCollector.Instance,
+                logManager);
     }
 }

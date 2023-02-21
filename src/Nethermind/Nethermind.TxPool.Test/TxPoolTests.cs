@@ -21,6 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -35,9 +36,22 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class TxPoolTests
     {
+        private readonly VirtualMachineTestsStateProvider _stateProviderType;
+
+        public enum VirtualMachineTestsStateProvider
+        {
+            MerkleTrie,
+            VerkleTrie
+        }
+
+        public TxPoolTests(VirtualMachineTestsStateProvider stateProvider)
+        {
+            _stateProviderType = stateProvider;
+        }
         private ILogManager _logManager;
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
@@ -53,9 +67,18 @@ namespace Nethermind.TxPool.Test
             _logManager = LimboLogs.Instance;
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
-            var trieStore = new TrieStore(new MemDb(), _logManager);
-            var codeDb = new MemDb();
-            _stateProvider = new WorldState(trieStore, codeDb, _logManager);
+            if (_stateProviderType == VirtualMachineTestsStateProvider.MerkleTrie)
+            {
+                var trieStore = new TrieStore(new MemDb(), _logManager);
+                var codeDb = new MemDb();
+                _stateProvider = new WorldState(trieStore, codeDb, _logManager);
+            }
+            else
+            {
+                var codeDb = new MemDb();
+                IDbProvider provider = VerkleDbFactory.InitDatabase(DbMode.MemDb, null);
+                _stateProvider = new VerkleWorldState(new VerkleStateTree(provider), codeDb, _logManager);
+            }
             _blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(0).TestObject;
             _blockTree.Head.Returns(block);

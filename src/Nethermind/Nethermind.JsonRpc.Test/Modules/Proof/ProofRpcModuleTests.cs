@@ -27,14 +27,19 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
+using Nethermind.Verkle.Tree;
+using Nethermind.Verkle.Tree.VerkleDb;
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
 {
     [Parallelizable(ParallelScope.None)]
-    [TestFixture(true, true)]
-    [TestFixture(true, false)]
-    [TestFixture(false, false)]
+    // [TestFixture(true, true, TreeType.VerkleTree)]
+    // [TestFixture(true, false, TreeType.VerkleTree)]
+    // [TestFixture(false, false, TreeType.VerkleTree)]
+    [TestFixture(true, true, TreeType.MerkleTree)]
+    [TestFixture(true, false, TreeType.MerkleTree)]
+    [TestFixture(false, false, TreeType.MerkleTree)]
     public class ProofRpcModuleTests
     {
         private readonly bool _createSystemAccount;
@@ -43,11 +48,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private IBlockTree _blockTree;
         private IDbProvider _dbProvider;
         private TestSpecProvider _specProvider;
+        private TreeType _treeType;
 
-        public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
+        public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice, TreeType treeType)
         {
             _createSystemAccount = createSystemAccount;
             _useNonZeroGasPrice = useNonZeroGasPrice;
+            _treeType = treeType;
         }
 
         [SetUp]
@@ -57,15 +64,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _specProvider = new TestSpecProvider(London.Instance);
             _blockTree = Build.A.BlockTree(_specProvider).WithTransactions(receiptStorage).OfChainLength(10).TestObject;
             _dbProvider = await TestMemDbProvider.InitAsync();
-
-            ProofModuleFactory moduleFactory = new(
-                _dbProvider,
-                _blockTree,
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
-                receiptStorage,
-                _specProvider,
-                LimboLogs.Instance);
+            ProofModuleFactory moduleFactory = _treeType switch
+            {
+                TreeType.MerkleTree => new(_dbProvider, _blockTree, new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                    new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)), receiptStorage, _specProvider, LimboLogs.Instance),
+                TreeType.VerkleTree => new(_dbProvider, _blockTree, new VerkleStateStore(_dbProvider).AsReadOnly(new VerkleMemoryDb()),
+                    new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)), receiptStorage, _specProvider, LimboLogs.Instance),
+                _ => throw new ArgumentOutOfRangeException()
+            };
 
             _proofRpcModule = moduleFactory.Create();
         }
@@ -203,14 +209,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _receiptFinder.Get(Arg.Any<Keccak>()).Returns(receipts);
             _receiptFinder.FindBlockHash(Arg.Any<Keccak>()).Returns(_blockTree.FindBlock(1).Hash);
 
-            ProofModuleFactory moduleFactory = new ProofModuleFactory(
-                _dbProvider,
-                _blockTree,
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
-                _receiptFinder,
-                _specProvider,
-                LimboLogs.Instance);
+            ProofModuleFactory moduleFactory = _treeType switch
+            {
+                TreeType.MerkleTree => new(_dbProvider, _blockTree, new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                    new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)), _receiptFinder, _specProvider, LimboLogs.Instance),
+                TreeType.VerkleTree => new(_dbProvider, _blockTree, new VerkleStateStore(_dbProvider).AsReadOnly(new VerkleMemoryDb()),
+                    new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)), _receiptFinder, _specProvider, LimboLogs.Instance),
+                _ => throw new ArgumentOutOfRangeException()
+            };
 
             _proofRpcModule = moduleFactory.Create();
             ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
