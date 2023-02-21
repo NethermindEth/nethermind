@@ -27,4 +27,5 @@ public interface IVerkleWitness : IJournal<int>
     public long AccessCompleteAccount(Address address, bool isWrite = false);
 
     public long AccessForTransaction(Address originAddress, Address destinationAddress, bool isValueTransfer);
+    public long AccessForProofOfAbsence(Address address);
 }
