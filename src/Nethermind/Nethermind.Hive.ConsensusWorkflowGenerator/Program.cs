@@ -117,9 +117,9 @@ public static class Program
         fileContent.AppendLine("  workflow_dispatch:");
         fileContent.AppendLine("    inputs:");
         fileContent.AppendLine("      parallelism:");
-        fileContent.AppendLine("        description: 'number of concurrently running tests in each job. With just 1 there will be timeout. With 4 or more false-positive fails are likely. Recommended is 2 to avoid timeouts and flakiness'");
+        fileContent.AppendLine("        description: 'Number of concurrently running tests in each job. With 1 or 2 timeout is likely. With 4 or more false-positive fails are likely. Recommended is 3 to avoid timeouts and reduce flakiness'");
         fileContent.AppendLine("        required: true");
-        fileContent.AppendLine("        default: '2'");
+        fileContent.AppendLine("        default: '3'");
         fileContent.AppendLine("        type: choice");
         fileContent.AppendLine("        options: ['1', '2', '3', '4', '8', '16']");
         fileContent.AppendLine("");
@@ -136,7 +136,7 @@ public static class Program
         fileContent.AppendLine("    steps:");
         fileContent.AppendLine("      - name: Set up parameters");
         fileContent.AppendLine("        run: |");
-        fileContent.AppendLine("          echo \"PARALLELISM=${{ github.event.inputs.parallelism || '2' }}\" >> $GITHUB_ENV");
+        fileContent.AppendLine("          echo \"PARALLELISM=${{ github.event.inputs.parallelism || '3' }}\" >> $GITHUB_ENV");
         fileContent.AppendLine("      - name: Check out Nethermind repository");
         fileContent.AppendLine("        uses: actions/checkout@v3");
         fileContent.AppendLine("        with:");
