@@ -29,8 +29,9 @@ jobs:
           ls
       - name: Generate new workflow
         run: |
+          cd nethermind/src/Nethermind
           ls
-          cd src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator
+          cd Nethermind.Hive.ConsensusWorkflowGenerator
           dotnet run -c Release Nethermind.Hive.ConsensusWorkflowGenerator.csproj
       - name: Copy updated workflow to final destination
         run: |
