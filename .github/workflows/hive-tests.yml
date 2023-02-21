@@ -22,6 +22,7 @@ jobs:
       - name: Update tests directory from source
         run: |
           cd src/tests
+          git pull
           git checkout develop
           git pull
       - name: Generate new workflow
