@@ -24,22 +24,14 @@ jobs:
         run: |
           cd nethermind
           cd src/tests
-          ls
           git config pull.rebase true
-          ls
       - name: Generate new workflow
         run: |
-          ls
-          cd nethermind/src/Nethermind
-          ls
-          cd Nethermind.Hive.ConsensusWorkflowGenerator
+          cd nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator
           dotnet run -c Release Nethermind.Hive.ConsensusWorkflowGenerator.csproj
       - name: Copy updated workflow to final destination
         run: |
-          ls
-          cd nethermind/src/Nethermind
-          ls
-          cd Nethermind.Hive.ConsensusWorkflowGenerator
+          cd nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator/generatedWorkflow
           ls
           cp consensus-tests-workflow.yml nethermind/.github/workflows
       - name: Create Pull Request
