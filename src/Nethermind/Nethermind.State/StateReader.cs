@@ -81,5 +81,11 @@ namespace Nethermind.State
             Account? account = _state.Get(address, stateRoot);
             return account;
         }
+
+        public byte[]? GetStorage(Address address, in UInt256 index)
+        {
+            Account account = _state.Get(address);
+            return GetStorage(account.StorageRoot, index);
+        }
     }
 }

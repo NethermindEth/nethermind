@@ -25,8 +25,6 @@ public class WorldState : IWorldState
     private readonly ILogger _logger;
     private readonly IKeyValueStore _codeDb;
 
-    private readonly StateStore _stateStore;
-
     private int _capacity = StartCapacity;
     private Change?[] _changes = new Change?[StartCapacity];
     private int _currentPosition = Resettable.EmptyPosition;
@@ -37,8 +35,8 @@ public class WorldState : IWorldState
     {
         _logger = logManager?.GetClassLogger<WorldState>() ?? throw new ArgumentNullException(nameof(logManager));
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-        _stateStore = new StateStore(trieStore, _codeDb, logManager);
-        _storageProvider = new StorageProvider(_stateStore, this, logManager);
+        _tree = new StateTree(trieStore, logManager);
+        _storageProvider = new StorageProvider(trieStore, this, logManager);
     }
 
     public void Accept(ITreeVisitor? visitor, Keccak? stateRoot, VisitingOptions? visitingOptions = null)
@@ -46,14 +44,14 @@ public class WorldState : IWorldState
         if (visitor is null) throw new ArgumentNullException(nameof(visitor));
         if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
 
-        _stateStore.Accept(visitor, stateRoot, visitingOptions);
+        _tree.Accept(visitor, stateRoot, visitingOptions);
     }
 
     private bool _needsStateRootUpdate;
 
     public void RecalculateStateRoot()
     {
-        _stateStore.UpdateRootHash();
+        _tree.UpdateRootHash();
         _needsStateRootUpdate = false;
     }
 
@@ -66,10 +64,13 @@ public class WorldState : IWorldState
                 throw new InvalidOperationException();
             }
 
-            return _stateStore.RootHash;
+            return _tree.RootHash;
         }
-        set => _stateStore.RootHash = value;
+        set => _tree.RootHash = value;
     }
+
+    private readonly StateTree _tree;
+
     public bool AccountExists(Address address)
     {
         if (_intraBlockCache.ContainsKey(address))
@@ -484,7 +485,7 @@ public class WorldState : IWorldState
     private Account? GetState(Address address)
     {
         Db.Metrics.StateTreeReads++;
-        Account? account = _stateStore.GetState(address);
+        Account? account = _tree.Get(address);
         return account;
     }
 
@@ -492,7 +493,7 @@ public class WorldState : IWorldState
     {
         _needsStateRootUpdate = true;
         Db.Metrics.StateTreeWrites++;
-        _stateStore.SetState(address, account);
+        _tree.Set(address, account);
     }
 
     private readonly HashSet<Address> _readsForTracing = new();
@@ -621,7 +622,7 @@ public class WorldState : IWorldState
             RecalculateStateRoot();
         }
 
-        _stateStore.Commit(blockNumber);
+        _tree.Commit(blockNumber);
     }
 
 
