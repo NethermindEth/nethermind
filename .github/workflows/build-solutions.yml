@@ -1,0 +1,39 @@
+name: Build solutions
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+defaults:
+  run:
+    working-directory: src/Nethermind
+
+env:
+  BUILD_CONFIG: release
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+      with:
+        submodules: true
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 7
+    - name: Install dependencies
+      run: |
+        dotnet restore Nethermind.sln
+        dotnet restore EthereumTests.sln
+        dotnet restore Benchmarks.sln
+    - name: Build Nethermind.sln
+      run: dotnet build Nethermind.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+    - name: Build EthereumTests.sln
+      run: dotnet build EthereumTests.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+    - name: Build Benchmarks.sln
+      run: dotnet build Benchmarks.sln -c ${{ env.BUILD_CONFIG }} --no-restore

@@ -72,13 +72,14 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, params Address[] blockBeneficiaries)
+
+        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
-            OfChainLength(out _, chainLength, splitVariant, splitFrom, blockBeneficiaries);
+            OfChainLength(out _, chainLength, splitVariant, splitFrom, withWithdrawals, blockBeneficiaries);
             return this;
         }
 
-        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, params Address[] blockBeneficiaries)
+        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
             Block current = _genesisBlock;
             headBlock = _genesisBlock;
@@ -96,7 +97,7 @@ namespace Nethermind.Core.Test.Builders
                     }
 
                     Block parent = current;
-                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary);
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, withWithdrawals, beneficiary);
                 }
                 else
                 {
@@ -110,14 +111,14 @@ namespace Nethermind.Core.Test.Builders
 
                     Block parent = current;
 
-                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary);
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, withWithdrawals, beneficiary);
                 }
             }
 
             return this;
         }
 
-        private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, Address beneficiary)
+        private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, bool withWithdrawals, Address beneficiary)
         {
             Block currentBlock;
             if (_receiptStorage is not null && blockIndex % 3 == 0)
@@ -134,6 +135,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong)splitVariant))
                     .WithTransactions(transactions)
                     .WithBloom(new Bloom())
+                    .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
                     .WithBeneficiary(beneficiary)
                     .TestObject;
 
@@ -171,6 +173,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithParent(parent)
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong)splitVariant))
                     .WithBeneficiary(beneficiary)
+                    .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
                     .TestObject;
             }
 

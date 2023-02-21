@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -42,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         public override string Name => "eth65";
 
-        public override byte ProtocolVersion => 65;
+        public override byte ProtocolVersion => EthVersions.Eth65;
 
         public override void HandleMessage(ZeroPacket message)
         {
