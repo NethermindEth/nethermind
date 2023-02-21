@@ -1,16 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net7.0</TargetFramework>
-        <IsPackable>false</IsPackable>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <OutputType>Library</OutputType>
-        <Nullable>enable</Nullable>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <OutputType>Library</OutputType>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-      <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
+  </ItemGroup>
 
 </Project>

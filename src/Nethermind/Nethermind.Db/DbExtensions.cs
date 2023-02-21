@@ -131,13 +131,18 @@ namespace Nethermind.Db
                 if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
                 {
                     Span<byte> data = spanDb.GetSpan(key);
-                    if (data.IsNullOrEmpty())
+                    if (data.IsNull())
                     {
                         return null;
                     }
 
                     try
                     {
+                        if (data.Length == 0)
+                        {
+                            return null;
+                        }
+
                         var rlpValueContext = data.AsRlpValueContext();
                         item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                     }
@@ -174,13 +179,18 @@ namespace Nethermind.Db
                 if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
                 {
                     Span<byte> data = spanDb.GetSpan(key);
-                    if (data.IsNullOrEmpty())
+                    if (data.IsNull())
                     {
                         return null;
                     }
 
                     try
                     {
+                        if (data.Length == 0)
+                        {
+                            return null;
+                        }
+
                         var rlpValueContext = data.AsRlpValueContext();
                         item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                     }
