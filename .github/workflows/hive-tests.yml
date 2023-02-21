@@ -26,6 +26,7 @@ jobs:
           cd nethermind/src/tests
           git branch
           git config pull.rebase true
+          git branch
       - name: Generate new workflow
         run: |
           cd nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator
