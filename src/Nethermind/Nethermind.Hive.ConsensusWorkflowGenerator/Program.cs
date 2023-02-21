@@ -24,7 +24,7 @@ public static class Program
             WriteJob(fileContent, job, ++jobsCreated);
         }
 
-        File.WriteAllText($"{FindDirectory("Nethermind.Hive.ConsensusWorkflowGenerator")}/hive-consensus-tests.yml", fileContent.ToString());
+        File.WriteAllText($"{FindDirectory("Nethermind.Hive.ConsensusWorkflowGenerator")}/hive-tests.yml", fileContent.ToString());
     }
 
     private static Dictionary<string, long> GetPathsToBeTested(List<string> directories)
