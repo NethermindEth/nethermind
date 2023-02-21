@@ -19,6 +19,8 @@ jobs:
   neth-tests:
     name: 'Run Nethermind tests #1'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - name: Cache dotnet
       id: cache-dotnet
@@ -49,6 +51,7 @@ jobs:
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+
     - name: Nethermind.Abi.Test
       run: dotnet test src/Nethermind/Nethermind.Abi.Test -c ${{ env.BUILD_CONFIG }}
     - name: Nethermind.Api.Test
@@ -65,6 +68,8 @@ jobs:
   neth-tests2:
     name: 'Run Nethermind tests #2'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - name: Cache dotnet
       id: cache-dotnet
@@ -95,6 +100,7 @@ jobs:
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+
     - name: Nethermind.Clique.Test
       run: dotnet test src/Nethermind/Nethermind.Clique.Test -c ${{ env.BUILD_CONFIG }}
     - name: Nethermind.Config.Test
@@ -119,6 +125,8 @@ jobs:
   neth-tests3:
     name: 'Run Nethermind tests #3'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - name: Cache dotnet
       id: cache-dotnet
@@ -149,6 +157,7 @@ jobs:
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+
     - name: Nethermind.Ethash.Test
       run: dotnet test src/Nethermind/Nethermind.Ethash.Test -c ${{ env.BUILD_CONFIG }}
     - name: Nethermind.EthStats.Test
@@ -171,6 +180,8 @@ jobs:
   neth-tests4:
     name: 'Run Nethermind tests #4'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - name: Cache dotnet
       id: cache-dotnet
@@ -201,6 +212,7 @@ jobs:
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+
     - name: Nethermind.Secp256k1.Test
       run: dotnet test src/Nethermind/Nethermind.Secp256k1.Test -c ${{ env.BUILD_CONFIG }}
     - name: Nethermind.Synchronization.Test
@@ -209,6 +221,8 @@ jobs:
   neth-tests5:
     name: 'Run Nethermind tests #5'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - name: Cache dotnet
       id: cache-dotnet
@@ -239,6 +253,7 @@ jobs:
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+
     - name: Nethermind.Mining.Test
       run: dotnet test src/Nethermind/Nethermind.Mining.Test -c ${{ env.BUILD_CONFIG }}
     - name: Nethermind.Serialization.Ssz.Test
@@ -257,6 +272,8 @@ jobs:
   neth-tests6:
     name: 'Run Nethermind tests #6'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - name: Cache dotnet
       id: cache-dotnet
@@ -287,6 +304,7 @@ jobs:
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+
     - name: Nethermind.Db.Test
       run: dotnet test src/Nethermind/Nethermind.Db.Test -c ${{ env.BUILD_CONFIG }}
     - name: Nethermind.Hive.Tests
@@ -301,6 +319,8 @@ jobs:
   neth-runner:
     name: Run Nethermind.Runner tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - name: Cache dotnet
       id: cache-dotnet
@@ -331,6 +351,7 @@ jobs:
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+
     - name: Nethermind.Cli.Test
       run: dotnet test src/Nethermind/Nethermind.Cli.Test -c ${{ env.BUILD_CONFIG }}
     - name: Nethermind.Runner.Test
@@ -341,6 +362,8 @@ jobs:
   eth-tests1:
     name: 'Run Ethereum tests #1'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - name: Cache dotnet
       id: cache-dotnet
@@ -371,12 +394,15 @@ jobs:
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+
     - name: Ethereum.Blockchain.Test
       run: dotnet test src/Nethermind/Ethereum.Blockchain.Test -c ${{ env.BUILD_CONFIG }}
 
   eth-tests2:
     name: 'Run Ethereum tests #2'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - name: Cache dotnet
       id: cache-dotnet
@@ -407,6 +433,7 @@ jobs:
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+
     - name: Ethereum.Trie.Test
       run: dotnet test src/Nethermind/Ethereum.Trie.Test -c ${{ env.BUILD_CONFIG }}
     - name: Ethereum.VM.Test
@@ -415,6 +442,8 @@ jobs:
   eth-tests3:
     name: 'Run Ethereum tests #3'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - name: Cache dotnet
       id: cache-dotnet
@@ -445,6 +474,7 @@ jobs:
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+
     - name: Ethereum.Abi.Test
       run: dotnet test src/Nethermind/Ethereum.Abi.Test -c ${{ env.BUILD_CONFIG }}
     - name: Ethereum.Basic.Test

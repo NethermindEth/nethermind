@@ -13,6 +13,8 @@ jobs:
   spacing-check:
     name: Check whitespaces
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - name: Cache dotnet
       id: cache-dotnet
