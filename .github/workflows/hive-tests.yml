@@ -48,7 +48,7 @@ jobs:
           committer: GitHub <noreply@github.com>
           branch: workflow-of-hive-consensus-tests-update
           branch-suffix: short-commit-hash
-          base: master
+          base: feature/hive_consensus_workflow_v2
       - name: Checking Outputs
         run: |
           echo "Pull Request Number - ${{ env.PULL_REQUEST_NUMBER }}"
