@@ -6,7 +6,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 jobs:
   update-workflow-of-hive-consensus-tests:
@@ -32,12 +31,12 @@ jobs:
           dotnet run -c Release Nethermind.Hive.ConsensusWorkflowGenerator.csproj
       - name: Copy updated workflow to final destination
         run: |
-          mv nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator/hive-tests.yml nethermind/.github/workflows
+          mv nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator/hive-consensus-tests.yml nethermind/.github/workflows
       - name: Upload results
         uses: actions/upload-artifact@v3
         with:
           name: results-${{ github.run_number }}-${{ github.run_attempt }}
-          path: nethermind/.github/workflows/hive-tests.yml
+          path: nethermind/.github/workflows/hive-consensus-tests.yml
           retention-days: 1
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3.7.0
