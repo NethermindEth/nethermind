@@ -16,5 +16,12 @@ namespace Nethermind.Db
         public const string Witness = "witness";
         public const string CHT = "canonicalHashTrie";
         public const string Metadata = "metadata";
+        public const string Leaf = "leaf";
+        public const string Stem = "stem";
+        public const string Branch = "branch";
+        public const string ForwardDiff = "forwardDiff";
+        public const string ReverseDiff = "reverseDiff";
+        public const string PreImages = "preImages";
+        public const string StateRootToBlock = "stateRoots";
     }
 }
