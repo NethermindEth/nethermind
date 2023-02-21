@@ -22,10 +22,13 @@ jobs:
       - name: Update tests directory from source
         run: |
           cd src/tests
+          git checkout develop
           git pull
       - name: Generate new workflow
         run: |
+          ls
           cd ../..
+          ls
           cd src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator
           dotnet run -c Release Nethermind.Hive.ConsensusWorkflowGenerator.csproj
       - name: Copy updated workflow to final destination
