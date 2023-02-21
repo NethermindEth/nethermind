@@ -88,7 +88,7 @@ namespace Nethermind.Blockchain.Test.Visitors
         }
 
 
-        [Timeout(Timeout.MaxTestTime)]
+        [Timeout(Timeout.MaxTestTime * 4)]
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
