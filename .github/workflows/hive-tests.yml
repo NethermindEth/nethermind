@@ -21,11 +21,13 @@ jobs:
           repository: NethermindEth/nethermind
           submodules: recursive
           path: nethermind
+      - name: Git Sumbodule Update
+        run: |
+          git pull --recurse-submodules
+          git submodule update --remote --recursive
       - name: Update tests directory from source
         run: |
           cd nethermind/src/tests
-          git branch
-          git pull
           git branch
       - name: Generate new workflow
         run: |
