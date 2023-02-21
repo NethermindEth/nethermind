@@ -50,7 +50,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
                 if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {content.ReadableBytes}");
+                    if (_logger.IsTrace) _logger.Trace($"Big Snappy message of length {content.ReadableBytes}");
                 }
                 else
                 {

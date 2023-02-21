@@ -1548,7 +1548,7 @@ namespace Nethermind.Blockchain
             if (persistedNumber is not null)
             {
                 startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
-                _logger.Warn(
+                if (_logger.IsInfo) _logger.Info(
                     $"Start block loaded from reorg boundary - {persistedNumber} - {startBlock?.ToString(Block.Format.Short)}");
             }
             else

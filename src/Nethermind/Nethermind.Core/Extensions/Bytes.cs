@@ -854,6 +854,19 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
+        public static byte[] FromUtf8HexString(ReadOnlySpan<byte> hexString)
+        {
+            if (hexString.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int oddMod = hexString.Length % 2;
+            byte[] result = GC.AllocateUninitializedArray<byte>((hexString.Length >> 1) + oddMod);
+            return HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1) ? result : throw new FormatException("Incorrect hex string");
+        }
+
+        [DebuggerStepThrough]
         public static byte[] FromHexString(string hexString)
         {
             if (hexString is null)
