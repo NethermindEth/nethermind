@@ -24,7 +24,7 @@ public static class Program
             WriteJob(fileContent, job, ++jobsCreated);
         }
 
-        File.WriteAllText($"{FindDirectory("generatedWorkflow")}/hive-consensus-tests.yml", fileContent.ToString());
+        File.WriteAllText("hive-consensus-tests.yml", fileContent.ToString());
     }
 
     private static Dictionary<string, long> GetPathsToBeTested(List<string> directories)
