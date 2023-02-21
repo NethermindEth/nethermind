@@ -150,7 +150,7 @@ namespace Nethermind.Specs.Test
         private ulong? _overridenVerkleTreeTransitionTimeStamp;
         public ulong VerkleTreeTransitionTimeStamp
         {
-            get =>_overridenVerkleTreeTransitionTimeStamp ?? _spec.VerkleTreeTransitionTimeStamp;
+            get => _overridenVerkleTreeTransitionTimeStamp ?? _spec.VerkleTreeTransitionTimeStamp;
             set => _overridenVerkleTreeTransitionTimeStamp = value;
         }
 
