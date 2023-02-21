@@ -117,7 +117,7 @@ public static class Program
         fileContent.AppendLine("  workflow_dispatch:");
         fileContent.AppendLine("    inputs:");
         fileContent.AppendLine("      parallelism:");
-        fileContent.AppendLine("        description: 'Number of concurrently running tests in each job. With 1 or 2 timeout is likely. With 4 or more false-positive fails are likely. Recommended is 3 to avoid timeouts and reduce flakiness'");
+        fileContent.AppendLine("        description: 'Number of concurrently running tests in each job. With 1 or 2 timeout is likely. With 4 or more false-positive fails are likely. Recommended is 3 to avoid timeouts and reduce false-positives'");
         fileContent.AppendLine("        required: true");
         fileContent.AppendLine("        default: '3'");
         fileContent.AppendLine("        type: choice");
