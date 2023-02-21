@@ -23,7 +23,7 @@ jobs:
           path: nethermind
       - name: Update tests directory from source
         run: |
-          cd nethermind/src/tests
+          cd nethermind/src
           git pull --recurse-submodules
           git submodule update --remote --recursive
           git branch
