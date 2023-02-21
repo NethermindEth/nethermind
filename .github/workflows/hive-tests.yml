@@ -26,7 +26,7 @@ jobs:
           git pull
       - name: Generate new workflow
         run: |
-          cd nethermind/
+          cd ../..
           cd src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator
           dotnet run -c Release Nethermind.Hive.ConsensusWorkflowGenerator.csproj
       - name: Copy updated workflow to final destination
