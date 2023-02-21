@@ -33,7 +33,7 @@ jobs:
         run: |
           cd nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator/generatedWorkflow
           ls
-          cp consensus-tests-workflow.yml nethermind/.github/workflows
+          cp hive-consensus-tests.yml nethermind/.github/workflows
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3.7.0
         with:
