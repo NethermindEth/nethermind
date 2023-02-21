@@ -183,12 +183,6 @@ public static class Program
             fileContent.AppendLine($"        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /{testWithoutJson} --sim.parallelism $PARALLELISM");
         }
 
-        fileContent.AppendLine("      - name: Upload results");
-        fileContent.AppendLine("        uses: actions/upload-artifact@v3");
-        fileContent.AppendLine("        with:");
-        fileContent.AppendLine($"          name: results-{jobNumber}-${{ github.run_number }}-${{ github.run_attempt }}");
-        fileContent.AppendLine("          path: hive/workspace");
-        fileContent.AppendLine("          retention-days: 7");
         fileContent.AppendLine("      - name: Print results");
         fileContent.AppendLine("        run: |");
         fileContent.AppendLine("          chmod +x nethermind/scripts/hive-results.sh");
