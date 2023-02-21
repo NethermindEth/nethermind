@@ -32,10 +32,17 @@ jobs:
       - name: Copy updated workflow to final destination
         run: |
           cp nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator/generatedWorkflow/hive-consensus-tests.yml nethermind/.github/workflows
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: results-${{ github.run_number }}-${{ github.run_attempt }}
+          path: nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator/generatedWorkflow
+          retention-days: 1
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3.7.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          path: nethermind
           commit-message: Update workflow of hive consensus tests
           body: |
             Workflow of hive consensus tests has been updated.
@@ -46,9 +53,9 @@ jobs:
           labels: setup
           author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
           committer: GitHub <noreply@github.com>
-          branch: workflow-of-hive-consensus-tests-update
+          branch: hive-consensus-tests-update
           branch-suffix: short-commit-hash
-          base: feature/hive_consensus_workflow_v2
+          base: master
       - name: Checking Outputs
         run: |
           echo "Pull Request Number - ${{ env.PULL_REQUEST_NUMBER }}"
