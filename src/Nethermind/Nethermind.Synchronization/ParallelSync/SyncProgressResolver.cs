@@ -38,7 +38,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public SyncProgressResolver(IBlockTree blockTree,
             IReceiptStorage receiptStorage,
-            IDb stateDb,
             ISyncTrieStore trieNodeResolver,
             ProgressTracker progressTracker,
             ISyncConfig syncConfig,
