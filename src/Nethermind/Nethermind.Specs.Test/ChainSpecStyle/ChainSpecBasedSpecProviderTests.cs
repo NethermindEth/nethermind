@@ -597,6 +597,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                     Eip3855TransitionTimestamp = 1000000012,
                     Eip3860TransitionTimestamp = 1000000012,
                     Eip1153TransitionTimestamp = 1000000024,
+                    VerkleTreeTransitionTimestamp = 1000000030,
                 }
             };
 
@@ -625,6 +626,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 r.MaximumUncleCount = 2;
                 r.WithdrawalTimestamp = ulong.MaxValue;
                 r.Eip4844TransitionTimestamp = ulong.MaxValue;
+                r.VerkleTreeTransitionTimeStamp = 1000000030;
             });
 
             TestTransitions((ForkActivation)1L, r =>

@@ -17,6 +17,7 @@ namespace Nethermind.Serialization.Rlp
         public static long Eip1559TransitionBlock = long.MaxValue;
         public static ulong WithdrawalTimestamp = ulong.MaxValue;
         public static ulong Eip4844TransitionTimestamp = ulong.MaxValue;
+        public static bool VerkleProofsEnable = false;
         public static ulong VerkleTreeTransitionTimestamp = ulong.MaxValue;
 
 
@@ -92,7 +93,7 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            if (blockHeader.Timestamp >= VerkleTreeTransitionTimestamp)
+            if (VerkleProofsEnable && blockHeader.Timestamp >= VerkleTreeTransitionTimestamp)
             {
                 blockHeader.VerkleProof = decoderContext.DecodeByteArray();
                 if (blockHeader.VerkleProof.IsZero())
@@ -197,7 +198,7 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            if (blockHeader.Timestamp >= VerkleTreeTransitionTimestamp)
+            if (VerkleProofsEnable && blockHeader.Timestamp >= VerkleTreeTransitionTimestamp)
             {
                 blockHeader.VerkleProof = rlpStream.DecodeByteArray();
                 if (blockHeader.VerkleProof.IsZero())
@@ -284,7 +285,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(header.ExcessDataGas.Value);
             }
 
-            if (header.Timestamp >= VerkleTreeTransitionTimestamp)
+            if (VerkleProofsEnable && header.Timestamp >= VerkleTreeTransitionTimestamp)
             {
                 // do i need to check here if the verkle witness exists? and if no witness, then does the proof exist?
                 // ANS: yes, add a null proof maybe?
@@ -346,8 +347,8 @@ namespace Nethermind.Serialization.Rlp
                                 + (item.Number < Eip1559TransitionBlock ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
                                 + (item.WithdrawalsRoot is null && item.ExcessDataGas is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + (item.ExcessDataGas is null ? 0 : Rlp.LengthOf(item.ExcessDataGas.Value))
-                                + (item.Timestamp < VerkleTreeTransitionTimestamp ? 0 : Rlp.LengthOf(item.VerkleProof))
-                                + (item.Timestamp < VerkleTreeTransitionTimestamp ? 0 : Rlp.LengthOfSequence(GetWitnessLength(item, rlpBehaviors)));
+                                + (!VerkleProofsEnable || item.Timestamp < VerkleTreeTransitionTimestamp ? 0 : Rlp.LengthOf(item.VerkleProof))
+                                + (!VerkleProofsEnable || item.Timestamp < VerkleTreeTransitionTimestamp ? 0 : Rlp.LengthOfSequence(GetWitnessLength(item, rlpBehaviors)));
 
             if (notForSealing)
             {
