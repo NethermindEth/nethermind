@@ -22,13 +22,14 @@ jobs:
           path: nethermind
       - name: Update tests directory from source
         run: |
-          ls
+          cd nethermind
           cd src/tests
           ls
           git pull
           ls
       - name: Generate new workflow
         run: |
+          ls
           cd nethermind/src/Nethermind
           ls
           cd Nethermind.Hive.ConsensusWorkflowGenerator
