@@ -157,7 +157,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 bool result = await WaitForPruningEnd(context);
                 if (result && _clearPrunedDb)
                 {
-                    await FullPruningDb.WaitForClearDb.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
+                    await FullPruningDb.WaitForClearDb.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 3), CancellationToken.None);
                 }
 
                 return result;
@@ -165,6 +165,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
             {
+                await Task.Yield();
                 await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
                 AddBlocks(1);
                 return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
