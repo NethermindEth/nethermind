@@ -8,7 +8,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
     public class GetReceiptsMessage : P2PMessage
     {
         public override int PacketType { get; } = LesMessageCode.GetReceipts;
-        public override string Protocol { get; } = P2P.Protocol.Les;
+        public override string Protocol { get; } = Contract.P2P.Protocol.Les;
         public long RequestId;
         public Eth.V63.Messages.GetReceiptsMessage EthMessage;
 

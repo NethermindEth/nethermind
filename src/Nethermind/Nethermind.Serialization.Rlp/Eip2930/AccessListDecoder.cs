@@ -54,7 +54,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 rlpStream.Check(check);
             }
@@ -106,7 +106,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 decoderContext.Check(check);
             }

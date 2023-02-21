@@ -32,7 +32,7 @@ namespace Nethermind.Serialization.Rlp
                 metadata = (BlockMetadata)rlpStream.DecodeInt();
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 rlpStream.Check(lastCheck);
             }
@@ -103,7 +103,7 @@ namespace Nethermind.Serialization.Rlp
                 metadata = (BlockMetadata)decoderContext.DecodeInt();
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 decoderContext.Check(lastCheck);
             }

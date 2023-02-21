@@ -46,7 +46,11 @@ namespace Nethermind.Evm.Precompiles
         {
             Metrics.Sha256Precompile++;
             InitIfNeeded();
-            return (_sha256.Value.ComputeHash(inputData.ToArray()), true);
+
+            byte[] output = new byte[SHA256.HashSizeInBytes];
+            bool success = _sha256.Value.TryComputeHash(inputData.Span, output, out int bytesWritten);
+
+            return (output, success && bytesWritten == SHA256.HashSizeInBytes);
         }
     }
 }
