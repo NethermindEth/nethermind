@@ -25,7 +25,7 @@ jobs:
           cd nethermind
           cd src/tests
           ls
-          git pull
+          git config pull.rebase true
           ls
       - name: Generate new workflow
         run: |
