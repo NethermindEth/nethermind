@@ -6,6 +6,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   update-workflow-of-hive-consensus-tests:
