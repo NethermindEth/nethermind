@@ -21,7 +21,6 @@ jobs:
           ref: master
       - name: Update tests directory from source
         run: |
-          cd nethermind/
           cd src/tests
           git pull
       - name: Generate new workflow
