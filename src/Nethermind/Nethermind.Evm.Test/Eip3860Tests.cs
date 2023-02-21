@@ -86,7 +86,7 @@ namespace Nethermind.Evm.Test
             var tracer = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize + 1);
 
             Assert.AreEqual(StatusCode.Failure, tracer.StatusCode);
-            Assert.AreEqual(tracer.Error, "eip-3860 - transaction size over max init code size");
+            Assert.AreEqual(tracer.Error, "EIP-3860 - transaction size over max init code size");
         }
 
         [Test]
