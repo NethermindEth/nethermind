@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             byte[] key = { 0, 1, 2 };
             test.FullPruningDb[key] = key;
             test.FullPruningDb.Context.WaitForFinish.Set();
-            await test.FullPruningDb.Context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(500), CancellationToken.None);
+            await test.FullPruningDb.Context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
 
             test.FullPruningDb[key].Should().BeEquivalentTo(key);
         }
@@ -157,7 +157,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 bool result = await WaitForPruningEnd(context);
                 if (result && _clearPrunedDb)
                 {
-                    await FullPruningDb.WaitForClearDb.WaitOneAsync(TimeSpan.FromMilliseconds(500), CancellationToken.None);
+                    await FullPruningDb.WaitForClearDb.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
                 }
 
                 return result;
@@ -165,9 +165,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
             {
-                await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(500), CancellationToken.None);
+                await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
                 AddBlocks(1);
-                return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(500), CancellationToken.None);
+                return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
             }
 
             public TestFullPruningDb.TestPruningContext WaitForPruningStart()

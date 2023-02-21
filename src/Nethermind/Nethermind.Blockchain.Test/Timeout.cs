@@ -5,4 +5,5 @@ namespace Nethermind.Blockchain.Test;
 internal class Timeout
 {
     public const int MaxTestTime = 10_000;
+    public const int MaxWaitTime = 1_000;
 }
