@@ -53,7 +53,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected override byte[] GetCurrentValue(StorageCell storageCell) =>
+        protected override byte[] GetCurrentValue(in StorageCell storageCell) =>
             TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
         /// <summary>
@@ -61,7 +61,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell"></param>
         /// <returns></returns>
-        public byte[] GetOriginal(StorageCell storageCell)
+        public byte[] GetOriginal(in StorageCell storageCell)
         {
             if (!_originalValues.ContainsKey(storageCell))
             {
@@ -226,7 +226,7 @@ namespace Nethermind.State
             return _storages[address];
         }
 
-        private byte[] LoadFromTree(StorageCell storageCell)
+        private byte[] LoadFromTree(in StorageCell storageCell)
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
@@ -236,7 +236,7 @@ namespace Nethermind.State
             return value;
         }
 
-        private void PushToRegistryOnly(StorageCell cell, byte[] value)
+        private void PushToRegistryOnly(in StorageCell cell, byte[] value)
         {
             SetupRegistry(cell);
             IncrementChangePosition();

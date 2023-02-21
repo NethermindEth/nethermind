@@ -316,6 +316,21 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
 
         [Test]
+        public void Can_load_sepolia()
+        {
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/sepolia.json");
+            ChainSpec chainSpec = LoadChainSpec(path);
+
+            Assert.AreEqual(11155111, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
+            Assert.AreEqual("Sepolia Testnet", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual("sepolia", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual("Ethash", chainSpec.SealEngineType, "engine");
+
+            chainSpec.LondonBlockNumber.Should().Be(0L);
+            chainSpec.ShanghaiTimestamp.Should().Be(1677557088);
+        }
+
+        [Test]
         public void Can_load_posdao_with_openethereum_pricing_transitions()
         {
             // TODO: modexp 2565

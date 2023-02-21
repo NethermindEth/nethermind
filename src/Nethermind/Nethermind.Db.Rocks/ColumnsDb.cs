@@ -16,7 +16,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     private readonly IDictionary<T, IDbWithSpan> _columnDbs = new Dictionary<T, IDbWithSpan>();
 
     public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys)
-        : base(basePath, settings, dbConfig, logManager, GetColumnFamilies(dbConfig, settings.DbName, GetEnumKeys(keys)))
+        : base(basePath, settings, dbConfig, logManager, GetColumnFamilies(dbConfig, settings, GetEnumKeys(keys)))
     {
         keys = GetEnumKeys(keys);
 
@@ -36,12 +36,12 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return keys;
     }
 
-    private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, string name, IReadOnlyList<T> keys)
+    private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, RocksDbSettings settings, IReadOnlyList<T> keys)
     {
         InitCache(dbConfig);
 
         ColumnFamilies result = new();
-        ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize), name);
+        ulong blockCacheSize = new PerTableDbConfig(dbConfig, settings).BlockCacheSize;
         foreach (T key in keys)
         {
             ColumnFamilyOptions columnFamilyOptions = new();

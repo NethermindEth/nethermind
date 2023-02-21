@@ -226,12 +226,28 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
         {
+            if (header.TotalDifficulty is null)
+            {
+                return true;
+            }
+
             bool totalDifficultyCorrect = true;
-            if (header.IsNonZeroTotalDifficulty())
+            if (header.TotalDifficulty == 0)
+            {
+                // Same as in BlockTree.SetTotalDifficulty
+                if (!(_blockTree.Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0))
+                {
+                    if (_logger.IsDebug)
+                        _logger.Debug($"Invalid block header ({header.Hash}) - zero total difficulty when genesis or ttd is not zero");
+                    totalDifficultyCorrect = false;
+                }
+            }
+            else
             {
                 if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - incorrect total difficulty");
+                    if (_logger.IsDebug)
+                        _logger.Debug($"Invalid block header ({header.Hash}) - incorrect total difficulty");
                     totalDifficultyCorrect = false;
                 }
             }

@@ -88,7 +88,7 @@ namespace Nethermind.Network.Benchmarks
                 return (IByteBuffer)result[0];
             }
 
-            public TestZeroDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
+            public TestZeroDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor)
                 : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
             {
             }
