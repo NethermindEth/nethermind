@@ -31,9 +31,7 @@ jobs:
           dotnet run -c Release Nethermind.Hive.ConsensusWorkflowGenerator.csproj
       - name: Copy updated workflow to final destination
         run: |
-          cd nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator/generatedWorkflow
-          ls
-          cp hive-consensus-tests.yml nethermind/.github/workflows
+          cp nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator/generatedWorkflow/hive-consensus-tests.yml nethermind/.github/workflows
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3.7.0
         with:
