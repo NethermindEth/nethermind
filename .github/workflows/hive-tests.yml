@@ -15,20 +15,20 @@ jobs:
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: 7
-      - name: Check out repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
         with:
-          ref: feature/hive_consensus_workflow_v2
+          repository: NethermindEth/nethermind
+          submodules: recursive
+          path: nethermind
       - name: Update tests directory from source
         run: |
+          ls
           cd src/tests
+          ls
           git pull
-          git checkout develop
-          git pull
+          ls
       - name: Generate new workflow
         run: |
-          ls
-          cd ../..
           ls
           cd src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator
           dotnet run -c Release Nethermind.Hive.ConsensusWorkflowGenerator.csproj
