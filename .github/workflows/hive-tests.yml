@@ -22,8 +22,8 @@ jobs:
           submodules: recursive
           path: nethermind
       - name: Git Sumbodule Update
-        cd nethermind
         run: |
+          cd nethermind
           git pull --recurse-submodules
           git submodule update --remote --recursive
       - name: Update tests directory from source
@@ -40,3 +40,4 @@ jobs:
           name: results-${{ github.run_number }}-${{ github.run_attempt }}
           path: nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator/hive-consensus-tests.yml
           retention-days: 7
+
