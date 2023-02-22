@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Nethermind.Hive.ConsensusWorkflowGenerator;
+namespace HiveConsensusWorkflowGenerator;
 
 public static class Program
 {
@@ -24,7 +24,7 @@ public static class Program
             WriteJob(fileContent, job, ++jobsCreated);
         }
 
-        File.WriteAllText($"{FindDirectory("Nethermind.Hive.ConsensusWorkflowGenerator")}/hive-consensus-tests.yml", fileContent.ToString());
+        File.WriteAllText($"{FindDirectory("HiveConsensusWorkflowGenerator")}/hive-consensus-tests.yml", fileContent.ToString());
     }
 
     private static Dictionary<string, long> GetPathsToBeTested(List<string> directories)
@@ -191,7 +191,8 @@ public static class Program
 
     private static List<string> GetTestsDirectories()
     {
-        string testsDirectory = string.Concat(FindDirectory("tests"), "/BlockchainTests");
+        string testsDirectory = string.Concat(FindDirectory("nethermind"), "/src/tests/BlockchainTests");
+        // string testsDirectory = string.Concat(FindDirectory("tests"), "/BlockchainTests");
 
         List<string> directories = Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories).ToList();
         directories.AddRange(Directory.GetDirectories(testsDirectory, "bc*", SearchOption.AllDirectories).ToList());
