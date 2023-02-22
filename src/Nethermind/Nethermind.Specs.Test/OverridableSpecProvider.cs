@@ -17,6 +17,7 @@ namespace Nethermind.Specs.Test
         {
             _specProvider = specProvider;
             _overrideAction = overrideAction;
+            TimestampFork = _specProvider.TimestampFork;
         }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -26,7 +27,7 @@ namespace Nethermind.Specs.Test
 
         public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
 
-        public ulong TimestampFork => _specProvider.TimestampFork;
+        public ulong TimestampFork { get; set; }
 
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 

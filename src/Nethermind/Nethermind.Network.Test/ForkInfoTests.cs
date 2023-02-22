@@ -14,6 +14,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using NSubstitute;
 using NUnit.Framework;
@@ -371,6 +372,9 @@ namespace Nethermind.Network.Test
                 ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../", "TimestampForkIdTest.json")));
                 specProvider = new ChainSpecBasedSpecProvider(spec);
             }
+
+            // Workaround for the previous implementation
+            specProvider = new OverridableSpecProvider(specProvider, s => s) { TimestampFork = 1438269973ul };
 
             ForkInfo forkInfo = new(specProvider, KnownHashes.MainnetGenesis);
 
