@@ -27,8 +27,10 @@ jobs:
           path: tests
       - name: Move tests directory to nethermind directory
         run: |
-          ls
           rm -r nethermind/src/tests
+          cd nethermind/src/tests
+          ls
+          cd ../../..
           mv tests nethermind/src
           cd nethermind/src/tests
           ls
