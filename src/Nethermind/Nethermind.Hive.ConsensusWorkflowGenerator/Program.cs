@@ -128,7 +128,7 @@ public static class Program
 
     private static void WriteJob(StringBuilder fileContent, List<string> tests, int jobNumber)
     {
-        string jobName = tests.Count > 1 ? $"{jobNumber}. Combined tests including e.g. {tests.First()}" : $"{jobNumber}. {tests.First().Split('.').First()}";
+        string jobName = tests.Count > 1 ? $"{jobNumber}. Combined tests including e.g. {tests.First().Split('.').First()}" : $"{jobNumber}. {tests.First().Split('.').First()}";
 
         fileContent.AppendLine($"  test_{jobNumber}:");
         fileContent.AppendLine($"    name: {jobName}");
