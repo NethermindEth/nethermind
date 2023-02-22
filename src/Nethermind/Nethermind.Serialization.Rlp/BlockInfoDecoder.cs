@@ -72,11 +72,6 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public Rlp Encode(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new NotImplementedException();
-        }
-
         private int GetContentLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)

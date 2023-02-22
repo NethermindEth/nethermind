@@ -23,7 +23,7 @@ namespace Nethermind.Serialization.Rlp
         Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
-    public interface IRlpValueDecoder<T> : IRlpObjectDecoder<T>
+    public interface IRlpValueDecoder<T> : IRlpDecoder<T>
     {
         T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
