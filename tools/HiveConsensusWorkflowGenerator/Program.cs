@@ -10,9 +10,11 @@ public static class Program
 
     static void Main(string[] args)
     {
+        string path = args.FirstOrDefault() is not null ? args.First() : "src/tests";
+
         StringBuilder fileContent = new();
 
-        List<string> directories = GetTestsDirectories();
+        List<string> directories = GetTestsDirectories(path);
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
         List<List<string>> accumulatedJobs = GetTestsSplittedToJobs(pathsToBeTested);
 
@@ -24,7 +26,7 @@ public static class Program
             WriteJob(fileContent, job, ++jobsCreated);
         }
 
-        File.WriteAllText($"{FindDirectory("HiveConsensusWorkflowGenerator")}/hive-consensus-tests.yml", fileContent.ToString());
+        File.WriteAllText($"{FindDirectory(".github")}/workflows/hive-consensus-tests.yml", fileContent.ToString());
     }
 
     private static Dictionary<string, long> GetPathsToBeTested(List<string> directories)
@@ -189,10 +191,9 @@ public static class Program
         fileContent.AppendLine("          nethermind/scripts/hive-results.sh \"hive/workspace/logs/*.json\"");
     }
 
-    private static List<string> GetTestsDirectories()
+    private static List<string> GetTestsDirectories(string path)
     {
-        string testsDirectory = string.Concat(FindDirectory("nethermind"), "/src/tests/BlockchainTests");
-        // string testsDirectory = string.Concat(FindDirectory("tests"), "/BlockchainTests");
+        string testsDirectory = string.Concat(FindDirectory("nethermind"), "/", path, "/BlockchainTests");
 
         List<string> directories = Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories).ToList();
         directories.AddRange(Directory.GetDirectories(testsDirectory, "bc*", SearchOption.AllDirectories).ToList());
