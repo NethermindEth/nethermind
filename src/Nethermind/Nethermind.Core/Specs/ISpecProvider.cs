@@ -28,6 +28,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         ForkActivation? MergeBlockNumber { get; }
 
+        /// <summary>
+        /// Gets the first time the fork is activated by timestamp
+        /// </summary>
+        ulong TimestampFork { get; }
+
         UInt256? TerminalTotalDifficulty { get; }
 
         /// <summary>

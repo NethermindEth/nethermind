@@ -26,6 +26,8 @@ namespace Nethermind.Specs.Test
 
         public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
 
+        public ulong TimestampFork => _specProvider.TimestampFork;
+
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
         public IReleaseSpec GenesisSpec => _overrideAction(_specProvider.GenesisSpec);

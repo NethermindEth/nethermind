@@ -22,10 +22,11 @@ namespace Nethermind.Network
     {
         private Dictionary<uint, (ForkActivation Activation, ForkId Id)> DictForks { get; }
         private (ForkActivation Activation, ForkId Id)[] Forks { get; }
-        private ulong TimstampThreshold => 1438269973ul; // MainnetSpecProvider.ShanghaiBlockTimestamp;
+        private readonly ulong _timestampFork;
 
         public ForkInfo(ISpecProvider specProvider, Keccak genesisHash)
         {
+            _timestampFork = specProvider.TimestampFork;
             ForkActivation[] transitionActivations = specProvider.TransitionActivations;
             DictForks = new();
             Forks = new (ForkActivation Activation, ForkId Id)[transitionActivations.Length + 1];
@@ -83,37 +84,45 @@ namespace Nethermind.Network
         /// Verify that the forkid from peer matches our forks.
         /// </summary>
         /// <param name="peerId"></param>
+        /// <param name="head"></param>
         /// <returns></returns>
         public ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head)
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            bool InTimestampActivation(ulong next) => next >= _timestampFork;
+
             if (head == null) return ValidationResult.Valid;
             if (!DictForks.TryGetValue(peerId.ForkHash, out (ForkActivation Activation, ForkId Id) found))
             {
                 // Remote is on fork that does not exist for local. remote is incompatible or local is stale.
                 return ValidationResult.IncompatibleOrStale;
             }
-            bool usingTimestamp = (found.Id.Next == 0
-                || found.Id.Next >= TimstampThreshold)
-                && (peerId.Next == 0
-                || peerId.Next >= TimstampThreshold);
-            ulong headActivation = (usingTimestamp ? head.Timestamp : (ulong)head.Number);
 
-            if (found.Id.Next != peerId.Next)
+            bool forkIsLast = found.Id.Next == 0;
+            bool peerForkIsLast = peerId.Next == 0;
+
+            bool usingTimestamp = (forkIsLast || InTimestampActivation(found.Id.Next))
+                                  && (peerForkIsLast || InTimestampActivation(peerId.Next));
+
+            ulong headActivation = usingTimestamp ? head.Timestamp : (ulong)head.Number;
+
+            if (found.Id.Next != peerId.Next) // if the next fork is different
             {
-                if (peerId.Next == 0
-                    && found.Id.Next > 0
-                    && headActivation >= found.Id.Next)
+                bool headPastLocalFork = headActivation >= found.Id.Next;
+                if (peerForkIsLast && !forkIsLast && headPastLocalFork)
                 {
                     // Remote does not know about a fork that local has already went through. remote is stale.
                     return ValidationResult.RemoteStale;
                 }
-                if (peerId.Next > 0
-                    && headActivation >= peerId.Next)
+
+                bool headPastPeerFork = headActivation >= peerId.Next;
+                if (!peerForkIsLast && headPastPeerFork)
                 {
                     // remote is expecting a fork that we passed but did not go through. remote is incompatible or local is stale.
                     return ValidationResult.IncompatibleOrStale;
                 }
             }
+
             return ValidationResult.Valid;
         }
     }
