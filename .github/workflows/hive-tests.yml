@@ -27,13 +27,13 @@ jobs:
           path: tests
       - name: Move tests directory to nethermind directory
         run: |
-          rm -r nethermind/src/tests
-          cd nethermind/src/tests
+          cd nethermind/src
           ls
           cd ../../..
           mv tests nethermind/src
           cd nethermind/src/tests
           ls
+          git branch
       - name: Generate new workflow
         run: |
           cd nethermind/src/Nethermind/Nethermind.Hive.ConsensusWorkflowGenerator
