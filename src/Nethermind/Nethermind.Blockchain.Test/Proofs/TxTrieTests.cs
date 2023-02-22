@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Test.Proofs
             _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_calculate_root()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Test.Proofs
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_collect_proof_trie_case_1()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Test.Proofs
             VerifyProof(proof, txTrie.RootHash);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_collect_proof_with_trie_case_2()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Test.Proofs
             VerifyProof(proof, txTrie.RootHash);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_collect_proof_with_trie_case_3_modified()
         {
             Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;

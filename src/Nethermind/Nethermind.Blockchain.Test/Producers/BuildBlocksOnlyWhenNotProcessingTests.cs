@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Test.Producers
     [Parallelizable(ParallelScope.All)]
     public class BuildBlocksOnlyWhenNotProcessingTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task should_trigger_block_production_on_empty_queue()
         {
             Context context = new();
@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Test.Producers
             context.TriggeredCount.Should().Be(1);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task should_trigger_block_production_when_queue_empties()
         {
             Context context = new();
@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Producers
             context.TriggeredCount.Should().Be(1);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task should_cancel_triggering_block_production()
         {
             Context context = new();
