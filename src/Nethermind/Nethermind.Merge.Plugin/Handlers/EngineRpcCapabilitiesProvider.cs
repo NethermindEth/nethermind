@@ -23,7 +23,7 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
     {
         if (_capabilities.IsEmpty)
         {
-            var spec = _specProvider.GetSpec((long.MaxValue, ulong.MaxValue));
+            IReleaseSpec spec = _specProvider.GetFinalSpec();
 
             #region The Merge
             _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = true;
