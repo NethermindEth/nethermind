@@ -100,6 +100,6 @@ namespace Nethermind.Db
             _memDb[keyBytes] = value.ToArray();
         }
 
-        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
+        public void DangerousReleaseMemory(in Span<byte> span) { }
     }
 }

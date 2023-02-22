@@ -278,35 +278,6 @@ public class DbOnTheRocks : IDbWithSpan
         return options;
     }
 
-<<<<<<< HEAD
-    private bool GetCacheIndexAndFilterBlocks(IDbConfig dbConfig)
-    {
-        return _settings.CacheIndexAndFilterBlocks.HasValue
-            ? _settings.CacheIndexAndFilterBlocks.Value
-            : ReadConfig<bool>(dbConfig, nameof(dbConfig.CacheIndexAndFilterBlocks));
-    }
-
-    private ulong GetBlockCacheSize(IDbConfig dbConfig)
-    {
-        return _settings.BlockCacheSize.HasValue
-            ? _settings.BlockCacheSize.Value
-            : ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
-    }
-
-    private ulong GetWriteBufferSize(IDbConfig dbConfig)
-    {
-        return _settings.WriteBufferSize.HasValue
-            ? _settings.WriteBufferSize.Value
-            : ReadConfig<ulong>(dbConfig, nameof(dbConfig.WriteBufferSize));
-    }
-
-    private ulong GetWriteBufferNumber(IDbConfig dbConfig)
-    {
-        return _settings.WriteBufferNumber.HasValue
-            ? _settings.WriteBufferNumber.Value
-            : ReadConfig<uint>(dbConfig, nameof(dbConfig.WriteBufferNumber));
-    }
-
 
     public byte[]? this[ReadOnlySpan<byte> key]
     {
@@ -416,7 +387,7 @@ public class DbOnTheRocks : IDbWithSpan
         }
     }
 
-    public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+    public void DangerousReleaseMemory(in Span<byte> span)
     {
         if (!span.IsNullOrEmpty())
             GC.RemoveMemoryPressure(span.Length);

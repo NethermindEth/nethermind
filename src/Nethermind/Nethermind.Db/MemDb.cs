@@ -157,7 +157,7 @@ namespace Nethermind.Db
             this[key] = value.ToArray();
         }
 
-        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+        public void DangerousReleaseMemory(in Span<byte> span)
         {
         }
     }
