@@ -103,13 +103,11 @@ public class InitializeNetwork : IStep
         ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
         _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
 
-        SyncProgressResolver syncProgressResolver = new(
-            _api.BlockTree!,
-            _api.ReceiptStorage!,
-            _api.ReadOnlyTrieStore!,
-            progressTracker,
-            _syncConfig,
-            _api.LogManager);
+        ISyncProgressResolver syncProgressResolver = _api.SpecProvider!.GenesisSpec.IsVerkleTreeEipEnabled switch
+        {
+            true => new SyncProgressResolver(_api.BlockTree!, _api.ReceiptStorage!, _api.ReadOnlyVerkleTrieStore!, progressTracker, _syncConfig, _api.LogManager),
+            false => new SyncProgressResolver(_api.BlockTree!, _api.ReceiptStorage!, _api.ReadOnlyTrieStore!, progressTracker, _syncConfig, _api.LogManager)
+        };
 
         _api.SyncProgressResolver = syncProgressResolver;
         _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
@@ -269,8 +267,8 @@ public class InitializeNetwork : IStep
         ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
     }
 
-    protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
-        => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, No.BeaconSync, _api.BetterPeerStrategy!, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
+    protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(ISyncProgressResolver syncProgressResolver) =>
+        new MultiSyncModeSelector(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, No.BeaconSync, _api.BetterPeerStrategy!, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
 
     private Task StartDiscovery()
     {
