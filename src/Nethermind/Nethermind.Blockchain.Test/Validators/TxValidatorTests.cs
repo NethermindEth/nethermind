@@ -3,6 +3,8 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
+
 using FluentAssertions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -26,6 +28,19 @@ namespace Nethermind.Blockchain.Test.Validators
         [SetUp]
         public void Setup()
         {
+        }
+
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public void Curve_is_correct()
+        {
+            BigInteger N = BigInteger.Parse("115792089237316195423570985008687907852837564279074904382605163141518161494337");
+            BigInteger HalfN = N / 2;
+
+            Secp256K1Curve.N.Convert(out BigInteger n);
+            Secp256K1Curve.HalfN.Convert(out BigInteger halfN);
+
+            (N == n).Should().BeTrue();
+            (HalfN == halfN).Should().BeTrue();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

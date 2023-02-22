@@ -240,9 +240,10 @@ namespace Nethermind.Consensus.Clique
 
         private void Store(Snapshot snapshot)
         {
-            Rlp rlp = _decoder.Encode(snapshot);
+            RlpStream stream = new(_decoder.GetLength(snapshot, RlpBehaviors.None));
+            _decoder.Encode(stream, snapshot);
             Keccak key = GetSnapshotKey(snapshot.Hash);
-            _blocksDb.Set(key, rlp.Bytes);
+            _blocksDb.Set(key, stream.Data);
         }
 
         private Snapshot Apply(Snapshot original, List<BlockHeader> headers, ulong epoch)
