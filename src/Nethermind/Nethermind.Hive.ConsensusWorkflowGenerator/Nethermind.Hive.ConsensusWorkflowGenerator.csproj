@@ -8,8 +8,4 @@
         <RootNamespace>Nethermind.Hive.ConsensusWorkflowGenerator</RootNamespace>
     </PropertyGroup>
 
-    <ItemGroup>
-      <Folder Include="generatedWorkflow" />
-    </ItemGroup>
-
 </Project>
