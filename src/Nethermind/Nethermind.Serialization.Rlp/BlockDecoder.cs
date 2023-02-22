@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(withdrawalsCheck);
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 rlpStream.Check(blockCheck);
             }
@@ -193,7 +193,7 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(withdrawalsCheck);
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 decoderContext.Check(blockCheck);
             }

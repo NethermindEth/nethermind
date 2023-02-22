@@ -101,7 +101,7 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
             _filterPipeline.Add(new LowNonceFilter(_logger)); // has to be after UnknownSenderFilter as it uses sender
             _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
-            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _transactions, _logger));
+            _filterPipeline.Add(new TooExpensiveTxFilter(_transactions, _logger));
             _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, logManager));
             if (incomingTxFilter is not null)
             {

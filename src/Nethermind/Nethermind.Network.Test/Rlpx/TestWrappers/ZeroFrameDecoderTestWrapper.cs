@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
     {
         private readonly IChannelHandlerContext _context;
 
-        public ZeroFrameDecoderTestWrapper(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
+        public ZeroFrameDecoderTestWrapper(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
         {
             _context = Substitute.For<IChannelHandlerContext>();
             _context.Allocator.Returns(PooledByteBufferAllocator.Default);

@@ -33,6 +33,8 @@ public class DbOnTheRocks : IDbWithSpan
     private readonly ConcurrentHashSet<IBatch> _currentBatches = new();
 
     internal readonly RocksDb _db;
+
+    private IntPtr? _rateLimiter;
     internal WriteOptions? WriteOptions { get; private set; }
 
     internal DbOptions? DbOptions { get; private set; }
@@ -48,6 +50,8 @@ public class DbOnTheRocks : IDbWithSpan
     protected static IntPtr _cache;
 
     private readonly RocksDbSettings _settings;
+
+    protected readonly PerTableDbConfig _perTableDbConfig;
 
     private readonly IFileSystem _fileSystem;
 
@@ -78,6 +82,7 @@ public class DbOnTheRocks : IDbWithSpan
         Name = _settings.DbName;
         _fileSystem = fileSystem ?? new FileSystem();
         _rocksDbNative = rocksDbNative ?? RocksDbSharp.Native.Instance;
+        _perTableDbConfig = new PerTableDbConfig(dbConfig, _settings);
         _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, rocksDbSettings.DeleteOnStart);
     }
 
@@ -187,41 +192,18 @@ public class DbOnTheRocks : IDbWithSpan
             Metrics.OtherDbWrites++;
     }
 
-    private T? ReadConfig<T>(IDbConfig dbConfig, string propertyName)
-    {
-        return ReadConfig<T>(dbConfig, propertyName, Name);
-    }
-
-    protected static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
-    {
-        string prefixed = string.Concat(tableName.StartsWith("State") ? string.Empty : string.Concat(tableName, "Db"),
-            propertyName);
-        try
-        {
-            Type type = dbConfig.GetType();
-            PropertyInfo? propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
-            // if no custom db property default to generic one
-            propertyInfo ??= type.GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
-            return (T?)propertyInfo?.GetValue(dbConfig);
-        }
-        catch (Exception e)
-        {
-            throw new InvalidDataException($"Unable to read {prefixed} property from DB config", e);
-        }
-    }
-
     protected virtual DbOptions BuildOptions(IDbConfig dbConfig)
     {
         _maxThisDbSize = 0;
         BlockBasedTableOptions tableOptions = new();
         tableOptions.SetBlockSize(16 * 1024);
         tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
-        tableOptions.SetCacheIndexAndFilterBlocks(GetCacheIndexAndFilterBlocks(dbConfig));
+        tableOptions.SetCacheIndexAndFilterBlocks(_perTableDbConfig.CacheIndexAndFilterBlocks);
 
         tableOptions.SetFilterPolicy(BloomFilterPolicy.Create());
         tableOptions.SetFormatVersion(4);
 
-        ulong blockCacheSize = GetBlockCacheSize(dbConfig);
+        ulong blockCacheSize = _perTableDbConfig.BlockCacheSize;
 
         tableOptions.SetBlockCache(_cache);
 
@@ -246,10 +228,21 @@ public class DbOnTheRocks : IDbWithSpan
          */
         options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
 
-        //options.SetMaxOpenFiles(32);
-        ulong writeBufferSize = GetWriteBufferSize(dbConfig);
+        if (_perTableDbConfig.MaxOpenFiles.HasValue)
+        {
+            options.SetMaxOpenFiles(_perTableDbConfig.MaxOpenFiles.Value);
+        }
+
+        if (_perTableDbConfig.MaxWriteBytesPerSec.HasValue)
+        {
+            _rateLimiter =
+                _rocksDbNative.rocksdb_ratelimiter_create(_perTableDbConfig.MaxWriteBytesPerSec.Value, 1000, 10);
+            _rocksDbNative.rocksdb_options_set_ratelimiter(options.Handle, _rateLimiter.Value);
+        }
+
+        ulong writeBufferSize = _perTableDbConfig.WriteBufferSize;
         options.SetWriteBufferSize(writeBufferSize);
-        int writeBufferNumber = (int)GetWriteBufferNumber(dbConfig);
+        int writeBufferNumber = (int)_perTableDbConfig.WriteBufferNumber;
         options.SetMaxWriteBufferNumber(writeBufferNumber);
         options.SetMinWriteBufferNumberToMerge(2);
 
@@ -285,6 +278,7 @@ public class DbOnTheRocks : IDbWithSpan
         return options;
     }
 
+<<<<<<< HEAD
     private bool GetCacheIndexAndFilterBlocks(IDbConfig dbConfig)
     {
         return _settings.CacheIndexAndFilterBlocks.HasValue
@@ -749,6 +743,11 @@ public class DbOnTheRocks : IDbWithSpan
         }
 
         _db.Dispose();
+
+        if (_rateLimiter.HasValue)
+        {
+            _rocksDbNative.rocksdb_ratelimiter_destroy(_rateLimiter.Value);
+        }
     }
 
     public void Dispose()

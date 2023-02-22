@@ -587,6 +587,8 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; } = UInt256.MaxValue;
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
+            public byte ProtocolVersion { get; }
+            public string ProtocolCode { get; }
 
             public void Disconnect(InitiateDisconnectReason reason, string details)
             {
@@ -1075,6 +1077,8 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; }
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
+            public byte ProtocolVersion { get; }
+            public string ProtocolCode { get; }
 
             public void Disconnect(InitiateDisconnectReason reason, string details)
             {

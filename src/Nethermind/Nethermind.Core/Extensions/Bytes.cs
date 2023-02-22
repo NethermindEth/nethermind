@@ -235,9 +235,7 @@ namespace Nethermind.Core.Extensions
         }
 
         public static byte[] PadLeft(this byte[] bytes, int length, byte padding = 0)
-        {
-            return PadLeft(bytes.AsSpan(), length, padding);
-        }
+            => bytes.Length == length ? bytes : bytes.AsSpan().PadLeft(length, padding);
 
         public static byte[] PadLeft(this Span<byte> bytes, int length, byte padding = 0)
         {
@@ -252,7 +250,7 @@ namespace Nethermind.Core.Extensions
             }
 
             byte[] result = new byte[length];
-            bytes.CopyTo(result.AsSpan().Slice(length - bytes.Length));
+            bytes.CopyTo(result.AsSpan(length - bytes.Length));
 
             if (padding != 0)
             {
@@ -853,6 +851,19 @@ namespace Nethermind.Core.Extensions
             }
 
             return leadingZeros;
+        }
+
+        [DebuggerStepThrough]
+        public static byte[] FromUtf8HexString(ReadOnlySpan<byte> hexString)
+        {
+            if (hexString.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int oddMod = hexString.Length % 2;
+            byte[] result = GC.AllocateUninitializedArray<byte>((hexString.Length >> 1) + oddMod);
+            return HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1) ? result : throw new FormatException("Incorrect hex string");
         }
 
         [DebuggerStepThrough]
