@@ -34,18 +34,21 @@ namespace Nethermind.Network
             uint crc = 0;
             CalculateHash(ref crc, genesisHash.Bytes);
             // genesis fork activation
-            (ForkActivation Activation, ForkId Id) toAdd = ((0, null), new ForkId(crc, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0));
-            Forks[0] = toAdd;
-            DictForks.Add(crc, toAdd);
+            SetFork(0, crc, ((0, null), new ForkId(crc, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0)));
             for (int index = 0; index < transitionActivations.Length; index++)
             {
                 ForkActivation forkActivation = transitionActivations[index];
                 BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, forkActivation.Activation);
                 CalculateHash(ref crc, blockNumberBytes);
-                toAdd = (forkActivation, new ForkId(crc, GetNextActivation(index, transitionActivations)));
-                Forks[index + 1] = toAdd;
-                DictForks.Add(crc, toAdd);
+                SetFork(index + 1, crc, (forkActivation, new ForkId(crc, GetNextActivation(index, transitionActivations))));
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetFork(int index, uint crc, (ForkActivation Activation, ForkId Id) fork)
+        {
+            Forks[index] = fork;
+            DictForks.Add(crc, Forks[index]);
         }
 
         private static void CalculateHash(ref uint crc, byte[] bytes)
