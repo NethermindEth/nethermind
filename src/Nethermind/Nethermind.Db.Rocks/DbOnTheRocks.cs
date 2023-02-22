@@ -18,7 +18,7 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks;
 
-public class DbOnTheRocks : IDbWithSpan
+public class DbOnTheRocks : IDbWithSpan, ITunableDb
 {
     private ILogger _logger;
 
@@ -54,7 +54,9 @@ public class DbOnTheRocks : IDbWithSpan
 
     private readonly IFileSystem _fileSystem;
 
-    private readonly RocksDbSharp.Native _rocksDbNative;
+    protected readonly RocksDbSharp.Native _rocksDbNative;
+
+    private ITunableDb.TuneType _currentTune = ITunableDb.TuneType.Default;
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
 
@@ -745,5 +747,98 @@ public class DbOnTheRocks : IDbWithSpan
         Assembly? rocksDbAssembly = Assembly.GetAssembly(typeof(RocksDb));
         Version? version = rocksDbAssembly?.GetName().Version;
         return version?.ToString(3);
+    }
+
+    public virtual void Tune(ITunableDb.TuneType type)
+    {
+        if (_currentTune == type) return;
+
+        // See https://github.com/EighteenZi/rocksdb_wiki/blob/master/RocksDB-Tuning-Guide.md
+        switch (type)
+        {
+            case ITunableDb.TuneType.HeavyWrite:
+                // This still allows for concurrent compaction during write,
+                // although it happens in burst of 1 minute every 5 minute or so instead of all the time.
+                // Note, l1SizeTarget is only 8x more than default, but our write buffer is so low the number of l0
+                // file size is quite high, and normally it will trigger a lot of l0->l1 compaction, causing higher
+                // than standard write amplification
+                //
+                // On goerli, this cut down the total writes during sync from 3.5 TB to 2.4 TB.
+                // On mainnet, 12.5 TB to 7.21 TB.
+                // However, the high burst will increase block processing time during the compaction more than usual.
+                ApplyOptions(GetHeavyWriteOptions(500, (ulong) 5.GiB()));
+                break;
+            case ITunableDb.TuneType.OptimizeWriteAmplification:
+                // Originally, I thought of completely disabling compaction. But blocks db did not complete compaction
+                // even after 4 hours.
+                //
+                // In this config, read response time would be slow to a halt. If any peer send a GetNodeData request,
+                // that request will likely hang, blocking the single threaded network pipeline temporarily, causing
+                // peer drops. Final compaction will take about 30 minute, per stage, which tend to increase total sync
+                // time. If you don't set max open file, there is a good chance that it will crash on mainnet.
+                // However, this allow for minimum write and space amplification.
+                // On goerli, this cut down the total writes during sync from 3.5 TB to 1.4 TB
+                // On mainnet, 12.5 TB to X TB
+
+                IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(10000, (ulong) 100.GiB());
+                heavyWriteOption["disable_auto_compactions"] = "true";
+                ApplyOptions(heavyWriteOption);
+                break;
+            case ITunableDb.TuneType.Default:
+            default:
+                ApplyOptions(GetStandardOptions());
+                break;
+        }
+
+        _currentTune = type;
+    }
+
+    protected virtual void ApplyOptions(IDictionary<string, string> options)
+    {
+        _db.SetOptions(options);
+    }
+
+    private IDictionary<string, string> GetStandardOptions()
+    {
+        // Defaults are from rocksdb source code
+        return new Dictionary<string, string>()
+        {
+            { "level0_file_num_compaction_trigger", 4.ToString() },
+            { "level0_slowdown_writes_trigger", 20.ToString() },
+            { "level0_stop_writes_trigger", 36.ToString() },
+
+            { "max_bytes_for_level_base", 256.MiB().ToString() },
+            { "disable_auto_compactions", "false" },
+        };
+    }
+
+    /// <summary>
+    /// Allow num of l0 file to grow very large. This dramatically increase read response time by about
+    /// (l0FileNumTarget / (default num (4) + max level usually (4)). but it saves bandwidth as l0->l1 happens
+    /// in larger size.
+    /// </summary>
+    /// <param name="l0FileNumTarget">
+    ///  This caps the maximum allowed number of l0 files, which is also the read response time amplification.
+    ///  Most of the time, the l1SizeTarget will take into effect first, but for some db, like code, this limit
+    ///  will be reached first. Fox reference, in goerli: code db reach this limit, statedb limit is 64 file when
+    ///  l1SizeTarget is 5 GB.
+    /// </param>
+    /// <param name="l1SizeTarget">
+    ///  Specify a target size for l1. This target how much the l0->l1 will need to compact, which control
+    ///  how often and how long do each compaction take, and also effect write amplification. .
+    ///
+    ///  Contrary to the doc, l0->l1 compaction will still get trigger at l1 size even if l0 file num is not triggered.
+    ///  Anyway, its recommended to set this the same size as l0 anyway.
+    /// </param>
+    /// <returns></returns>
+    private IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget, ulong l1SizeTarget)
+    {
+        return new Dictionary<string, string>()
+        {
+            { "level0_file_num_compaction_trigger", l0FileNumTarget.ToString() },
+            { "level0_slowdown_writes_trigger", (l0FileNumTarget * 2).ToString() },
+            { "level0_stop_writes_trigger", (l0FileNumTarget * 2).ToString() },
+            { "max_bytes_for_level_base", l1SizeTarget.ToString() },
+        };
     }
 }

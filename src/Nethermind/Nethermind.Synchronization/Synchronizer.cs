@@ -113,6 +113,17 @@ namespace Nethermind.Synchronization
 
                 StartStateSyncComponents();
             }
+
+            if (_syncConfig.EnableDbOptimizer)
+            {
+                SetupDbOptimizer();
+            }
+        }
+
+        private void SetupDbOptimizer()
+        {
+            new DbSyncOptimizer(_syncConfig, _snapSyncFeed, _bodiesFeed, _receiptsFeed, _dbProvider.StateDb, _dbProvider.CodeDb,
+                _dbProvider.BlocksDb, _dbProvider.ReceiptsDb);
         }
 
         private void StartFullSyncComponents()
@@ -191,7 +202,7 @@ namespace Nethermind.Synchronization
             {
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
-                    _bodiesFeed = new BodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _specProvider, _logManager);
+                    _bodiesFeed = new BodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _specProvider,  _logManager);
                     BodiesSyncDispatcher bodiesDispatcher = new(_bodiesFeed!, _syncPeerPool, fastFactory, _logManager);
                     Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {

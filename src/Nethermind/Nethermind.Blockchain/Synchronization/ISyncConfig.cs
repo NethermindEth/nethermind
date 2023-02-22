@@ -87,5 +87,11 @@ namespace Nethermind.Blockchain.Synchronization
 
         [ConfigItem(Description = "[EXPERIMENTAL] Only for non validator nodes! If set to true, DownloadReceiptsInFastSync and/or DownloadBodiesInFastSync can be set to false.", DefaultValue = "false")]
         public bool NonValidatorNode { get; set; }
+
+        [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync. Significantly reduce total writes written and some sync time if you are not network limited.", DefaultValue = "false")]
+        public bool EnableDbOptimizer { get; set; }
+
+        [ConfigItem(Description = "[EXPERIMENTAL] Optimize for total writes written even further, resulting in minimum writes written and final db size, but triggers a very long rocksdb compaction. This can increase overall sync time.", DefaultValue = "false")]
+        public bool OptimizeDbForWriteAmplification { get; set; }
     }
 }
