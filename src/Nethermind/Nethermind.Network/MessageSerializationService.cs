@@ -78,7 +78,7 @@ namespace Nethermind.Network
             _zeroSerializers[typeof(T).TypeHandle] = messageSerializer;
         }
 
-        public IByteBuffer ZeroSerialize<T>(T message, ByteBufferAllocator allocator = ByteBufferAllocator.PooledByteBufferAllocator) where T : MessageBase
+        public IByteBuffer ZeroSerialize<T>(T message, AbstractByteBufferAllocator? allocator = null) where T : MessageBase
         {
             if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
                 throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
@@ -96,12 +96,8 @@ namespace Nethermind.Network
                 ? zeroInnerMessageSerializer.GetLength(message, out _) + p2pMessageLength
                 : 64;
 
-            IByteBuffer byteBuffer = allocator switch
-            {
-                ByteBufferAllocator.UnpooledByteBufferAllocator => UnpooledByteBufferAllocator.Default.Buffer(length),
-                ByteBufferAllocator.PooledByteBufferAllocator => PooledByteBufferAllocator.Default.Buffer(length),
-                _ => throw new ArgumentOutOfRangeException(nameof(allocator), allocator, null)
-            };
+            allocator ??= PooledByteBufferAllocator.Default;
+            IByteBuffer byteBuffer = allocator.Buffer(length);
 
             try
             {

@@ -71,7 +71,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         try
         {
             if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMsg}");
-            msgBuffer = Serialize(discoveryMsg, ByteBufferAllocator.PooledByteBufferAllocator);
+            msgBuffer = Serialize(discoveryMsg, PooledByteBufferAllocator.Default);
         }
         catch (Exception e)
         {
@@ -164,7 +164,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         };
     }
 
-    private IByteBuffer Serialize(DiscoveryMsg msg, ByteBufferAllocator allocator)
+    private IByteBuffer Serialize(DiscoveryMsg msg, AbstractByteBufferAllocator? allocator)
     {
         return msg.MsgType switch
         {
