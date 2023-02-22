@@ -14,7 +14,7 @@ on:
 
 jobs:
   test_1:
-    name: 1. Combined tests
+    name: 1. Combined tests including e.g. stArgsZeroOneBalance
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -101,7 +101,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_2:
-    name: 2. Combined tests
+    name: 2. Combined tests including e.g. opc0FDiffPlaces
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -192,7 +192,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_3:
-    name: 3. Combined tests
+    name: 3. Combined tests including e.g. opc29DiffPlaces
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -283,7 +283,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_4:
-    name: 4. Combined tests
+    name: 4. Combined tests including e.g. opc4DDiffPlaces
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -374,7 +374,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_5:
-    name: 5. Combined tests
+    name: 5. Combined tests including e.g. opcA9DiffPlaces
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -465,7 +465,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_6:
-    name: 6. Combined tests
+    name: 6. Combined tests including e.g. opcB4DiffPlaces
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -556,7 +556,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_7:
-    name: 7. Combined tests
+    name: 7. Combined tests including e.g. opcBFDiffPlaces
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -647,7 +647,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_8:
-    name: 8. Combined tests
+    name: 8. Combined tests including e.g. opcCADiffPlaces
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -738,7 +738,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_9:
-    name: 9. Combined tests
+    name: 9. Combined tests including e.g. opcD5DiffPlaces
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -829,7 +829,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_10:
-    name: 10. Combined tests
+    name: 10. Combined tests including e.g. opcE0DiffPlaces
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -920,7 +920,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_11:
-    name: 11. Combined tests
+    name: 11. Combined tests including e.g. opcEBDiffPlaces
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -1011,7 +1011,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_12:
-    name: 12. Combined tests
+    name: 12. Combined tests including e.g. opcFEDiffPlaces
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -1102,7 +1102,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_13:
-    name: 13. Combined tests
+    name: 13. Combined tests including e.g. stCreate2
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -1212,7 +1212,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_15:
-    name: 15. Combined tests
+    name: 15. Combined tests including e.g. stEIP150singleCodeGasPrices
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -1322,7 +1322,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_17:
-    name: 17. Combined tests
+    name: 17. Combined tests including e.g. stEIP2930
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -1409,7 +1409,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_18:
-    name: 18. Combined tests
+    name: 18. Combined tests including e.g. blake2B
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -1484,7 +1484,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_19:
-    name: 19. Combined tests
+    name: 19. Combined tests including e.g. precompsEIP2929
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -1539,7 +1539,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_20:
-    name: 20. Combined tests
+    name: 20. Combined tests including e.g. stPreCompiledContracts2
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -1645,7 +1645,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_22:
-    name: 22. Combined tests
+    name: 22. Combined tests including e.g. stRandom2
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -1708,7 +1708,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_23:
-    name: 23. Combined tests
+    name: 23. Combined tests including e.g. stRevertTest
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -1775,7 +1775,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_24:
-    name: 24. Combined tests
+    name: 24. Combined tests including e.g. stSpecialTest
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -1830,7 +1830,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_25:
-    name: 25. Combined tests
+    name: 25. Combined tests including e.g. shallowStack
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -2615,7 +2615,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_40:
-    name: 40. Combined tests
+    name: 40. Combined tests including e.g. stackOverflowPUSH
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -2690,7 +2690,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_41:
-    name: 41. Combined tests
+    name: 41. Combined tests including e.g. stTransactionTest
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -2817,7 +2817,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_42:
-    name: 42. Combined tests
+    name: 42. Combined tests including e.g. ecmul_1-2_616_28000_96
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -3016,7 +3016,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_43:
-    name: 43. Combined tests
+    name: 43. Combined tests including e.g. ecmul_1-3_5617_28000_96
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -3215,7 +3215,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_44:
-    name: 44. Combined tests
+    name: 44. Combined tests including e.g. ecmul_7827-6598_5617_28000_96
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -3410,7 +3410,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_45:
-    name: 45. Combined tests
+    name: 45. Combined tests including e.g. pairingTest
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -3541,7 +3541,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_46:
-    name: 46. Combined tests
+    name: 46. Combined tests including e.g. ecadd_0-3_1-2_21000_128
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -3740,7 +3740,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_47:
-    name: 47. Combined tests
+    name: 47. Combined tests including e.g. ecmul_0-0_2_28000_128
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -3939,7 +3939,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_48:
-    name: 48. Combined tests
+    name: 48. Combined tests including e.g. ecmul_0-3_2_28000_128
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -4189,7 +4189,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_50:
-    name: 50. Combined tests
+    name: 50. Combined tests including e.g. stEIP3651
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -4375,7 +4375,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_52:
-    name: 52. Combined tests
+    name: 52. Combined tests including e.g. bcEIP1559
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
@@ -4450,7 +4450,7 @@ jobs:
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
   test_53:
-    name: 53. Combined tests
+    name: 53. Combined tests including e.g. bcStateTests
     runs-on: ubuntu-latest
     steps:
       - name: Set up parameters
