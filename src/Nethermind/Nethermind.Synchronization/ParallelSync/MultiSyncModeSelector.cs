@@ -464,7 +464,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool fastBodiesNotFinished = !FastBlocksBodiesFinished;
             bool fastHeadersFinished = FastBlocksHeadersFinished;
             bool notInStateSync = !best.IsInStateSync;
-            bool stateSyncFinished = best.State > 0;
+            bool stateSyncFinished = best.State > 0 || _syncConfig.AllowBodiesSyncBeforeStateFinish;
 
             // fast blocks bodies can run if there are peers until it is done
             // fast blocks bodies can run in parallel with full sync when headers are finished
@@ -487,7 +487,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool fastReceiptsNotFinished = !FastBlocksReceiptsFinished;
             bool fastBodiesFinished = FastBlocksBodiesFinished;
             bool notInStateSync = !best.IsInStateSync;
-            bool stateSyncFinished = best.State > 0;
+            bool stateSyncFinished = best.State > 0 || _syncConfig.AllowReceiptsSyncBeforeStateFinish;
 
             // fast blocks receipts can run if there are peers until it is done
             // fast blocks receipts can run in parallel with full sync when bodies are finished

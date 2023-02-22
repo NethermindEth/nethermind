@@ -84,5 +84,11 @@ namespace Nethermind.Blockchain.Synchronization
 
         [ConfigItem(Description = "Disable some optimization and run a more extensive sync. Useful for broken sync state but normally not needed", DefaultValue = "false")]
         public bool StrictMode { get; set; }
+
+        [ConfigItem(Description = "If enabled allows to start syncing bodies before state sync finished.", DefaultValue = "false", HiddenFromDocs = true)]
+        bool AllowBodiesSyncBeforeStateFinish { get; set; }
+
+        [ConfigItem(Description = "If enabled allows to start syncing receipts before state sync finished.", DefaultValue = "false", HiddenFromDocs = true)]
+        bool AllowReceiptsSyncBeforeStateFinish { get; set; }
     }
 }

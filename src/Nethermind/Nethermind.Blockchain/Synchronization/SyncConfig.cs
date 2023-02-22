@@ -45,6 +45,8 @@ namespace Nethermind.Blockchain.Synchronization
         public bool FixReceipts { get; set; } = false;
         public bool StrictMode { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;
+        public bool AllowBodiesSyncBeforeStateFinish { get; set; } = false;
+        public bool AllowReceiptsSyncBeforeStateFinish { get; set; } = false;
 
         public override string ToString()
         {
