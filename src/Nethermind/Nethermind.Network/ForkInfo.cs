@@ -48,7 +48,7 @@ namespace Nethermind.Network
         private void SetFork(int index, uint crc, (ForkActivation Activation, ForkId Id) fork)
         {
             Forks[index] = fork;
-            DictForks.Add(crc, Forks[index]);
+            DictForks.Add(crc, fork);
         }
 
         private static void CalculateHash(ref uint crc, byte[] bytes)
