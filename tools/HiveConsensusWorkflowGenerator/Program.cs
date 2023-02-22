@@ -10,9 +10,9 @@ public static class Program
     {
         string path = args.FirstOrDefault() is not null ? args.First() : "src/tests";
 
-        List<string> directories = GetTestsDirectories(path);
+        IEnumerable<string> directories = GetTestsDirectories(path);
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
-        List<List<string>> accumulatedJobs = GetTestsSplittedToJobs(pathsToBeTested);
+        IEnumerable<List<string>> accumulatedJobs = GetTestsSplittedToJobs(pathsToBeTested);
 
         TextWriter fileContent = CreateTextWriter();
 
@@ -27,14 +27,19 @@ public static class Program
         fileContent.Dispose();
     }
 
-    private static List<string> GetTestsDirectories(string path)
+    private static IEnumerable<string> GetTestsDirectories(string path)
     {
         string testsDirectory = string.Concat(FindDirectory("nethermind"), "/", path, "/BlockchainTests");
 
-        List<string> directories = Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories).ToList();
-        directories.AddRange(Directory.GetDirectories(testsDirectory, "bc*", SearchOption.AllDirectories).ToList());
+        foreach (string directory in Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories))
+        {
+            yield return directory;
+        }
 
-        return directories;
+        foreach (string directory in Directory.GetDirectories(testsDirectory, "bc*", SearchOption.AllDirectories))
+        {
+            yield return directory;
+        }
     }
 
     private static string FindDirectory(string searchPattern)
@@ -67,7 +72,7 @@ public static class Program
         return new StreamWriter(file);
     }
 
-    private static Dictionary<string, long> GetPathsToBeTested(List<string> directories)
+    private static Dictionary<string, long> GetPathsToBeTested(IEnumerable<string> directories)
     {
         Dictionary<string, long> pathsToBeTested = new();
 
@@ -111,9 +116,8 @@ public static class Program
         return pathsToBeTested;
     }
 
-    private static List<List<string>> GetTestsSplittedToJobs(Dictionary<string, long> pathsToBeTested)
+    private static IEnumerable<List<string>> GetTestsSplittedToJobs(Dictionary<string, long> pathsToBeTested)
     {
-        List<List<string>> accumulatedJobs = new();
         List<string> accumulator = new();
         long sum = 0;
 
@@ -123,13 +127,13 @@ public static class Program
 
             if (directory.Value > TargetSize)
             {
-                accumulatedJobs.Add(new List<string>() { dirName });
+                yield return new List<string>(){ dirName };
                 continue;
             }
 
             if (sum + directory.Value > TargetSize)
             {
-                accumulatedJobs.Add(new List<string>(accumulator));
+                yield return new List<string>(accumulator);
                 accumulator.Clear();
                 sum = 0;
             }
@@ -141,10 +145,8 @@ public static class Program
 
         if (accumulator.Count > 0)
         {
-            accumulatedJobs.Add(new List<string>(accumulator));
+            yield return accumulator;
         }
-
-        return accumulatedJobs;
     }
 
     private static void WriteInitialLines(TextWriter fileContent)
