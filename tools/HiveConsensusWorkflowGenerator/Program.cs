@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace HiveConsensusWorkflowGenerator;
 
 public static class Program
@@ -12,11 +10,11 @@ public static class Program
     {
         string path = args.FirstOrDefault() is not null ? args.First() : "src/tests";
 
-        StringBuilder fileContent = new();
-
         List<string> directories = GetTestsDirectories(path);
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
         List<List<string>> accumulatedJobs = GetTestsSplittedToJobs(pathsToBeTested);
+
+        TextWriter fileContent = CreateTextWriter();
 
         WriteInitialLines(fileContent);
 
@@ -26,7 +24,47 @@ public static class Program
             WriteJob(fileContent, job, ++jobsCreated);
         }
 
-        File.WriteAllText($"{FindDirectory(".github")}/workflows/hive-consensus-tests.yml", fileContent.ToString());
+        fileContent.Dispose();
+    }
+
+    private static List<string> GetTestsDirectories(string path)
+    {
+        string testsDirectory = string.Concat(FindDirectory("nethermind"), "/", path, "/BlockchainTests");
+
+        List<string> directories = Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories).ToList();
+        directories.AddRange(Directory.GetDirectories(testsDirectory, "bc*", SearchOption.AllDirectories).ToList());
+
+        return directories;
+    }
+
+    private static string FindDirectory(string searchPattern)
+    {
+        string? currentDir = Environment.CurrentDirectory;
+        do
+        {
+            if (currentDir == null)
+            {
+                return "";
+            }
+
+            string? dir = Directory
+                .EnumerateDirectories(currentDir, searchPattern, SearchOption.TopDirectoryOnly)
+                .SingleOrDefault();
+
+            if (dir != null)
+            {
+                return dir;
+            }
+
+            currentDir = Directory.GetParent(currentDir)?.FullName;
+        } while (true);
+    }
+
+    private static TextWriter CreateTextWriter()
+    {
+        string fileDirectory = $"{FindDirectory(".github")}/workflows/hive-consensus-tests.yml";
+        FileStream file = File.Open(fileDirectory, FileMode.Create, FileAccess.Write);
+        return new StreamWriter(file);
     }
 
     private static Dictionary<string, long> GetPathsToBeTested(List<string> directories)
@@ -109,118 +147,85 @@ public static class Program
         return accumulatedJobs;
     }
 
-    private static void WriteInitialLines(StringBuilder fileContent)
+    private static void WriteInitialLines(TextWriter fileContent)
     {
-        fileContent.AppendLine("name: 'Hive consensus tests' ");
-        fileContent.AppendLine("");
-        fileContent.AppendLine("on:");
-        fileContent.AppendLine("  push:");
-        fileContent.AppendLine("    tags: ['*']");
-        fileContent.AppendLine("  workflow_dispatch:");
-        fileContent.AppendLine("    inputs:");
-        fileContent.AppendLine("      parallelism:");
-        fileContent.AppendLine("        description: 'Number of concurrently running tests in each job. With 1 or 2 timeout is likely. With 4 or more false-positive fails are likely. Recommended is 3 to avoid timeouts and reduce false-positives'");
-        fileContent.AppendLine("        required: true");
-        fileContent.AppendLine("        default: '3'");
-        fileContent.AppendLine("        type: choice");
-        fileContent.AppendLine("        options: ['1', '2', '3', '4', '8', '16']");
-        fileContent.AppendLine("");
-        fileContent.AppendLine("jobs:");
+        fileContent.WriteLine("name: 'Hive consensus tests' ");
+        fileContent.WriteLine("");
+        fileContent.WriteLine("on:");
+        fileContent.WriteLine("  push:");
+        fileContent.WriteLine("    tags: ['*']");
+        fileContent.WriteLine("  workflow_dispatch:");
+        fileContent.WriteLine("    inputs:");
+        fileContent.WriteLine("      parallelism:");
+        fileContent.WriteLine("        description: 'Number of concurrently running tests in each job. With 1 or 2 timeout is likely. With 4 or more false-positive fails are likely. Recommended is 3 to avoid timeouts and reduce false-positives'");
+        fileContent.WriteLine("        required: true");
+        fileContent.WriteLine("        default: '3'");
+        fileContent.WriteLine("        type: choice");
+        fileContent.WriteLine("        options: ['1', '2', '3', '4', '8', '16']");
+        fileContent.WriteLine("");
+        fileContent.WriteLine("jobs:");
     }
 
-    private static void WriteJob(StringBuilder fileContent, List<string> tests, int jobNumber)
+    private static void WriteJob(TextWriter fileContent, List<string> tests, int jobNumber)
     {
         string jobName = tests.Count > 1 ? $"{jobNumber}. Combined tests (e.g. {tests.First().Split('.').First()})" : $"{jobNumber}. {tests.First().Split('.').First()}";
 
-        fileContent.AppendLine($"  test_{jobNumber}:");
-        fileContent.AppendLine($"    name: {jobName}");
-        fileContent.AppendLine("    runs-on: ubuntu-latest");
-        fileContent.AppendLine("    steps:");
-        fileContent.AppendLine("      - name: Set up parameters");
-        fileContent.AppendLine("        run: |");
-        fileContent.AppendLine("          echo \"PARALLELISM=${{ github.event.inputs.parallelism || '3' }}\" >> $GITHUB_ENV");
-        fileContent.AppendLine("      - name: Check out Nethermind repository");
-        fileContent.AppendLine("        uses: actions/checkout@v3");
-        fileContent.AppendLine("        with:");
-        fileContent.AppendLine("          path: nethermind");
-        fileContent.AppendLine("      - name: Set up QEMU");
-        fileContent.AppendLine("        uses: docker/setup-qemu-action@v2");
-        fileContent.AppendLine("      - name: Set up Docker Buildx");
-        fileContent.AppendLine("        uses: docker/setup-buildx-action@v2");
-        fileContent.AppendLine("      - name: Build Docker image");
-        fileContent.AppendLine("        uses: docker/build-push-action@v3");
-        fileContent.AppendLine("        with:");
-        fileContent.AppendLine("          context: nethermind");
-        fileContent.AppendLine("          file: nethermind/Dockerfile");
-        fileContent.AppendLine("          tags: nethermind:test-${{ github.sha }}");
-        fileContent.AppendLine("          outputs: type=docker,dest=/tmp/image.tar");
-        fileContent.AppendLine("      - name: Install Linux packages");
-        fileContent.AppendLine("        run: |");
-        fileContent.AppendLine("          sudo apt-get update");
-        fileContent.AppendLine("          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential");
-        fileContent.AppendLine("      - name: Set up Go environment");
-        fileContent.AppendLine("        uses: actions/setup-go@v3.0.0");
-        fileContent.AppendLine("        with:");
-        fileContent.AppendLine("          go-version: '>=1.17.0'");
-        fileContent.AppendLine("      - name: Check out Hive repository");
-        fileContent.AppendLine("        uses: actions/checkout@v3");
-        fileContent.AppendLine("        with:");
-        fileContent.AppendLine("          repository: ethereum/hive");
-        fileContent.AppendLine("          ref: master");
-        fileContent.AppendLine("          path: hive");
-        fileContent.AppendLine("      - name: Patch Hive Dockerfile");
-        fileContent.AppendLine("        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile");
-        fileContent.AppendLine("      - name: Build Hive");
-        fileContent.AppendLine("        working-directory: hive");
-        fileContent.AppendLine("        run: go build .");
-        fileContent.AppendLine("      - name: Load Docker image");
-        fileContent.AppendLine("        run: docker load --input /tmp/image.tar");
+        fileContent.WriteLine($"  test_{jobNumber}:");
+        fileContent.WriteLine($"    name: {jobName}");
+        fileContent.WriteLine("    runs-on: ubuntu-latest");
+        fileContent.WriteLine("    steps:");
+        fileContent.WriteLine("      - name: Set up parameters");
+        fileContent.WriteLine("        run: |");
+        fileContent.WriteLine("          echo \"PARALLELISM=${{ github.event.inputs.parallelism || '3' }}\" >> $GITHUB_ENV");
+        fileContent.WriteLine("      - name: Check out Nethermind repository");
+        fileContent.WriteLine("        uses: actions/checkout@v3");
+        fileContent.WriteLine("        with:");
+        fileContent.WriteLine("          path: nethermind");
+        fileContent.WriteLine("      - name: Set up QEMU");
+        fileContent.WriteLine("        uses: docker/setup-qemu-action@v2");
+        fileContent.WriteLine("      - name: Set up Docker Buildx");
+        fileContent.WriteLine("        uses: docker/setup-buildx-action@v2");
+        fileContent.WriteLine("      - name: Build Docker image");
+        fileContent.WriteLine("        uses: docker/build-push-action@v3");
+        fileContent.WriteLine("        with:");
+        fileContent.WriteLine("          context: nethermind");
+        fileContent.WriteLine("          file: nethermind/Dockerfile");
+        fileContent.WriteLine("          tags: nethermind:test-${{ github.sha }}");
+        fileContent.WriteLine("          outputs: type=docker,dest=/tmp/image.tar");
+        fileContent.WriteLine("      - name: Install Linux packages");
+        fileContent.WriteLine("        run: |");
+        fileContent.WriteLine("          sudo apt-get update");
+        fileContent.WriteLine("          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential");
+        fileContent.WriteLine("      - name: Set up Go environment");
+        fileContent.WriteLine("        uses: actions/setup-go@v3.0.0");
+        fileContent.WriteLine("        with:");
+        fileContent.WriteLine("          go-version: '>=1.17.0'");
+        fileContent.WriteLine("      - name: Check out Hive repository");
+        fileContent.WriteLine("        uses: actions/checkout@v3");
+        fileContent.WriteLine("        with:");
+        fileContent.WriteLine("          repository: ethereum/hive");
+        fileContent.WriteLine("          ref: master");
+        fileContent.WriteLine("          path: hive");
+        fileContent.WriteLine("      - name: Patch Hive Dockerfile");
+        fileContent.WriteLine("        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile");
+        fileContent.WriteLine("      - name: Build Hive");
+        fileContent.WriteLine("        working-directory: hive");
+        fileContent.WriteLine("        run: go build .");
+        fileContent.WriteLine("      - name: Load Docker image");
+        fileContent.WriteLine("        run: docker load --input /tmp/image.tar");
 
         foreach (string test in tests)
         {
             string testWithoutJson = test.Split('.').First();
-            fileContent.AppendLine($"      - name: Run {testWithoutJson}");
-            fileContent.AppendLine("        continue-on-error: true");
-            fileContent.AppendLine("        working-directory: hive");
-            fileContent.AppendLine($"        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /{testWithoutJson} --sim.parallelism $PARALLELISM");
+            fileContent.WriteLine($"      - name: Run {testWithoutJson}");
+            fileContent.WriteLine("        continue-on-error: true");
+            fileContent.WriteLine("        working-directory: hive");
+            fileContent.WriteLine($"        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /{testWithoutJson} --sim.parallelism $PARALLELISM");
         }
 
-        fileContent.AppendLine("      - name: Print results");
-        fileContent.AppendLine("        run: |");
-        fileContent.AppendLine("          chmod +x nethermind/scripts/hive-results.sh");
-        fileContent.AppendLine("          nethermind/scripts/hive-results.sh \"hive/workspace/logs/*.json\"");
-    }
-
-    private static List<string> GetTestsDirectories(string path)
-    {
-        string testsDirectory = string.Concat(FindDirectory("nethermind"), "/", path, "/BlockchainTests");
-
-        List<string> directories = Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories).ToList();
-        directories.AddRange(Directory.GetDirectories(testsDirectory, "bc*", SearchOption.AllDirectories).ToList());
-
-        return directories;
-    }
-
-    private static string FindDirectory(string searchPattern)
-    {
-        string? currentDir = Environment.CurrentDirectory;
-        do
-        {
-            if (currentDir == null)
-            {
-                return "";
-            }
-
-            string? dir = Directory
-                .EnumerateDirectories(currentDir, searchPattern, SearchOption.TopDirectoryOnly)
-                .SingleOrDefault();
-
-            if (dir != null)
-            {
-                return dir;
-            }
-
-            currentDir = Directory.GetParent(currentDir)?.FullName;
-        } while (true);
+        fileContent.WriteLine("      - name: Print results");
+        fileContent.WriteLine("        run: |");
+        fileContent.WriteLine("          chmod +x nethermind/scripts/hive-results.sh");
+        fileContent.WriteLine("          nethermind/scripts/hive-results.sh \"hive/workspace/logs/*.json\"");
     }
 }
