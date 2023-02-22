@@ -13,11 +13,13 @@ namespace Nethermind.Evm
     {
         public static Address From(Address? deployingAddress, in UInt256 nonce)
         {
-            ValueKeccak contractAddressKeccak =
-                ValueKeccak.Compute(
-                    Rlp.Encode(
-                        Rlp.Encode(deployingAddress),
-                        Rlp.Encode(nonce)).Bytes);
+            int contentLength = Rlp.LengthOf(deployingAddress) + Rlp.LengthOf(nonce);
+            RlpStream stream = new RlpStream(Rlp.LengthOfSequence(contentLength));
+            stream.StartSequence(contentLength);
+            stream.Encode(deployingAddress);
+            stream.Encode(nonce);
+
+            ValueKeccak contractAddressKeccak = ValueKeccak.Compute(stream.Data.AsSpan());
 
             return new Address(in contractAddressKeccak);
         }

@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
@@ -19,6 +22,14 @@ namespace Nethermind.Network.Rlpx.Handshake
         {
             byte[] padding = _cryptoRandom.GenerateRandomBytes(100 + _cryptoRandom.NextInt(201));
             return Bytes.Concat(message, padding);
+        }
+
+        public void Pad(IByteBuffer message)
+        {
+            int length = 100 + _cryptoRandom.NextInt(201);
+            Span<byte> padding = stackalloc byte[length];
+            _cryptoRandom.GenerateRandomBytes(padding);
+            message.WriteBytes(padding);
         }
     }
 }

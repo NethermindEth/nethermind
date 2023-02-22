@@ -12,20 +12,45 @@ defaults:
 
 env:
   BUILD_CONFIG: release
+  DOTNET_VERSION: 7
+  DOTNET_INSTALL_DIR: '~/.dotnet'
 
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
+    - name: Cache dotnet
+      id: cache-dotnet
+      uses: actions/cache@v3
+      with:
+          path: ${{ env.DOTNET_INSTALL_DIR }}
+          key: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
+          restore-keys: ${{ runner.os }}-dotnet-${{ env.DOTNET_VERSION }}
+    - name: Set up .NET
+      if: ${{ steps.cache-dotnet.outputs.cache-hit != 'true' }}
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    - name: Install Apt Packages
+      uses: awalsh128/cache-apt-pkgs-action@v1.2.4
+      with:
+          packages: libsnappy-dev libc6-dev libc6
+          version: 1.0
     - name: Check out repository
       uses: actions/checkout@v3
       with:
         submodules: true
-    - name: Set up .NET
-      uses: actions/setup-dotnet@v3
+    - name: Cache nuget
+      id: cache-nuget
+      uses: actions/cache@v3
       with:
-        dotnet-version: 7
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
     - name: Install dependencies
       run: |
         dotnet restore Nethermind.sln

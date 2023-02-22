@@ -99,7 +99,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override int Length => _buffer.ReadableBytes + (_buffer.ReaderIndex - _initialPosition);
 
-        public override bool HasBeenRead => _buffer.ReadableBytes > 0;
+        public override bool HasBeenRead => _buffer.ReadableBytes <= 0;
 
         protected override string Description => "|NettyRlpStream|description missing|";
 
