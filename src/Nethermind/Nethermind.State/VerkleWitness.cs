@@ -61,7 +61,7 @@ public struct VerkleWitness : IVerkleWitness
     /// <returns></returns>
     public long AccessForCodeOpCodes(Address caller)
     {
-        long gas =  AccessAccount(caller, AccountHeaderAccess.Version | AccountHeaderAccess.CodeSize);
+        long gas = AccessAccount(caller, AccountHeaderAccess.Version | AccountHeaderAccess.CodeSize);
         // _logger.Info($"AccessForCodeOpCodes: {caller.Bytes.ToHexString()} {gas}");
         return gas;
     }
@@ -93,7 +93,7 @@ public struct VerkleWitness : IVerkleWitness
     /// <returns></returns>
     public long AccessForContractCreationInit(Address contractAddress, bool isValueTransfer)
     {
-        long gas =  isValueTransfer
+        long gas = isValueTransfer
             ? AccessAccount(contractAddress, AccountHeaderAccess.Version | AccountHeaderAccess.Nonce | AccountHeaderAccess.Balance | AccountHeaderAccess.CodeHash, true)
             : AccessAccount(contractAddress, AccountHeaderAccess.Version | AccountHeaderAccess.Nonce | AccountHeaderAccess.CodeHash, true);
         // _logger.Info($"AccessForContractCreationInit: {contractAddress.Bytes.ToHexString()} {isValueTransfer} {gas}");
@@ -166,7 +166,7 @@ public struct VerkleWitness : IVerkleWitness
     {
         var key = AccountHeader.GetTreeKeyForCodeChunk(address.Bytes, chunkId);
         // _logger.Info($"AccessCodeChunkKey: {EnumerableExtensions.ToString(key)}");
-        var gas =  AccessKey(key, isWrite);
+        var gas = AccessKey(key, isWrite);
         // _logger.Info($"AccessCodeChunk: {address.Bytes.ToHexString()} {chunkId} {isWrite} {gas}");
         return gas;
     }
@@ -183,7 +183,7 @@ public struct VerkleWitness : IVerkleWitness
 
         // TODO: does not seem right - not upto spec
         long gasCost = AccessAccount(originAddress, AccountHeaderAccess.Version | AccountHeaderAccess.Balance | AccountHeaderAccess.Nonce)
-                       + (destinationAddress == null ? 0: AccessCompleteAccount(destinationAddress));
+                       + (destinationAddress == null ? 0 : AccessCompleteAccount(destinationAddress));
 
         // when you are executing a transaction, you are writing to the nonce of the origin address
         gasCost += AccessAccount(originAddress, AccountHeaderAccess.Nonce, true);

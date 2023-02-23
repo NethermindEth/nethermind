@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.Ethash
 
 
             IReadOnlyTxProcessorSource producerEnv;
-            if(_nethermindApi.SpecProvider.GenesisSpec.IsVerkleTreeEipEnabled)
+            if (_nethermindApi.SpecProvider.GenesisSpec.IsVerkleTreeEipEnabled)
                 producerEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, getFromApi.ReadOnlyVerkleTrieStore, readOnlyBlockTree, getFromApi.SpecProvider, getFromApi.LogManager);
             else
                 producerEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, getFromApi.ReadOnlyTrieStore, readOnlyBlockTree, getFromApi.SpecProvider, getFromApi.LogManager);

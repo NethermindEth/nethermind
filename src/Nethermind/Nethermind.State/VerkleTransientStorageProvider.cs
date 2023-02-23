@@ -7,7 +7,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State;
 
-public class VerkleTransientStorageProvider: PartialStorageProviderBase
+public class VerkleTransientStorageProvider : PartialStorageProviderBase
 {
     public VerkleTransientStorageProvider(ILogManager? logManager)
         : base(logManager) { }

@@ -14,7 +14,7 @@ using Nethermind.Verkle.Tree;
 
 namespace Nethermind.State;
 
-public class VerkleStateTree: VerkleTree
+public class VerkleStateTree : VerkleTree
 {
 
     public VerkleStateTree(IDbProvider dbProvider) : base(dbProvider)

@@ -13,7 +13,7 @@ using Nethermind.Verkle.Tree;
 
 namespace Nethermind.State;
 
-public class VerklePersistentStorageProvider: PartialStorageProviderBase
+public class VerklePersistentStorageProvider : PartialStorageProviderBase
 {
     private readonly VerkleStateTree _verkleTree;
     private readonly ILogManager? _logManager;

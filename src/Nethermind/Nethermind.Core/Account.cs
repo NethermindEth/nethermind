@@ -133,11 +133,12 @@ namespace Nethermind.Core
             // TODO: does the code and codeHash match?
             return new(Nonce, Balance, StorageRoot, newCodeHash, IsTotallyEmpty && newCodeHash == Keccak.OfAnEmptyString)
             {
-                Code = code, CodeSize = new UInt256((ulong)(code?.Length ?? 0))
+                Code = code,
+                CodeSize = new UInt256((ulong)(code?.Length ?? 0))
             };
         }
 
-        public  Dictionary<byte, byte[]> ToVerkleDict()
+        public Dictionary<byte, byte[]> ToVerkleDict()
         {
             Dictionary<byte, byte[]> dict = new Dictionary<byte, byte[]>
             {
@@ -147,7 +148,7 @@ namespace Nethermind.Core
                 [3] = CodeHash.Bytes
             };
 
-            if(!CodeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+            if (!CodeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
                 dict[4] = CodeSize.ToLittleEndian();
             return dict;
         }

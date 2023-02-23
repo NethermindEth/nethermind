@@ -17,7 +17,7 @@ using Nethermind.Verkle.Tree;
 
 namespace Nethermind.State;
 
-public class VerkleWorldState: IWorldState
+public class VerkleWorldState : IWorldState
 {
     private const int StartCapacity = Resettable.StartCapacity;
     private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new ResettableDictionary<Address, Stack<int>>();
@@ -384,7 +384,7 @@ public class VerkleWorldState: IWorldState
         byte[]? headerTreeKey = AccountHeader.GetTreeKeyPrefixAccount(address.Bytes);
         headerTreeKey[31] = AccountHeader.Version;
         IEnumerable<byte>? versionVal = _tree.Get(headerTreeKey);
-        if (versionVal is null)  return null;
+        if (versionVal is null) return null;
         UInt256 version = new UInt256((versionVal ?? Array.Empty<byte>()).ToArray());
         headerTreeKey[31] = AccountHeader.Balance;
         UInt256 balance = new UInt256((_tree.Get(headerTreeKey) ?? Array.Empty<byte>()).ToArray());

@@ -454,10 +454,10 @@ namespace Nethermind.Evm
                 switch (opCode)
                 {
                     case Instruction.BALANCE:
-                    {
-                        result = GasUtils.UpdateGas(vmState.VerkleTreeWitness.AccessBalance(address), ref gasAvailable);
-                        break;
-                    }
+                        {
+                            result = GasUtils.UpdateGas(vmState.VerkleTreeWitness.AccessBalance(address), ref gasAvailable);
+                            break;
+                        }
                     case Instruction.EXTCODESIZE:
                     case Instruction.EXTCODECOPY:
                     case Instruction.SELFDESTRUCT:
@@ -465,30 +465,30 @@ namespace Nethermind.Evm
                     case Instruction.CALLCODE:
                     case Instruction.DELEGATECALL:
                     case Instruction.STATICCALL:
-                    {
-                        if (!isAddressPreCompile)
                         {
-                            result = GasUtils.UpdateGas(vmState.VerkleTreeWitness.AccessForCodeOpCodes(address), ref gasAvailable);
-                            if (!result) break;
-                        }
+                            if (!isAddressPreCompile)
+                            {
+                                result = GasUtils.UpdateGas(vmState.VerkleTreeWitness.AccessForCodeOpCodes(address), ref gasAvailable);
+                                if (!result) break;
+                            }
 
-                        if (valueTransfer)
+                            if (valueTransfer)
+                            {
+                                result = GasUtils.UpdateGas(
+                                    vmState.VerkleTreeWitness.AccessBalance(address), ref gasAvailable);
+                            }
+                            break;
+                        }
+                    case Instruction.EXTCODEHASH:
                         {
                             result = GasUtils.UpdateGas(
-                                vmState.VerkleTreeWitness.AccessBalance(address), ref gasAvailable);
+                                vmState.VerkleTreeWitness.AccessCodeHash(address), ref gasAvailable);
+                            break;
                         }
-                        break;
-                    }
-                    case Instruction.EXTCODEHASH:
-                    {
-                        result = GasUtils.UpdateGas(
-                            vmState.VerkleTreeWitness.AccessCodeHash(address), ref gasAvailable);
-                        break;
-                    }
                     default:
-                    {
-                        throw new ArgumentOutOfRangeException(nameof(opCode), opCode, null);
-                    }
+                        {
+                            throw new ArgumentOutOfRangeException(nameof(opCode), opCode, null);
+                        }
                 }
                 return result;
             }
@@ -784,7 +784,7 @@ namespace Nethermind.Evm
             {
                 if (spec.IsVerkleTreeEipEnabled)
                 {
-                    if(vmState.ExecutionType is not ExecutionType.Create or ExecutionType.Create2)
+                    if (vmState.ExecutionType is not ExecutionType.Create or ExecutionType.Create2)
                     {
                         long gas = vmState.VerkleTreeWitness.AccessCodeChunk(vmState.To, CalculateChunkIdFromPc(programCounter), false);
                         if (!GasUtils.UpdateGas(gas, ref gasAvailable))
@@ -1522,7 +1522,7 @@ namespace Nethermind.Evm
                                     var startChunkId = CalculateChunkIdFromPc((int)src);
                                     var endChunkId = CalculateChunkIdFromPc((int)src + codeSlice.Length);
 
-                                    for (byte ch= startChunkId; ch <= endChunkId; ch++)
+                                    for (byte ch = startChunkId; ch <= endChunkId; ch++)
                                     {
                                         long gas = vmState.VerkleTreeWitness.AccessCodeChunk(vmState.To, ch, false);
                                         if (!GasUtils.UpdateGas(gas, ref gasAvailable))
@@ -1612,7 +1612,7 @@ namespace Nethermind.Evm
                                     var startChunkId = CalculateChunkIdFromPc((int)src);
                                     var endChunkId = CalculateChunkIdFromPc((int)src + callDataSlice.Length);
 
-                                    for (byte ch= startChunkId; ch <= endChunkId; ch++)
+                                    for (byte ch = startChunkId; ch <= endChunkId; ch++)
                                     {
                                         long gas = vmState.VerkleTreeWitness.AccessCodeChunk(address, ch, false);
                                         if (!GasUtils.UpdateGas(gas, ref gasAvailable))
@@ -2383,7 +2383,7 @@ namespace Nethermind.Evm
                                 var startChunkId = CalculateChunkIdFromPc(programCounterInt + 1);
                                 var endChunkId = CalculateChunkIdFromPc(programCounterInt + usedFromCode);
 
-                                for (byte ch= startChunkId; ch <= endChunkId; ch++)
+                                for (byte ch = startChunkId; ch <= endChunkId; ch++)
                                 {
                                     long gas = vmState.VerkleTreeWitness.AccessCodeChunk(vmState.To, ch, false);
                                     if (!GasUtils.UpdateGas(gas, ref gasAvailable))
@@ -2905,7 +2905,7 @@ namespace Nethermind.Evm
                             }
 
                             // TODO: replace this by EIP-4758
-                            if(!spec.IsVerkleTreeEipEnabled)
+                            if (!spec.IsVerkleTreeEipEnabled)
                                 vmState.DestroyList.Add(env.ExecutingAccount);
 
                             UInt256 ownerBalance = _worldState.GetBalance(env.ExecutingAccount);
