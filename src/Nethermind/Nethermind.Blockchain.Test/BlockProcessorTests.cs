@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, new WorldState(trieStore, codeDb, LimboLogs.Instance)),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
@@ -70,6 +70,7 @@ namespace Nethermind.Blockchain.Test
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
             var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
 
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
@@ -77,8 +78,8 @@ namespace Nethermind.Blockchain.Test
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, new WorldState(trieStore, codeDb, LimboLogs.Instance)),
-                new WorldState(trieStore, codeDb, LimboLogs.Instance),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                stateProvider,
                 NullReceiptStorage.Instance,
                 witnessCollector,
                 LimboLogs.Instance);
@@ -106,7 +107,7 @@ namespace Nethermind.Blockchain.Test
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, new WorldState(trieStore, codeDb, LimboLogs.Instance)),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
                 worldState,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,

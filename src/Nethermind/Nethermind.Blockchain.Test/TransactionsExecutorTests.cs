@@ -265,7 +265,7 @@ namespace Nethermind.Blockchain.Test
             MemDb stateDb = new();
             MemDb codeDb = new();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IWorldState worldState = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             IReleaseSpec spec = testCase.ReleaseSpec;
@@ -278,8 +278,8 @@ namespace Nethermind.Blockchain.Test
                 .Do(info =>
                 {
                     Transaction tx = info.Arg<Transaction>();
-                    worldState.IncrementNonce(tx.SenderAddress!);
-                    worldState.SubtractFromBalance(tx.SenderAddress!,
+                    stateProvider.IncrementNonce(tx.SenderAddress!);
+                    stateProvider.SubtractFromBalance(tx.SenderAddress!,
                         tx.Value + ((UInt256)tx.GasLimit * tx.GasPrice), spec);
                 });
 
@@ -306,18 +306,22 @@ namespace Nethermind.Blockchain.Test
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
                     .Where(v => !missingAddressesSet.Contains(v.Key)))
                 {
-                    worldState.CreateAccount(accountState.Key, accountState.Value.Balance);
+                    stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
                     for (int i = 0; i < accountState.Value.Nonce; i++)
                     {
-                        worldState.IncrementNonce(accountState.Key);
+                        stateProvider.IncrementNonce(accountState.Key);
                     }
                 }
 
-                worldState.Commit(Homestead.Instance);
-                worldState.CommitTree(0);
+                stateProvider.Commit(Homestead.Instance);
+                stateProvider.CommitTree(0);
             }
 
-            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new BlockProcessor.BlockProductionTransactionsExecutor(transactionProcessor, worldState, specProvider, LimboLogs.Instance);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                transactionProcessor,
+                stateProvider,
+                specProvider,
+                LimboLogs.Instance);
 
             SetAccountStates(testCase.MissingAddresses);
 

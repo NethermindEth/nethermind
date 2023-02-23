@@ -37,9 +37,9 @@ namespace Nethermind.Evm.Test
         [TestCase("0x600060005560016000556000600055", 10818, 19200, 1)]
         public void Test(string codeHex, long gasUsed, long refund, byte originalValue)
         {
-            WorldState.CreateAccount(Recipient, 0);
-            WorldState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            WorldState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
+            TestState.CreateAccount(Recipient, 0);
+            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));
             AssertGas(receipt, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / 2, refund));
@@ -65,9 +65,9 @@ namespace Nethermind.Evm.Test
         [TestCase("0x60006000556001600055", 20812, 0, 0, false)]
         public void Test_when_gas_at_stipend(string codeHex, long gasUsed, long refund, byte originalValue, bool outOfGasExpected)
         {
-            WorldState.CreateAccount(Recipient, 0);
-            WorldState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            WorldState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
+            TestState.CreateAccount(Recipient, 0);
+            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2300 - 800), Bytes.FromHexString(codeHex));
             Assert.AreEqual(outOfGasExpected ? 0 : 1, receipt.StatusCode);
@@ -77,9 +77,9 @@ namespace Nethermind.Evm.Test
         [TestCase("0x60016000556001600055", 1612, 0, 1)]
         public void Test_when_gas_just_above_stipend(string codeHex, long gasUsed, long refund, byte originalValue)
         {
-            WorldState.CreateAccount(Recipient, 0);
-            WorldState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            WorldState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
+            TestState.CreateAccount(Recipient, 0);
+            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2301 - 800), Bytes.FromHexString(codeHex));
             Assert.AreEqual(1, receipt.StatusCode);
@@ -89,9 +89,9 @@ namespace Nethermind.Evm.Test
         [TestCase("0x60016000556001600055", 1612, 0, 1)]
         public void Test_when_gas_just_below_stipend(string codeHex, long gasUsed, long refund, byte originalValue)
         {
-            WorldState.CreateAccount(Recipient, 0);
-            WorldState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            WorldState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
+            TestState.CreateAccount(Recipient, 0);
+            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(BlockNumber, 21000 + gasUsed + (2299 - 800), Bytes.FromHexString(codeHex));
             Assert.AreEqual(0, receipt.StatusCode);

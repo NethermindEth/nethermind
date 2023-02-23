@@ -72,7 +72,13 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public override IDebugRpcModule Create()
         {
-            IReadOnlyTxProcessorSourceExt txEnv = new ReadOnlyTxProcessingEnv(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            IReadOnlyTxProcessorSourceExt txEnv =
+                new ReadOnlyTxProcessingEnv(
+                    _dbProvider,
+                    _trieStore,
+                    _blockTree,
+                    _specProvider,
+                    _logManager);
 
             ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(txEnv.TransactionProcessor);
             BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, txEnv.WorldState);

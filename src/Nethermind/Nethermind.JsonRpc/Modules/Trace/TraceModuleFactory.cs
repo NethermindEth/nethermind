@@ -60,7 +60,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public override ITraceRpcModule Create()
         {
-            IReadOnlyTxProcessorSourceExt txProcessingEnv = new ReadOnlyTxProcessingEnv(_dbProvider, _trieNodeResolver, _blockTree, _specProvider, _logManager);
+            IReadOnlyTxProcessorSourceExt txProcessingEnv = new ReadOnlyTxProcessingEnv(_dbProvider, _trieNodeResolver,
+                _blockTree, _specProvider, _logManager);
 
             IRewardCalculator rewardCalculator =
                 new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor),

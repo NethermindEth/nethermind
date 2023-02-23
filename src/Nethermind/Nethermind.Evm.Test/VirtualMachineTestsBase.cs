@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Test
         private IDb _stateDb;
 
         protected VirtualMachine Machine { get; private set; }
-        protected IWorldState WorldState { get; private set; }
+        protected IWorldState TestState { get; private set; }
 
         protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
         protected static Address Sender { get; } = TestItem.AddressA;
@@ -62,11 +62,11 @@ namespace Nethermind.Evm.Test
 
             IDb codeDb = new MemDb();
             _stateDb = new MemDb();
-            WorldState = new WorldState(new TrieStore(_stateDb, logManager), codeDb, logManager);
+            TestState = new WorldState(new TrieStore(_stateDb, logManager), codeDb, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
             Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
-            _processor = new TransactionProcessor(SpecProvider, WorldState, Machine, logManager);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, logManager);
         }
 
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
@@ -126,22 +126,22 @@ namespace Nethermind.Evm.Test
             byte[][] blobVersionedHashes = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            if (!WorldState.AccountExists(senderRecipientAndMiner.Sender))
-                WorldState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
+            if (!TestState.AccountExists(senderRecipientAndMiner.Sender))
+                TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
             else
-                WorldState.AddToBalance(senderRecipientAndMiner.Sender, 100.Ether(), SpecProvider.GenesisSpec);
+                TestState.AddToBalance(senderRecipientAndMiner.Sender, 100.Ether(), SpecProvider.GenesisSpec);
 
-            if (!WorldState.AccountExists(senderRecipientAndMiner.Recipient))
-                WorldState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
+            if (!TestState.AccountExists(senderRecipientAndMiner.Recipient))
+                TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
             else
-                WorldState.AddToBalance(senderRecipientAndMiner.Recipient, 100.Ether(), SpecProvider.GenesisSpec);
-            WorldState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
+                TestState.AddToBalance(senderRecipientAndMiner.Recipient, 100.Ether(), SpecProvider.GenesisSpec);
+            TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
 
             GetLogManager().GetClassLogger().Debug("Committing initial state");
-            WorldState.Commit(SpecProvider.GenesisSpec);
+            TestState.Commit(SpecProvider.GenesisSpec);
             GetLogManager().GetClassLogger().Debug("Committed initial state");
             GetLogManager().GetClassLogger().Debug("Committing initial tree");
-            WorldState.CommitTree(0);
+            TestState.CommitTree(0);
             GetLogManager().GetClassLogger().Debug("Committed initial tree");
 
             Transaction transaction = Build.A.Transaction
@@ -149,7 +149,7 @@ namespace Nethermind.Evm.Test
                 .WithGasPrice(1)
                 .WithValue(value)
                 .WithBlobVersionedHashes(blobVersionedHashes)
-                .WithNonce(WorldState.GetNonce(senderRecipientAndMiner.Sender))
+                .WithNonce(TestState.GetNonce(senderRecipientAndMiner.Sender))
                 .To(senderRecipientAndMiner.Recipient)
                 .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
@@ -161,11 +161,11 @@ namespace Nethermind.Evm.Test
         protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code, byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            WorldState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
-            WorldState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
-            WorldState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec); ;
+            TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
+            TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
+            TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec); ;
 
-            WorldState.Commit(SpecProvider.GenesisSpec);
+            TestState.Commit(SpecProvider.GenesisSpec);
 
             Transaction transaction = Build.A.Transaction
                 .WithGasLimit(gasLimit)
@@ -183,8 +183,8 @@ namespace Nethermind.Evm.Test
         protected (Block block, Transaction transaction) PrepareInitTx(long blockNumber, long gasLimit, byte[] code, SenderRecipientAndMiner senderRecipientAndMiner = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            WorldState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
-            WorldState.Commit(SpecProvider.GenesisSpec);
+            TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
+            TestState.Commit(SpecProvider.GenesisSpec);
 
             Transaction transaction = Build.A.Transaction
                 .WithTo(null)
@@ -223,22 +223,22 @@ namespace Nethermind.Evm.Test
 
         protected void AssertStorage(UInt256 address, Address value)
         {
-            Assert.AreEqual(value.Bytes.PadLeft(32), WorldState.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(value.Bytes.PadLeft(32), TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
         protected void AssertStorage(UInt256 address, Keccak value)
         {
-            Assert.AreEqual(value.Bytes, WorldState.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(value.Bytes, TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
         protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)
         {
-            Assert.AreEqual(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray(), WorldState.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray(), TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {
-            byte[] actualValue = WorldState.Get(new StorageCell(Recipient, address));
+            byte[] actualValue = TestState.Get(new StorageCell(Recipient, address));
             byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();
             Assert.AreEqual(expected, actualValue, "storage");
         }
@@ -247,7 +247,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
 
-            byte[] actualValue = WorldState.Get(new StorageCell(Recipient, address));
+            byte[] actualValue = TestState.Get(new StorageCell(Recipient, address));
             Assert.AreEqual(bytes, actualValue, "storage");
         }
 
@@ -256,20 +256,20 @@ namespace Nethermind.Evm.Test
         protected void AssertStorage(StorageCell storageCell, UInt256 expectedValue)
         {
             _callIndex++;
-            if (!WorldState.AccountExists(storageCell.Address))
+            if (!TestState.AccountExists(storageCell.Address))
             {
                 Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[] { 0 }, $"storage {storageCell}, call {_callIndex}");
             }
             else
             {
-                byte[] actualValue = WorldState.Get(storageCell);
+                byte[] actualValue = TestState.Get(storageCell);
                 Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");
             }
         }
 
         protected void AssertCodeHash(Address address, Keccak codeHash)
         {
-            Assert.AreEqual(codeHash, WorldState.GetCodeHash(address), "code hash");
+            Assert.AreEqual(codeHash, TestState.GetCodeHash(address), "code hash");
         }
     }
 }

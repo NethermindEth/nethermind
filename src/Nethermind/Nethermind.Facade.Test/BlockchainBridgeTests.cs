@@ -60,8 +60,12 @@ namespace Nethermind.Facade.Test
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _specProvider = MainnetSpecProvider.Instance;
 
-            IReadOnlyTxProcessorSourceExt processingEnv = new ReadOnlyTxProcessingEnv(new ReadOnlyDbProvider(_dbProvider, false), new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new ReadOnlyBlockTree(_blockTree), _specProvider, LimboLogs.Instance)
+            IReadOnlyTxProcessorSourceExt processingEnv = new ReadOnlyTxProcessingEnv(
+                new ReadOnlyDbProvider(_dbProvider, false),
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                new ReadOnlyBlockTree(_blockTree),
+                _specProvider,
+                LimboLogs.Instance)
             {
                 TransactionProcessor = _transactionProcessor
             };
@@ -200,8 +204,12 @@ namespace Nethermind.Facade.Test
         [TestCase(0)]
         public void Bridge_head_is_correct(long headNumber)
         {
-            IReadOnlyTxProcessorSourceExt processingEnv = new ReadOnlyTxProcessingEnv(new ReadOnlyDbProvider(_dbProvider, false), new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new ReadOnlyBlockTree(_blockTree), _specProvider, LimboLogs.Instance);
+            IReadOnlyTxProcessorSourceExt processingEnv = new ReadOnlyTxProcessingEnv(
+                new ReadOnlyDbProvider(_dbProvider, false),
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                new ReadOnlyBlockTree(_blockTree),
+                _specProvider,
+                LimboLogs.Instance);
 
             Block head = Build.A.Block.WithNumber(headNumber).TestObject;
             Block bestSuggested = Build.A.Block.WithNumber(8).TestObject;

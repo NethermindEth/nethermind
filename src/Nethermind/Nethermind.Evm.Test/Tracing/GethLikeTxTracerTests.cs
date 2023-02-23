@@ -126,8 +126,8 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
-            WorldState.InsertCode(TestItem.AddressC, createCode, Spec);
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -166,8 +166,8 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
-            WorldState.InsertCode(TestItem.AddressC, createCode, Spec);
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .PushData(SampleHexData1) // just to test if stack is restored
@@ -210,8 +210,8 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
-            WorldState.InsertCode(TestItem.AddressC, createCode, Spec);
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .StoreDataInMemory(64, SampleHexData2.PadLeft(64, '0')) // just to test if memory is restored
@@ -254,8 +254,8 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            WorldState.CreateAccount(TestItem.AddressC, 1.Ether());
-            WorldState.InsertCode(TestItem.AddressC, createCode, Spec);
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .PersistData("0x2", HexZero) // just to test if storage is restored

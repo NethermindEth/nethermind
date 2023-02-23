@@ -27,7 +27,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.SpecProvider!,
                 _api.BlockValidator!,
                 _api.RewardCalculatorSource!.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor!, new WorldState(_api.TrieStore, _api.DbProvider!.CodeDb, _api.LogManager)),
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor!, _api.WorldState!),
                 _api.WorldState!,
                 _api.ReceiptStorage!,
                 _api.LogManager,

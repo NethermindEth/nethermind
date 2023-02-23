@@ -53,8 +53,11 @@ namespace Nethermind.Blockchain.Test.Producers
                 NoPruning.Instance,
                 Archive.Instance,
                 LimboLogs.Instance);
+            WorldState worldState = new(
+                trieStore,
+                dbProvider.RegisteredDbs[DbNames.Code],
+                LimboLogs.Instance);
             StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            WorldState worldState = new WorldState(trieStore, dbProvider.RegisteredDbs[DbNames.Code], LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
@@ -69,7 +72,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 specProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, new WorldState(trieStore, dbProvider.RegisteredDbs[DbNames.Code], LimboLogs.Instance)),
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, worldState),
                 worldState,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,

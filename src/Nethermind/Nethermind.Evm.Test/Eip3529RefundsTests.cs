@@ -72,10 +72,10 @@ namespace Nethermind.Evm.Test
 
         private void Test(string codeHex, long gasUsed, long refund, byte originalValue, bool eip3529Enabled)
         {
-            WorldState.CreateAccount(Recipient, 1.Ether());
-            WorldState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
-            WorldState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
-            _processor = new TransactionProcessor(SpecProvider, WorldState, Machine, LimboLogs.Instance);
+            TestState.CreateAccount(Recipient, 1.Ether());
+            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, LimboLogs.Instance);
             long blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, Bytes.FromHexString(codeHex));
 
@@ -91,9 +91,9 @@ namespace Nethermind.Evm.Test
         [TestCase(false)]
         public void After_3529_self_destruct_has_zero_refund(bool eip3529Enabled)
         {
-            WorldState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
-            WorldState.Commit(SpecProvider.GenesisSpec);
-            WorldState.CommitTree(0);
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.Commit(SpecProvider.GenesisSpec);
+            TestState.CommitTree(0);
 
             byte[] baseInitCodeStore = Prepare.EvmCode
                 .PushData(2)
