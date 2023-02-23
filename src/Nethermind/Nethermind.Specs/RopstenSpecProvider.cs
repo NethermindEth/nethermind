@@ -22,7 +22,7 @@ namespace Nethermind.Specs
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
-        public ulong TimestampFork => 0;
+        public ulong TimestampFork => ulong.MaxValue;
         public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 

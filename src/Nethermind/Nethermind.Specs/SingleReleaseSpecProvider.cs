@@ -21,7 +21,7 @@ namespace Nethermind.Specs
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
-        public ulong TimestampFork => 0;
+        public ulong TimestampFork { get; set; } = ulong.MaxValue;
         public UInt256? TerminalTotalDifficulty { get; set; }
         public ulong NetworkId { get; }
         public ulong ChainId { get; }
