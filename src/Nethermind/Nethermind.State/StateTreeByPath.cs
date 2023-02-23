@@ -51,17 +51,24 @@ namespace Nethermind.State
                 }
             }
 
-            if (bytes is null && RootRef?.IsPersisted == true)
+            if (bytes is null && RootHash == rootHash)
             {
-                byte[]? nodeData = TrieStore[addressKeyBytes];
-                if (nodeData is not null)
+                if (RootRef?.IsPersisted == true)
                 {
-                    TrieNode node = new(NodeType.Unknown, nodeData);
-                    node.ResolveNode(TrieStore);
-                    bytes = node.Value;
+                    byte[]? nodeData = TrieStore[addressKeyBytes];
+                    if (nodeData is not null)
+                    {
+                        TrieNode node = new(NodeType.Unknown, nodeData);
+                        node.ResolveNode(TrieStore);
+                        bytes = node.Value;
+                    }
+                }
+                else
+                {
+                    bytes = Get(addressKeyBytes);
                 }
             }
-            bytes ??= Get(addressKeyBytes);
+            
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 

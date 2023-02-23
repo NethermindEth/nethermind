@@ -127,72 +127,14 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private class LeafHistory
-        {
-            private ConcurrentDictionary<long, ConcurrentDictionary<byte[], TrieNode>> _leafNodesByBlock = new();
-            private ConcurrentDictionary<Keccak, long> _rootHashToBlock = new();
-            private Tuple<long, Keccak> latestBlock;
-            private int _maxNumberOfBlocks;
-
-            public LeafHistory(int maxNumberOfBlocks)
-            {
-                _maxNumberOfBlocks = maxNumberOfBlocks;
-            }
-
-            public TrieNode? GetLeafNode(byte[] path)
-            {
-                return latestBlock is null ? null : GetLeafNode(latestBlock.Item2, path);
-            }
-
-            public TrieNode? GetLeafNode(Keccak rootHash, byte[] path)
-            {
-                if (_rootHashToBlock.TryGetValue(rootHash, out long blockNo))
-                {
-                    if (_leafNodesByBlock.TryGetValue(blockNo, out ConcurrentDictionary<byte[], TrieNode> leafDictionary))
-                    {
-                        if (leafDictionary.TryGetValue(path, out TrieNode node))
-                            return node;
-                    }
-                }
-                return null;
-            }
-
-            public void AddNode(long blockNo, TrieNode node)
-            {
-                if (_maxNumberOfBlocks == 0)
-                    return;
-
-                if (!_leafNodesByBlock.TryGetValue(blockNo, out ConcurrentDictionary<byte[], TrieNode> leafDictionary))
-                {
-                    if (_leafNodesByBlock.Keys.Count >= _maxNumberOfBlocks)
-                    {
-                        long minVal = _leafNodesByBlock.Keys.Min();
-                        _leafNodesByBlock.TryRemove(minVal, out _);
-                    }
-                    leafDictionary = new(Bytes.EqualityComparer);
-                    _leafNodesByBlock[blockNo] = leafDictionary;
-                }
-                leafDictionary?.TryAdd(node.FullPath, node);
-            }
-
-            public void SetRootHashForBlock(long blockNo, Keccak? rootHash)
-            {
-                rootHash ??= Keccak.EmptyTreeHash;
-                _rootHashToBlock[rootHash] = blockNo;
-
-                if (blockNo >= (latestBlock?.Item1 ?? 0))
-                {
-                    latestBlock = new Tuple<long, Keccak>(blockNo, rootHash);
-                }
-            }
-        }
+        
 
         private int _isFirst;
 
         private IBatch? _currentBatch = null;
 
         private readonly DirtyNodesCache _dirtyNodes;
-        private readonly LeafHistory? _leafHistory;
+        private readonly ILeafHistoryStrategy? _leafHistory;
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -208,15 +150,15 @@ namespace Nethermind.Trie.Pruning
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
             ILogManager? logManager,
-            int maxLeafCacheSize = 128)
+            ILeafHistoryStrategy historyStrategy = null)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
-            if (maxLeafCacheSize > 0)
-                _leafHistory = new LeafHistory(maxLeafCacheSize);
+            _leafHistory = historyStrategy;
+            _leafHistory?.Init(this);
         }
 
         public long LastPersistedBlockNumber
@@ -400,12 +342,11 @@ namespace Nethermind.Trie.Pruning
 
         internal byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Keccak rootHash = null)
         {
-            TrieNode? node = rootHash is not null ?
-                _leafHistory?.GetLeafNode(rootHash, path.ToArray()) :
-                _leafHistory?.GetLeafNode(path.ToArray());
 
-            if (node is not null)
-                return node.FullRlp;
+            if (rootHash is not null)
+            {
+                return _leafHistory?.GetLeafNode(rootHash, path.ToArray());
+            }
 
             byte[] keyPath = path.Length < 64 ?
                         Nibbles.ToEncodedStorageBytes(path) :
@@ -766,13 +707,13 @@ namespace Nethermind.Trie.Pruning
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
 
+                if (currentNode.IsLeaf)
+                    _leafHistory?.AddLeafNode(blockNumber, currentNode);
+
                 SaveNodeDirectly(blockNumber, currentNode, _currentBatch);
 
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
-
-                if (currentNode.IsLeaf)
-                    _leafHistory?.AddNode(blockNumber, currentNode);
 
                 PersistedNodesCount++;
             }
