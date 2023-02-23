@@ -306,6 +306,56 @@ public partial class BlockDownloaderTests
         cts.Dispose();
     }
 
+    [Test]
+    public async Task No_old_bodies_and_receipts()
+    {
+        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
+            .GoesLikeThis()
+            .WithBlockTrees(4, 129)
+            .InsertBeaconPivot(64)
+            .InsertBeaconHeaders(4, 128);
+        BlockTree syncedTree = blockTrees.SyncedTree;
+        PostMergeContext ctx = new();
+        ctx.BlockTreeScenario = blockTrees;
+
+        ctx.Feed = new FastSyncFeed(ctx.SyncModeSelector,
+            new SyncConfig
+            {
+                NonValidatorNode = true,
+                DownloadBodiesInFastSync = false,
+                DownloadReceiptsInFastSync = false
+            }, LimboLogs.Instance);
+
+        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(64, BlockTreeLookupOptions.None));
+
+        BlockDownloader downloader = ctx.BlockDownloader;
+
+        SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 34000000);
+        PeerInfo peerInfo = new(syncPeer);
+
+        IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
+
+        peerAllocationStrategy
+            .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
+            .Returns(peerInfo);
+        SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks);
+        peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), ctx.BlockTree);
+
+        ctx.PeerPool
+            .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>())
+            .Returns(Task.FromResult(peerAllocation));
+
+        ctx.Feed.Activate();
+
+        CancellationTokenSource cts = new();
+        downloader.Start(cts.Token);
+        await Task.Delay(TimeSpan.FromMilliseconds(1000));
+
+        cts.Cancel();
+
+        ctx.BlockTree.BestKnownNumber.Should().Be(96);
+    }
+
     [TestCase(DownloaderOptions.WithReceipts)]
     [TestCase(DownloaderOptions.None)]
     [TestCase(DownloaderOptions.Process)]
@@ -417,7 +467,7 @@ public partial class BlockDownloaderTests
         {
             get
             {
-                return _mergeBlockDownloader ?? new(
+                return _mergeBlockDownloader ??= new(
                     PosSwitcher,
                     BeaconPivot,
                     Feed,

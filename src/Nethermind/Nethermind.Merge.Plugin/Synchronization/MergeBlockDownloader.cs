@@ -72,6 +72,42 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _logger = logManager.GetClassLogger();
         }
 
+        protected override async Task Dispatch(PeerInfo bestPeer, BlocksRequest? blocksRequest, CancellationToken cancellation)
+        {
+            if (_beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false)
+            {
+                if (_logger.IsDebug)
+                    _logger.Debug("Using pre merge dispatcher");
+                await base.Dispatch(bestPeer, blocksRequest, cancellation);
+                return;
+            }
+
+            if (blocksRequest == null)
+            {
+                if (Logger.IsWarn) Logger.Warn($"NULL received for dispatch in {nameof(BlockDownloader)}");
+                return;
+            }
+
+            if (!_blockTree.CanAcceptNewBlocks) return;
+
+            if (_previousBestPeer != bestPeer)
+            {
+                _syncBatchSize.Reset();
+            }
+            _previousBestPeer = bestPeer;
+
+            try
+            {
+                InvokeEvent(new SyncEventArgs(bestPeer.SyncPeer, Nethermind.Synchronization.SyncEvent.Started));
+                await DownloadBlocks(bestPeer, blocksRequest, cancellation)
+                        .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
+            }
+            finally
+            {
+                _allocationWithCancellation.Dispose();
+            }
+        }
+
         public override async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
             CancellationToken cancellation)
         {
