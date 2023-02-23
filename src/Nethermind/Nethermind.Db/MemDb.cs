@@ -9,7 +9,6 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -22,7 +21,7 @@ namespace Nethermind.Db
         public long WritesCount { get; private set; }
 
         [Todo("Figureout a way to index this with a span")]
-        private readonly ConcurrentDictionary<byte[], byte[]?> _db;
+        private readonly ConcurrentDictionary<ArraySegment<byte>, byte[]?> _db;
 
         public MemDb(string name)
             : this(0, 0)
@@ -38,7 +37,7 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-            _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            _db = new ConcurrentDictionary<ArraySegment<byte>, byte[]>(Bytes.ArraySegmentEqualityComparer);
         }
 
         public string Name { get; }
@@ -53,7 +52,7 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount++;
-                byte[] asBytes = ArrayPool<byte>.Shared.RentExact(key.Length);
+                ArraySegment<byte> asBytes = new(ArrayPool<byte>.Shared.Rent(key.Length), 0, key.Length);
                 try
                 {
                     key.CopyTo(asBytes);
@@ -61,7 +60,7 @@ namespace Nethermind.Db
                 }
                 finally
                 {
-                    ArrayPool<byte>.Shared.ReturnExact(asBytes);
+                    ArrayPool<byte>.Shared.Return(asBytes.Array);
                 }
             }
             set
@@ -92,7 +91,7 @@ namespace Nethermind.Db
 
         public virtual void Remove(ReadOnlySpan<byte> key)
         {
-            byte[] asBytes = ArrayPool<byte>.Shared.RentExact(key.Length);
+            ArraySegment<byte> asBytes = new(ArrayPool<byte>.Shared.Rent(key.Length), 0, key.Length);
             try
             {
                 key.CopyTo(asBytes);
@@ -100,13 +99,13 @@ namespace Nethermind.Db
             }
             finally
             {
-                ArrayPool<byte>.Shared.ReturnExact(asBytes);
+                ArrayPool<byte>.Shared.Return(asBytes.Array);
             }
         }
 
         public bool KeyExists(ReadOnlySpan<byte> key)
         {
-            byte[] asBytes = ArrayPool<byte>.Shared.RentExact(key.Length);
+            ArraySegment<byte> asBytes = new(ArrayPool<byte>.Shared.Rent(key.Length), 0, key.Length);
             try
             {
                 key.CopyTo(asBytes);
@@ -114,7 +113,7 @@ namespace Nethermind.Db
             }
             finally
             {
-                ArrayPool<byte>.Shared.ReturnExact(asBytes);
+                ArrayPool<byte>.Shared.Return(asBytes.Array);
             }
         }
 
@@ -129,7 +128,8 @@ namespace Nethermind.Db
             _db.Clear();
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => _db;
+        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) =>
+            _db.Select(kv => new KeyValuePair<byte[], byte[]?>(kv.Key.ToArray(), kv.Value));
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
@@ -138,7 +138,7 @@ namespace Nethermind.Db
             return this.LikeABatch();
         }
 
-        public ICollection<byte[]> Keys => _db.Keys;
+        public ICollection<byte[]> Keys => _db.Keys.Select(key => key.ToArray()).ToArray();
         public ICollection<byte[]> Values => _db.Values;
 
         public int Count => _db.Count;

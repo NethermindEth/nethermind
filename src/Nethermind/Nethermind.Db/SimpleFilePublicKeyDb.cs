@@ -24,13 +24,13 @@ namespace Nethermind.Db
 
         private ILogger _logger;
         private bool _hasPendingChanges;
-        private ConcurrentDictionary<byte[], byte[]> _cache;
+        private ConcurrentDictionary<ArraySegment<byte>, byte[]> _cache;
 
         public string DbPath { get; }
         public string Name { get; }
         public string Description { get; }
 
-        public ICollection<byte[]> Keys => _cache.Keys.ToArray();
+        public ICollection<byte[]> Keys => _cache.Keys.Select(key => key.AsSpan().ToArray()).ToArray();
         public ICollection<byte[]> Values => _cache.Values;
         public int Count => _cache.Count;
 
@@ -54,7 +54,7 @@ namespace Nethermind.Db
         {
             get
             {
-                byte[] asBytes = ArrayPool<byte>.Shared.RentExact(key.Length);
+                ArraySegment<byte> asBytes = new(ArrayPool<byte>.Shared.Rent(key.Length), 0, key.Length);
                 try
                 {
                     key.CopyTo(asBytes);
@@ -62,7 +62,7 @@ namespace Nethermind.Db
                 }
                 finally
                 {
-                    ArrayPool<byte>.Shared.ReturnExact(asBytes);
+                    ArrayPool<byte>.Shared.Return(asBytes.Array);
                 }
             }
             set
@@ -84,7 +84,7 @@ namespace Nethermind.Db
         {
             _hasPendingChanges = true;
 
-            byte[] asBytes = ArrayPool<byte>.Shared.RentExact(key.Length);
+            ArraySegment<byte> asBytes = new(ArrayPool<byte>.Shared.Rent(key.Length), 0, key.Length);
             try
             {
                 key.CopyTo(asBytes);
@@ -92,13 +92,13 @@ namespace Nethermind.Db
             }
             finally
             {
-                ArrayPool<byte>.Shared.ReturnExact(asBytes);
+                ArrayPool<byte>.Shared.Return(asBytes.Array);
             }
         }
 
         public bool KeyExists(ReadOnlySpan<byte> key)
         {
-            byte[] asBytes = ArrayPool<byte>.Shared.RentExact(key.Length);
+            ArraySegment<byte> asBytes = new(ArrayPool<byte>.Shared.Rent(key.Length), 0, key.Length);
             try
             {
                 key.CopyTo(asBytes);
@@ -106,7 +106,7 @@ namespace Nethermind.Db
             }
             finally
             {
-                ArrayPool<byte>.Shared.ReturnExact(asBytes);
+                ArrayPool<byte>.Shared.Return(asBytes.Array);
             }
         }
 
@@ -117,7 +117,8 @@ namespace Nethermind.Db
             File.Delete(DbPath);
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;
+        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) =>
+            _cache.Select(kv => new KeyValuePair<byte[], byte[]?>(kv.Key.ToArray(), kv.Value));
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
 
@@ -136,13 +137,13 @@ namespace Nethermind.Db
 
             using Backup backup = new(DbPath, _logger);
             _hasPendingChanges = false;
-            KeyValuePair<byte[], byte[]>[] snapshot = _cache.ToArray();
+            KeyValuePair<ArraySegment<byte>, byte[]>[] snapshot = _cache.ToArray();
 
             if (_logger.IsDebug) _logger.Debug($"Saving data in {DbPath} | backup stored in {backup.BackupPath}");
             try
             {
                 using StreamWriter streamWriter = new(DbPath);
-                foreach ((byte[] key, byte[] value) in snapshot)
+                foreach ((Span<byte> key, byte[] value) in snapshot)
                 {
                     if (value is not null)
                     {
@@ -213,7 +214,7 @@ namespace Nethermind.Db
         {
             const int maxLineLength = 2048;
 
-            _cache = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            _cache = new ConcurrentDictionary<ArraySegment<byte>, byte[]>(Bytes.ArraySegmentEqualityComparer);
 
             if (!File.Exists(DbPath))
             {

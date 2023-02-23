@@ -23,6 +23,7 @@ namespace Nethermind.Core.Extensions
     public static unsafe partial class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
+        public static readonly IEqualityComparer<ArraySegment<byte>> ArraySegmentEqualityComparer = new ArraySegmentBytesEqualityComparer();
 
         public static readonly BytesComparer Comparer = new();
 
@@ -36,6 +37,19 @@ namespace Nethermind.Core.Extensions
             public override int GetHashCode(byte[] obj)
             {
                 return obj.GetSimplifiedHashCode();
+            }
+        }
+
+        private class ArraySegmentBytesEqualityComparer : EqualityComparer<ArraySegment<byte>>
+        {
+            public override bool Equals(ArraySegment<byte> x, ArraySegment<byte> y)
+            {
+                return AreEqual(x, y);
+            }
+
+            public override int GetHashCode(ArraySegment<byte> obj)
+            {
+                return obj.AsSpan().GetSimplifiedHashCode();
             }
         }
 
@@ -510,6 +524,11 @@ namespace Nethermind.Core.Extensions
         }
 
         public static void StreamHex(this byte[] bytes, StreamWriter streamWriter)
+        {
+            bytes.AsSpan().StreamHex(streamWriter);
+        }
+
+        public static void StreamHex(this Span<byte> bytes, StreamWriter streamWriter)
         {
             for (int i = 0; i < bytes.Length; i++)
             {
