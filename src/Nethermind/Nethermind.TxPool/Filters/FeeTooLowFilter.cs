@@ -37,7 +37,7 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             bool isTrace = _logger.IsTrace;
-            if (tx.GasLimit <= 0 || GasLimitToWei(tx.GasLimit) < Transaction.BaseTxGasCost * tx.GasPrice)
+            if (tx.GasLimit <= 0 || tx.GasLimit < Transaction.BaseTxGasCost)
             {
                 // Not high enough GasLimit to run a txn
                 Metrics.PendingTransactionsTooLowFee++;
