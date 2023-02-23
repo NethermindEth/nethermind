@@ -22,10 +22,14 @@ namespace Nethermind.KeyStore
     public class MemKeyStore : IKeyStore
     {
         private readonly Dictionary<Address, PrivateKey> _privateKeys;
+        private readonly string _ketStoreDir;
 
-        public MemKeyStore(PrivateKey[] privateKeys)
+        public MemKeyStore(PrivateKey[] privateKeys, string ketStoreDir)
         {
-            _privateKeys = new Dictionary<Address, PrivateKey>(privateKeys.Select(pk => new KeyValuePair<Address, PrivateKey>(pk.Address, pk)));
+            _privateKeys =
+                new Dictionary<Address, PrivateKey>(privateKeys.Select(pk =>
+                    new KeyValuePair<Address, PrivateKey>(pk.Address, pk)));
+            _ketStoreDir = ketStoreDir;
         }
 
         public (KeyStoreItem KeyData, Result Result) Verify(string keyJson)
@@ -40,7 +44,9 @@ namespace Nethermind.KeyStore
 
         public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
         {
-            return _privateKeys.TryGetValue(address, out PrivateKey value) ? (new ProtectedPrivateKey(value), Result.Success) : (null, Result.Fail("Can't unlock key."));
+            return _privateKeys.TryGetValue(address, out PrivateKey value)
+                ? (new ProtectedPrivateKey(value, _ketStoreDir), Result.Success)
+                : (null, Result.Fail("Can't unlock key."));
         }
 
         public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
