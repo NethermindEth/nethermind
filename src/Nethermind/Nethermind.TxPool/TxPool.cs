@@ -576,7 +576,7 @@ Total Received:         {Metrics.PendingTransactionsReceived,18:0}
 ------------------------------------------
 Discarded at Filter Stage:        
 1.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,18:0}
-2.  Already Known:      {Metrics.PendingTransactionsKnown,18:0}
+2.  Duplicate:          {Metrics.PendingTransactionsKnown,18:0}
 3.  Malformed           {Metrics.PendingTransactionsMalformed,18:0}
 4.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,18:0}
 5.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,18:0}
