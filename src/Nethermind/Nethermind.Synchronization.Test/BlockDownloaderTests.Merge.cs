@@ -321,7 +321,7 @@ public partial class BlockDownloaderTests
         ctx.Feed = new FastSyncFeed(ctx.SyncModeSelector,
             new SyncConfig
             {
-                NoValidatorNode = true,
+                NonValidatorNode = true,
                 DownloadBodiesInFastSync = false,
                 DownloadReceiptsInFastSync = false
             }, LimboLogs.Instance);
