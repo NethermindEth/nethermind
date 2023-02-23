@@ -6,7 +6,7 @@ using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Verkle.Tree.Serializers;
 
-public class VerkleMemoryDbSerializer: IRlpStreamDecoder<VerkleMemoryDb>
+public class VerkleMemoryDbSerializer : IRlpStreamDecoder<VerkleMemoryDb>
 {
     public static VerkleMemoryDbSerializer Instance => new VerkleMemoryDbSerializer();
 

@@ -38,7 +38,7 @@ namespace Nethermind.Db.Rocks
                     break;
                 case DbMode.MemDb:
                     dbProvider = new DbProvider(DbModeHint.Mem);
-                    rocksDbFactory = new RocksDbFactory(dbConfig, NullLogManager.Instance,Path.Combine(baseDbPath, "debug"));
+                    rocksDbFactory = new RocksDbFactory(dbConfig, NullLogManager.Instance, Path.Combine(baseDbPath, "debug"));
                     memDbFactory = new MemDbFactory();
                     break;
                 case DbMode.PersistantDb:

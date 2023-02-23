@@ -6,7 +6,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Verkle.Tree.Proofs;
 
-public class VerkleProofCollector: ITreeVisitor
+public class VerkleProofCollector : ITreeVisitor
 {
 
     public bool ShouldVisit(Keccak nextNode)

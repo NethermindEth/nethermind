@@ -132,7 +132,7 @@ public class HistoryTests
 
         VerkleMemoryDb memory = tree.GetReverseMergedDiff(2, 1);
 
-        tree.ApplyDiffLayer(memory, 2,1);
+        tree.ApplyDiffLayer(memory, 2, 1);
 
         tree.Get(VerkleTestUtils._keyVersion).Should().BeEquivalentTo(VerkleTestUtils._arrayAll0Last2);
         tree.Get(VerkleTestUtils._keyBalance).Should().BeEquivalentTo(VerkleTestUtils._arrayAll0Last2);
@@ -148,7 +148,7 @@ public class HistoryTests
     {
         VerkleTree tree = VerkleTestUtils.GetFilledVerkleTreeForTest(dbMode);
 
-        VerkleMemoryDb memory = tree.GetReverseMergedDiff(3,1);
+        VerkleMemoryDb memory = tree.GetReverseMergedDiff(3, 1);
 
         tree.ApplyDiffLayer(memory, 3, 1);
 
@@ -198,32 +198,32 @@ public class HistoryTests
     [TestCase(DbMode.PersistantDb)]
     public void TestBatchReverseDiffs(DbMode dbMode)
     {
-       // VerkleTree tree = GetHugeVerkleTreeForTest(dbMode);
-       // for (int i = 2;i <= 1000;i++) {
-       //     DateTime start = DateTime.Now;
-       //     IVerkleDiffDb reverseDiff = tree.GetReverseMergedDiff(1, i);
-       //     DateTime check1 = DateTime.Now;
-       //     tree.ReverseState(reverseDiff, (i -1));
-       //     DateTime check2 = DateTime.Now;
-       //     Console.WriteLine($"Batch Reverse Diff Fetch(1, {i}): {(check1 - start).TotalMilliseconds}");
-       //     Console.WriteLine($"Batch Reverse State(2, {i-1}): {(check2 - check1).TotalMilliseconds}");
-       //}
+        // VerkleTree tree = GetHugeVerkleTreeForTest(dbMode);
+        // for (int i = 2;i <= 1000;i++) {
+        //     DateTime start = DateTime.Now;
+        //     IVerkleDiffDb reverseDiff = tree.GetReverseMergedDiff(1, i);
+        //     DateTime check1 = DateTime.Now;
+        //     tree.ReverseState(reverseDiff, (i -1));
+        //     DateTime check2 = DateTime.Now;
+        //     Console.WriteLine($"Batch Reverse Diff Fetch(1, {i}): {(check1 - start).TotalMilliseconds}");
+        //     Console.WriteLine($"Batch Reverse State(2, {i-1}): {(check2 - check1).TotalMilliseconds}");
+        //}
     }
 
     [TestCase(DbMode.MemDb)]
     [TestCase(DbMode.PersistantDb)]
     public void TestBatchForwardDiffs(DbMode dbMode)
     {
-       // VerkleTree tree = GetHugeVerkleTreeForTest(dbMode);
-       // for (int i = 2;i <= 1000;i++) {
-       //     DateTime start = DateTime.Now;
-       //     IVerkleDiffDb forwardDiff = tree.GetForwardMergedDiff(1, i);
-       //     DateTime check1 = DateTime.Now;
-       //     tree.ForwardState(reverseDiff, (i -1));
-       //     DateTime check2 = DateTime.Now;
-       //     Console.WriteLine($"Batch Forward Diff Fetch(1, {i}): {(check1 - start).TotalMilliseconds}");
-       //     Console.WriteLine($"Batch Forward State(2, {i-1}): {(check2 - check1).TotalMilliseconds}");
-       //}
+        // VerkleTree tree = GetHugeVerkleTreeForTest(dbMode);
+        // for (int i = 2;i <= 1000;i++) {
+        //     DateTime start = DateTime.Now;
+        //     IVerkleDiffDb forwardDiff = tree.GetForwardMergedDiff(1, i);
+        //     DateTime check1 = DateTime.Now;
+        //     tree.ForwardState(reverseDiff, (i -1));
+        //     DateTime check2 = DateTime.Now;
+        //     Console.WriteLine($"Batch Forward Diff Fetch(1, {i}): {(check1 - start).TotalMilliseconds}");
+        //     Console.WriteLine($"Batch Forward State(2, {i-1}): {(check2 - check1).TotalMilliseconds}");
+        //}
     }
 
 

@@ -7,7 +7,7 @@ using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Verkle.Tree;
 
-public class CompositeVerkleStateStore: IVerkleStore
+public class CompositeVerkleStateStore : IVerkleStore
 {
 
     private readonly IVerkleStore _wrappedStore;

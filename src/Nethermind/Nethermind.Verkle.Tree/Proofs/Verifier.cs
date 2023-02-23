@@ -11,7 +11,7 @@ using Nethermind.Verkle.Utils;
 
 namespace Nethermind.Verkle.Tree.Proofs;
 
-public class ListComparer: Comparer<List<byte>>
+public class ListComparer : Comparer<List<byte>>
 {
     public override int Compare(List<byte>? x, List<byte>? y)
     {
@@ -28,7 +28,7 @@ public class ListComparer: Comparer<List<byte>>
     }
 }
 
-public class ListWithByteComparer: Comparer<(List<byte>, byte)>
+public class ListWithByteComparer : Comparer<(List<byte>, byte)>
 {
     public override int Compare((List<byte>, byte) x, (List<byte>, byte) y)
     {
@@ -56,7 +56,7 @@ public static class Verifier
         SortedDictionary<List<byte>, byte[]> otherStemsByPrefix = new SortedDictionary<List<byte>, byte[]>(new ListComparer());
 
 
-        foreach (((byte[] stem, byte depth) , ExtPresent extPresent)  in stems.Zip(proof.VerifyHint.Depths).Zip(proof.VerifyHint.ExtensionPresent))
+        foreach (((byte[] stem, byte depth), ExtPresent extPresent) in stems.Zip(proof.VerifyHint.Depths).Zip(proof.VerifyHint.ExtensionPresent))
         {
             depthsAndExtByStem.Add(stem, (extPresent, depth));
             switch (extPresent)
@@ -131,7 +131,7 @@ public static class Verifier
                     if (extPres == ExtPresent.Present)
                     {
                         byte suffix = key[31];
-                        byte openingIndex = suffix < 128 ? (byte) 2 : (byte) 3;
+                        byte openingIndex = suffix < 128 ? (byte)2 : (byte)3;
 
                         allPathsAndZs.Add((new List<byte>(stem[..depth]), openingIndex));
                         leafValuesByPathAndZ.Add((new List<byte>(stem[..depth]), 1), FrE.FromBytesReduced(stem.Reverse().ToArray()));
@@ -158,12 +158,12 @@ public static class Verifier
 
                     if (depth == 1)
                     {
-                        leafValuesByPathAndZ.Add((new List<byte>(), stem[depth-1]), FrE.Zero);
+                        leafValuesByPathAndZ.Add((new List<byte>(), stem[depth - 1]), FrE.Zero);
                     }
                     else
                     {
                         leafValuesByPathAndZ.Add(
-                            (stem[..depth].ToList(), stem[depth-1]), FrE.Zero
+                            (stem[..depth].ToList(), stem[depth - 1]), FrE.Zero
                             );
                     }
                     break;
@@ -209,7 +209,7 @@ public static class Verifier
 
         List<VerkleVerifierQuery> queries = new List<VerkleVerifierQuery>(cs.Count);
 
-        foreach (((FrE y, FrE z) , Banderwagon comm) in ys.Zip(zs).Zip(cs))
+        foreach (((FrE y, FrE z), Banderwagon comm) in ys.Zip(zs).Zip(cs))
         {
             VerkleVerifierQuery query = new VerkleVerifierQuery(comm, z, y);
             queries.Add(query);
@@ -217,7 +217,9 @@ public static class Verifier
 
         UpdateHint updateHint = new UpdateHint()
         {
-            DepthAndExtByStem = depthsAndExtByStem, CommByPath = commByPath, DifferentStemNoProof = otherStemsByPrefix
+            DepthAndExtByStem = depthsAndExtByStem,
+            CommByPath = commByPath,
+            DifferentStemNoProof = otherStemsByPrefix
         };
 
         Transcript proverTranscript = new Transcript("vt");

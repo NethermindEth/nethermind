@@ -64,7 +64,7 @@ public class VerkleStateStore : IVerkleStore, ISyncTrieStore
 
     private void InitRootHash()
     {
-        if(Batch.GetBranch(Array.Empty<byte>(), out InternalNode? _)) return;
+        if (Batch.GetBranch(Array.Empty<byte>(), out InternalNode? _)) return;
         Batch.SetBranch(Array.Empty<byte>(), new BranchNode());
     }
 
@@ -287,7 +287,7 @@ public class VerkleStateStore : IVerkleStore, ISyncTrieStore
     }
 }
 
-public interface IVerkleStore: IStoreWithReorgBoundary
+public interface IVerkleStore : IStoreWithReorgBoundary
 {
     public byte[] RootHash { get; set; }
     byte[]? GetLeaf(byte[] key);

@@ -6,7 +6,7 @@ using Nethermind.Verkle.Tree.Nodes;
 
 namespace Nethermind.Verkle.Tree.VerkleDb;
 
-public class VerkleMemoryDb: IVerkleDb, IVerkleMemDb
+public class VerkleMemoryDb : IVerkleDb, IVerkleMemDb
 {
     public LeafStore LeafTable { get; }
     public StemStore StemTable { get; }
@@ -35,7 +35,7 @@ public class VerkleMemoryDb: IVerkleDb, IVerkleMemDb
     public void SetBranch(byte[] branchKey, InternalNode internalNodeValue) => BranchTable[branchKey] = internalNodeValue;
 
     public void RemoveLeaf(byte[] leafKey) => LeafTable.Remove(leafKey, out _);
-    public void RemoveStem(byte[] stemKey) =>   StemTable.Remove(stemKey, out _);
+    public void RemoveStem(byte[] stemKey) => StemTable.Remove(stemKey, out _);
     public void RemoveBranch(byte[] branchKey) => BranchTable.Remove(branchKey, out _);
 
     public void BatchLeafInsert(IEnumerable<KeyValuePair<byte[], byte[]?>> keyLeaf)

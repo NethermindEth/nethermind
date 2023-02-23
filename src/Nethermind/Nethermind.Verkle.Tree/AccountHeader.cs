@@ -26,7 +26,7 @@ public readonly struct AccountHeader
 
     public static Span<byte> ToAddress32(ReadOnlySpan<byte> address20)
     {
-        Span<byte> destination = (Span<byte>) new byte[32];
+        Span<byte> destination = (Span<byte>)new byte[32];
         Span<byte> sl = destination[12..];
         address20.CopyTo(sl);
         return destination;

@@ -42,7 +42,7 @@ public class VerkleProver
 
         List<byte[]> extPresent = new List<byte[]>();
         List<byte[]> extNone = new List<byte[]>();
-        List<byte[]> extDifferent= new List<byte[]>();
+        List<byte[]> extDifferent = new List<byte[]>();
 
         // generate prover path for keys
         Dictionary<byte[], SortedSet<byte>> neededOpenings = new Dictionary<byte[], SortedSet<byte>>(Bytes.EqualityComparer);
@@ -143,7 +143,9 @@ public class VerkleProver
             Proof = proof,
             VerifyHint = new VerificationHint
             {
-                Depths = depthsByStem.Values.ToArray(), DifferentStemNoProof = stemWithNoProofSet.ToArray(), ExtensionPresent = extPresentByStem.Values.ToArray()
+                Depths = depthsByStem.Values.ToArray(),
+                DifferentStemNoProof = stemWithNoProofSet.ToArray(),
+                ExtensionPresent = extPresentByStem.Values.ToArray()
             }
         };
     }
@@ -151,7 +153,7 @@ public class VerkleProver
     private IEnumerable<VerkleProverQuery> AddBranchCommitmentsOpening(byte[] branchPath, IEnumerable<byte> branchChild)
     {
         List<VerkleProverQuery> queries = new List<VerkleProverQuery>();
-        if(!_proofBranchPolynomialCache.TryGetValue(branchPath, out FrE[] poly)) throw new EvaluateException();
+        if (!_proofBranchPolynomialCache.TryGetValue(branchPath, out FrE[] poly)) throw new EvaluateException();
         InternalNode? node = _stateDb.GetBranch(branchPath);
         queries.AddRange(branchChild.Select(childIndex => new VerkleProverQuery(new LagrangeBasis(poly), node!._internalCommitment.Point, FrE.SetElement(childIndex), poly[childIndex])));
         return queries;
@@ -217,7 +219,7 @@ public class VerkleProver
         List<VerkleProverQuery> queries = new List<VerkleProverQuery>();
         foreach (KeyValuePair<byte[], SortedSet<byte>> proofData in branchProof)
         {
-            if(!_proofBranchPolynomialCache.TryGetValue(proofData.Key, out FrE[] poly)) throw new EvaluateException();
+            if (!_proofBranchPolynomialCache.TryGetValue(proofData.Key, out FrE[] poly)) throw new EvaluateException();
             InternalNode? node = _stateDb.GetBranch(proofData.Key);
             queries.AddRange(proofData.Value.Select(childIndex => new VerkleProverQuery(new LagrangeBasis(poly), node!._internalCommitment.Point, FrE.SetElement(childIndex), poly[childIndex])));
         }

@@ -100,7 +100,7 @@ public struct UpdateHint
     public SortedDictionary<List<byte>, byte[]> DifferentStemNoProof;
 }
 
-public enum ExtPresent: byte
+public enum ExtPresent : byte
 {
     None = 0,
     DifferentStem = 1,

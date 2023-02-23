@@ -9,7 +9,7 @@ using Nethermind.Verkle.Tree.Nodes;
 
 namespace Nethermind.Verkle.Tree;
 
-public class VerkleTreeDumper: IVerkleTreeVisitor
+public class VerkleTreeDumper : IVerkleTreeVisitor
 {
 
     private readonly StringBuilder _builder = new StringBuilder();

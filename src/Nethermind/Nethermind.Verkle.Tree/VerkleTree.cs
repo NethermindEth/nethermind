@@ -193,7 +193,7 @@ public partial class VerkleTree
         }
 
         (FrE deltaFr, Commitment updatedSuffixCommitment) = UpdateSuffixNode(traverseContext.Stem.ToArray(), traverseContext.LeafUpdateDelta);
-        _stateDb.SetBranch(traverseContext.Stem[..traverseContext.CurrentIndex].ToArray(), new StemNode(node.Stem, updatedSuffixCommitment) );
+        _stateDb.SetBranch(traverseContext.Stem[..traverseContext.CurrentIndex].ToArray(), new StemNode(node.Stem, updatedSuffixCommitment));
         return (Committer.ScalarMul(deltaFr, traverseContext.Stem[traverseContext.CurrentIndex - 1]), false);
     }
 
@@ -214,7 +214,7 @@ public partial class VerkleTree
 
     private (FrE, Commitment) UpdateSuffixNode(byte[] stemKey, LeafUpdateDelta leafUpdateDelta, bool insertNew = false)
     {
-        SuffixTree suffixNode = insertNew? new SuffixTree(stemKey): _stateDb.GetStem(stemKey)?? throw new ArgumentException();
+        SuffixTree suffixNode = insertNew ? new SuffixTree(stemKey) : _stateDb.GetStem(stemKey) ?? throw new ArgumentException();
 
         FrE deltaFr = suffixNode.UpdateCommitment(leafUpdateDelta);
         _stateDb.SetStem(stemKey, suffixNode);

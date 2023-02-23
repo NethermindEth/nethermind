@@ -8,7 +8,7 @@ using Nethermind.Verkle.Tree.Serializers;
 
 namespace Nethermind.Verkle.Tree.VerkleDb;
 
-public class VerkleKeyValueDb: IVerkleDb, IVerkleKeyValueDb, IKeyValueStore
+public class VerkleKeyValueDb : IVerkleDb, IVerkleKeyValueDb, IKeyValueStore
 {
     private readonly IDbProvider _dbProvider;
 
