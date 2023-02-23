@@ -19,10 +19,10 @@ public class TestMemDb : MemDb
     private List<byte[]> _writeKeys = new();
     private List<byte[]> _removedKeys = new();
 
-    public Func<byte[], byte[]> ReadFunc { get; set; }
-    public Action<byte[]> RemoveFunc { get; set; }
+    public Func<byte[], byte[]>? ReadFunc { get; set; }
+    public Action<byte[]>? RemoveFunc { get; set; }
 
-    public override byte[] this[ReadOnlySpan<byte> key]
+    public override byte[]? this[ReadOnlySpan<byte> key]
     {
         get
         {
