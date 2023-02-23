@@ -69,7 +69,7 @@ namespace Nethermind.Db.FullPruning
 
         private void Duplicate(IKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value)
         {
-            db[key.ToArray()] = value;
+            db[key] = value;
             _updateDuplicateWriteMetrics?.Invoke();
         }
 
