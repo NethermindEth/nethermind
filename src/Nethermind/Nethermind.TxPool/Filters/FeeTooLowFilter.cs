@@ -60,7 +60,7 @@ namespace Nethermind.TxPool.Filters
             UInt256 affordableGasPrice = tx.CalculateGasPrice(isEip1559Enabled, _headInfo.CurrentBaseFee);
 
             // Don't accept zero fee txns even if pool is empty as will never run
-            if (affordableGasPrice.IsZero)
+            if (affordableGasPrice.IsZero && !_headInfo.CurrentBaseFee.IsZero)
             {
                 Metrics.PendingTransactionsTooLowFee++;
                 if (isTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
