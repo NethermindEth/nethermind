@@ -30,7 +30,7 @@ namespace Nethermind.Db
         public string Name { get; }
         public string Description { get; }
 
-        public ICollection<byte[]> Keys => _cache.Keys.Select(key => key.AsSpan().ToArray()).ToArray();
+        public ICollection<byte[]> Keys => _cache.Keys.Select(key => key.ToArray()).ToArray();
         public ICollection<byte[]> Values => _cache.Values;
         public int Count => _cache.Count;
 
