@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Rlp
         public static long Eip1559TransitionBlock = long.MaxValue;
         public static ulong WithdrawalTimestamp = ulong.MaxValue;
         public static ulong Eip4844TransitionTimestamp = ulong.MaxValue;
-        public static bool VerkleProofsEnable = false;
+        public static bool VerkleProofsEnable = true;
         public static ulong VerkleTreeTransitionTimestamp = ulong.MaxValue;
 
 
