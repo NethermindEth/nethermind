@@ -531,14 +531,12 @@ public class VerkleTreeTests
         }
     }
 
-    [DoesNotReturn]
     private static void AssertRootHash(byte[] realRootHash, string expectedRootHash)
     {
         Convert.ToHexString(realRootHash).Should()
             .BeEquivalentTo(expectedRootHash);
     }
 
-    [DoesNotReturn]
     private static void AssertRootHash(IEnumerable<byte> realRootHash, IEnumerable<byte> expectedRootHash)
     {
         realRootHash.Should().BeEquivalentTo(expectedRootHash);
