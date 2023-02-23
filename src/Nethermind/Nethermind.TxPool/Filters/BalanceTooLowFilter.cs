@@ -28,12 +28,6 @@ namespace Nethermind.TxPool.Filters
             Account account = state.SenderAccount;
             UInt256 balance = account.Balance;
 
-            if (balance.IsZero)
-            {
-                Metrics.PendingTransactionsZeroBalance++;
-                return AcceptTxResult.InsufficientFunds.WithMessage("Account balance: 0");
-            }
-
             UInt256 cumulativeCost = UInt256.Zero;
             bool overflow = false;
             Transaction[] transactions = _txs.GetBucketSnapshot(tx.SenderAddress!); // since unknownSenderFilter will run before this one

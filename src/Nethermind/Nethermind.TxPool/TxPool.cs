@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -101,6 +100,7 @@ namespace Nethermind.TxPool
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
             _filterPipeline.Add(new LowNonceFilter(_logger)); // has to be after UnknownSenderFilter as it uses sender
+            _filterPipeline.Add(new BalanceZeroFilter(_logger));
             _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
             _filterPipeline.Add(new BalanceTooLowFilter(_transactions, _logger));
             if (incomingTxFilter is not null)
@@ -581,8 +581,8 @@ Discarded at Filter Stage:
 4.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,18:0}
 5.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,18:0}
 6.  Nonce used:         {Metrics.PendingTransactionsLowNonce,18:0}
-7.  Nonces skipped:     {Metrics.PendingTransactionsNonceGap,18:0}
-8.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,18:0}
+7.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,18:0}
+8.  Nonces skipped:     {Metrics.PendingTransactionsNonceGap,18:0}
 9.  Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,18:0}
 10. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,18:0}
 ------------------------------------------
