@@ -35,8 +35,8 @@ public class WithdrawalProcessor : IWithdrawalProcessor
         if (block.Withdrawals is not null) // This check looks redundant
         {
             var count = block.Withdrawals.Length;
-            var amounts = ArrayPool<ulong>.Shared.Rent(count);
-            var addresses = ArrayPool<Address>.Shared.Rent(count);
+            var amounts = new ulong[count];
+            var addresses = new Address[count];
 
             for (var i = 0; i < count; i++)
             {
@@ -50,9 +50,6 @@ public class WithdrawalProcessor : IWithdrawalProcessor
 
             // TODO: check for a failure to invalidate block
             _contract.ExecuteWithdrawals(block.Header, amounts, addresses);
-
-            ArrayPool<ulong>.Shared.Return(amounts);
-            ArrayPool<Address>.Shared.Return(addresses);
         }
 
         if (_logger.IsTrace) _logger.Trace($"Withdrawals applied for block {block}");
