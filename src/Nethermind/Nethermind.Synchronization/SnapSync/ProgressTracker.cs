@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.SnapSync
         private void SetupAccountRangePartition()
         {
             UInt256 curStartingPath = UInt256.Zero;
-            UInt256 partitionSize = UInt256.MaxValue / new UInt256(0, 0, 0, (ulong) _accountRangePartitionCount);
+            UInt256 partitionSize = UInt256.MaxValue / new UInt256(0, 0, 0, (ulong)_accountRangePartitionCount);
 
             if (partitionSize == 0) throw new ArgumentException("Too many snap partition");
 
@@ -365,7 +365,7 @@ namespace Nethermind.Synchronization.SnapSync
                     totalPathProgress += nextAccount - startAccount;
                 }
 
-                double progress = 100 * totalPathProgress / (double) (256 * 256);
+                double progress = 100 * totalPathProgress / (double)(256 * 256);
 
                 if (_logger.IsInfo) _logger.Info($"SNAP - progress of State Ranges (Phase 1): {progress:f3}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
             }

@@ -24,7 +24,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    internal static class SnapProviderHelper
+    public static class SnapProviderHelper
     {
         private static object _syncCommit = new();
 
@@ -36,7 +36,8 @@ namespace Nethermind.Synchronization.SnapSync
             Keccak limitHash,
             PathWithAccount[] accounts,
             byte[][] proofs = null
-        ) {
+        )
+        {
             // TODO: Check the accounts boundaries and sorting
 
             Keccak lastHash = accounts[^1].Path;
@@ -96,7 +97,8 @@ namespace Nethermind.Synchronization.SnapSync
             PathWithStorageSlot[] slots,
             Keccak expectedRootHash,
             byte[][]? proofs = null
-        ) {
+        )
+        {
             // TODO: Check the slots boundaries and sorting
 
             Keccak lastHash = slots.Last().Path;
@@ -140,7 +142,8 @@ namespace Nethermind.Synchronization.SnapSync
             Keccak limitHash,
             Keccak expectedRootHash,
             byte[][]? proofs = null
-        ) {
+        )
+        {
             if (proofs is null || proofs.Length == 0)
             {
                 return (AddRangeResult.OK, null, false);
@@ -231,7 +234,7 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         Keccak? childKeccak = node.GetChildHash(ci);
 
-                        moreChildrenToRight |= (ci > right && ci <= limit) && childKeccak is not null;
+                        moreChildrenToRight |= (ci > right && ci < limit) && childKeccak is not null;
 
                         if (ci >= left && ci <= right)
                         {
