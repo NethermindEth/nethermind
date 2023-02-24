@@ -31,15 +31,14 @@ namespace Nethermind.Network
             DictForks = new();
             Forks = new (ForkActivation Activation, ForkId Id)[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
-            uint crc = 0;
-            CalculateHash(ref crc, genesisHash.Bytes);
+            uint crc = Crc32Algorithm.Append(0, genesisHash.Bytes);
             // genesis fork activation
             SetFork(0, crc, ((0, null), new ForkId(crc, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0)));
             for (int index = 0; index < transitionActivations.Length; index++)
             {
                 ForkActivation forkActivation = transitionActivations[index];
                 BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, forkActivation.Activation);
-                CalculateHash(ref crc, blockNumberBytes);
+                crc = Crc32Algorithm.Append(crc, blockNumberBytes);
                 SetFork(index + 1, crc, (forkActivation, new ForkId(crc, GetNextActivation(index, transitionActivations))));
             }
         }
@@ -49,11 +48,6 @@ namespace Nethermind.Network
         {
             Forks[index] = fork;
             DictForks.Add(crc, fork);
-        }
-
-        private static void CalculateHash(ref uint crc, byte[] bytes)
-        {
-            crc = Crc32Algorithm.Append(crc, bytes);
         }
 
         private static ulong GetNextActivation(int index, ForkActivation[] transitionActivations)
