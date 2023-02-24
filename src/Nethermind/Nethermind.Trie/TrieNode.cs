@@ -32,6 +32,7 @@ namespace Nethermind.Trie
         private static Action<TrieNode> _markPersisted => tn => tn.IsPersisted = true;
         private RlpStream? _rlpStream;
         private object?[]? _data;
+        private ushort _nullNodes;
 
         /// <summary>
         /// Ethereum Patricia Trie specification allows for branch values,
@@ -552,11 +553,21 @@ namespace Nethermind.Trie
                     $"{nameof(TrieNode)} {this} is already sealed when setting a child.");
             }
 
-            if (node is null && _data is null) return;
-
-            InitData();
             int index = IsExtension ? i + 1 : i;
-            _data[index] = node ?? _nullNode;
+            if (node is not null)
+            {
+                InitData();
+                _data[index] = node;
+            }
+            else if (_data is null)
+            {
+                _nullNodes |= (ushort)(1 << index);
+            }
+            else
+            {
+                _data[index] = _nullNode;
+            }
+
             Keccak = null;
         }
 
@@ -767,8 +778,6 @@ namespace Nethermind.Trie
             // }
         }
 
-        #region private
-
         private bool TryResolveStorageRoot(ITrieNodeResolver resolver, out TrieNode? storageRoot)
         {
             bool hasStorage = false;
@@ -830,6 +839,11 @@ namespace Nethermind.Trie
                         break;
                 }
 
+                if (_nullNodes != 0 && ((_nullNodes >> index) & 1) != 0)
+                {
+                    return _nullNode;
+                }
+
                 return null;
             }
 
@@ -857,7 +871,7 @@ namespace Nethermind.Trie
 
             void InitializeData()
             {
-                _data = NodeType switch
+                var data = _data = NodeType switch
                 {
                     NodeType.Unknown => throw new InvalidOperationException(
                                                 $"Cannot resolve children of an {nameof(NodeType.Unknown)} node"),
@@ -867,6 +881,20 @@ namespace Nethermind.Trie
                                                    // _data[2] -> StorageRoot
                     _ => new object[2],
                 };
+
+                ushort nullNodes = _nullNodes;
+                if (nullNodes != 0)
+                {
+                    for (int i = 0; i < data.Length; i++)
+                    {
+                        if (((nullNodes >> i) & 1) != 0)
+                        {
+                            data[i] = _nullNode;
+                        }
+                    }
+
+                    _nullNodes = 0;
+                }
             }
         }
 
@@ -948,6 +976,16 @@ namespace Nethermind.Trie
 
         private void UnresolveChild(int i)
         {
+            if (_data is null)
+            {
+                if (_nullNodes != 0)
+                {
+                    _nullNodes &= (ushort)~(1 << i);
+                }
+
+                return;
+            }
+
             object? data = GetDataItem(i);
             if (data is null) return;
 
@@ -970,7 +1008,5 @@ namespace Nethermind.Trie
                 }
             }
         }
-
-        #endregion
     }
 }

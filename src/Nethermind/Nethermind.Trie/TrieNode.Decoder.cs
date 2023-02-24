@@ -149,29 +149,29 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLength(ITrieNodeResolver tree, TrieNode item)
             {
                 int totalLength = 0;
-                item.InitData();
                 item.SeekChild(0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (item._rlpStream is not null && item._data![i] is null)
+                    object? dataItem = item.GetDataItem(i);
+                    if (item._rlpStream is not null && dataItem is null)
                     {
                         (int prefixLength, int contentLength) = item._rlpStream.PeekPrefixAndContentLength();
                         totalLength += prefixLength + contentLength;
                     }
                     else
                     {
-                        if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] is null)
+                        if (dataItem is null || ReferenceEquals(dataItem, _nullNode))
                         {
                             totalLength++;
                         }
-                        else if (item._data[i] is Keccak)
+                        else if (dataItem is Keccak)
                         {
                             totalLength += Rlp.LengthOfKeccakRlp;
                         }
                         else
                         {
-                            TrieNode childNode = (TrieNode)item._data[i];
-                            childNode!.ResolveKey(tree, false);
+                            TrieNode childNode = (TrieNode)dataItem;
+                            childNode.ResolveKey(tree, false);
                             totalLength += childNode.Keccak is null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
                         }
                     }
@@ -186,11 +186,11 @@ namespace Nethermind.Trie
             {
                 int position = 0;
                 RlpStream rlpStream = item._rlpStream;
-                item.InitData();
                 item.SeekChild(0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (rlpStream is not null && item._data![i] is null)
+                    object? dataItem = item.GetDataItem(i);
+                    if (rlpStream is not null && dataItem is null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
                         Span<byte> nextItem = rlpStream.Data.AsSpan(rlpStream.Position, length);
@@ -201,18 +201,18 @@ namespace Nethermind.Trie
                     else
                     {
                         rlpStream?.SkipItem();
-                        if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] is null)
+                        if (dataItem is null || ReferenceEquals(dataItem, _nullNode))
                         {
                             destination[position++] = 128;
                         }
-                        else if (item._data[i] is Keccak)
+                        else if (dataItem is Keccak keccak)
                         {
-                            position = Rlp.Encode(destination, position, (item._data[i] as Keccak)!.Bytes);
+                            position = Rlp.Encode(destination, position, keccak.Bytes);
                         }
                         else
                         {
-                            TrieNode childNode = (TrieNode)item._data[i];
-                            childNode!.ResolveKey(tree, false);
+                            TrieNode childNode = (TrieNode)dataItem;
+                            childNode.ResolveKey(tree, false);
                             if (childNode.Keccak is null)
                             {
                                 Span<byte> fullRlp = childNode.FullRlp.AsSpan();
