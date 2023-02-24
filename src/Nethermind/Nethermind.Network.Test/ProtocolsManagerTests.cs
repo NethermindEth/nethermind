@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
@@ -94,7 +95,8 @@ namespace Nethermind.Network.Test
                 _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
                 _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
                 _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-                _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
+                ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!);
+                _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _syncPeerPool = Substitute.For<ISyncPeerPool>();
                 _gossipPolicy = Substitute.For<IGossipPolicy>();
@@ -109,7 +111,7 @@ namespace Nethermind.Network.Test
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
-                    new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!),
+                    forkInfo,
                     _gossipPolicy,
                     LimboLogs.Instance);
 
@@ -210,6 +212,7 @@ namespace Nethermind.Network.Test
                 msg.GenesisHash = _blockTree.Genesis.Hash;
                 msg.BestHash = _blockTree.Genesis.Hash;
                 msg.ProtocolVersion = 66;
+                msg.ForkId = new ForkId(0, 0);
 
                 return ReceiveStatus(msg);
             }
