@@ -192,6 +192,13 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
+    },
+    "BeverlyHills": {
+      "commandName": "Project",
+      "commandLineArgs": "-c BeverlyHills --Merge.TerminalTotalDifficulty=0 --Pruning.Mode=None --JsonRpc.EnginePort=8551 --Network.DiscoveryPort=30303 --JsonRpc.JwtSecretFile=/tmp/jwtsecret --Init.AutoDump Parity",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Release"
+      }
     }
   }
 }

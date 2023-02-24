@@ -39,7 +39,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.ReceiptStorage is null) throw new ArgumentNullException(nameof(_api.ReceiptStorage));
                 if (_api.TxPool is null) throw new ArgumentNullException(nameof(_api.TxPool));
                 if (_api.DbProvider is null) throw new ArgumentNullException(nameof(_api.DbProvider));
-                if (_api.ReadOnlyTrieStore is null) throw new ArgumentNullException(nameof(_api.ReadOnlyTrieStore));
+                // if (_api.ReadOnlyTrieStore is null) throw new ArgumentNullException(nameof(_api.ReadOnlyTrieStore));
                 if (_api.BlockchainProcessor is null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
                 if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
                 if (_mergeBlockProductionPolicy is null) throw new ArgumentNullException(nameof(_mergeBlockProductionPolicy));

@@ -145,7 +145,7 @@ namespace Nethermind.Core
                 [0] = Version.ToLittleEndian(),
                 [1] = Balance.ToLittleEndian(),
                 [2] = Nonce.ToLittleEndian(),
-                [3] = CodeHash.Bytes,
+                [3] = CodeHash.Bytes
             };
 
             if (!CodeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))

@@ -20,6 +20,18 @@ namespace Nethermind.Core.Collections
 
         private int Position => Count - 1;
 
+        public JournalSet(IEqualityComparer<T> comparer)
+        {
+            _items = new List<T>();
+            _set = new HashSet<T>(comparer);
+        }
+
+        public JournalSet()
+        {
+            _items = new List<T>();
+            _set = new HashSet<T>();
+        }
+
         public void Restore(int snapshot)
         {
             if (snapshot >= Count)

@@ -92,21 +92,9 @@ namespace Nethermind.Init.Steps
             if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
             if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
             if (_api.EthSyncingInfo is null) throw new StepDependencyException(nameof(_api.EthSyncingInfo));
-            if (_api.ReadOnlyTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
+            // if (_api.ReadOnlyTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
 
-            EthModuleFactory ethModuleFactory = new(
-                _api.TxPool,
-                _api.TxSender,
-                _api.Wallet,
-                _api.BlockTree,
-                rpcConfig,
-                _api.LogManager,
-                _api.StateReader,
-                _api,
-                _api.SpecProvider,
-                _api.ReceiptStorage,
-                _api.GasPriceOracle,
-                _api.EthSyncingInfo);
+            EthModuleFactory ethModuleFactory = new EthModuleFactory(_api.TxPool, _api.TxSender, _api.Wallet, _api.BlockTree, rpcConfig, _api.LogManager, _api.StateReader, _api, _api.SpecProvider, _api.ReceiptStorage, _api.GasPriceOracle, _api.EthSyncingInfo);
 
             rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
 
@@ -118,37 +106,27 @@ namespace Nethermind.Init.Steps
             if (_api.PeerPool is null) throw new StepDependencyException(nameof(_api.PeerPool));
             if (_api.WitnessRepository is null) throw new StepDependencyException(nameof(_api.WitnessRepository));
 
-            ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+            ProofModuleFactory proofModuleFactory = _api.SpecProvider.GenesisSpec.IsVerkleTreeEipEnabled switch
+            {
+                true => new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.ReadOnlyVerkleTrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager),
+                false => new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore!, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager),
+            };
             rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
 
-            DebugModuleFactory debugModuleFactory = new(
-                _api.DbProvider,
-                _api.BlockTree,
-                rpcConfig,
-                _api.BlockValidator,
-                _api.BlockPreprocessor,
-                _api.RewardCalculatorSource,
-                _api.ReceiptStorage,
-                new ReceiptMigration(_api),
-                _api.ReadOnlyTrieStore,
-                _api.ConfigProvider,
-                _api.SpecProvider,
-                _api.SyncModeSelector,
-                _api.LogManager);
+            DebugModuleFactory debugModuleFactory = _api.SpecProvider.GenesisSpec.IsVerkleTreeEipEnabled switch
+            {
+                true => new DebugModuleFactory(_api.DbProvider, _api.BlockTree, rpcConfig, _api.BlockValidator, _api.BlockPreprocessor, _api.RewardCalculatorSource, _api.ReceiptStorage, new ReceiptMigration(_api), _api.ReadOnlyVerkleTrieStore,
+                    _api.ConfigProvider, _api.SpecProvider, _api.SyncModeSelector, _api.LogManager),
+                false => new DebugModuleFactory(_api.DbProvider, _api.BlockTree, rpcConfig, _api.BlockValidator, _api.BlockPreprocessor, _api.RewardCalculatorSource, _api.ReceiptStorage, new ReceiptMigration(_api), _api.ReadOnlyTrieStore!,
+                    _api.ConfigProvider, _api.SpecProvider, _api.SyncModeSelector, _api.LogManager),
+            };
             rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
 
-            TraceModuleFactory traceModuleFactory = new(
-                _api.DbProvider,
-                _api.BlockTree,
-                _api.ReadOnlyTrieStore,
-                rpcConfig,
-                _api.BlockPreprocessor,
-                _api.RewardCalculatorSource,
-                _api.ReceiptStorage,
-                _api.SpecProvider,
-                _api.PoSSwitcher,
-                _api.LogManager);
-
+            TraceModuleFactory traceModuleFactory = _api.SpecProvider.GenesisSpec.IsVerkleTreeEipEnabled switch
+            {
+                true => new TraceModuleFactory(_api.DbProvider, _api.BlockTree, _api.ReadOnlyVerkleTrieStore, rpcConfig, _api.BlockPreprocessor, _api.RewardCalculatorSource, _api.ReceiptStorage, _api.SpecProvider, _api.LogManager),
+                false => new TraceModuleFactory(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore!, rpcConfig, _api.BlockPreprocessor, _api.RewardCalculatorSource, _api.ReceiptStorage, _api.SpecProvider, _api.LogManager),
+            };
             rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, rpcConfig.Timeout);
 
             if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));

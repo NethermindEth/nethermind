@@ -60,7 +60,6 @@ namespace Nethermind.Synchronization.Test
             SyncProgressResolver resolver = new(
                 _blockTree,
                 _receiptStorage,
-                _stateDb,
                 trieStore,
                 progressTracker,
                 syncConfig,

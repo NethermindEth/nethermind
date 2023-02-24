@@ -157,33 +157,7 @@ namespace Nethermind.Evm
                 false,
                 null,
                 isContinuation,
-                false,
-                new VerkleWitness())
-        {
-            GasAvailable = gasAvailable;
-            Env = env;
-        }
-
-        public EvmState(
-            long gasAvailable,
-            ExecutionEnvironment env,
-            ExecutionType executionType,
-            bool isTopLevel,
-            Snapshot snapshot,
-            bool isContinuation,
-            IVerkleWitness verkleWitness)
-            : this(gasAvailable,
-                env,
-                executionType,
-                isTopLevel,
-                snapshot,
-                0L,
-                0L,
-                false,
-                null,
-                isContinuation,
-                false,
-                verkleWitness)
+                false)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -200,35 +174,7 @@ namespace Nethermind.Evm
             bool isStatic,
             EvmState? stateForAccessLists,
             bool isContinuation,
-            bool isCreateOnPreExistingAccount) :
-            this(gasAvailable,
-                env,
-                executionType,
-                isTopLevel,
-                snapshot,
-                outputDestination,
-                outputLength,
-                isStatic,
-                stateForAccessLists,
-                isContinuation,
-                isCreateOnPreExistingAccount,
-                new VerkleWitness()
-            )
-        { }
-
-        internal EvmState(
-            long gasAvailable,
-            ExecutionEnvironment env,
-            ExecutionType executionType,
-            bool isTopLevel,
-            Snapshot snapshot,
-            long outputDestination,
-            long outputLength,
-            bool isStatic,
-            EvmState? stateForAccessLists,
-            bool isContinuation,
-            bool isCreateOnPreExistingAccount,
-            IVerkleWitness verkleWitness)
+            bool isCreateOnPreExistingAccount)
         {
             if (isTopLevel && isContinuation)
             {
@@ -246,7 +192,6 @@ namespace Nethermind.Evm
             IsStatic = isStatic;
             IsContinuation = isContinuation;
             IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-            _verkleWitness = verkleWitness;
             if (stateForAccessLists is not null)
             {
                 // if we are sub-call, then we use the main collection for this transaction
@@ -263,7 +208,7 @@ namespace Nethermind.Evm
                 _accessedStorageCells = new JournalSet<StorageCell>();
                 _destroyList = new JournalSet<Address>();
                 _logs = new JournalCollection<LogEntry>();
-                _verkleWitness = new VerkleWitness();
+                _verkleWitness = env.VerkleWitness;
             }
 
             _accessedAddressesSnapshot = _accessedAddresses.TakeSnapshot();

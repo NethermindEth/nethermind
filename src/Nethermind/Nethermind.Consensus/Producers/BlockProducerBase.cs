@@ -233,7 +233,7 @@ namespace Nethermind.Consensus.Producers
         {
             bool HasState(Keccak stateRoot)
             {
-                RootCheckVisitor visitor = new();
+                RootCheckVisitor visitor = new RootCheckVisitor();
                 StateProvider.Accept(visitor, stateRoot);
                 return visitor.HasRoot;
             }

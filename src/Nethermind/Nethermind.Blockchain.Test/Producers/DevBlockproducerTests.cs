@@ -10,7 +10,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -109,5 +108,88 @@ namespace Nethermind.Blockchain.Test.Producers
             autoResetEvent.WaitOne(1000).Should().BeTrue("1");
             blockTree.Head.Number.Should().Be(1);
         }
+
+        [Test]
+        public void TestVerkle()
+        {
+            ISpecProvider specProvider = MainnetSpecProvider.Instance;
+            DbProvider dbProvider = new(DbModeHint.Mem);
+            dbProvider.RegisterDb(DbNames.BlockInfos, new MemDb());
+            dbProvider.RegisterDb(DbNames.Blocks, new MemDb());
+            dbProvider.RegisterDb(DbNames.Headers, new MemDb());
+            dbProvider.RegisterDb(DbNames.State, new MemDb());
+            dbProvider.RegisterDb(DbNames.Code, new MemDb());
+            dbProvider.RegisterDb(DbNames.Metadata, new MemDb());
+            dbProvider.RegisterDb(DbNames.Leaf, new MemDb());
+            dbProvider.RegisterDb(DbNames.Branch, new MemDb());
+            dbProvider.RegisterDb(DbNames.Stem, new MemDb());
+            dbProvider.RegisterDb(DbNames.ForwardDiff, new MemDb());
+            dbProvider.RegisterDb(DbNames.ReverseDiff, new MemDb());
+            dbProvider.RegisterDb(DbNames.StateRootToBlock, new MemDb());
+
+            BlockTree blockTree = new(
+                dbProvider,
+                new ChainLevelInfoRepository(dbProvider),
+                specProvider,
+                NullBloomStorage.Instance,
+                LimboLogs.Instance);
+            VerkleStateTree stateTree = new VerkleStateTree(dbProvider);
+            VerkleStateReader stateReader = new(stateTree, dbProvider.GetDb<IDb>(DbNames.Code), LimboLogs.Instance);
+            VerkleWorldState worldState = new VerkleWorldState(stateTree, dbProvider.RegisteredDbs[DbNames.Code], LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
+            VirtualMachine virtualMachine = new(
+                blockhashProvider,
+                specProvider,
+                LimboLogs.Instance);
+            TransactionProcessor txProcessor = new(
+                specProvider,
+                worldState,
+                virtualMachine,
+                LimboLogs.Instance);
+            BlockProcessor blockProcessor = new(
+                specProvider,
+                Always.Valid,
+                NoBlockRewards.Instance,
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, new VerkleWorldState(stateTree, dbProvider.RegisteredDbs[DbNames.Code], LimboLogs.Instance)),
+                worldState,
+                NullReceiptStorage.Instance,
+                NullWitnessCollector.Instance,
+                LimboLogs.Instance);
+            BlockchainProcessor blockchainProcessor = new(
+                blockTree,
+                blockProcessor,
+                NullRecoveryStep.Instance,
+                stateReader,
+                LimboLogs.Instance,
+                BlockchainProcessor.Options.Default);
+            BuildBlocksWhenRequested trigger = new();
+            ManualTimestamper timestamper = new ManualTimestamper();
+            DevBlockProducer devBlockProducer = new(
+                EmptyTxSource.Instance,
+                blockchainProcessor,
+                worldState,
+                blockTree,
+                trigger,
+                timestamper,
+                specProvider,
+                new BlocksConfig(),
+                LimboLogs.Instance);
+
+            blockchainProcessor.Start();
+            devBlockProducer.Start();
+            ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, devBlockProducer);
+
+            AutoResetEvent autoResetEvent = new(false);
+
+            blockTree.NewHeadBlock += (s, e) => autoResetEvent.Set();
+            blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+
+            autoResetEvent.WaitOne(1000).Should().BeTrue("genesis");
+
+            trigger.BuildBlock();
+            autoResetEvent.WaitOne(1000).Should().BeTrue("1");
+            blockTree.Head.Number.Should().Be(1);
+        }
+
     }
 }
