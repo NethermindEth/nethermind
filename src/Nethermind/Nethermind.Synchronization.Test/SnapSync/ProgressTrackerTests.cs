@@ -18,7 +18,7 @@ public class ProgressTrackerTests
 {
     [Test]
     [Repeat(3)]
-    public async Task ProgressTracer_did_not_have_race_issue()
+    public async Task Did_not_have_race_issue()
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
         ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
@@ -48,5 +48,32 @@ public class ProgressTrackerTests
 
         await requestTask;
         await checkTask;
+    }
+
+    [Test]
+    public void Will_create_multiple_get_address_range_request()
+    {
+        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
+        ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance, 4);
+
+        (SnapSyncBatch request, bool finished) = progressTracker.GetNextRequest();
+        request.AccountRangeRequest.Should().NotBeNull();
+        finished.Should().BeFalse();
+
+        (request, finished) = progressTracker.GetNextRequest();
+        request.AccountRangeRequest.Should().NotBeNull();
+        finished.Should().BeFalse();
+
+        (request, finished) = progressTracker.GetNextRequest();
+        request.AccountRangeRequest.Should().NotBeNull();
+        finished.Should().BeFalse();
+
+        (request, finished) = progressTracker.GetNextRequest();
+        request.AccountRangeRequest.Should().NotBeNull();
+        finished.Should().BeFalse();
+
+        (request, finished) = progressTracker.GetNextRequest();
+        request.Should().BeNull();
+        finished.Should().BeFalse();
     }
 }

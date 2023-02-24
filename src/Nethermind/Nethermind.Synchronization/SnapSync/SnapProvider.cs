@@ -64,7 +64,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            _progressTracker.ReportAccountSectionFinished(request.LimitHash);
+            _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash);
 
             return result;
         }
@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
 
                 _progressTracker.EnqueueCodeHashes(codeHashes);
-                _progressTracker.UpdateAccountSectionPath(accounts[accounts.Length - 1].Path, hashLimit, moreChildrenToRight);
+                _progressTracker.UpdateAccountRangePartitionProgress(accounts[accounts.Length - 1].Path, hashLimit, moreChildrenToRight);
             }
             else if (result == AddRangeResult.MissingRootHashInProofs)
             {
@@ -272,7 +272,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (batch.AccountRangeRequest is not null)
             {
-                _progressTracker.ReportAccountSectionFinished(batch.AccountRangeRequest.LimitHash);
+                _progressTracker.ReportAccountRangePartitionFinished(batch.AccountRangeRequest.LimitHash);
             }
             else if (batch.StorageRangeRequest is not null)
             {
