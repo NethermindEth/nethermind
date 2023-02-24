@@ -92,7 +92,8 @@ namespace Nethermind.Network
         public ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head)
         {
             // Bit of a hack, if Next value is >= than genesis of oldest supported network it is timestamp.
-            // We support network forks up to 1,4 bln blocks
+            // Potentially we can parametrize it based on Spec provider, but not worth it for now
+            // We support block forks up to 1,4 bln blocks
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             bool IsTimestamp(ulong next) => next >= MainnetSpecProvider.GenesisBlockTimestamp;
 
