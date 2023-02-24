@@ -68,7 +68,7 @@ namespace Nethermind.State
                     bytes = Get(addressKeyBytes);
                 }
             }
-            
+
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 

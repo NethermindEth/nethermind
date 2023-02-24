@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -471,6 +472,110 @@ namespace Nethermind.Store.Test
             MemDb db = new();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, null);
+        }
+
+        [Test]
+        public void History_update_one_block()
+        {
+            MemDb db = new();
+            StateTreeByPath tree = new(new TrieStoreByPath(db, No.Pruning, Persist.EveryBlock, LimboLogs.Instance, new IndexedLeafHistory()), LimboLogs.Instance);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Commit(0);
+            Keccak root0 = tree.RootHash;
+            tree.Set(TestItem.AddressA, _account0.WithChangedBalance(20));
+            tree.Commit(1);
+            Keccak root1 = tree.RootHash;
+            Account a0 = tree.Get(TestItem.AddressA, root0);
+            Account a1 = tree.Get(TestItem.AddressA, root1);
+
+            Assert.AreEqual(a0.Balance, _account0.Balance);
+            Assert.AreEqual(new UInt256(20), a1.Balance);
+        }
+
+        [Test]
+        public void History_update_non_continous_blocks()
+        {
+            MemDb db = new();
+            StateTreeByPath tree = new(new TrieStoreByPath(db, No.Pruning, Persist.EveryBlock, LimboLogs.Instance, new IndexedLeafHistory()), LimboLogs.Instance);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Commit(0);
+            Keccak root0 = tree.RootHash;
+
+            tree.Set(TestItem.AddressB, _account1);
+            tree.Commit(1);
+            Keccak root1 = tree.RootHash;
+
+            tree.Set(TestItem.AddressA, _account0.WithChangedBalance(20));
+            tree.Commit(2);
+            Keccak root2 = tree.RootHash;
+
+            Account a0_0 = tree.Get(TestItem.AddressA, root0);
+            Account a0_1 = tree.Get(TestItem.AddressA, root1);
+            Account a0_2 = tree.Get(TestItem.AddressA, root2);
+
+            Assert.AreEqual(a0_0.Balance, _account0.Balance);
+            Assert.AreEqual(a0_1.Balance, _account0.Balance);
+
+            Assert.AreEqual(new UInt256(20), a0_2.Balance);
+        }
+
+        [Test]
+        public void History_get_on_block_when_account_not_existed()
+        {
+            MemDb db = new();
+            StateTreeByPath tree = new(new TrieStoreByPath(db, No.Pruning, Persist.EveryBlock, LimboLogs.Instance, new IndexedLeafHistory()), LimboLogs.Instance);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Commit(0);
+            Keccak root0 = tree.RootHash;
+
+            tree.Set(TestItem.AddressB, _account1);
+            tree.Commit(1);
+
+            Account a1_0 = tree.Get(TestItem.AddressB, root0);
+
+            Assert.IsNull(a1_0);
+        }
+
+        [Test]
+        public void History_delete_when_max_number_blocks_exceeded()
+        {
+            MemDb db = new();
+            StateTreeByPath tree = new(new TrieStoreByPath(db, No.Pruning, Persist.EveryBlock, LimboLogs.Instance, new IndexedLeafHistory(5)), LimboLogs.Instance);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Commit(0);
+            Keccak root0 = tree.RootHash;
+            Keccak root2 = null;
+
+            for (int i = 1; i < 7; i++)
+            {
+                tree.Set(TestItem.AddressA, _account0.WithChangedBalance((UInt256)i * 5));
+                tree.Commit(i);
+                if (i == 2)
+                    root2 = tree.RootHash;
+            }
+            Account a1_0 = tree.Get(TestItem.AddressA, root0);
+            Account a1_2 = tree.Get(TestItem.AddressA, root2);
+
+            Assert.IsNull(a1_0);
+            Assert.IsNotNull(a1_2);
+            Assert.AreEqual((UInt256)(2 * 5), a1_2.Balance);
+        }
+
+        [Test]
+        public void History_delete_all_for_account()
+        {
+            MemDb db = new();
+            StateTreeByPath tree = new(new TrieStoreByPath(db, No.Pruning, Persist.EveryBlock, LimboLogs.Instance, new IndexedLeafHistory(5)), LimboLogs.Instance);
+            tree.Set(TestItem.AddressA, _account0);
+            tree.Commit(0);
+            Keccak root0 = tree.RootHash;
+
+            tree.Set(TestItem.AddressA, _account0.WithChangedBalance(5));
+            tree.Commit(5);
+
+            Account a1_0 = tree.Get(TestItem.AddressA, root0);
+
+            Assert.IsNull(a1_0);
         }
     }
 }

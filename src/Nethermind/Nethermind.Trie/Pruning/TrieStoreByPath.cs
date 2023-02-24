@@ -127,7 +127,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        
+
 
         private int _isFirst;
 
