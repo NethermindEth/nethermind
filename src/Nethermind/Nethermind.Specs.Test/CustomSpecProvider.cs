@@ -54,7 +54,7 @@ namespace Nethermind.Specs.Test
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
 
-        public ulong TimestampFork { get; set; } = ulong.MaxValue;
+        public ulong TimestampFork { get; set; } = ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty { get; set; }
 
 #pragma warning disable CS8602

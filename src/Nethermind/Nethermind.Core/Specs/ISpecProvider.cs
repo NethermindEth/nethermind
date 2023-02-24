@@ -11,6 +11,8 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface ISpecProvider
     {
+        public const ulong TimestampForkNever = ulong.MaxValue;
+
         /// <summary>
         /// The merge block number is different from the rest forks because we don't know the merge block before it happens.
         /// This function handles change of the merge block

@@ -206,8 +206,8 @@ namespace Nethermind.Network.Test
             Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
         }
 
-        //  Local is mainnet Gray Glacier, remote announces the same. No future fork is announced.
-        [TestCase(15050000, 0ul, "0xf0afd0e3", 0ul, ValidationResult.Valid)]
+        // Local is mainnet Gray Glacier, remote announces the same. No future fork is announced.
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, 0ul, "0xf0afd0e3", 0ul, ValidationResult.Valid)]
 
         // Local is mainnet Petersburg, remote announces the same. No future fork is announced.
         [TestCase(7987396, 0ul, "0x668db0af", 0ul, ValidationResult.Valid)]
@@ -372,9 +372,6 @@ namespace Nethermind.Network.Test
                 ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../", "TimestampForkIdTest.json")));
                 specProvider = new ChainSpecBasedSpecProvider(spec);
             }
-
-            // Workaround for the previous implementation
-            specProvider = new OverridableSpecProvider(specProvider, s => s) { TimestampFork = 1438269973ul };
 
             ForkInfo forkInfo = new(specProvider, KnownHashes.MainnetGenesis);
 

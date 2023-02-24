@@ -23,7 +23,7 @@ public class SepoliaSpecProvider : ISpecProvider
     }
 
     public ForkActivation? MergeBlockNumber => _theMergeBlock;
-    public ulong TimestampFork => ulong.MaxValue;
+    public ulong TimestampFork => ISpecProvider.TimestampForkNever;
     public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
     public IReleaseSpec GenesisSpec => London.Instance;
 

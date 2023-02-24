@@ -22,11 +22,11 @@ namespace Nethermind.Network
     {
         private Dictionary<uint, (ForkActivation Activation, ForkId Id)> DictForks { get; }
         private (ForkActivation Activation, ForkId Id)[] Forks { get; }
-        private readonly ulong _timestampFork;
+        private readonly bool _hasTimestampFork;
 
         public ForkInfo(ISpecProvider specProvider, Keccak genesisHash)
         {
-            _timestampFork = specProvider.TimestampFork;
+            _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
             ForkActivation[] transitionActivations = specProvider.TransitionActivations;
             DictForks = new();
             Forks = new (ForkActivation Activation, ForkId Id)[transitionActivations.Length + 1];
@@ -91,8 +91,10 @@ namespace Nethermind.Network
         /// <returns></returns>
         public ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head)
         {
+            // Bit of a hack, if Next value is >= than genesis of oldest supported network it is timestamp.
+            // We support network forks up to 1,4 bln blocks
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            bool InTimestampActivation(ulong next) => next >= _timestampFork;
+            bool IsTimestamp(ulong next) => next >= MainnetSpecProvider.GenesisBlockTimestamp;
 
             if (head == null) return ValidationResult.Valid;
             if (!DictForks.TryGetValue(peerId.ForkHash, out (ForkActivation Activation, ForkId Id) found))
@@ -104,8 +106,9 @@ namespace Nethermind.Network
             bool forkIsLast = found.Id.Next == 0;
             bool peerForkIsLast = peerId.Next == 0;
 
-            bool usingTimestamp = (forkIsLast || InTimestampActivation(found.Id.Next))
-                                  && (peerForkIsLast || InTimestampActivation(peerId.Next));
+            bool usingTimestamp = _hasTimestampFork
+                                  && (forkIsLast || IsTimestamp(found.Id.Next)) &&
+                                  (peerForkIsLast || IsTimestamp(peerId.Next));
 
             ulong headActivation = usingTimestamp ? head.Timestamp : (ulong)head.Number;
 
