@@ -550,6 +550,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             provider.GetSpec((ForkActivation)10).IsEip170Enabled.Should().BeTrue();
             provider.GetSpec((ForkActivation)11).IsEip170Enabled.Should().BeTrue();
             provider.GetSpec((ForkActivation)11).MaxCodeSize.Should().Be(1);
+            provider.GetSpec((ForkActivation)9).MaxCodeSize.Should().Be(long.MaxValue);
 
             provider.GetSpec((ForkActivation)19).IsEip2537Enabled.Should().BeFalse();
             provider.GetSpec((ForkActivation)20).IsEip2537Enabled.Should().BeTrue();
@@ -574,7 +575,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             provider.GetSpec((100, 9)).IsEip170Enabled.Should().BeFalse();
             provider.GetSpec((100, 10)).IsEip170Enabled.Should().BeTrue();
             provider.GetSpec((100, 11)).IsEip170Enabled.Should().BeTrue();
-            provider.GetSpec((ForkActivation)11).MaxCodeSize.Should().Be(1);
+            provider.GetSpec((100, 11)).MaxCodeSize.Should().Be(1);
+            provider.GetSpec((100, 9)).MaxCodeSize.Should().Be(long.MaxValue);
 
             provider.GetSpec((100, 19)).IsEip2537Enabled.Should().BeFalse();
             provider.GetSpec((100, 20)).IsEip2537Enabled.Should().BeTrue();

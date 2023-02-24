@@ -162,7 +162,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.FixedDifficulty = chainSpec.Ethash?.FixedDifficulty;
             releaseSpec.IsEip170Enabled = (chainSpec.Parameters.MaxCodeSizeTransition ?? long.MaxValue) <= releaseStartBlock ||
                                           (chainSpec.Parameters.MaxCodeSizeTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.MaxCodeSize = releaseSpec.IsEip170Enabled ? (chainSpec.Parameters.MaxCodeSize ?? long.MaxValue) : long.MaxValue ;
+            releaseSpec.MaxCodeSize = releaseSpec.IsEip170Enabled ? (chainSpec.Parameters.MaxCodeSize ?? long.MaxValue) : long.MaxValue;
             releaseSpec.IsEip2Enabled = (chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock;
             releaseSpec.IsEip7Enabled = (chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock ||
                                         (chainSpec.Parameters.Eip7Transition ?? long.MaxValue) <= releaseStartBlock;
