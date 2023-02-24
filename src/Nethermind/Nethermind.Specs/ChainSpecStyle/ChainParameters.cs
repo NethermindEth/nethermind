@@ -9,8 +9,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public class ChainParameters
     {
-        public long MaxCodeSize { get; set; }
-        public long MaxCodeSizeTransition { get; set; }
+        public long? MaxCodeSize { get; set; }
+        public long? MaxCodeSizeTransition { get; set; }
         public ulong? MaxCodeSizeTransitionTimestamp { get; set; }
         public long GasLimitBoundDivisor { get; set; }
         public Address Registrar { get; set; }

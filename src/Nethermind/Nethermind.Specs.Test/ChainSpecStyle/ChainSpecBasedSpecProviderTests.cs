@@ -537,7 +537,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             const long maxCodeTransition = 1;
             const long maxCodeSize = 1;
 
-            var currentTimestamp = Timestamper.Default.UnixTime.Seconds;
             ChainSpec chainSpec = new()
             {
                 Ethash =
