@@ -100,7 +100,7 @@ public class InitializeNetwork : IStep
 
         CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
-        ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
+        ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager, _syncConfig.SnapSyncAccountRangePartitionCount);
         _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
 
         SyncProgressResolver syncProgressResolver = new(

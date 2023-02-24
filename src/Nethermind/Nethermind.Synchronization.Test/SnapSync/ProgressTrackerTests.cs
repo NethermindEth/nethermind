@@ -22,7 +22,6 @@ public class ProgressTrackerTests
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
         ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
-        progressTracker.MoreAccountsToRight = false;
         progressTracker.EnqueueStorageRange(new StorageRange()
         {
             Accounts = Array.Empty<PathWithAccount>(),

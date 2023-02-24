@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
 
             _store = new TrieStore(
-                _dbProvider.StateDb,
+                dbProvider.StateDb,
                 Trie.Pruning.No.Pruning,
                 Persist.EveryBlock,
                 logManager);
@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
-                result = AddAccountRange(request.BlockNumber.Value, request.RootHash, request.StartingHash, response.PathAndAccounts, response.Proofs);
+                result = AddAccountRange(request.BlockNumber.Value, request.RootHash, request.StartingHash, response.PathAndAccounts, response.Proofs, hashLimit: request.LimitHash);
 
                 if (result == AddRangeResult.OK)
                 {
@@ -64,17 +64,19 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            _progressTracker.ReportAccountRequestFinished();
+            _progressTracker.ReportAccountSectionFinished(request.LimitHash);
 
             return result;
         }
 
-        public AddRangeResult AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
+        public AddRangeResult AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, Keccak hashLimit = null!)
         {
             StateTree tree = new(_store, _logManager);
 
+            if (hashLimit == null) hashLimit = Keccak.MaxValue;
+
             (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes) =
-                SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
+                SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, hashLimit, accounts, proofs);
 
             if (result == AddRangeResult.OK)
             {
@@ -84,9 +86,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
 
                 _progressTracker.EnqueueCodeHashes(codeHashes);
-
-                _progressTracker.NextAccountPath = accounts[accounts.Length - 1].Path;
-                _progressTracker.MoreAccountsToRight = moreChildrenToRight;
+                _progressTracker.UpdateAccountSectionPath(accounts[accounts.Length - 1].Path, hashLimit, moreChildrenToRight);
             }
             else if (result == AddRangeResult.MissingRootHashInProofs)
             {
@@ -272,7 +272,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (batch.AccountRangeRequest is not null)
             {
-                _progressTracker.ReportAccountRequestFinished();
+                _progressTracker.ReportAccountSectionFinished(batch.AccountRangeRequest.LimitHash);
             }
             else if (batch.StorageRangeRequest is not null)
             {
@@ -288,7 +288,10 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
+        public bool IsSnapGetRangesFinished()
+        {
+            return _progressTracker.IsSnapGetRangesFinished();
+        }
 
         public void UpdatePivot()
         {
