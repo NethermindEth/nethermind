@@ -290,7 +290,7 @@ namespace Nethermind.Core
 
         public override int GetHashCode()
         {
-            return Bytes.GetSimplifiedHashCode();
+            return Core.Extensions.Bytes.GetSimplifiedHashCode(Bytes);
         }
 
         public void Add(LogEntry[] logEntries, Bloom? blockBloom)

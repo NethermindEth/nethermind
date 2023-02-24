@@ -15,6 +15,7 @@ using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
 using System.Text;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -24,7 +25,7 @@ namespace Nethermind.Core.Extensions
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<ArraySegment<byte>> ArraySegmentEqualityComparer = new ArraySegmentBytesEqualityComparer();
-
+        public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
@@ -40,6 +41,13 @@ namespace Nethermind.Core.Extensions
             }
         }
 
+        private class SpanBytesEqualityComparer : ISpanEqualityComparer<byte>
+        {
+            public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
+
+            public int GetHashCode(ReadOnlySpan<byte> obj) => GetSimplifiedHashCode(obj);
+        }
+
         private class ArraySegmentBytesEqualityComparer : EqualityComparer<ArraySegment<byte>>
         {
             public override bool Equals(ArraySegment<byte> x, ArraySegment<byte> y)
@@ -49,7 +57,7 @@ namespace Nethermind.Core.Extensions
 
             public override int GetHashCode(ArraySegment<byte> obj)
             {
-                return obj.AsSpan().GetSimplifiedHashCode();
+                return GetSimplifiedHashCode(obj);
             }
         }
 
@@ -151,7 +159,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool AreEqual(Span<byte> a1, Span<byte> a2)
+        public static bool AreEqual(ReadOnlySpan<byte> a1, ReadOnlySpan<byte> a2)
         {
             if (Unsafe.AreSame(ref MemoryMarshal.GetReference(a1), ref MemoryMarshal.GetReference(a2)) &&
                 a1.Length == a2.Length)
@@ -983,7 +991,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
-        public static int GetSimplifiedHashCode(this Span<byte> bytes)
+        public static int GetSimplifiedHashCode(this ReadOnlySpan<byte> bytes)
         {
             const int fnvPrime = 0x01000193;
 
