@@ -278,7 +278,6 @@ public class DbOnTheRocks : IDbWithSpan
         return options;
     }
 
-
     public byte[]? this[ReadOnlySpan<byte> key]
     {
         get

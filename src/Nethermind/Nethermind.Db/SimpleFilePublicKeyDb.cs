@@ -30,7 +30,7 @@ namespace Nethermind.Db
         public string Name { get; }
         public string Description { get; }
 
-        public ICollection<byte[]> Keys => _cache.Keys;
+        public ICollection<byte[]> Keys => _cache.Keys.ToArray();
         public ICollection<byte[]> Values => _cache.Values;
         public int Count => _cache.Count;
 
@@ -52,10 +52,7 @@ namespace Nethermind.Db
 
         public byte[] this[ReadOnlySpan<byte> key]
         {
-            get
-            {
-                return _cache[key];
-            }
+            get => _cache[key];
             set
             {
                 if (value is null)
@@ -74,7 +71,6 @@ namespace Nethermind.Db
         public void Remove(ReadOnlySpan<byte> key)
         {
             _hasPendingChanges = true;
-
             _cache.TryRemove(key, out _);
         }
 
@@ -90,7 +86,7 @@ namespace Nethermind.Db
             File.Delete(DbPath);
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => _cache;
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
 

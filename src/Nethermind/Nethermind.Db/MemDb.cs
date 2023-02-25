@@ -100,8 +100,7 @@ namespace Nethermind.Db
             _db.Clear();
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) =>
-            _db.Select(kv => new KeyValuePair<byte[], byte[]?>(kv.Key.ToArray(), kv.Value));
+        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => _db;
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
