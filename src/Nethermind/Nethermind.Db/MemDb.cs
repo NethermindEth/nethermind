@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -21,7 +20,7 @@ namespace Nethermind.Db
         public long WritesCount { get; private set; }
 
         [Todo("Figureout a way to index this with a span")]
-        private readonly ConcurrentDictionary<ArraySegment<byte>, byte[]?> _db;
+        private readonly SpanConcurrentDictionary<byte, byte[]?> _db;
 
         public MemDb(string name)
             : this(0, 0)
@@ -37,7 +36,7 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-            _db = new ConcurrentDictionary<ArraySegment<byte>, byte[]>(Bytes.ArraySegmentEqualityComparer);
+            _db = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanEqualityComparer);
         }
 
         public string Name { get; }
@@ -52,16 +51,7 @@ namespace Nethermind.Db
                 }
 
                 ReadsCount++;
-                ArraySegment<byte> asBytes = new(ArrayPool<byte>.Shared.Rent(key.Length), 0, key.Length);
-                try
-                {
-                    key.CopyTo(asBytes);
-                    return _db.TryGetValue(asBytes, out byte[] value) ? value : null;
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(asBytes.Array);
-                }
+                return _db.TryGetValue(key, out byte[] value) ? value : null;
             }
             set
             {
@@ -71,7 +61,7 @@ namespace Nethermind.Db
                 }
 
                 WritesCount++;
-                _db[key.ToArray()] = value;
+                _db[key] = value;
             }
         }
 
@@ -91,30 +81,12 @@ namespace Nethermind.Db
 
         public virtual void Remove(ReadOnlySpan<byte> key)
         {
-            ArraySegment<byte> asBytes = new(ArrayPool<byte>.Shared.Rent(key.Length), 0, key.Length);
-            try
-            {
-                key.CopyTo(asBytes);
-                _db.TryRemove(asBytes, out _);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(asBytes.Array);
-            }
+            _db.TryRemove(key, out _);
         }
 
         public bool KeyExists(ReadOnlySpan<byte> key)
         {
-            ArraySegment<byte> asBytes = new(ArrayPool<byte>.Shared.Rent(key.Length), 0, key.Length);
-            try
-            {
-                key.CopyTo(asBytes);
-                return _db.ContainsKey(asBytes);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(asBytes.Array);
-            }
+            return _db.ContainsKey(key);
         }
 
         public IDb Innermost => this;
