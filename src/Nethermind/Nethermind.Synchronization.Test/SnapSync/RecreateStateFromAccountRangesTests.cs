@@ -286,6 +286,56 @@ namespace Nethermind.Synchronization.Test.SnapSync
         }
 
         [Test]
+        public void CorrectlyDetermineMaxKeccakExist()
+        {
+            StateTree tree = new StateTree(new TrieStore(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+
+            PathWithAccount ac1 = new PathWithAccount(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
+            PathWithAccount ac2 = new PathWithAccount(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
+            PathWithAccount ac3 = new PathWithAccount(Keccak.MaxValue, Build.An.Account.WithBalance(2).TestObject);
+
+            tree.Set(ac1.Path, ac1.Account);
+            tree.Set(ac2.Path, ac2.Account);
+            tree.Set(ac3.Path, ac3.Account);
+            tree.Commit(0);
+
+            Keccak rootHash = tree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+
+            // output state
+            MemDb db = new();
+            DbProvider dbProvider = new(DbModeHint.Mem);
+            dbProvider.RegisterDb(DbNames.State, db);
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+
+            byte[][] firstProof = CreateProofForPath(ac1.Path.Bytes, tree);
+            byte[][] lastProof = CreateProofForPath(ac2.Path.Bytes, tree);
+            byte[][] proofs = firstProof.Concat(lastProof).ToArray();
+
+            StateTree newTree = new(new TrieStore(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+
+            PathWithAccount[] receiptAccounts = { ac1, ac2 };
+
+            bool HasMoreChildren(Keccak limitHash)
+            {
+                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<Keccak> _) =
+                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash, receiptAccounts, proofs);
+                return moreChildrenToRight;
+            }
+
+            HasMoreChildren(ac1.Path).Should().BeFalse();
+            HasMoreChildren(ac2.Path).Should().BeFalse();
+
+            UInt256 between2and3 = new UInt256(ac2.Path.Bytes, true);
+            between2and3 += 5;
+
+            HasMoreChildren(new Keccak(between2and3.ToBigEndian())).Should().BeFalse();
+
+            // The special case
+            HasMoreChildren(Keccak.MaxValue).Should().BeTrue();
+        }
+
+        [Test]
         public void MissingAccountFromRange()
         {
             Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"

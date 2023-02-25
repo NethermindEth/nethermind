@@ -171,6 +171,11 @@ namespace Nethermind.Synchronization.SnapSync
             Span<byte> rightLimit = stackalloc byte[64];
             Nibbles.BytesToNibbleBytes(limitHash.Bytes, rightLimit);
 
+            // For when in very-very unlikely case where the last remaining address is Keccak.MaxValue, (who knows why,
+            // the chain have special handling for it maybe) and it is not included the returned account range, (again,
+            // very-very unlikely), we want `moreChildrenToRight` to return true.
+            bool noLimit = limitHash == Keccak.MaxValue;
+
             Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
 
             tree.RootRef = root;
@@ -234,7 +239,7 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         Keccak? childKeccak = node.GetChildHash(ci);
 
-                        moreChildrenToRight |= (ci > right && ci < limit) && childKeccak is not null;
+                        moreChildrenToRight |= (ci > right && (ci < limit || noLimit)) && childKeccak is not null;
 
                         if (ci >= left && ci <= right)
                         {
