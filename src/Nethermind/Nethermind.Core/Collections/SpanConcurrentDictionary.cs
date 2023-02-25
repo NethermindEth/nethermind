@@ -12,6 +12,7 @@ using System.Threading;
 
 namespace Nethermind.Core.Collections
 {
+    /// Adapted from .net source code.
     /// <summary>Represents a thread-safe collection of keys and values.</summary>
     /// <typeparam name="TKey">The type of the keys in the dictionary.</typeparam>
     /// <typeparam name="TValue">The type of the values in the dictionary.</typeparam>

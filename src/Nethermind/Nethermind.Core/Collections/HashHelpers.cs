@@ -9,6 +9,9 @@ using System.Threading;
 
 namespace Nethermind.Core.Collections
 {
+    /// <summary>
+    /// Adapted from .net source code.
+    /// </summary>
     internal static class HashHelpers
     {
         public const uint HashCollisionThreshold = 100;

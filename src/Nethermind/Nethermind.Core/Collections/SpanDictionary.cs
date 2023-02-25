@@ -12,6 +12,7 @@ using System.Runtime.Serialization;
 
 namespace Nethermind.Core.Collections
 {
+    /// Adapted from .net source code.
     [DebuggerDisplay("Count = {Count}")]
     [Serializable]
     public class SpanDictionary<TKey, TValue> : IDictionary<TKey[], TValue>, IDictionary, IReadOnlyDictionary<TKey[], TValue>, ISerializable, IDeserializationCallback where TKey : notnull
@@ -353,13 +354,13 @@ namespace Nethermind.Core.Collections
 
             goto ReturnNotFound;
 
-        ConcurrentOperation:
+ConcurrentOperation:
             throw new InvalidOperationException("Concurrent operations not supported");
-        ReturnFound:
+ReturnFound:
             ref TValue value = ref entry.value;
-        Return:
+Return:
             return ref value;
-        ReturnNotFound:
+ReturnNotFound:
             value = ref Unsafe.NullRef<TValue>();
             goto Return;
         }
