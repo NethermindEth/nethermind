@@ -71,23 +71,27 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void SetupAccountRangePartition()
         {
-            UInt256 curStartingPath = UInt256.Zero;
-            UInt256 partitionSize = UInt256.MaxValue / (ulong)_accountRangePartitionCount;
-
+            // Confusingly dividing the range evenly via UInt256 for example, consistently cause root hash mismatch.
+            // The mismatch happens on exactly the same partition every time, suggesting tome kind of boundary issues
+            // either on proof generation or validation.
+            byte curStartingPath = 0;
+            byte partitionSize = (byte)(256 / _accountRangePartitionCount);
             if (partitionSize == 0) throw new ArgumentException("Too many snap partition");
 
             for (var i = 0; i < _accountRangePartitionCount; i++)
             {
                 AccountRangePartition partition = new AccountRangePartition();
 
-                Keccak startingPath = new Keccak(curStartingPath.ToBigEndian());
+                Keccak startingPath = new Keccak(Keccak.Zero.Bytes.ToArray());
+                startingPath.Bytes[0] = curStartingPath;
 
                 partition.NextAccountPath = startingPath;
                 partition.AccountPathStart = startingPath;
 
                 curStartingPath += partitionSize;
 
-                Keccak limitPath = new Keccak(curStartingPath.ToBigEndian());
+                Keccak limitPath = new Keccak(Keccak.Zero.Bytes.ToArray());
+                limitPath.Bytes[0] = curStartingPath;
 
                 // Special case for the last partition
                 if (i == _accountRangePartitionCount - 1)
