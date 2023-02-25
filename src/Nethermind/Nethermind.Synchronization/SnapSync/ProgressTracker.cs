@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.SnapSync
         private void SetupAccountRangePartition()
         {
             UInt256 curStartingPath = UInt256.Zero;
-            UInt256 partitionSize = UInt256.MaxValue / new UInt256(0, 0, 0, (ulong)_accountRangePartitionCount);
+            UInt256 partitionSize = UInt256.MaxValue / (ulong)_accountRangePartitionCount;
 
             if (partitionSize == 0) throw new ArgumentException("Too many snap partition");
 

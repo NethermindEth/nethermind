@@ -58,18 +58,28 @@ public class ProgressTrackerTests
 
         (SnapSyncBatch request, bool finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
+        request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(0);
+        // Well, its a tiny bit off, because of like, 255/4 != 64 for example. But its fine, as long as its reasonably
+        // evenly divided.
+        request.AccountRangeRequest.LimitHash!.Bytes[0].Should().Be(63);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
+        request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(63);
+        request.AccountRangeRequest.LimitHash!.Bytes[0].Should().Be(127);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
+        request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(127);
+        request.AccountRangeRequest.LimitHash!.Bytes[0].Should().Be(191);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
+        request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(191);
+        request.AccountRangeRequest.LimitHash!.Bytes[0].Should().Be(255);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();
