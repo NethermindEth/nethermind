@@ -13,8 +13,9 @@ namespace Nethermind.Synchronization.FastBlocks
         private long _queueSize;
         private readonly IBlockTree _blockTree;
         private readonly FastBlockStatusList _statuses;
+        private long _lowestInsertWithoutGaps;
 
-        public long LowestInsertWithoutGaps { get; private set; }
+        public long LowestInsertWithoutGaps => _lowestInsertWithoutGaps;
         public long QueueSize => _queueSize;
 
         public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
@@ -22,65 +23,55 @@ namespace Nethermind.Synchronization.FastBlocks
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _statuses = new FastBlockStatusList(pivotNumber + 1);
 
-            LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
+            _lowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
         }
 
         public void GetInfosForBatch(BlockInfo?[] blockInfos)
         {
             int collected = 0;
-
-            long currentNumber = LowestInsertWithoutGaps;
-            lock (_statuses)
+            long currentNumber = _lowestInsertWithoutGaps;
+            while (collected < blockInfos.Length && currentNumber != 0)
             {
-                while (collected < blockInfos.Length && currentNumber != 0)
+                if (blockInfos[collected] is not null)
                 {
-                    if (blockInfos[collected] is not null)
-                    {
-                        collected++;
-                        continue;
-                    }
-
-                    switch (_statuses[currentNumber])
-                    {
-                        case FastBlockStatus.Unknown:
-                            blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(currentNumber);
-                            _statuses[currentNumber] = FastBlockStatus.Sent;
-                            collected++;
-                            break;
-                        case FastBlockStatus.Inserted:
-                            if (currentNumber == LowestInsertWithoutGaps)
-                            {
-                                LowestInsertWithoutGaps--;
-                                Interlocked.Decrement(ref _queueSize);
-                            }
-
-                            break;
-                        case FastBlockStatus.Sent:
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-
-                    currentNumber--;
+                    collected++;
+                    continue;
                 }
+
+                switch (_statuses.AtomicRead(currentNumber))
+                {
+                    case FastBlockStatus.Unknown:
+                        blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(currentNumber);
+                        _statuses.AtomicWrite(currentNumber, FastBlockStatus.Sent);
+                        collected++;
+                        break;
+                    case FastBlockStatus.Inserted:
+                        if (currentNumber == Volatile.Read(ref _lowestInsertWithoutGaps))
+                        {
+                            Interlocked.CompareExchange(ref _lowestInsertWithoutGaps, currentNumber - 1, currentNumber);
+                            Interlocked.Decrement(ref _queueSize);
+                        }
+
+                        break;
+                    case FastBlockStatus.Sent:
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
+                currentNumber--;
             }
         }
 
         public void MarkInserted(in long blockNumber)
         {
             Interlocked.Increment(ref _queueSize);
-            lock (_statuses)
-            {
-                _statuses[blockNumber] = FastBlockStatus.Inserted;
-            }
+            _statuses.AtomicWrite(blockNumber, FastBlockStatus.Inserted);
         }
 
         public void MarkUnknown(in long blockNumber)
         {
-            lock (_statuses)
-            {
-                _statuses[blockNumber] = FastBlockStatus.Unknown;
-            }
+            _statuses.AtomicWrite(blockNumber, FastBlockStatus.Unknown);
         }
     }
 }
