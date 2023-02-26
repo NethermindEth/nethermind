@@ -114,7 +114,7 @@ namespace Nethermind.Synchronization
                 StartStateSyncComponents();
             }
 
-            if (_syncConfig.EnableDbOptimizer)
+            if (_syncConfig.TuneDbMode != ITunableDb.TuneType.Default)
             {
                 SetupDbOptimizer();
             }

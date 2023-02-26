@@ -52,14 +52,7 @@ public class DbSyncOptimizer
         _blockDb = blockDb;
         _receiptDb = receiptDb;
 
-        if (syncConfig.OptimizeDbForWriteAmplification)
-        {
-            _tuneType = ITunableDb.TuneType.OptimizeWriteAmplification;
-        }
-        else
-        {
-            _tuneType = ITunableDb.TuneType.HeavyWrite;
-        }
+        _tuneType = syncConfig.TuneDbMode;
     }
 
     private void SnapStateChanged(object? sender, SyncFeedStateEventArgs e)

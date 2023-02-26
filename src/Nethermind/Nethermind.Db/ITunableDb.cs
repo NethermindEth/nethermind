@@ -9,8 +9,10 @@ public interface ITunableDb
 
     enum TuneType
     {
+        Default,
+        WriteBias,
         HeavyWrite,
-        OptimizeWriteAmplification,
-        Default
+        AggressiveHeavyWrite,
+        DisableCompaction,
     }
 }

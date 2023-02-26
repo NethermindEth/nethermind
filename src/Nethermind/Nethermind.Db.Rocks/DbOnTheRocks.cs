@@ -756,7 +756,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // See https://github.com/EighteenZi/rocksdb_wiki/blob/master/RocksDB-Tuning-Guide.md
         switch (type)
         {
+            case ITunableDb.TuneType.WriteBias:
+                ApplyOptions(GetHeavyWriteOptions(64, (ulong) 1.GiB()));
+                break;
             case ITunableDb.TuneType.HeavyWrite:
+                ApplyOptions(GetHeavyWriteOptions(256, (ulong) 5.GiB()));
+                break;
+            case ITunableDb.TuneType.AggressiveHeavyWrite:
                 // This still allows for concurrent compaction during write,
                 // although it happens in burst of 1 minute every 5 minute or so instead of all the time.
                 // Note, l1SizeTarget is only 8x more than default, but our write buffer is so low the number of l0
@@ -766,9 +772,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 // On goerli, this cut down the total writes during sync from 3.5 TB to 2.4 TB.
                 // On mainnet, 12.5 TB to 7.21 TB.
                 // However, the high burst will increase block processing time during the compaction more than usual.
-                ApplyOptions(GetHeavyWriteOptions(500, (ulong) 5.GiB()));
+                ApplyOptions(GetHeavyWriteOptions(512, (ulong) 20.GiB()));
                 break;
-            case ITunableDb.TuneType.OptimizeWriteAmplification:
+            case ITunableDb.TuneType.DisableCompaction:
                 // Originally, I thought of completely disabling compaction. But blocks db did not complete compaction
                 // even after 4 hours.
                 //
