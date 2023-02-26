@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
 
             _store = new TrieStore(
-                dbProvider.StateDb,
+                _dbProvider.StateDb,
                 Trie.Pruning.No.Pruning,
                 Persist.EveryBlock,
                 logManager);
@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
 
                 _progressTracker.EnqueueCodeHashes(codeHashes);
-                _progressTracker.UpdateAccountRangePartitionProgress(accounts[accounts.Length - 1].Path, hashLimit, moreChildrenToRight);
+                _progressTracker.UpdateAccountRangePartitionProgress(hashLimit, accounts[^1].Path, moreChildrenToRight);
             }
             else if (result == AddRangeResult.MissingRootHashInProofs)
             {
@@ -288,10 +288,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public bool IsSnapGetRangesFinished()
-        {
-            return _progressTracker.IsSnapGetRangesFinished();
-        }
+        public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
 
         public void UpdatePivot()
         {

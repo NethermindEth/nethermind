@@ -172,8 +172,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 return (request, false);
             }
-
-            if (TryDequeNextSlotRange(out StorageRange slotRange))
+            else if (TryDequeNextSlotRange(out StorageRange slotRange))
             {
                 slotRange.RootHash = rootHash;
                 slotRange.BlockNumber = blockNumber;
@@ -313,6 +312,25 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Decrement(ref _activeStorageRequests);
         }
 
+        public void ReportAccountRangePartitionFinished(Keccak hashLimit)
+        {
+            AccountRangePartition partition = AccountRangePartitions[hashLimit];
+
+            if (partition.MoreAccountsToRight)
+            {
+                AccountRangeReadyForRequest.Enqueue(partition);
+            }
+            Interlocked.Decrement(ref _activeAccountRequests);
+        }
+
+        public void UpdateAccountRangePartitionProgress(Keccak hashLimit, Keccak nextPath, bool moreChildrenToRight)
+        {
+            AccountRangePartition partition = AccountRangePartitions[hashLimit];
+
+            partition.NextAccountPath = nextPath;
+            partition.MoreAccountsToRight = moreChildrenToRight && nextPath < hashLimit;
+        }
+
         public bool IsSnapGetRangesFinished()
         {
             return AccountRangeReadyForRequest.IsEmpty
@@ -358,7 +376,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void LogRequest(string reqType)
         {
-            if (_reqCount % 10 == 0)
+            if (_reqCount % 100 == 0)
             {
                 int totalPathProgress = 0;
                 foreach (KeyValuePair<Keccak, AccountRangePartition> kv in AccountRangePartitions)
@@ -393,25 +411,6 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             return true;
-        }
-
-        public void UpdateAccountRangePartitionProgress(Keccak nextPath, Keccak hashLimit, bool moreChildrenToRight)
-        {
-            AccountRangePartition partition = AccountRangePartitions[hashLimit];
-
-            partition.NextAccountPath = nextPath;
-            partition.MoreAccountsToRight = moreChildrenToRight && nextPath < hashLimit;
-        }
-
-        public void ReportAccountRangePartitionFinished(Keccak hashLimit)
-        {
-            AccountRangePartition partition = AccountRangePartitions[hashLimit];
-
-            if (partition.MoreAccountsToRight)
-            {
-                AccountRangeReadyForRequest.Enqueue(partition);
-            }
-            Interlocked.Decrement(ref _activeAccountRequests);
         }
 
         // A partition of the top level account range starting from `AccountPathStart` to `AccountPathLimit` (exclusive).
