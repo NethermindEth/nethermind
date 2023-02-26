@@ -65,8 +65,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public void MarkInserted(in long blockNumber)
         {
-            Interlocked.Increment(ref _queueSize);
             _statuses.AtomicWrite(blockNumber, FastBlockStatus.Inserted);
+            Interlocked.Increment(ref _queueSize);
         }
 
         public void MarkUnknown(in long blockNumber)
