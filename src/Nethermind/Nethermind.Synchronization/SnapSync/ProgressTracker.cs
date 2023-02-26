@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.SnapSync
             // The mismatch happens on exactly the same partition every time, suggesting tome kind of boundary issues
             // either on proof generation or validation.
             byte curStartingPath = 0;
-            byte partitionSize = (byte)(256 / _accountRangePartitionCount);
+            int partitionSize = (256 / _accountRangePartitionCount);
             if (partitionSize == 0) throw new ArgumentException("Too many snap partition");
 
             for (var i = 0; i < _accountRangePartitionCount; i++)
@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization.SnapSync
                 partition.NextAccountPath = startingPath;
                 partition.AccountPathStart = startingPath;
 
-                curStartingPath += partitionSize;
+                curStartingPath += (byte)partitionSize;
 
                 Keccak limitPath = new Keccak(Keccak.Zero.Bytes.ToArray());
                 limitPath.Bytes[0] = curStartingPath;
