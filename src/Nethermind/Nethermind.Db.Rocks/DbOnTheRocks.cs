@@ -814,7 +814,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     /// <summary>
     /// Allow num of l0 file to grow very large. This dramatically increase read response time by about
-    /// (l0FileNumTarget / (default num (4) + max level usually (4)). but it saves bandwidth as l0->l1 happens
+    /// (l0FileNumTarget / (default num (4) + max level usually (4)). but it saves write bandwidth as l0->l1 happens
     /// in larger size.
     /// </summary>
     /// <param name="l0FileNumTarget">
