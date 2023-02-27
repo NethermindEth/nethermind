@@ -40,6 +40,7 @@ namespace Nethermind.Evm.Precompiles
                 16 => releaseSpec.Bls381Enabled,
                 17 => releaseSpec.Bls381Enabled,
                 18 => releaseSpec.Bls381Enabled,
+                20 => releaseSpec.IsEip4844Enabled,
                 _ => false
             };
         }

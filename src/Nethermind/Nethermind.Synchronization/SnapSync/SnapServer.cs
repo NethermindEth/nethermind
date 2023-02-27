@@ -97,10 +97,10 @@ public class SnapServer : ISnapServer
         return response;
     }
 
-    public List<byte[]> GetByteCodes(Keccak[] requestedHashes, long byteLimit)
+    public List<byte[]> GetByteCodes(IReadOnlyList<Keccak> requestedHashes, long byteLimit)
     {
         long currentByteCount = 0;
-        List<byte[]> response = new(requestedHashes.Length);
+        List<byte[]> response = new(requestedHashes.Count);
 
         if (byteLimit > HardResponseByteLimit)
         {

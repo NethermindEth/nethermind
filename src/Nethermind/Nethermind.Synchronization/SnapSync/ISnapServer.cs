@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.SnapSync;
 public interface ISnapServer
 {
     public List<byte[]>? GetTrieNodes(PathGroup[] pathSet, Keccak rootHash);
-    public List<byte[]> GetByteCodes(Keccak[] requestedHashes, long byteLimit);
+    public List<byte[]> GetByteCodes(IReadOnlyList<Keccak> requestedHashes, long byteLimit);
 
     public (PathWithAccount[], byte[][]) GetAccountRanges(Keccak rootHash, Keccak startingHash, Keccak? limitHash,
         long byteLimit);

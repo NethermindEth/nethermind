@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -27,7 +28,7 @@ namespace Nethermind.Synchronization.StateSync
 
         protected override async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {
-            if (batch?.RequestedNodes is null || batch.RequestedNodes.Length == 0)
+            if (batch?.RequestedNodes is null || batch.RequestedNodes.Count == 0)
             {
                 return;
             }
@@ -141,14 +142,62 @@ namespace Nethermind.Synchronization.StateSync
                 accountPathIndex++;
             }
 
-            if (batch.RequestedNodes.Length != requestedNodeIndex)
+            if (batch.RequestedNodes.Count != requestedNodeIndex)
             {
-                Logger.Warn($"INCORRECT number of paths RequestedNodes.Length:{batch.RequestedNodes.Length} <> requestedNodeIndex:{requestedNodeIndex}");
+                Logger.Warn($"INCORRECT number of paths RequestedNodes.Length:{batch.RequestedNodes.Count} <> requestedNodeIndex:{requestedNodeIndex}");
             }
 
             return request;
         }
 
         private static byte[] EncodePath(byte[] input) => input.Length == 64 ? Nibbles.ToBytes(input) : Nibbles.ToCompactHexEncoding(input);
+
+        /// <summary>
+        /// Present an array of StateSyncItem[] as IReadOnlyList<Keccak> to avoid allocating secondary array
+        /// Also Rent and Return cache for single item to try and avoid allocating the HashList in common case
+        /// </summary>
+        private sealed class HashList : IReadOnlyList<Keccak>
+        {
+            private static HashList s_cache;
+
+            private IList<StateSyncItem> _items;
+
+            public static HashList Rent(IList<StateSyncItem> items)
+            {
+                HashList hashList = Interlocked.Exchange(ref s_cache, null) ?? new HashList();
+                hashList.Initialize(items);
+                return hashList;
+            }
+
+            public static void Return(HashList hashList)
+            {
+                hashList.Reset();
+                Volatile.Write(ref s_cache, hashList);
+            }
+
+            public void Initialize(IList<StateSyncItem> items)
+            {
+                _items = items;
+            }
+
+            public void Reset()
+            {
+                _items = null;
+            }
+
+            public Keccak this[int index] => _items[index].Hash;
+
+            public int Count => _items.Count;
+
+            public IEnumerator<Keccak> GetEnumerator()
+            {
+                foreach (StateSyncItem item in _items)
+                {
+                    yield return item.Hash;
+                }
+            }
+
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
     }
 }

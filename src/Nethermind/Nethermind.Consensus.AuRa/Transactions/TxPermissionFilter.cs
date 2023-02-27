@@ -105,7 +105,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         {
             public const int MaxCacheSize = 4096;
 
-            internal ICache<(Keccak ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)> Permissions { get; } =
+            internal LruCache<(Keccak ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)> Permissions { get; } =
                 new LruCache<(Keccak ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)>(MaxCacheSize, "TxPermissions");
         }
     }

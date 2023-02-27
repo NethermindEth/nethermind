@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         b.Select(
                             n => n is null
                                 ? Rlp.OfEmptySequence
-                                // for TxReceipt there is no timestamp, as such, we are using IReceiptSpec. wonder how we can metigate this later if future EIPs affecting this are added. 
+                                // for TxReceipt there is no timestamp, as such, we are using IReceiptSpec. wonder how we can metigate this later if future EIPs affecting this are added.
                                 : _decoder.Encode(n, _specProvider.GetReceiptSpec(n.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray())).ToArray());
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
@@ -40,7 +40,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            if (byteBuffer.Array.Length == 0 || byteBuffer.Array.First() == Rlp.OfEmptySequence[0]) return new ReceiptsMessage(null);
+            if (byteBuffer.ReadableBytes == 0)
+            {
+                return ReceiptsMessage.Empty;
+            }
+
+            if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptySequence[0])
+            {
+                byteBuffer.ReadByte();
+                return ReceiptsMessage.Empty;
+            }
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);

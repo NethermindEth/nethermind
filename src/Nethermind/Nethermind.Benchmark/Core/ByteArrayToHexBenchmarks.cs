@@ -27,9 +27,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public string SafeLookup()
         {
-#pragma warning disable CS0612 // Type or member is obsolete
-            return Bytes.ByteArrayToHexViaLookup32SafeOld(array, false);
-#pragma warning restore CS0612 // Type or member is obsolete
+            return Bytes.ByteArrayToHexViaLookup32Safe(array, false);
         }
 
         [Benchmark(Baseline = true)]

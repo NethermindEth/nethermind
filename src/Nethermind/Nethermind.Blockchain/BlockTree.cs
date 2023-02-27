@@ -38,11 +38,11 @@ namespace Nethermind.Blockchain
 
         private const int CacheSize = 64;
 
-        private readonly ICache<Keccak, Block>
-            _blockCache = new LruCache<Keccak, Block>(CacheSize, CacheSize, "blocks");
+        private readonly LruCache<KeccakKey, Block>
+            _blockCache = new(CacheSize, CacheSize, "blocks");
 
-        private readonly ICache<Keccak, BlockHeader> _headerCache =
-            new LruCache<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
+        private readonly LruCache<KeccakKey, BlockHeader> _headerCache =
+            new(CacheSize, CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
 
@@ -53,8 +53,8 @@ namespace Nethermind.Blockchain
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
 
-        private readonly ICache<Keccak, Block> _invalidBlocks =
-            new LruCache<Keccak, Block>(128, 128, "invalid blocks");
+        private readonly LruCache<KeccakKey, Block> _invalidBlocks =
+            new(128, 128, "invalid blocks");
 
         private readonly BlockDecoder _blockDecoder = new();
         private readonly HeaderDecoder _headerDecoder = new();
@@ -105,7 +105,11 @@ namespace Nethermind.Blockchain
         }
 
         public long BestKnownNumber { get; private set; }
+
         public long BestKnownBeaconNumber { get; private set; }
+
+        public ulong NetworkId => _specProvider.NetworkId;
+
         public ulong ChainId => _specProvider.ChainId;
 
         private int _canAcceptNewBlocksCounter;
@@ -210,8 +214,12 @@ namespace Nethermind.Blockchain
                              $"lowest inserted header {LowestInsertedHeader?.Number}, " +
                              $"body {LowestInsertedBodyNumber}, " +
                              $"lowest sync inserted block number {LowestInsertedBeaconHeader?.Number}");
-            ThisNodeInfo.AddInfo("Chain ID     :", $"{Nethermind.Core.ChainId.GetChainName(ChainId)}");
+            ThisNodeInfo.AddInfo("Chain ID     :", $"{(ChainId == NetworkId ? Core.BlockchainIds.GetBlockchainName(NetworkId) : ChainId)}");
             ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.Header.ToString(BlockHeader.Format.Short) ?? "0"}");
+            if (ChainId != NetworkId)
+            {
+                ThisNodeInfo.AddInfo("Network ID   :", $"{NetworkId}");
+            }
         }
 
         private void AttemptToFixCorruptionByMovingHeadBackwards()
@@ -561,8 +569,10 @@ namespace Nethermind.Blockchain
             // validate hash here
             // using previously received header RLPs would allows us to save 2GB allocations on a sample
             // 3M Goerli blocks fast sync
-            Rlp newRlp = _headerDecoder.Encode(header);
-            _headerDb.Set(header.Hash, newRlp.Bytes);
+            using (NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header))
+            {
+                _headerDb.Set(header.Hash, newRlp.AsSpan());
+            }
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
             BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
@@ -658,8 +668,10 @@ namespace Nethermind.Blockchain
 
             // if we carry Rlp from the network message all the way here then we could solve 4GB of allocations and some processing
             // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
-            Rlp newRlp = _blockDecoder.Encode(block);
-            _blockDb.Set(block.Hash, newRlp.Bytes);
+            using (NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block))
+            {
+                _blockDb.Set(block.Hash, newRlp.AsSpan());
+            }
 
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
             if (saveHeader)
@@ -746,14 +758,14 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to suggest block with a null hash.");
                 }
 
-                Rlp newRlp = _blockDecoder.Encode(block);
-                _blockDb.Set(block.Hash, newRlp.Bytes);
+                using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
+                _blockDb.Set(block.Hash, newRlp.AsSpan());
             }
 
             if (!isKnown)
             {
-                Rlp newRlp = _headerDecoder.Encode(header);
-                _headerDb.Set(header.Hash, newRlp.Bytes);
+                using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
+                _headerDb.Set(header.Hash, newRlp.AsSpan());
             }
 
             if (!isKnown || fillBeaconBlock)

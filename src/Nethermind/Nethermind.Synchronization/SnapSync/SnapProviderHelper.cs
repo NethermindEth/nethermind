@@ -167,8 +167,8 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             node.SetChild(0, child);
 
-                            pathIndex += node.Path.Length;
-                            path.AddRange(node.Path);
+                            pathIndex += node.Key.Length;
+                            path.AddRange(node.Key);
                             proofNodesToProcess.Push((node, child, pathIndex, path));
                             sortedBoundaryList.Add(child);
                         }

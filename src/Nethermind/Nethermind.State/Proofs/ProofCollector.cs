@@ -58,7 +58,7 @@ namespace Nethermind.State.Proofs
             Keccak childHash = node.GetChildHash(0);
             _visitingFilter.Add(childHash); // always accept so can optimize
 
-            _pathIndex += node.Path.Length;
+            _pathIndex += node.Key.Length;
         }
 
         protected virtual void AddProofBits(TrieNode node)

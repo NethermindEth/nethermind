@@ -28,6 +28,7 @@ namespace Nethermind.Network.Config
         public int CandidatePeerCountCleanupThreshold { get; set; } = 11000;
         public bool DiagTracerEnabled { get; set; } = false;
         public int NettyArenaOrder { get; set; } = INetworkConfig.DefaultNettyArenaOrder;
+        public uint MaxNettyArenaCount { get; set; } = INetworkConfig.DefaultMaxNettyArenaCount;
         public string Bootnodes { get; set; } = string.Empty;
         public bool EnableUPnP { get; set; } = false;
         public int DiscoveryPort { get; set; } = 30303;

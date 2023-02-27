@@ -18,10 +18,10 @@ while (true)
     try
     {
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(input));
-        TxValidator txValidator = new TxValidator(ChainId.Mainnet);
+        TxValidator txValidator = new TxValidator(BlockchainIds.Mainnet);
         if (txValidator.IsWellFormed(tx, GrayGlacier.Instance))
         {
-            EthereumEcdsa ecdsa = new(ChainId.Mainnet, SimpleConsoleLogManager.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet, SimpleConsoleLogManager.Instance);
             Address? sender = ecdsa.RecoverAddress(tx);
             if (sender == null)
             {

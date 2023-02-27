@@ -6,10 +6,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -351,7 +349,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 requestQueue,
                 msg,
                 TransferSpeedType.SnapRanges,
-                static (_) => $"{nameof(TIn)}",
+                static (request) => request.ToString(),
                 token);
         }
 

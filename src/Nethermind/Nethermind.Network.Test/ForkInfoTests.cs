@@ -151,7 +151,9 @@ namespace Nethermind.Network.Test
 
         [TestCase(0, 0ul, "0xFE3366E7", 1735371ul, "Sepolia genesis")]
         [TestCase(1735370, 0ul, "0xFE3366E7", 1735371ul, "Sepolia Last block before MergeForkIdTranstion")]
-        [TestCase(1735371, 0ul, "0xb96cbd13", 0ul, "First block - Sepolia MergeForkIdTransition")]
+        [TestCase(1735371, 0ul, "0xb96cbd13", 1677557088UL, "First block - Sepolia MergeForkIdTransition")]
+        [TestCase(1735372, 1677557088ul, "0xf7f9bc08", 0ul, "Shanghai")]
+        [TestCase(1735372, 2677557088ul, "0xf7f9bc08", 0ul, "Future Shanghai")]
         public void Fork_id_and_hash_as_expected_on_sepolia(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
         {
             Test(head, headTimestamp, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
@@ -197,6 +199,24 @@ namespace Nethermind.Network.Test
             ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "chiado.json")));
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
             Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
+        }
+
+
+        [TestCase(2ul, 3ul, 2ul, 3ul)]
+        [TestCase(2ul, null, 2ul, 2ul)]
+        [TestCase(null, 3ul, 3ul, 3ul)]
+        [TestCase(null, null, 1ul, 1ul)]
+        public void Chain_id_and_network_id_have_proper_default_values(ulong? specNetworkId, ulong? specChainId, ulong expectedNetworkId, ulong expectedChainId)
+        {
+            ChainSpecLoader loader = new(new EthereumJsonSerializer());
+
+            ChainSpec spec = loader.Load($"{{\"params\":{{\"networkID\":{specNetworkId?.ToString() ?? "null"},\"chainId\":{specChainId?.ToString() ?? "null"}}},\"engine\":{{\"NethDev\":{{}}}}}}");
+            ChainSpecBasedSpecProvider provider = new(spec);
+
+            spec.ChainId.Should().Be(expectedChainId);
+            spec.NetworkId.Should().Be(expectedNetworkId);
+            provider.ChainId.Should().Be(expectedChainId);
+            provider.NetworkId.Should().Be(expectedNetworkId);
         }
 
         private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")

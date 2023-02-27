@@ -54,11 +54,6 @@ configs = {
         "blockReduced": 1000,
         "multiplierRequirement": 1000
     },
-    "sokol": {
-        "url": "https://sokol.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
     "energyweb": {
         "url": "https://rpc.energyweb.org",
         "blockReduced": 8192,
@@ -84,11 +79,6 @@ configs = {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
         "multiplierRequirement": 30000
-    },
-    "xdai_mev": {
-        "url": "https://rpc.gnosischain.com",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
     },
     # aa section
     "mainnet_aa": {

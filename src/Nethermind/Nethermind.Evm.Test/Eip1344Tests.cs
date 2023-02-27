@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -13,7 +14,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1344Tests : VirtualMachineTestsBase
     {
-        private void Test(ulong chainId)
+        private void Test(ulong expectedChainId)
         {
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.CHAINID)
@@ -21,16 +22,16 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
             TestAllTracerWithOutput result = Execute(code);
-            long setCost = chainId == 0 ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SSet;
+            long setCost = expectedChainId == 0 ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SSet;
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + setCost);
-            AssertStorage(0, ((UInt256)chainId).ToBigEndian());
+            AssertStorage(0, ((UInt256)expectedChainId).ToBigEndian());
         }
 
         private class Custom0 : Eip1344Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(0, ((ForkActivation)0, Istanbul.Instance));
+            protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
 
             [Test]
             public void given_custom_0_network_chain_id_opcode_puts_expected_value_onto_the_stack()
@@ -42,7 +43,7 @@ namespace Nethermind.Evm.Test
         private class Custom32000 : Eip1344Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(32000, ((ForkActivation)0, Istanbul.Instance));
+            protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
 
             [Test]
             public void given_custom_custom_32000_network_chain_id_opcode_puts_expected_value_onto_the_stack()

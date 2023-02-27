@@ -7,10 +7,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
+    [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Count ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
     public class StateSyncBatch
     {
-        public StateSyncBatch(Keccak stateRoot, NodeDataType nodeDataType, StateSyncItem[] requestedNodes)
+        public StateSyncBatch(Keccak stateRoot, NodeDataType nodeDataType, IList<StateSyncItem> requestedNodes)
         {
             StateRoot = stateRoot;
             NodeDataType = nodeDataType;
@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public Keccak StateRoot;
 
-        public StateSyncItem[]? RequestedNodes { get; }
+        public IList<StateSyncItem>? RequestedNodes { get; }
 
         public IReadOnlyList<byte[]>? Responses { get; set; }
 
@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public override string ToString()
         {
-            return $"{RequestedNodes?.Length ?? 0} state sync requests with {Responses?.Count ?? 0} responses";
+            return $"{RequestedNodes?.Count ?? 0} state sync requests with {Responses?.Count ?? 0} responses";
         }
     }
 }

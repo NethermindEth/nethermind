@@ -175,6 +175,7 @@ namespace Nethermind.Api
 
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
+        public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
         public ISyncModeSelector? SyncModeSelector { get; set; }
 
         public ISyncProgressResolver? SyncProgressResolver { get; set; }
@@ -196,9 +197,11 @@ namespace Nethermind.Api
         public ITrieStore? TrieStore { get; set; }
         public IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
         public ITxSender? TxSender { get; set; }
+        public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IHealthHintService? HealthHintService { get; set; }
+        public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         public TxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
         public IGasLimitCalculator GasLimitCalculator { get; set; }

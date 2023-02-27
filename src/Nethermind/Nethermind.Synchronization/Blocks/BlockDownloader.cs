@@ -45,7 +45,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private bool _cancelDueToBetterPeer;
         private AllocationWithCancellation _allocationWithCancellation = new(null, new CancellationTokenSource());
-        protected bool HasBetterPeer => _allocationWithCancellation.Cancellation.IsCancellationRequested;
+        protected bool HasBetterPeer => _allocationWithCancellation.IsCancellationRequested;
 
         protected SyncBatchSize _syncBatchSize;
         protected int _sinceLastTimeout;
@@ -349,7 +349,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (downloadReceipts)
                     {
                         TxReceipt[]? contextReceiptsForBlock = context.ReceiptsForBlocks![blockIndex];
-                        if (currentBlock.Header.HasBody && contextReceiptsForBlock is null)
+                        if (currentBlock.Header.HasTransactions && contextReceiptsForBlock is null)
                         {
                             throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }
@@ -369,7 +369,7 @@ namespace Nethermind.Synchronization.Blocks
                             else
                             {
                                 // this shouldn't now happen with new validation above, still lets keep this check
-                                if (currentBlock.Header.HasBody)
+                                if (currentBlock.Header.HasTransactions)
                                 {
                                     if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
                                 }
@@ -575,7 +575,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (_logger.IsTrace) _logger.Trace("Seal validation complete");
 
-            if (exceptions.Count > 0)
+            if (!exceptions.IsEmpty)
             {
                 if (_logger.IsDebug) _logger.Debug("Seal validation failure");
                 throw new AggregateException(exceptions);
@@ -780,14 +780,18 @@ namespace Nethermind.Synchronization.Blocks
                 _isDisposed = false;
             }
 
-            public CancellationTokenSource Cancellation { get; }
+            private CancellationTokenSource Cancellation { get; }
+            public bool IsCancellationRequested => Cancellation.IsCancellationRequested;
             public SyncPeerAllocation Allocation { get; }
 
             public void Cancel()
             {
-                if (!_isDisposed)
+                lock (Cancellation)
                 {
-                    Cancellation.Cancel();
+                    if (!_isDisposed)
+                    {
+                        Cancellation.Cancel();
+                    }
                 }
             }
 
@@ -795,10 +799,13 @@ namespace Nethermind.Synchronization.Blocks
 
             public void Dispose()
             {
-                if (!_isDisposed)
+                lock (Cancellation)
                 {
-                    _isDisposed = true;
-                    Cancellation.Dispose();
+                    if (!_isDisposed)
+                    {
+                        _isDisposed = true;
+                        Cancellation.Dispose();
+                    }
                 }
             }
         }
