@@ -34,8 +34,8 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
 
             #region Shanghai
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)] = spec.WithdrawalsEnabled;
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1)] = false;
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)] = false;
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV2)] = spec.WithdrawalsEnabled;
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV2)] = spec.WithdrawalsEnabled;
             #endregion
