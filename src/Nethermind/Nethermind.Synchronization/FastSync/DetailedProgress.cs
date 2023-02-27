@@ -156,6 +156,9 @@ namespace Nethermind.Synchronization.FastSync
         public void SetSnapSyncData(bool stateRangesFinished, long stateRangesSyncedBytes)
         {
             _snapSyncFinished = stateRangesFinished;
+            //dirty check not to exceed 100% when starting healing phase
+            if (stateRangesSyncedBytes > _chainSizeInfo?.Current)
+                stateRangesSyncedBytes = (long)(0.99 * _chainSizeInfo?.Current);
             Interlocked.CompareExchange(ref DataSize, stateRangesSyncedBytes, 0L);
         }
     }
