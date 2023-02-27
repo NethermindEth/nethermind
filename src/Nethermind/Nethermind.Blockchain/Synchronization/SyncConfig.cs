@@ -45,6 +45,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool FixReceipts { get; set; } = false;
         public bool StrictMode { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;
+        public bool NonValidatorNode { get; set; } = false;
 
         public override string ToString()
         {

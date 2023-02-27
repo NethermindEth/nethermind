@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Test.Consensus
     [TestFixture]
     public class NethDevSealEngineTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Defaults_are_fine()
         {
             NethDevSealEngine nethDevSealEngine = new();
@@ -22,14 +22,14 @@ namespace Nethermind.Blockchain.Test.Consensus
             nethDevSealEngine.CanSeal(1, Keccak.Zero).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_seal_returns_true()
         {
             NethDevSealEngine nethDevSealEngine = new();
             nethDevSealEngine.CanSeal(1, Keccak.Zero).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Validations_return_true()
         {
             NethDevSealEngine nethDevSealEngine = new();
@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             nethDevSealEngine.ValidateSeal(null, true).Should().Be(true);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Block_sealing_sets_the_hash()
         {
             Block block = Build.A.Block.TestObject;

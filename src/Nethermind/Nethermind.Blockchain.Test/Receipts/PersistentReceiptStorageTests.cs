@@ -32,21 +32,21 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Returns_null_for_missing_tx()
         {
             Keccak blockHash = _storage.FindBlockHash(Keccak.Zero);
             blockHash.Should().BeNull();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void ReceiptsIterator_doesnt_throw_on_empty_span()
         {
             _storage.TryGetReceiptsIterator(1, Keccak.Zero, out var iterator);
             iterator.TryGetNext(out _).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void ReceiptsIterator_doesnt_throw_on_null()
         {
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, null!);
@@ -54,13 +54,13 @@ namespace Nethermind.Blockchain.Test.Receipts
             iterator.TryGetNext(out _).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Get_returns_empty_on_empty_span()
         {
             _storage.Get(Keccak.Zero).Should().BeEquivalentTo(Array.Empty<TxReceipt>());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Adds_and_retrieves_receipts_for_block()
         {
             var (block, receipts) = InsertBlock();
@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.Get(block).Should().BeEquivalentTo(receipts);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Should_not_cache_empty_non_processed_blocks()
         {
             var block = Build.A.Block
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.Get(block).Should().BeEquivalentTo(receipts);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_insert()
         {
             var (block, receipts) = InsertBlock();
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Adds_and_retrieves_receipts_for_block_with_iterator()
         {
             var (block, _) = InsertBlock();
@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_get()
         {
             var (block, receipts) = InsertBlock();
@@ -126,27 +126,27 @@ namespace Nethermind.Blockchain.Test.Receipts
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Should_handle_inserting_null_receipts()
         {
             Block block = Build.A.Block.WithReceiptsRoot(TestItem.KeccakA).TestObject;
             _storage.Insert(block, null);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void HasBlock_should_returnFalseForMissingHash()
         {
             _storage.HasBlock(Keccak.Compute("missing-value")).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void HasBlock_should_returnTrueForKnownHash()
         {
             var (block, _) = InsertBlock();
             _storage.HasBlock(block.Hash!).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void EnsureCanonical_should_change_tx_blockhash([Values(false, true)] bool ensureCanonical)
         {
             (Block block, TxReceipt[] receipts) = InsertBlock();

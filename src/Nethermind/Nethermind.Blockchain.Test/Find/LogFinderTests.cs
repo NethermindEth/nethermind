@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Test.Find
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void filter_all_logs([ValueSource(nameof(WithBloomValues))] bool withBloomDb, [Values(false, true)] bool allowReceiptIterator)
         {
             SetUp(allowReceiptIterator);
@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Test.Find
             indexes.Should().BeEquivalentTo(new[] { 0, 1, 0, 1, 2 });
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void filter_all_logs_iteratively([ValueSource(nameof(WithBloomValues))] bool withBloomDb, [Values(false, true)] bool allowReceiptIterator)
         {
             SetUp(allowReceiptIterator);
@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain.Test.Find
             indexes.Should().BeEquivalentTo(new[] { 0, 1, 0, 1, 2 });
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void throw_exception_when_receipts_are_missing([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
         {
             StoreTreeBlooms(withBloomDb);
@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain.Test.Find
                 .Throw<ResourceNotFoundException>();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void when_receipts_are_missing_and_header_has_no_receipt_root_do_not_throw_exception_()
         {
             _receiptStorage = NullReceiptStorage.Instance;
@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Test.Find
                 .NotThrow<ResourceNotFoundException>();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void filter_all_logs_should_throw_when_to_block_is_not_found([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
         {
             StoreTreeBlooms(withBloomDb);
@@ -271,7 +271,7 @@ namespace Nethermind.Blockchain.Test.Find
             logs.Length.Should().Be(expectedCount);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void filter_by_blocks_with_limit([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
         {
             StoreTreeBlooms(withBloomDb);
@@ -313,10 +313,10 @@ namespace Nethermind.Blockchain.Test.Find
             logs.Length.Should().Be(expectedCount);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
         {
-            var timeout = TimeSpan.FromMilliseconds(20);
+            var timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
             using CancellationTokenSource cancellationTokenSource = new(timeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 

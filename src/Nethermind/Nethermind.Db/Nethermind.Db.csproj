@@ -13,6 +13,6 @@
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.IO.Abstractions" Version="19.1.5" />
+    <PackageReference Include="System.IO.Abstractions" />
   </ItemGroup>
 </Project>

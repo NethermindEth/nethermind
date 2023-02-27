@@ -42,7 +42,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly ILogger _logger;
-    private readonly LruCache<Keccak, bool>? _latestBlocks;
+    private readonly LruCache<KeccakKey, bool>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
@@ -76,7 +76,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _defaultProcessingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
         if (cacheSize > 0)
-            _latestBlocks = new LruCache<Keccak, bool>(cacheSize, 0, "LatestBlocks");
+            _latestBlocks = new(cacheSize, 0, "LatestBlocks");
     }
 
     /// <summary>
@@ -99,7 +99,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         if (!HeaderValidator.ValidateHash(block!.Header))
         {
             if (_logger.IsWarn) _logger.Warn($"InvalidBlockHash. Result of {requestStr}.");
-            return NewPayloadV1Result.InvalidBlockHash;
+            return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}");
         }
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);

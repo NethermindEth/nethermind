@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Test.Producers
     [Parallelizable(ParallelScope.All)]
     public partial class BlockProducerBaseTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task DevBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await AssertIsProducingBlocks(blockProducer);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task TestBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await AssertIsProducingBlocks(blockProducer);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task MinedBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();
@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await AssertIsProducingBlocks(blockProducer);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task AuraTestBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await AssertIsProducingBlocks(blockProducer);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task CliqueBlockProducer_IsProducingBlocks_returns_expected_results()
         {
             TestRpcBlockchain testRpc = await CreateTestRpc();

@@ -28,7 +28,7 @@ namespace Nethermind.Config.Test
         {
             // by pre-caching configs we make the tests do lot less work
 
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(typeof(IConfig)).Where(t => t.IsInterface).ToArray();
+            IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindTypes(typeof(IConfig)).Where(t => t.IsInterface).ToArray();
 
             Parallel.ForEach(Resolve("*"), configFile =>
             {
@@ -60,10 +60,6 @@ namespace Nethermind.Config.Test
         [ConfigFileGroup("poacore")]
         protected IEnumerable<string> PoaCoreConfigs
             => Configs.Where(config => config.Contains("poacore"));
-
-        [ConfigFileGroup("sokol")]
-        protected IEnumerable<string> SokolConfigs
-            => Configs.Where(config => config.Contains("sokol"));
 
         [ConfigFileGroup("volta")]
         protected IEnumerable<string> VoltaConfigs
@@ -112,7 +108,6 @@ namespace Nethermind.Config.Test
         [ConfigFileGroup("aura")]
         protected IEnumerable<string> AuraConfigs
             => PoaCoreConfigs
-                .Union(SokolConfigs)
                 .Union(XDaiConfigs)
                 .Union(VoltaConfigs)
                 .Union(EnergyConfigs)

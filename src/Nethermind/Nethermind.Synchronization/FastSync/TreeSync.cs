@@ -18,6 +18,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -129,7 +130,7 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch)
+        public SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch, PeerInfo? peerInfo = null)
         {
             if (batch == EmptyBatch)
             {
@@ -178,17 +179,23 @@ namespace Nethermind.Synchronization.FastSync
                         AddAgainAllItems();
                         if (_logger.IsWarn) _logger.Warn("Batch response had invalid format");
                         Interlocked.Increment(ref _data.InvalidFormatCount);
-                        return isMissingRequestData
-                            ? SyncResponseHandlingResult.InternalError
-                            : SyncResponseHandlingResult.NotAssigned;
+                        return SyncResponseHandlingResult.InternalError;
                     }
 
-                    if (batch.Responses is null)
+                    if (peerInfo == null)
                     {
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace("Batch was not assigned to any peer.");
                         Interlocked.Increment(ref _data.NotAssignedCount);
                         return SyncResponseHandlingResult.NotAssigned;
+                    }
+
+                    if (batch.Responses is null)
+                    {
+                        AddAgainAllItems();
+                        if (_logger.IsTrace) _logger.Trace($"Peer {peerInfo} failed to satisfy request.");
+                        Interlocked.Increment(ref _data.NotAssignedCount);
+                        return SyncResponseHandlingResult.LesserQuality;
                     }
 
                     if (_logger.IsTrace)
@@ -831,9 +838,9 @@ namespace Nethermind.Synchronization.FastSync
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 1);
 
                         // Add nibbles to StateSyncItem.PathNibbles
-                        Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
+                        Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Key!.Length];
                         currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
-                        trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
+                        trieNode.Key!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
 
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
@@ -841,7 +848,7 @@ namespace Nethermind.Synchronization.FastSync
                                 currentStateSyncItem.AccountPathNibbles,
                                 childPath.ToArray(),
                                 nodeDataType,
-                                currentStateSyncItem.Level + trieNode.Path!.Length,
+                                currentStateSyncItem.Level + trieNode.Key!.Length,
                                 CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0))
                             { ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex },
                             dependentItem,
@@ -894,9 +901,9 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             // it's a leaf with a storage, so we need to copy the current path (full 64 nibbles) to StateSyncItem.AccountPathNibbles
                             // and StateSyncItem.PathNibbles will start from null (storage root)
-                            Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
+                            Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Key!.Length];
                             currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
-                            trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
+                            trieNode.Key!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, childPath.ToArray(), null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved)
