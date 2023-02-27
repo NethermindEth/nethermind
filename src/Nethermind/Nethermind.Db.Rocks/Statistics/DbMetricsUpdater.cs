@@ -11,7 +11,7 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks.Statistics;
 
-public class DbMetricsUpdater
+public partial class DbMetricsUpdater
 {
     private readonly string _dbName;
     private readonly DbOptions _dbOptions;
@@ -61,7 +61,7 @@ public class DbMetricsUpdater
     {
         if (!string.IsNullOrEmpty(compactionStatsString))
         {
-            var stats = ExctractStatsPerLevel(compactionStatsString);
+            var stats = ExtractStatsPerLevel(compactionStatsString);
             UpdateMetricsFromList(stats);
 
             stats = ExctractIntervalCompaction(compactionStatsString);
@@ -88,13 +88,13 @@ public class DbMetricsUpdater
     /// Example line:
     ///   L0      2/0    1.77 MB   0.5      0.0     0.0      0.0       0.4      0.4       0.0   1.0      0.0     44.6      9.83              0.00       386    0.025       0      0
     /// </summary>
-    private List<(string Name, long Value)> ExctractStatsPerLevel(string compactionStatsDump)
+    private List<(string Name, long Value)> ExtractStatsPerLevel(string compactionStatsDump)
     {
         var stats = new List<(string Name, long Value)>(5);
 
         if (!string.IsNullOrEmpty(compactionStatsDump))
         {
-            var rgx = new Regex(@"^\s+L(\d+)\s+(\d+)\/(\d+).*$", RegexOptions.Multiline);
+            var rgx = ExtractStatsRegex();
             var matches = rgx.Matches(compactionStatsDump);
 
             foreach (Match m in matches)
@@ -118,7 +118,7 @@ public class DbMetricsUpdater
 
         if (!string.IsNullOrEmpty(compactionStatsDump))
         {
-            var rgx = new Regex(@"^Interval compaction: (\d+)\.\d+.*GB write.*\s+(\d+)\.\d+.*MB\/s write.*\s+(\d+)\.\d+.*GB read.*\s+(\d+)\.\d+.*MB\/s read.*\s+(\d+)\.\d+.*seconds.*$", RegexOptions.Multiline);
+            var rgx = ExtractIntervalRegex();
             var match = rgx.Match(compactionStatsDump);
 
             if (match is not null && match.Success)
@@ -137,4 +137,10 @@ public class DbMetricsUpdater
 
         return stats;
     }
+
+    [GeneratedRegex("^\\s+L(\\d+)\\s+(\\d+)\\/(\\d+).*$", RegexOptions.Multiline)]
+    private static partial Regex ExtractStatsRegex();
+
+    [GeneratedRegex("^Interval compaction: (\\d+)\\.\\d+.*GB write.*\\s+(\\d+)\\.\\d+.*MB\\/s write.*\\s+(\\d+)\\.\\d+.*GB read.*\\s+(\\d+)\\.\\d+.*MB\\/s read.*\\s+(\\d+)\\.\\d+.*seconds.*$", RegexOptions.Multiline)]
+    private static partial Regex ExtractIntervalRegex();
 }

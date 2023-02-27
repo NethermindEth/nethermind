@@ -53,14 +53,10 @@
     "eip3198Transition": "0x0",
     "eip3529Transition": "0x0",
     "eip3541Transition": "0x0",
-    "eip3540TransitionTimestamp": "0x0",
     "eip3651TransitionTimestamp": "0x0",
-    "eip3670TransitionTimestamp": "0x0",
-    "eip4200TransitionTimestamp": "0x0",
-    "eip4750TransitionTimestamp": "0x0",
-    "eip5450TransitionTimestamp": "0x0",
     "eip3855TransitionTimestamp": "0x0",
     "eip3860TransitionTimestamp": "0x0",
+    "eip4895TransitionTimestamp": "0x0",
     "terminalTotalDifficulty": "0x0"
   },
   "genesis": {

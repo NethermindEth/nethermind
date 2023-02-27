@@ -14,6 +14,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
     [Parallelizable(ParallelScope.All)]
     public class PathSizePruningTriggerTests
     {
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(300, ExpectedResult = true)]
         [TestCase(400, ExpectedResult = false)]
         public bool triggers_on_path_too_big(int threshold)
@@ -42,7 +43,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             return triggered;
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void throws_on_nonexisting_path()
         {
             Action action = () => new PathSizePruningTrigger("path", 5, null!, Substitute.For<IFileSystem>());

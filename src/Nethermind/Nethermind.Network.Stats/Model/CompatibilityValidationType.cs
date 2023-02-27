@@ -7,7 +7,9 @@ namespace Nethermind.Stats.Model
     {
         P2PVersion,
         Capabilities,
-        ChainId,
-        DifferentGenesis
+        NetworkId,
+        DifferentGenesis,
+        MissingForkId,
+        InvalidForkId
     }
 }

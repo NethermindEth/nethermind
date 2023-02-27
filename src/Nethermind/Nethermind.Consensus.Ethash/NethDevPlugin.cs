@@ -12,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -61,7 +62,7 @@ namespace Nethermind.Consensus.Ethash
                 txFilterPipeline);
 
             ILogger logger = getFromApi.LogManager.GetClassLogger();
-            if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");
+            if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
 
             ReadOnlyTxProcessingEnv producerEnv = new(

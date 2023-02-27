@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,9 +16,9 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -44,10 +43,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         // this means that we know what the number, hash, and total diff of the head block is
         public bool IsInitialized { get; set; }
-        public override string ToString() => $"[Peer|{Name}|{HeadNumber,8}|{Node:s}]";
+        public override string ToString() => $"[Peer|{Name}|{HeadNumber,8}|{Node:s}|{Session?.Direction,4}]";
 
         protected Keccak _remoteHeadBlockHash;
         protected readonly ITimestamper _timestamper;
+        protected readonly TxDecoder _txDecoder;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests;
@@ -60,6 +60,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _timestamper = Timestamper.Default;
+            _txDecoder = new TxDecoder();
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
         }
@@ -184,20 +185,24 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public virtual void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false)
         {
-            const int maxCapacity = 256;
-            using ArrayPoolList<Transaction> txsToSend = new(maxCapacity);
+            int packetSizeLeft = TransactionsMessage.MaxPacketSize;
+            using ArrayPoolList<Transaction> txsToSend = new(1024);
 
             foreach (Transaction tx in txs)
             {
-                if (txsToSend.Count == maxCapacity)
+                int txSize = tx.GetLength(_txDecoder);
+
+                if (txSize > packetSizeLeft && txsToSend.Count > 0)
                 {
                     SendMessage(txsToSend);
                     txsToSend.Clear();
+                    packetSizeLeft = TransactionsMessage.MaxPacketSize;
                 }
 
                 if (tx.Hash is not null)
                 {
                     txsToSend.Add(tx);
+                    packetSizeLeft -= txSize;
                     TxPool.Metrics.PendingTransactionsSent++;
                 }
             }

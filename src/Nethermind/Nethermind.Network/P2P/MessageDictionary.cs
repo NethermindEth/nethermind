@@ -67,22 +67,16 @@ public class MessageDictionary<T66Msg, TMsg, TData> where T66Msg : Eth66Message<
         {
             await Task.Delay(_oldRequestThreshold);
 
-            ArrayPoolList<long> toRemove = new(MaxConcurrentRequest);
             foreach (KeyValuePair<long, Request<T66Msg, TData>> requestIdValues in _requests)
             {
                 if (requestIdValues.Value.Elapsed > _oldRequestThreshold)
                 {
-                    toRemove.Add(requestIdValues.Key);
-                }
-            }
-
-            for (int i = 0; i < toRemove.Count; i++)
-            {
-                if (_requests.TryRemove(toRemove[i], out Request<T66Msg, TData> request))
-                {
-                    _requestCount--;
-                    // Unblock waiting thread.
-                    request.CompletionSource.SetException(new TimeoutException("No response received"));
+                    if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
+                    {
+                        _requestCount--;
+                        // Unblock waiting thread.
+                        request.CompletionSource.SetException(new TimeoutException("No response received"));
+                    }
                 }
             }
 

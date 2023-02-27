@@ -48,9 +48,9 @@ namespace Nethermind.Synchronization.FastSync
 
         public DetailedProgress(ulong chainId, byte[] serializedInitialState)
         {
-            if (Known.ChainSize.ContainsKey(chainId))
+            if (Known.ChainSize.TryGetValue(chainId, out Known.SizeInfo value))
             {
-                _chainSizeInfo = Known.ChainSize[chainId];
+                _chainSizeInfo = value;
             }
 
             LoadFromSerialized(serializedInitialState);
@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 Metrics.StateSynced = DataSize;
                 string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,6:F2}MB";
-                if (_chainSizeInfo is not null)
+                if (_chainSizeInfo != null)
                 {
                     decimal percentage = Math.Min(1, (decimal)DataSize / _chainSizeInfo.Value.Current);
                     dataSizeInfo = string.Concat(
@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void LoadFromSerialized(byte[] serializedData)
         {
-            if (serializedData is not null)
+            if (serializedData != null)
             {
                 RlpStream rlpStream = new(serializedData);
                 rlpStream.ReadSequenceLength();
@@ -130,21 +130,41 @@ namespace Nethermind.Synchronization.FastSync
 
         public byte[] Serialize()
         {
-            Rlp rlp = Rlp.Encode(
-                Rlp.Encode(ConsumedNodesCount),
-                Rlp.Encode(SavedStorageCount),
-                Rlp.Encode(SavedStateCount),
-                Rlp.Encode(SavedNodesCount),
-                Rlp.Encode(SavedAccounts),
-                Rlp.Encode(SavedCode),
-                Rlp.Encode(RequestedNodesCount),
-                Rlp.Encode(DbChecks),
-                Rlp.Encode(StateWasThere),
-                Rlp.Encode(StateWasNotThere),
-                Rlp.Encode(DataSize),
-                Rlp.Encode(SecondsInSync));
+            int contentLength = GetLength();
+            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+            stream.StartSequence(contentLength);
+            stream.Encode(ConsumedNodesCount);
+            stream.Encode(SavedStorageCount);
+            stream.Encode(SavedStateCount);
+            stream.Encode(SavedNodesCount);
+            stream.Encode(SavedAccounts);
+            stream.Encode(SavedCode);
+            stream.Encode(RequestedNodesCount);
+            stream.Encode(DbChecks);
+            stream.Encode(StateWasThere);
+            stream.Encode(StateWasNotThere);
+            stream.Encode(DataSize);
+            stream.Encode(SecondsInSync);
 
-            return rlp.Bytes;
+            return stream.Data;
+        }
+
+        private int GetLength()
+        {
+            int contentLength = 0;
+            contentLength += Rlp.LengthOf(ConsumedNodesCount);
+            contentLength += Rlp.LengthOf(SavedStorageCount);
+            contentLength += Rlp.LengthOf(SavedStateCount);
+            contentLength += Rlp.LengthOf(SavedNodesCount);
+            contentLength += Rlp.LengthOf(SavedAccounts);
+            contentLength += Rlp.LengthOf(SavedCode);
+            contentLength += Rlp.LengthOf(RequestedNodesCount);
+            contentLength += Rlp.LengthOf(DbChecks);
+            contentLength += Rlp.LengthOf(StateWasThere);
+            contentLength += Rlp.LengthOf(StateWasNotThere);
+            contentLength += Rlp.LengthOf(DataSize);
+            contentLength += Rlp.LengthOf(SecondsInSync);
+            return contentLength;
         }
     }
 }

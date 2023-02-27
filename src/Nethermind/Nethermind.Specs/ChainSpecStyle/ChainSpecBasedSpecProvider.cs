@@ -46,6 +46,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, n => n.EndsWith("Transition"));
             AddTransitions(transitionBlockNumbers, _chainSpec.Ethash, n => n.EndsWith("Transition"));
             AddTransitions(transitionTimestamps, _chainSpec.Parameters, n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
+            TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
             static void AddTransitions<T>(
                 SortedSet<T> transitions,
@@ -235,6 +236,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip4200Enabled = (chainSpec.Parameters.Eip4200TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip4750Enabled = (chainSpec.Parameters.Eip4750TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip5450Enabled = (chainSpec.Parameters.Eip5450TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip4895Enabled = (chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.WithdrawalTimestamp = chainSpec.Parameters.Eip4895TransitionTimestamp ?? ulong.MaxValue;
+
+            releaseSpec.IsEip4844Enabled = (chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.Eip4844TransitionTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue;
+
             return releaseSpec;
         }
 
@@ -252,6 +259,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         }
 
         public ForkActivation? MergeBlockNumber { get; private set; }
+        public ulong TimestampFork { get; private set; }
 
         public UInt256? TerminalTotalDifficulty { get; private set; }
 
@@ -281,6 +289,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
+        public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;
         public ForkActivation[] TransitionActivations { get; private set; }
     }

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -108,12 +108,12 @@ namespace Nethermind.Specs.ChainSpecStyle
         public UInt256? TerminalTotalDifficulty { get; set; }
 
         /// <summary>
-        /// this feild will indicate the timestamp at which this EIP1153 will be enabled.
+        /// this field will indicate the timestamp at which this EIP1153 will be enabled.
         /// </summary>
         public ulong? Eip1153TransitionTimestamp { get; set; }
 
         /// <summary>
-        /// this feild will indicate the timestamp at which this EIP3651 will be enabled.
+        /// this field will indicate the timestamp at which this EIP3651 will be enabled.
         /// </summary>
         public ulong? Eip3651TransitionTimestamp { get; set; }
         public ulong? Eip3855TransitionTimestamp { get; set; }
@@ -143,5 +143,9 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// EOF Stack Validation
         /// </summary>
         public ulong? Eip5450TransitionTimestamp { get; set; }
+
+        public ulong? Eip4895TransitionTimestamp { get; set; }
+
+        public ulong? Eip4844TransitionTimestamp { get; set; }
     }
 }

@@ -79,17 +79,27 @@ namespace Nethermind.Core.Test.Encoding
                 return Rlp.OfEmptySequence;
             }
 
-            Rlp[] elements = new Rlp[chainWithFinalization ? 4 : 3];
-            elements[0] = Rlp.Encode(item.BlockHash);
-            elements[1] = Rlp.Encode(item.WasProcessed);
-            elements[2] = Rlp.Encode(item.TotalDifficulty);
+            int contentLength = 0;
+            contentLength += Rlp.LengthOf(item.BlockHash);
+            contentLength += Rlp.LengthOf(item.WasProcessed);
+            contentLength += Rlp.LengthOf(item.TotalDifficulty);
+            if (chainWithFinalization)
+            {
+                contentLength += Rlp.LengthOf(item.IsFinalized);
+            }
+
+            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+            stream.StartSequence(contentLength);
+            stream.Encode(item.BlockHash);
+            stream.Encode(item.WasProcessed);
+            stream.Encode(item.TotalDifficulty);
 
             if (chainWithFinalization)
             {
-                elements[3] = Rlp.Encode(item.IsFinalized);
+                stream.Encode(item.IsFinalized);
             }
 
-            return Rlp.Encode(elements);
+            return new Rlp(stream.Data);
         }
     }
 }
