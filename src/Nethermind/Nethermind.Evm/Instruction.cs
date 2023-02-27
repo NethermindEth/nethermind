@@ -285,6 +285,7 @@ namespace Nethermind.Evm
             Instruction.RJUMP => (0, 0, 2),
             Instruction.RJUMPI => (1, 0, 2),
             Instruction.RJUMPV => (1, 0, 4),
+            Instruction.DATAHASH => (1, 1, 0),
             >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, instruction - Instruction.PUSH0),
             >= Instruction.DUP1 and <= Instruction.DUP16 => (instruction - Instruction.DUP1 + 1, instruction - Instruction.DUP1 + 2, 0),
             >= Instruction.SWAP1 and <= Instruction.SWAP16 => (instruction - Instruction.SWAP1 + 2, instruction - Instruction.SWAP1 + 2, 0),
