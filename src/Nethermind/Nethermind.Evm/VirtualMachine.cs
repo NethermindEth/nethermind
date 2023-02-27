@@ -58,7 +58,7 @@ namespace Nethermind.Evm
 
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly ISpecProvider _specProvider;
-        private static readonly LruCache<KeccakKey, ICodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+        internal static readonly LruCache<KeccakKey, ICodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
         private readonly ILogger _logger;
         private IWorldState _worldState;
         private IStateProvider _state;
@@ -624,6 +624,11 @@ namespace Nethermind.Evm
             if (vmState.Env.CodeInfo.MachineCode.Length == 0)
             {
                 return CallResult.Empty(0);
+            }
+
+            if (EvmObjectFormat.IsEof(vmState.Env.CodeInfo.MachineCode) && vmState.Env.CodeInfo.EofVersion() == 0)
+            {
+                return CallResult.InvalidEofCodeException;
             }
 
 
@@ -2429,6 +2434,13 @@ namespace Nethermind.Evm
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
                             // if container is EOF init code must be EOF
 
+                            if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
+                            {
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
+                            }
+
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                             if (value > balance)
                             {
@@ -2467,14 +2479,6 @@ namespace Nethermind.Evm
                             }
 
                             _state.IncrementNonce(env.ExecutingAccount);
-
-                            if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
-                            {
-                                _txTracer.ReportOperationError(EvmExceptionType.InvalidCode);
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
 
                             Snapshot snapshot = _worldState.TakeSnapshot();
 
