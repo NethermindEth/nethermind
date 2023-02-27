@@ -135,10 +135,10 @@ namespace Nethermind.Evm.Tracing
         public void ReportAccountRead(Address address) =>
             _currentTxTracer.ReportAccountRead(address);
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after) =>
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) =>
             _currentTxTracer.ReportStorageChange(storageCell, before, after);
 
-        public void ReportStorageRead(StorageCell storageCell) =>
+        public void ReportStorageRead(in StorageCell storageCell) =>
             _currentTxTracer.ReportStorageRead(storageCell);
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) =>

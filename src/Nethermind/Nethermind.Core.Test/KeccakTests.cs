@@ -36,7 +36,7 @@ namespace Nethermind.Core.Test
 
             for (int i = 0; i < 1024 / 32; i += 32)
             {
-                keccakHash.Update(bytes, i, 32);
+                keccakHash.Update(bytes.AsSpan(i, 32));
             }
 
             Assert.AreEqual(result, keccakHash.Hash.ToHexString(true));

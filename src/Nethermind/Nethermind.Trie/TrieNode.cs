@@ -25,9 +25,7 @@ namespace Nethermind.Trie
 
         public int Id = Interlocked.Increment(ref _idCounter);
 #endif
-        public bool IsBoundaryProofNode { get; set; }
 
-        private TrieNode? _storageRoot;
         private static object _nullNode = new();
         private static TrieNodeDecoder _nodeDecoder = new();
         private static AccountDecoder _accountDecoder = new();
@@ -49,28 +47,79 @@ namespace Nethermind.Trie
         /// </summary>
         public bool IsSealed => !IsDirty;
 
-        public bool IsPersisted { get; set; }
-
         public Keccak? Keccak { get; internal set; }
 
-        public byte[]? FullRlp { get; internal set; }
+        public byte[]? FullRlp => _rlpStream?.Data;
 
-        public NodeType NodeType { get; private set; }
+        private long _value;
 
-        public bool IsDirty { get; private set; }
+        private const long NodeTypeMask = 0b11;
+        private const long DirtyMask = 0b100;
+        private const int DirtyShift = 2;
+        private const long PersistedMask = 0b1000;
+        private const int PersistedShift = 3;
+
+        private const int LastSeenShift = 8;
+
+        private const long IsBoundaryProofNodeMask = 0b10_0000;
+        private const int IsBoundaryProofNodeShift = 5;
+
+        // 6, 7 bits are free to use
+
+        public NodeType NodeType
+        {
+            get => (NodeType)(_value & NodeTypeMask);
+            private set => _value = (_value & ~NodeTypeMask) | (long)value;
+        }
+
+        public bool IsDirty
+        {
+            get => (_value & DirtyMask) > 0;
+            private set => _value = (_value & ~DirtyMask) | (value ? 1L << DirtyShift : 0L);
+        }
+
+        public bool IsPersisted
+        {
+            get => (_value & PersistedMask) > 0;
+            set => _value = (_value & ~PersistedMask) | (value ? (1L << PersistedShift) : 0L);
+        }
+
+        public bool IsBoundaryProofNode
+        {
+            get => (_value & IsBoundaryProofNodeMask) > 0;
+            set => _value = (_value & ~IsBoundaryProofNodeMask) | (value ? (1L << IsBoundaryProofNodeShift) : 0L);
+        }
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public long? LastSeen { get; set; }
+        public const long LastSeenNotSet = 0L;
 
-        public byte[]? Path => Key?.Path;
-
-        internal HexPrefix? Key
+        public long LastSeen
         {
-            get => _data?[0] as HexPrefix;
+            get => _value >> LastSeenShift;
+            set => _value = (_value & ((1L << LastSeenShift) - 1)) | (value << LastSeenShift);
+        }
+
+        private TrieNode? StorageRoot
+        {
+            get
+            {
+                return _data?[2] as TrieNode;
+            }
             set
+            {
+                if (_data is null)
+                    InitData();
+                _data![2] = value;
+            }
+        }
+
+        public byte[]? Key
+        {
+            get => _data?[0] as byte[];
+            internal set
             {
                 if (IsSealed)
                 {
@@ -185,7 +234,6 @@ namespace Nethermind.Trie
         public TrieNode(NodeType nodeType, byte[] rlp, bool isDirty = false)
         {
             NodeType = nodeType;
-            FullRlp = rlp;
             IsDirty = isDirty;
 
             _rlpStream = rlp.AsRlpStream();
@@ -232,19 +280,20 @@ namespace Nethermind.Trie
         {
             try
             {
+                byte[]? fullRlp = FullRlp;
                 if (NodeType == NodeType.Unknown)
                 {
-                    if (FullRlp is null)
+                    if (fullRlp is null)
                     {
                         if (Keccak is null)
                         {
                             throw new TrieException("Unable to resolve node without Keccak");
                         }
 
-                        FullRlp = tree.LoadRlp(Keccak);
+                        fullRlp = tree.LoadRlp(Keccak);
                         IsPersisted = true;
 
-                        if (FullRlp is null)
+                        if (fullRlp is null)
                         {
                             throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
                         }
@@ -255,17 +304,18 @@ namespace Nethermind.Trie
                     return;
                 }
 
-                _rlpStream = FullRlp.AsRlpStream();
+                _rlpStream = fullRlp.AsRlpStream();
                 if (_rlpStream is null)
                 {
-                    throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
+                    throw new InvalidAsynchronousStateException(
+                        $"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
                 }
 
                 Metrics.TreeNodeRlpDecodings++;
                 _rlpStream.ReadSequenceLength();
 
                 // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-                int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining(null, 3);
+                int numberOfItems = _rlpStream.PeekNumberOfItemsRemaining(null, 3);
 
                 if (numberOfItems > 2)
                 {
@@ -273,31 +323,31 @@ namespace Nethermind.Trie
                 }
                 else if (numberOfItems == 2)
                 {
-                    HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
-                    bool isExtension = key.IsExtension;
+                    (byte[] key, bool isLeaf) = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
 
                     // a hack to set internally and still verify attempts from the outside
                     // after the code is ready we should just add proper access control for methods from the outside and inside
                     bool isDirtyActual = IsDirty;
                     IsDirty = true;
 
-                    if (isExtension)
-                    {
-                        NodeType = NodeType.Extension;
-                        Key = key;
-                    }
-                    else
+                    if (isLeaf)
                     {
                         NodeType = NodeType.Leaf;
                         Key = key;
                         Value = _rlpStream.DecodeByteArray();
+                    }
+                    else
+                    {
+                        NodeType = NodeType.Extension;
+                        Key = key;
                     }
 
                     IsDirty = isDirtyActual;
                 }
                 else
                 {
-                    throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp?.ToHexString()})");
+                    throw new TrieException(
+                        $"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp?.ToHexString()})");
                 }
             }
             catch (RlpException rlpException)
@@ -315,19 +365,21 @@ namespace Nethermind.Trie
                 return;
             }
 
-            if (FullRlp is null || IsDirty)
+            byte[]? fullRlp = FullRlp;
+
+            if (fullRlp is null || IsDirty)
             {
-                FullRlp = RlpEncode(tree);
-                _rlpStream = FullRlp.AsRlpStream();
+                fullRlp = RlpEncode(tree);
+                _rlpStream = fullRlp.AsRlpStream();
             }
 
             /* nodes that are descendants of other nodes are stored inline
              * if their serialized length is less than Keccak length
              * */
-            if (FullRlp.Length >= 32 || isRoot)
+            if (fullRlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                Keccak = Keccak.Compute(FullRlp);
+                Keccak = Keccak.Compute(fullRlp);
             }
         }
 
@@ -464,7 +516,8 @@ namespace Nethermind.Trie
                 // we need to investigate this case when it happens again
                 bool isKeccakCalculated = Keccak is not null && FullRlp is not null;
                 bool isKeccakCorrect = isKeccakCalculated && Keccak == Keccak.Compute(FullRlp);
-                throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
+                throw new TrieException(
+                    $"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
             }
 
             // pruning trick so we never store long persisted paths
@@ -508,21 +561,17 @@ namespace Nethermind.Trie
                 Keccak is null
                     ? MemorySizes.RefSize
                     : MemorySizes.RefSize + Keccak.MemorySize;
-            long fullRlpSize =
-                MemorySizes.RefSize +
-                (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
             long rlpStreamSize =
-                MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0)
-                - (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
+                MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0);
             long dataSize =
                 MemorySizes.RefSize +
                 (_data is null
                     ? 0
                     : MemorySizes.Align(_data.Length * MemorySizes.RefSize + MemorySizes.ArrayOverhead));
             int objectOverhead = MemorySizes.SmallObjectOverhead - MemorySizes.SmallObjectFreeDataSize;
-            int isDirtySize = 1;
-            int nodeTypeSize = 1;
-            /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
+
+            // _value
+            int valuesOverhead = 8;
 
             for (int i = 0; i < (_data?.Length ?? 0); i++)
             {
@@ -551,17 +600,15 @@ namespace Nethermind.Trie
             }
 
             long unaligned = keccakSize +
-                             fullRlpSize +
                              rlpStreamSize +
                              dataSize +
-                             isDirtySize +
-                             nodeTypeSize +
+                             valuesOverhead +
                              objectOverhead;
 
             return MemorySizes.Align(unaligned);
         }
 
-        public TrieNode CloneWithChangedKey(HexPrefix key)
+        public TrieNode CloneWithChangedKey(byte[] key)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -582,7 +629,6 @@ namespace Nethermind.Trie
 
             if (FullRlp is not null)
             {
-                trieNode.FullRlp = FullRlp;
                 trieNode._rlpStream = FullRlp.AsRlpStream();
             }
 
@@ -596,7 +642,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(HexPrefix key, byte[]? changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(byte[] key, byte[]? changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -652,10 +698,10 @@ namespace Nethermind.Trie
             }
             else
             {
-                TrieNode? storageRoot = _storageRoot;
+                TrieNode? storageRoot = StorageRoot;
                 if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, out storageRoot)))
                 {
-                    if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
+                    if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {storageRoot} of {this}");
                     storageRoot!.CallRecursively(action, resolver, skipPersisted, logger);
                 }
             }
@@ -703,9 +749,9 @@ namespace Nethermind.Trie
                     }
                 }
             }
-            else if (_storageRoot?.IsPersisted == true)
+            else if (StorageRoot?.IsPersisted == true)
             {
-                _storageRoot = null;
+                StorageRoot = null;
             }
 
             // else
@@ -721,7 +767,7 @@ namespace Nethermind.Trie
         private bool TryResolveStorageRoot(ITrieNodeResolver resolver, out TrieNode? storageRoot)
         {
             bool hasStorage = false;
-            storageRoot = _storageRoot;
+            storageRoot = StorageRoot;
 
             if (IsLeaf)
             {
@@ -735,7 +781,7 @@ namespace Nethermind.Trie
                     if (storageRootKey != Keccak.EmptyTreeHash)
                     {
                         hasStorage = true;
-                        _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey);
+                        StorageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey);
                     }
                 }
             }
@@ -754,6 +800,12 @@ namespace Nethermind.Trie
                             $"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
                     case NodeType.Branch:
                         _data = new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount];
+                        break;
+                    case NodeType.Leaf:
+                        // _data[0] - path,
+                        // _data[1] - value,
+                        // _data[2] -> StorageRoot
+                        _data = new object[3];
                         break;
                     default:
                         _data = new object[2];

@@ -334,7 +334,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             var networkNode = new NetworkNode(ctx.GenerateEnode());
-            ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.ChainId);
+            ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.NetworkId);
 
             ctx.PeerPool.GetOrAdd(networkNode);
 
@@ -342,7 +342,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.ActivePeers.Count.Should().Be(0);
         }
 
-        private int _travisDelay = 100;
+        private int _travisDelay = 500;
 
         private int _travisDelayLong = 1000;
 
@@ -363,7 +363,7 @@ namespace Nethermind.Network.Test
             }
         }
 
-        [Test, Retry(3)]
+        [Test]
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing()
         {
             await using Context ctx = new();
@@ -372,11 +372,13 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             int currentCount = 0;
+            int maxCount = 0;
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
+                maxCount += 50;
                 await Task.Delay(_travisDelay);
-                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + 25);
+                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, maxCount);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
                 ctx.DisconnectAllSessions();

@@ -103,4 +103,22 @@ public class InvalidBlockInterceptorTest
         _tracker.DidNotReceive().OnInvalidBlock(block.Hash, block.ParentHash);
     }
 
+    [Test]
+    public void TestBlockWithIncorrectWithdrawalsShouldNotGetTracked()
+    {
+        Block block = Build.A.Block
+            .WithWithdrawals(10)
+            .TestObject;
+
+        block = new Block(block.Header, block.Body.WithChangedWithdrawals(
+            block.Withdrawals.Take(8).ToArray()
+        ));
+
+        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+
+        _tracker.DidNotReceive().SetChildParent(block.Hash, block.ParentHash);
+        _tracker.DidNotReceive().OnInvalidBlock(block.Hash, block.ParentHash);
+    }
+
 }

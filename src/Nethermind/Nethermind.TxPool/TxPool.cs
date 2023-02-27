@@ -28,11 +28,9 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public partial class TxPool : ITxPool, IDisposable
+    public class TxPool : ITxPool, IDisposable
     {
         private readonly object _locker = new();
-
-        private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new();
 
         private readonly List<IIncomingTxFilter> _filterPipeline = new();
 
@@ -88,7 +86,6 @@ namespace Nethermind.TxPool
             _specProvider = _headInfo.SpecProvider;
             _ecdsa = ecdsa;
 
-
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             AddNodeInfoEntryForTxPool();
 
@@ -98,15 +95,14 @@ namespace Nethermind.TxPool
             _headInfo.HeadChanged += OnHeadChange;
 
             _filterPipeline.Add(new NullHashTxFilter());
-            _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache));
+            _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache, _logger));
             _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
             _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
             _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
             _filterPipeline.Add(new LowNonceFilter(_logger)); // has to be after UnknownSenderFilter as it uses sender
             _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
-            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _transactions, _logger));
+            _filterPipeline.Add(new TooExpensiveTxFilter(_transactions, _logger));
             _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, logManager));
-            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_nonces, _logger));
             if (incomingTxFilter is not null)
             {
                 _filterPipeline.Add(incomingTxFilter);
@@ -459,17 +455,6 @@ namespace Nethermind.TxPool
                     return false;
                 if (hasBeenRemoved)
                 {
-                    Address? address = transaction.SenderAddress;
-
-                    if (address != null && _nonces.TryGetValue(address, out AddressNonces? addressNonces))
-                    {
-                        addressNonces.Nonces.TryRemove(transaction.Nonce, out _);
-                        if (addressNonces.Nonces.IsEmpty)
-                        {
-                            _nonces.Remove(address, out _);
-                        }
-                    }
-
                     RemovedPending?.Invoke(this, new TxEventArgs(transaction));
                 }
 
@@ -499,23 +484,6 @@ namespace Nethermind.TxPool
             }
 
             return transaction is not null;
-        }
-
-        // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
-        public UInt256 ReserveOwnTransactionNonce(Address address)
-        {
-            UInt256 currentNonce = 0;
-            _nonces.AddOrUpdate(address, a =>
-            {
-                currentNonce = _accounts.GetAccount(address).Nonce;
-                return new AddressNonces(currentNonce);
-            }, (a, n) =>
-            {
-                currentNonce = n.ReserveNonce().Value;
-                return n;
-            });
-
-            return currentNonce;
         }
 
         public UInt256 GetLatestPendingNonce(Address address)
@@ -579,7 +547,7 @@ namespace Nethermind.TxPool
         private static void AddNodeInfoEntryForTxPool()
         {
             ThisNodeInfo.AddInfo("Mem est tx   :",
-                $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB"
+                $"{(LruCache<KeccakKey, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB"
                     .PadLeft(8));
         }
     }

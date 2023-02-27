@@ -10,7 +10,7 @@ namespace Nethermind.Blockchain.Test.Rewards
 {
     public class NoBlockRewardsTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void No_rewards()
         {
             Block block = Build.A.Block.WithNumber(10).WithUncles(Build.A.Block.WithNumber(9).TestObject).TestObject;

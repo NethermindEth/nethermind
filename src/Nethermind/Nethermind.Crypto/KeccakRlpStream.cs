@@ -10,7 +10,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto
 {
-    public class KeccakRlpStream : RlpStream
+    public sealed class KeccakRlpStream : RlpStream
     {
         private readonly KeccakHash _keccakHash;
 
@@ -27,17 +27,17 @@ namespace Nethermind.Crypto
 
         public override void Write(Span<byte> bytesToWrite)
         {
-            _keccakHash.Update(bytesToWrite, 0, bytesToWrite.Length);
+            _keccakHash.Update(bytesToWrite);
         }
 
         public override void Write(IReadOnlyList<byte> bytesToWrite)
         {
-            _keccakHash.Update(bytesToWrite.ToArray(), 0, bytesToWrite.Count);
+            _keccakHash.Update(bytesToWrite.ToArray());
         }
 
         public override void WriteByte(byte byteToWrite)
         {
-            _keccakHash.Update(MemoryMarshal.CreateSpan(ref byteToWrite, 1), 0, 1);
+            _keccakHash.Update(MemoryMarshal.CreateSpan(ref byteToWrite, 1));
         }
 
         protected override void WriteZero(int length)

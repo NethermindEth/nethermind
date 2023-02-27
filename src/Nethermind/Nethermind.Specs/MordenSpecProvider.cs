@@ -21,6 +21,7 @@ namespace Nethermind.Specs
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
+        public ulong TimestampFork => ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
@@ -33,7 +34,8 @@ namespace Nethermind.Specs
             };
         public long? DaoBlockNumber => null;
 
-        public ulong ChainId => 2;
+        public ulong NetworkId => BlockchainIds.Morden;
+        public ulong ChainId => NetworkId;
         public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0 };
     }
 }

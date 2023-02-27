@@ -108,7 +108,7 @@ namespace Nethermind.JsonRpc
 
         [ConfigItem(
             Description = "Defines method names of Json RPC service requests to NOT log. Example: {\"eth_blockNumber\"} will not log \"eth_blockNumber\" requests.",
-            DefaultValue = "[engine_newPayloadV1, engine_forkchoiceUpdatedV1]")]
+            DefaultValue = "[engine_newPayloadV1, engine_newPayloadV2, engine_forkchoiceUpdatedV1, engine_forkchoiceUpdatedV2]")]
         public string[]? MethodsLoggingFiltering { get; set; }
 
         [ConfigItem(
@@ -128,7 +128,12 @@ namespace Nethermind.JsonRpc
 
         [ConfigItem(
             Description = "Limit batch size for batched json rpc call",
-            DefaultValue = "100")]
+            DefaultValue = "1024")]
         int MaxBatchSize { get; set; }
+
+        [ConfigItem(
+            Description = "Max response body size when using batch requests, subsequent requests are trimmed",
+            DefaultValue = "30000000")]
+        long? MaxBatchResponseBodySize { get; set; }
     }
 }

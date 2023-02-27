@@ -33,13 +33,14 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public byte Improved()
         {
-            return HexPrefix.FromBytes(_a).Path[0];
+
+            return HexPrefix.FromBytes(_a).key[0];
         }
 
         [Benchmark(Baseline = true)]
         public byte Current()
         {
-            return HexPrefix.FromBytes(_a).Path[0];
+            return HexPrefix.FromBytes(_a).key[0];
         }
     }
 }

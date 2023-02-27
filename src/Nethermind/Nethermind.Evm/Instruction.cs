@@ -69,6 +69,7 @@ namespace Nethermind.Evm
         CHAINID = 0x46, // ChainIdOpcodeEnabled
         SELFBALANCE = 0x47, // SelfBalanceOpcodeEnabled
         BASEFEE = 0x48, // BaseFeeEnabled
+        DATAHASH = 0x49,
 
         POP = 0x50,
         MLOAD = 0x51,
@@ -311,7 +312,7 @@ namespace Nethermind.Evm
             return instruction switch
             {
                 Instruction.PREVRANDAO => isPostMerge ? "PREVRANDAO" : "DIFFICULTY",
-                Instruction.RJUMP => spec.StaticRelativeJumpsEnabled ? "RJUMP" : "BEGINSUB",
+                Instruction.RJUMP => !spec.StaticRelativeJumpsEnabled ? "BEGINSUB" : "RJUMP",
                 Instruction.RJUMPI => spec.StaticRelativeJumpsEnabled ? "RJUMPI" : "RETURNSUB",
                 Instruction.RJUMPV => spec.StaticRelativeJumpsEnabled ? "RJUMPV" : "JUMPSUB",
                 Instruction.JUMPDEST => spec.FunctionSections ? "NOP" : "JUMPDEST",

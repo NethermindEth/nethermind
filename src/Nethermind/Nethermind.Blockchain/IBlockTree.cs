@@ -16,7 +16,12 @@ namespace Nethermind.Blockchain
     public interface IBlockTree : IBlockFinder
     {
         /// <summary>
-        /// Chain ID that identifies the chain among the public and private chains (different IDs for mainnet, ETH classic, etc.)
+        /// Network ID that identifies the chain among the public and private chains (different IDs for mainnet, ETH classic, etc.)
+        /// </summary>
+        ulong NetworkId { get; }
+
+        /// <summary>
+        /// Additional identifier of the chain to mitigate risks described in 155
         /// </summary>
         ulong ChainId { get; }
 
@@ -139,8 +144,6 @@ namespace Nethermind.Blockchain
         bool CanAcceptNewBlocks { get; }
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
-
-        UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize, UInt256? startingTotalDifficulty = null);
 
         (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Keccak blockHash);
 

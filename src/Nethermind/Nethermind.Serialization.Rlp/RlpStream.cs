@@ -17,8 +17,10 @@ namespace Nethermind.Serialization.Rlp
     {
         private static readonly HeaderDecoder _headerDecoder = new();
         private static readonly BlockDecoder _blockDecoder = new();
+        private static readonly BlockInfoDecoder _blockInfoDecoder = new();
         private static readonly TxDecoder _txDecoder = new();
         private static readonly ReceiptMessageDecoder _receiptDecoder = new();
+        private static readonly WithdrawalDecoder _withdrawalDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
         protected RlpStream()
@@ -59,9 +61,16 @@ namespace Nethermind.Serialization.Rlp
             _receiptDecoder.Encode(this, value);
         }
 
+        public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
+
         public void Encode(LogEntry value)
         {
             _logEntryDecoder.Encode(this, value);
+        }
+
+        public void Encode(BlockInfo value)
+        {
+            _blockInfoDecoder.Encode(this, value);
         }
 
         public void StartByteArray(int contentLength, bool firstByteLessThan128)
@@ -206,6 +215,24 @@ namespace Nethermind.Serialization.Rlp
                 var length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
                 for (int i = 0; i < keccaks.Length; i++)
+                {
+                    Encode(keccaks[i]);
+                }
+            }
+        }
+
+        public void Encode(IReadOnlyList<Keccak> keccaks)
+        {
+            if (keccaks is null)
+            {
+                EncodeNullObject();
+            }
+            else
+            {
+                var length = Rlp.LengthOf(keccaks);
+                StartSequence(length);
+                var count = keccaks.Count;
+                for (int i = 0; i < count; i++)
                 {
                     Encode(keccaks[i]);
                 }
@@ -510,7 +537,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public int ReadNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
+        public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
         {
             int positionStored = Position;
             int numberOfItems = 0;
@@ -898,7 +925,7 @@ namespace Nethermind.Serialization.Rlp
             T defaultElement = default(T))
         {
             int positionCheck = ReadSequenceLength() + Position;
-            int count = ReadNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
             T[] result = new T[count];
             for (int i = 0; i < result.Length; i++)
             {

@@ -30,6 +30,7 @@ namespace Nethermind.Specs
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
+        public ulong TimestampFork { get; set; } = ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty { get; set; }
 
         public IReleaseSpec GenesisSpec { get; set; }
@@ -39,7 +40,12 @@ namespace Nethermind.Specs
         public IReleaseSpec SpecToReturn { get; set; }
 
         public long? DaoBlockNumber { get; set; }
-        public ulong ChainId { get; set; }
+        public ulong? _networkId;
+        public ulong NetworkId { get { return _networkId ?? TestBlockchainIds.NetworkId; } set { _networkId = value; } }
+
+        public ulong? _chainId;
+        public ulong ChainId { get { return _chainId ?? TestBlockchainIds.ChainId; } set { _chainId = value; } }
+
         public ForkActivation[] TransitionActivations { get; set; } = new ForkActivation[] { (ForkActivation)0 };
         public bool AllowTestChainOverride { get; set; } = true;
 

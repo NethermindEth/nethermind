@@ -106,6 +106,8 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.SELFBALANCE);
         public static Prepare BASEFEE(this Prepare @this)
             => @this.Op(Instruction.BASEFEE);
+        public static Prepare DATAHASH(this Prepare @this)
+            => @this.Op(Instruction.DATAHASH);
         public static Prepare POP(this Prepare @this)
             => @this.Op(Instruction.POP);
         public static Prepare PC(this Prepare @this)

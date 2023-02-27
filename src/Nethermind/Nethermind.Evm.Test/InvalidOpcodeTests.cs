@@ -110,7 +110,8 @@ namespace Nethermind.Evm.Test
                 new Instruction[]
                 {
                     Instruction.TSTORE,
-                    Instruction.TLOAD
+                    Instruction.TLOAD,
+                    Instruction.DATAHASH,
                 }
             ).ToArray();
 

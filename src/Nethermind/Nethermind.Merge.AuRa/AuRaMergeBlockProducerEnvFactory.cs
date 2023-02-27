@@ -1,25 +1,22 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
-using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -83,7 +80,10 @@ namespace Nethermind.Merge.AuRa
                 readOnlyTxProcessingEnv.StorageProvider,
                 receiptStorage,
                 logManager,
-                _blockTree);
+                _blockTree,
+                new BlockProductionWithdrawalProcessor(
+                    new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager))
+                );
         }
 
         protected override TxPoolTxSource CreateTxPoolTxSource(

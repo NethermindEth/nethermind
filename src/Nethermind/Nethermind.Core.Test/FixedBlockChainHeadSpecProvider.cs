@@ -14,6 +14,7 @@ namespace Nethermind.Core.Test
         }
 
         public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
+        public ulong TimestampFork => _specProvider.TimestampFork;
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
         private readonly ISpecProvider _specProvider;
         private readonly long _fixedBlock;
@@ -32,6 +33,7 @@ namespace Nethermind.Core.Test
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
+        public ulong NetworkId => _specProvider.NetworkId;
         public ulong ChainId => _specProvider.ChainId;
 
         public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;
