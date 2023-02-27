@@ -11,7 +11,7 @@ namespace Nethermind.Core.Extensions
     {
         public static string ToHexString(this int @this)
         {
-            return $"0x{@this:X}";
+            return $"0x{@this:x}";
         }
 
         public static UInt256 Ether(this int @this)

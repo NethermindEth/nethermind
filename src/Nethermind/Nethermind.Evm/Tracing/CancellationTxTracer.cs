@@ -250,7 +250,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void SetOperationMemory(List<string> memoryTrace)
+        public void SetOperationMemory(IEnumerable<string> memoryTrace)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingMemory)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -31,5 +32,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         Task<bool> MigrateReceipts(long blockNumber);
         void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
         SyncReportSymmary GetCurrentSyncStage();
+        IEnumerable<string> TraceBlockToFile(Keccak blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     }
 }

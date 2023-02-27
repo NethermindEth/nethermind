@@ -13,8 +13,6 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly Keccak? _txHash;
 
-        private bool IsTracingEntireBlock => _txHash is null;
-
         protected BlockTracerBase()
         {
             TxTraces = new ResettableList<TTrace>();
@@ -55,22 +53,25 @@ namespace Nethermind.Evm.Tracing
 
         void IBlockTracer.EndTxTrace()
         {
-            if (CurrentTxTracer is not null)
-            {
-                TxTraces.Add(OnEnd(CurrentTxTracer));
-                CurrentTxTracer = null;
-            }
+            if (CurrentTxTracer is null)
+                return;
+
+            AddTrace(OnEnd(CurrentTxTracer));
+
+            CurrentTxTracer = null;
         }
 
         public virtual void EndBlockTrace() { }
 
         protected virtual bool ShouldTraceTx(Transaction? tx)
         {
-            return IsTracingEntireBlock || tx?.Hash == _txHash;
+            return _txHash is null || tx?.Hash == _txHash;
         }
 
         protected ResettableList<TTrace> TxTraces { get; }
 
         public IReadOnlyCollection<TTrace> BuildResult() => TxTraces;
+
+        protected virtual void AddTrace(TTrace trace) => TxTraces.Add(trace);
     }
 }

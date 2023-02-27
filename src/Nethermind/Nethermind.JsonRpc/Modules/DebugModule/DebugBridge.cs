@@ -172,5 +172,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 CurrentStage = _syncModeSelector.Current.ToString()
             };
         }
+
+        public IEnumerable<string> TraceBlockToFile(
+            Keccak blockHash,
+            CancellationToken cancellationToken,
+            GethTraceOptions? gethTraceOptions = null) =>
+            _tracer.TraceBlockToFile(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }
 }

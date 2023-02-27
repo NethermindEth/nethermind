@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
@@ -88,5 +89,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         [JsonRpcMethod(Description = "Retrives Nethermind Sync Stage, With extra Metadata")]
         Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage();
+
+        [JsonRpcMethod(Description = "Writes to a file the full stack trace of all invoked opcodes of the transaction specified (or all transactions if not specified) that was included in the block specified. The parent of the block must be present or it will fail.",
+            IsImplemented = true, IsSharable = false)]
+        ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Keccak blockHash, GethTraceOptions options = null);
     }
 }

@@ -345,7 +345,7 @@ namespace Nethermind.Evm.Test
 
             long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
 
-            GethLikeTxTracer gethTracer = new(GethTraceOptions.Default);
+            GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
             TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 
@@ -389,7 +389,7 @@ namespace Nethermind.Evm.Test
             _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
 
             EstimateGasTracer tracer = new();
-            GethLikeTxTracer gethTracer = new(GethTraceOptions.Default);
+            GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
             _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
             TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
@@ -414,7 +414,7 @@ namespace Nethermind.Evm.Test
             tx.GasLimit = estimate;
             TestContext.WriteLine(tx.GasLimit);
 
-            GethLikeTxTracer gethTracer = new(GethTraceOptions.Default);
+            GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
             string traceEnoughGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
 
@@ -425,7 +425,7 @@ namespace Nethermind.Evm.Test
             tx.GasLimit = Math.Min(estimate - 1, estimate * 63 / 64);
             TestContext.WriteLine(tx.GasLimit);
 
-            gethTracer = new GethLikeTxTracer(GethTraceOptions.Default);
+            gethTracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
 
             string traceOutOfGas = new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true);
@@ -454,7 +454,7 @@ namespace Nethermind.Evm.Test
             IReleaseSpec releaseSpec = MuirGlacier.Instance;
             long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
-            GethLikeTxTracer gethTracer = new(GethTraceOptions.Default);
+            GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
             TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 
@@ -498,7 +498,7 @@ namespace Nethermind.Evm.Test
             IReleaseSpec releaseSpec = MuirGlacier.Instance;
             long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
-            GethLikeTxTracer gethTracer = new(GethTraceOptions.Default);
+            GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
             _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
             TestContext.WriteLine(new EthereumJsonSerializer().Serialize(gethTracer.BuildResult(), true));
 

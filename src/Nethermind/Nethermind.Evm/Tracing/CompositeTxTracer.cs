@@ -233,7 +233,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void SetOperationMemory(List<string> memoryTrace)
+        public void SetOperationMemory(IEnumerable<string> memoryTrace)
         {
             for (int index = 0; index < _txTracers.Count; index++)
             {

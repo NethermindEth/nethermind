@@ -201,10 +201,9 @@ namespace Nethermind.Evm
             return 0L;
         }
 
-        public List<string> GetTrace()
+        public IEnumerable<string> GetTrace()
         {
             int traceLocation = 0;
-            List<string> memoryTrace = new();
 
             while ((ulong)traceLocation < Size)
             {
@@ -212,17 +211,16 @@ namespace Nethermind.Evm
                 if (sizeAvailable > 0)
                 {
                     Span<byte> bytes = _memory.AsSpan(traceLocation, sizeAvailable);
-                    memoryTrace.Add(bytes.ToHexString());
+
+                    yield return bytes.ToHexString();
                 }
                 else // Memory might not be initialized
                 {
-                    memoryTrace.Add(Bytes.Zero32.ToHexString());
+                    yield return Bytes.Zero32.ToHexString();
                 }
 
                 traceLocation += WordSize;
             }
-
-            return memoryTrace;
         }
 
         public void Dispose()

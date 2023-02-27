@@ -132,9 +132,9 @@ namespace Nethermind.Core.Extensions
 
         public static string ToHexString(this long value, bool skipLeadingZeros)
         {
-            if (value == UInt256.Zero)
+            if (value == 0L)
             {
-                return "0x";
+                return "0x0";
             }
 
             byte[] bytes = GetByteBuffer64();
@@ -144,9 +144,9 @@ namespace Nethermind.Core.Extensions
 
         public static string ToHexString(this ulong value, bool skipLeadingZeros)
         {
-            if (value == UInt256.Zero)
+            if (value == 0UL)
             {
-                return "0x";
+                return "0x0";
             }
 
             byte[] bytes = GetByteBuffer64();
@@ -164,7 +164,7 @@ namespace Nethermind.Core.Extensions
             {
                 if (value == UInt256.Zero)
                 {
-                    return "0x";
+                    return "0x0";
                 }
 
                 if (value == UInt256.One)

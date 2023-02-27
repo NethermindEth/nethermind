@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportStackPush(in ReadOnlySpan<byte> stackItem) => throw new OperationCanceledException(ErrorMessage);
 
-        public void SetOperationMemory(List<string> memoryTrace) => throw new OperationCanceledException(ErrorMessage);
+        public void SetOperationMemory(IEnumerable<string> memoryTrace) => throw new OperationCanceledException(ErrorMessage);
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) => throw new OperationCanceledException(ErrorMessage);
 

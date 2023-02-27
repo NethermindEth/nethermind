@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void SetOperationMemory(List<string> memoryTrace)
+        public void SetOperationMemory(IEnumerable<string> memoryTrace)
         {
         }
 

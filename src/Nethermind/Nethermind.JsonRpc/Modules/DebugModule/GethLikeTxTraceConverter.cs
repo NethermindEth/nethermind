@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Modules.Trace;
 using Newtonsoft.Json;
@@ -11,9 +12,16 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
     {
+        public override GethLikeTxTrace ReadJson(
+            JsonReader reader,
+            Type objectType,
+            GethLikeTxTrace existingValue,
+            bool hasExistingValue,
+            JsonSerializer serializer) => throw new NotSupportedException();
+
         public override void WriteJson(JsonWriter writer, GethLikeTxTrace value, JsonSerializer serializer)
         {
-            if (value is null)
+            if (value == null)
             {
                 writer.WriteNull();
                 return;
@@ -31,14 +39,14 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             writer.WriteEndObject();
         }
 
-        private static void WriteEntries(JsonWriter writer, List<GethTxTraceEntry> entries, JsonSerializer serializer)
+        private static void WriteEntries(JsonWriter writer, List<GethTxTraceEntry> entries, JsonSerializer _)
         {
             writer.WriteStartArray();
             foreach (GethTxTraceEntry entry in entries)
             {
                 writer.WriteStartObject();
-                writer.WriteProperty("pc", entry.Pc);
-                writer.WriteProperty("op", entry.Operation);
+                writer.WriteProperty("pc", entry.ProgramCounter);
+                writer.WriteProperty("op", entry.Opcode);
                 writer.WriteProperty("gas", entry.Gas);
                 writer.WriteProperty("gasCost", entry.GasCost);
                 writer.WriteProperty("depth", entry.Depth);
@@ -52,32 +60,34 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
                 writer.WriteEndArray();
 
-                writer.WritePropertyName("memory");
-                writer.WriteStartArray();
-                foreach (string memory in entry.Memory)
+                if (entry.Memory != null)
                 {
-                    writer.WriteValue(memory);
-                }
-                writer.WriteEndArray();
-
-                writer.WritePropertyName("storage");
-                writer.WriteStartObject();
-                foreach ((string storageIndex, string storageValue) in entry.SortedStorage)
-                {
-                    writer.WriteProperty(storageIndex, storageValue);
+                    writer.WritePropertyName("memory");
+                    writer.WriteStartArray();
+                    foreach (string memory in entry.Memory)
+                    {
+                        writer.WriteValue(memory);
+                    }
+                    writer.WriteEndArray();
                 }
 
-                writer.WriteEndObject();
+                if (entry.Storage != null)
+                {
+                    writer.WritePropertyName("storage");
+                    writer.WriteStartObject();
+
+                    foreach (var item in entry.Storage.OrderBy(s => s.Key))
+                    {
+                        writer.WriteProperty(item.Key, item.Value);
+                    }
+
+                    writer.WriteEndObject();
+                }
 
                 writer.WriteEndObject();
             }
 
             writer.WriteEndArray();
-        }
-
-        public override GethLikeTxTrace ReadJson(JsonReader reader, Type objectType, GethLikeTxTrace existingValue, bool hasExistingValue, JsonSerializer serializer)
-        {
-            throw new NotSupportedException();
         }
     }
 }

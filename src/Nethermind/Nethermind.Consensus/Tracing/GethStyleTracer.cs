@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
@@ -49,7 +50,7 @@ namespace Nethermind.Consensus.Tracing
 
         public GethLikeTxTrace? Trace(Rlp block, Keccak txHash, GethTraceOptions options, CancellationToken cancellationToken)
         {
-            return TraceBlock(GetBlockToTrace(block), options, cancellationToken, txHash).FirstOrDefault();
+            return TraceBlock(GetBlockToTrace(block), options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
         }
 
         public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
@@ -105,7 +106,7 @@ namespace Nethermind.Consensus.Tracing
             if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
             block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-            GethLikeBlockTracer blockTracer = new(tx.Hash, options);
+            GethLikeBlockMemoryTracer blockTracer = new(tx.Hash, options);
             _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
             return blockTracer.BuildResult().SingleOrDefault();
         }
@@ -121,18 +122,42 @@ namespace Nethermind.Consensus.Tracing
             return TraceBlock(GetBlockToTrace(blockRlp), options, cancellationToken);
         }
 
-        private GethLikeTxTrace? Trace(Block block, Keccak? txHash, CancellationToken cancellationToken, GethTraceOptions options)
+        public IEnumerable<string> TraceBlockToFile(Keccak blockHash, GethTraceOptions options, CancellationToken cancellationToken)
         {
-            if (txHash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
+            ArgumentNullException.ThrowIfNull(blockHash);
+            ArgumentNullException.ThrowIfNull(options);
 
-            GethLikeBlockTracer listener = new(txHash, options);
-            _processor.Process(block, ProcessingOptions.Trace, listener.WithCancellation(cancellationToken));
-            return listener.BuildResult().SingleOrDefault();
+            var block = _blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException("Only historical blocks");
+
+            if (!block.IsGenesis)
+            {
+                var parent = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+
+                if (parent?.Hash is null)
+                    throw new InvalidOperationException("Cannot trace blocks with invalid parents");
+            }
+
+            var tracer = new GethLikeBlockFileTracer(block, options);
+
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+
+            return tracer.FileNames;
         }
 
-        private GethLikeTxTrace[] TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken, Keccak? txHash = null)
+        private GethLikeTxTrace? Trace(Block block, Keccak? txHash, CancellationToken cancellationToken, GethTraceOptions options)
         {
-            if (block is null) throw new InvalidOperationException("Only canonical, historical blocks supported");
+            ArgumentNullException.ThrowIfNull(txHash);
+
+            var tracer = new GethLikeBlockMemoryTracer(options with { TxHash = txHash });
+
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+
+            return tracer.BuildResult().SingleOrDefault();
+        }
+
+        private GethLikeTxTrace[] TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(block);
 
             if (!block.IsGenesis)
             {
@@ -145,9 +170,9 @@ namespace Nethermind.Consensus.Tracing
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
-            GethLikeBlockTracer listener = txHash is null ? new GethLikeBlockTracer(options) : new GethLikeBlockTracer(txHash, options);
-            _processor.Process(block, ProcessingOptions.Trace, listener.WithCancellation(cancellationToken));
-            return listener.BuildResult().ToArray();
+            GethLikeBlockMemoryTracer tracer = new(options);
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+            return tracer.BuildResult().ToArray();
         }
 
         private static Block GetBlockToTrace(Rlp blockRlp)

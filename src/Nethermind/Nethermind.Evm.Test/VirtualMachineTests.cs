@@ -44,8 +44,8 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(0, entry.Memory.Count, nameof(entry.Memory));
             Assert.AreEqual(1, entry.Stack.Count, nameof(entry.Stack));
             Assert.AreEqual(1, trace.Entries[4].Storage.Count, nameof(entry.Storage));
-            Assert.AreEqual(2, entry.Pc, nameof(entry.Pc));
-            Assert.AreEqual("PUSH1", entry.Operation, nameof(entry.Operation));
+            Assert.AreEqual(2, entry.ProgramCounter, nameof(entry.ProgramCounter));
+            Assert.AreEqual("PUSH1", entry.Opcode, nameof(entry.Opcode));
         }
 
         [Test]
@@ -137,8 +137,8 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(0, entry.Memory.Count, nameof(entry.Memory));
             Assert.AreEqual(1, entry.Stack.Count, nameof(entry.Stack));
             Assert.AreEqual(1, trace.Entries[4].Storage.Count, nameof(entry.Storage));
-            Assert.AreEqual(2, entry.Pc, nameof(entry.Pc));
-            Assert.AreEqual("PUSH1", entry.Operation, nameof(entry.Operation));
+            Assert.AreEqual(2, entry.ProgramCounter, nameof(entry.ProgramCounter));
+            Assert.AreEqual("PUSH1", entry.Opcode, nameof(entry.Opcode));
         }
 
         [Test]

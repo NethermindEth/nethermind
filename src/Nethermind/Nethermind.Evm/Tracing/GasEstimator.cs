@@ -257,7 +257,7 @@ namespace Nethermind.Evm.Tracing
             {
             }
 
-            public void SetOperationMemory(List<string> memoryTrace)
+            public void SetOperationMemory(IEnumerable<string> memoryTrace)
             {
             }
 

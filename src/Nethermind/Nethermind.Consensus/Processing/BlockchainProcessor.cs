@@ -478,7 +478,7 @@ namespace Nethermind.Consensus.Processing
                 TraceFailingBranch(
                     processingBranch,
                     options,
-                    new GethLikeBlockTracer(GethTraceOptions.Default),
+                    new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
                     DumpOptions.Geth);
 
                 processedBlocks = null;

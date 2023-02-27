@@ -202,7 +202,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
         }
 
-        public void SetOperationMemory(List<string> memoryTrace)
+        public void SetOperationMemory(IEnumerable<string> memoryTrace)
         {
             throw new NotImplementedException();
         }

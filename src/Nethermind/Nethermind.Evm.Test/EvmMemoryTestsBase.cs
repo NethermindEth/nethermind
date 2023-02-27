@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -26,8 +27,8 @@ namespace Nethermind.Evm.Test
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = UInt256.Zero;
             memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
-            List<string> trace = memory.GetTrace();
-            Assert.AreEqual(1, trace.Count);
+            var trace = memory.GetTrace();
+            Assert.AreEqual(1, trace.Count());
         }
 
         [Test]
@@ -36,8 +37,8 @@ namespace Nethermind.Evm.Test
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = EvmPooledMemory.WordSize;
             memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
-            List<string> trace = memory.GetTrace();
-            Assert.AreEqual(2, trace.Count);
+            var trace = memory.GetTrace();
+            Assert.AreEqual(2, trace.Count());
         }
 
         [Test]
@@ -47,8 +48,8 @@ namespace Nethermind.Evm.Test
             UInt256 dest = EvmPooledMemory.WordSize;
             memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
             memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
-            List<string> trace = memory.GetTrace();
-            Assert.AreEqual(2, trace.Count);
+            var trace = memory.GetTrace();
+            Assert.AreEqual(2, trace.Count());
         }
 
         [Test]
@@ -57,8 +58,8 @@ namespace Nethermind.Evm.Test
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = EvmPooledMemory.WordSize / 2;
             memory.SaveByte(in dest, 1);
-            List<string> trace = memory.GetTrace();
-            Assert.AreEqual(1, trace.Count);
+            var trace = memory.GetTrace();
+            Assert.AreEqual(1, trace.Count());
         }
 
         [Test]

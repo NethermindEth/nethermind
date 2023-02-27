@@ -59,7 +59,7 @@ namespace Nethermind.Mev
         public void ReportOperationRemainingGas(long gas) { }
         public void SetOperationStack(List<string> stackTrace) { }
         public void ReportStackPush(in ReadOnlySpan<byte> stackItem) { }
-        public void SetOperationMemory(List<string> memoryTrace) { }
+        public void SetOperationMemory(IEnumerable<string> memoryTrace) { }
         public void SetOperationMemorySize(ulong newSize) { }
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }

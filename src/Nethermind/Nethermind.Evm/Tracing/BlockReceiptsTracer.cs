@@ -180,7 +180,7 @@ namespace Nethermind.Evm.Tracing
         public void ReportBlockHash(Keccak blockHash) =>
             _currentTxTracer.ReportBlockHash(blockHash);
 
-        public void SetOperationMemory(List<string> memoryTrace) =>
+        public void SetOperationMemory(IEnumerable<string> memoryTrace) =>
             _currentTxTracer.SetOperationMemory(memoryTrace);
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)

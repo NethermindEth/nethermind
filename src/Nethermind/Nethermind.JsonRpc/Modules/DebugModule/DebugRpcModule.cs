@@ -16,6 +16,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
+using System.Collections.Generic;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
@@ -264,6 +265,18 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage()
         {
             return ResultWrapper<SyncReportSymmary>.Success(_debugBridge.GetCurrentSyncStage());
+        }
+
+        public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Keccak blockHash, GethTraceOptions options = null)
+        {
+            using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            var cancellationToken = cancellationTokenSource.Token;
+
+            var files = _debugBridge.TraceBlockToFile(blockHash, cancellationToken, options);
+
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBlockToFile)} request {blockHash}, result: {files}");
+
+            return ResultWrapper<IEnumerable<string>>.Success(files);
         }
     }
 }

@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Should_create_tracer_correctly()
         {
             Keccak txHash = TestItem.KeccakA;
-            GethLikeBlockTracer gethLikeBlockTracer = new(txHash, GethTraceOptions.Default);
+            GethLikeBlockMemoryTracer gethLikeBlockTracer = new(txHash, GethTraceOptions.Default);
             ParityLikeBlockTracer parityLikeBlockTracer = new(txHash, ParityTraceTypes.All);
 
             CompositeBlockTracer compositeBlockTracer = new CompositeBlockTracer();
@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             block = block.WithReplacedBody(new BlockBody(new[] { tx1, tx2, tx3 }, new BlockHeader[0]));
 
-            GethLikeBlockTracer gethLikeBlockTracer = new(GethTraceOptions.Default);
+            GethLikeBlockMemoryTracer gethLikeBlockTracer = new(GethTraceOptions.Default);
             ParityLikeBlockTracer parityLikeBlockTracer = new(ParityTraceTypes.All);
             NullBlockTracer nullBlockTracer = NullBlockTracer.Instance;
             AlwaysCancelBlockTracer alwaysCancelBlockTracer = AlwaysCancelBlockTracer.Instance;

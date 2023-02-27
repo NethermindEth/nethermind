@@ -19,6 +19,7 @@ using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+using System.Linq;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -641,7 +642,8 @@ namespace Nethermind.Evm
                 _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, txCtx.Header.IsPostMerge);
                 if (_txTracer.IsTracingMemory)
                 {
-                    _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new List<string>());
+                    _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? Enumerable.Empty<string>());
+                    _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
                 }
 
                 if (_txTracer.IsTracingStack)
@@ -654,11 +656,6 @@ namespace Nethermind.Evm
             {
                 if (traceOpcodes)
                 {
-                    if (_txTracer.IsTracingMemory)
-                    {
-                        _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
-                    }
-
                     _txTracer.ReportOperationRemainingGas(gasAvailable);
                 }
             }

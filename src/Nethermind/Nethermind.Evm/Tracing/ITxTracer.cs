@@ -221,7 +221,7 @@ namespace Nethermind.Evm.Tracing
         /// </summary>
         /// <param name="memoryTrace"></param>
         /// <remarks>Depends on <see cref="IsTracingMemory"/></remarks>
-        void SetOperationMemory(List<string> memoryTrace);
+        void SetOperationMemory(IEnumerable<string> memoryTrace);
 
         /// <summary>
         ///

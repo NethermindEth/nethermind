@@ -27,7 +27,7 @@ namespace Nethermind.Serialization.Json
             switch (_conversion)
             {
                 case NumberConversion.Hex:
-                    writer.WriteValue(value == 0UL ? "0x0" : value.ToHexString(true));
+                    writer.WriteValue(value.ToHexString(true));
                     break;
                 case NumberConversion.Decimal:
                     writer.WriteValue(value == 0 ? "0" : value.ToString());

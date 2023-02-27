@@ -152,7 +152,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 "8".PadLeft(64, '0')
             };
 
-            entry.Operation = "STOP";
+            entry.Opcode = "STOP";
             entry.Gas = 22000;
             entry.GasCost = 1;
             entry.Depth = 1;
@@ -189,7 +189,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
             };
 
-            entry.Operation = "STOP";
+            entry.Opcode = "STOP";
             entry.Gas = 22000;
             entry.GasCost = 1;
             entry.Depth = 1;
@@ -224,7 +224,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             };
 
             entry.Stack = new List<string> { };
-            entry.Operation = "STOP";
+            entry.Opcode = "STOP";
             entry.Gas = 22000;
             entry.GasCost = 1;
             entry.Depth = 1;
@@ -258,8 +258,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                                 "0000000000000000000000000000000000000000000000000000000000000005",
                                 "0000000000000000000000000000000000000000000000000000000000000006"
                             },
-                            Operation = "STOP",
-                            Pc = 0,
+                            Opcode = "STOP",
+                            ProgramCounter = 0,
                             Stack = { },
                             Storage = new Dictionary<string, string>()
                             {
@@ -416,8 +416,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                     "5".PadLeft(64, '0'),
                     "6".PadLeft(64, '0')
                 },
-                Operation = "STOP",
-                Pc = 32,
+                Opcode = "STOP",
+                ProgramCounter = 32,
                 Stack = new List<string>
                 {
                     "7".PadLeft(64, '0'),

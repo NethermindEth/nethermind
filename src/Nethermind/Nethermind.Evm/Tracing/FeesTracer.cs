@@ -110,7 +110,7 @@ public class FeesTracer : IBlockTracer, ITxTracer
         throw new NotImplementedException();
     }
 
-    public void SetOperationMemory(List<string> memoryTrace)
+    public void SetOperationMemory(IEnumerable<string> memoryTrace)
     {
         throw new NotImplementedException();
     }

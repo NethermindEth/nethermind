@@ -3,90 +3,68 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle
 {
-    public class GethLikeTxTracer : ITxTracer
+    public abstract class GethLikeTxTracer<TEntry> : ITxTracer where TEntry : GethTxTraceEntry
     {
-        private GethTxTraceEntry? _traceEntry;
-        private readonly GethLikeTxTrace _trace = new();
-
-        public GethLikeTxTracer(GethTraceOptions options)
+        protected GethLikeTxTracer(GethTraceOptions options)
         {
-            IsTracingStack = !options.DisableStack;
-            IsTracingMemory = !options.DisableMemory;
+            ArgumentNullException.ThrowIfNull(options);
+
+            IsTracingFullMemory = options.EnableMemory;
             IsTracingOpLevelStorage = !options.DisableStorage;
+            IsTracingStack = !options.DisableStack;
         }
 
         bool IStateTracer.IsTracingState => false;
         bool IStorageTracer.IsTracingStorage => false;
         public bool IsTracingReceipt => true;
         bool ITxTracer.IsTracingActions => false;
-        public bool IsTracingOpLevelStorage { get; }
+        public bool IsTracingOpLevelStorage { get; protected set; }
         public bool IsTracingMemory { get; }
+        protected bool IsTracingFullMemory { get; }
         bool ITxTracer.IsTracingInstructions => true;
-        public bool IsTracingRefunds => false;
+        public bool IsTracingRefunds { get; protected set; }
         public bool IsTracingCode => false;
         public bool IsTracingStack { get; }
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
         public bool IsTracingFees => false;
+        protected TEntry? CurrentTraceEntry { get; set; }
+        protected GethLikeTxTrace Trace { get; } = new();
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+        public virtual void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
-            _trace.ReturnValue = output;
-            _trace.Gas = gasSpent;
+            Trace.ReturnValue = output;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
+        public virtual void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
         {
-            _trace.Failed = true;
-            _trace.ReturnValue = output ?? Array.Empty<byte>();
+            Trace.Failed = true;
+            Trace.ReturnValue = output ?? Array.Empty<byte>();
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge)
+        public virtual void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge)
         {
-            GethTxTraceEntry previousTraceEntry = _traceEntry;
-            _traceEntry = new GethTxTraceEntry();
-            _traceEntry.Pc = pc;
-            _traceEntry.Operation = opcode.GetName(isPostMerge);
-            _traceEntry.Gas = gas;
-            _traceEntry.Depth = depth;
-            _trace.Entries.Add(_traceEntry);
+            if (CurrentTraceEntry is not null)
+                AddTraceEntry(CurrentTraceEntry);
 
-            if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
-            {
-                _traceEntry.Storage = new Dictionary<string, string>();
-                _trace.StoragesByDepth.Push(previousTraceEntry is not null ? previousTraceEntry.Storage : new Dictionary<string, string>());
-            }
-            else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
-            {
-                if (previousTraceEntry is null)
-                {
-                    throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
-                }
-
-                _traceEntry.Storage = new Dictionary<string, string>(_trace.StoragesByDepth.Pop());
-            }
-            else
-            {
-                if (previousTraceEntry is null)
-                {
-                    throw new InvalidOperationException("Unexpected missing previous trace on continuation.");
-                }
-
-                _traceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
-            }
+            CurrentTraceEntry = CreateTraceEntry(opcode);
+            CurrentTraceEntry.Depth = depth;
+            CurrentTraceEntry.Gas = gas;
+            CurrentTraceEntry.Opcode = opcode.GetName(isPostMerge);
+            CurrentTraceEntry.ProgramCounter = pc;
         }
 
         public void ReportOperationError(EvmExceptionType error)
         {
-            _traceEntry.Error = GetErrorDescription(error);
+            CurrentTraceEntry.Error = GetErrorDescription(error);
         }
 
         private string? GetErrorDescription(EvmExceptionType evmExceptionType)
@@ -109,12 +87,12 @@ namespace Nethermind.Evm.Tracing.GethStyle
 
         public void ReportOperationRemainingGas(long gas)
         {
-            _traceEntry.GasCost = _traceEntry.Gas - gas;
+            CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
         }
 
         public void SetOperationMemorySize(ulong newSize)
         {
-            _traceEntry.UpdateMemorySize(newSize);
+            CurrentTraceEntry.UpdateMemorySize(newSize);
         }
 
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
@@ -125,12 +103,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
         {
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
-        {
-            byte[] bigEndian = new byte[32];
-            storageIndex.ToBigEndian(bigEndian);
-            _traceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left).ToArray().ToHexString(false);
-        }
+        public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
 
         public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
         {
@@ -205,15 +178,9 @@ namespace Nethermind.Evm.Tracing.GethStyle
         {
         }
 
-        public void ReportRefund(long refund)
-        {
-            throw new NotSupportedException();
-        }
+        public virtual void ReportRefund(long refund) { }
 
-        public void ReportExtraGasPressure(long extraGasPressure)
-        {
-            throw new NotImplementedException();
-        }
+        public void ReportExtraGasPressure(long extraGasPressure) { }
 
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
         {
@@ -222,16 +189,17 @@ namespace Nethermind.Evm.Tracing.GethStyle
 
         public void SetOperationStack(List<string> stackTrace)
         {
-            _traceEntry.Stack = stackTrace;
+            CurrentTraceEntry.Stack = stackTrace;
         }
 
         public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
         }
 
-        public void SetOperationMemory(List<string> memoryTrace)
+        public void SetOperationMemory(IEnumerable<string> memoryTrace)
         {
-            _traceEntry.Memory = memoryTrace;
+            if (IsTracingFullMemory)
+                CurrentTraceEntry.Memory = memoryTrace.ToList();
         }
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)
@@ -239,9 +207,16 @@ namespace Nethermind.Evm.Tracing.GethStyle
             throw new NotImplementedException();
         }
 
-        public GethLikeTxTrace BuildResult()
+        public virtual GethLikeTxTrace BuildResult()
         {
-            return _trace;
+            if (CurrentTraceEntry is not null)
+                AddTraceEntry(CurrentTraceEntry);
+
+            return Trace;
         }
+
+        protected abstract void AddTraceEntry(TEntry entry);
+
+        protected abstract TEntry CreateTraceEntry(Instruction opcode);
     }
 }
