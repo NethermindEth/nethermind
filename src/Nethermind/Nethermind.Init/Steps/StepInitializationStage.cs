@@ -8,6 +8,7 @@ namespace Nethermind.Init.Steps
         WaitingForDependencies,
         WaitingForExecution,
         Executing,
-        Complete
+        Complete,
+        Failed
     }
 }
