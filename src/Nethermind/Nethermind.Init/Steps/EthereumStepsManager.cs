@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -94,6 +95,7 @@ namespace Nethermind.Init.Steps
 
                 RunOneRoundOfInitialization(cancellationToken);
                 await ReviewDependencies(cancellationToken);
+                ReviewFailedAndThrow();
             }
 
             await Task.WhenAll(_allPending);
@@ -156,6 +158,8 @@ namespace Nethermind.Init.Steps
                 if (_logger.IsDebug)
                     _logger.Debug(
                         $"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
+
+                stepInfo.Stage = StepInitializationStage.Complete;
             }
             catch (Exception exception)
             {
@@ -166,6 +170,7 @@ namespace Nethermind.Init.Steps
                             $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
                             exception);
 
+                    stepInfo.Stage = StepInitializationStage.Failed;
                     throw;
                 }
 
@@ -174,12 +179,11 @@ namespace Nethermind.Init.Steps
                     _logger.Warn(
                         $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms {exception}");
                 }
+                stepInfo.Stage = StepInitializationStage.Complete;
             }
             finally
             {
                 stopwatch.Stop();
-
-                stepInfo.Stage = StepInitializationStage.Complete;
                 _autoResetEvent.Set();
 
                 if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} complete");
@@ -202,5 +206,12 @@ namespace Nethermind.Init.Steps
         }
 
         private int _foreverLoop;
+
+        private void ReviewFailedAndThrow()
+        {
+            Task? anyFaulted = _allPending.FirstOrDefault(t => t.IsFaulted);
+            if (anyFaulted?.IsFaulted == true && anyFaulted?.Exception is not null)
+                ExceptionDispatchInfo.Capture(anyFaulted.Exception.GetBaseException()).Throw();
+        }
     }
 }
