@@ -41,7 +41,13 @@ namespace Nethermind.Network
 
         public void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            int contentLength = GetContentLength(item, rlpBehaviors);
+            stream.StartSequence(contentLength);
+            stream.Encode(item.NodeId.Bytes);
+            stream.Encode(item.Host);
+            stream.Encode(item.Port);
+            stream.Encode(string.Empty);
+            stream.Encode(item.Reputation);
         }
 
         public Rlp Encode(NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

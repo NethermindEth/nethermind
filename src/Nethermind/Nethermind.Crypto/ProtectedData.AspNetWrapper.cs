@@ -14,6 +14,14 @@ namespace Nethermind.Crypto
         {
             private const string AppName = "Nethermind";
             private const string BaseName = AppName + "_";
+            private const string ProtectionDir = "protection_keys";
+
+            private readonly string _keyStoreDir;
+
+            public AspNetWrapper(string keyStoreDir)
+            {
+                _keyStoreDir = keyStoreDir;
+            }
 
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
             {
@@ -29,23 +37,18 @@ namespace Nethermind.Crypto
 
             private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy)
             {
-                if (scope == DataProtectionScope.CurrentUser)
-                {
-                    return GetUserProtector(optionalEntropy);
-                }
-                else
-                {
-                    return GetMachineProtector(optionalEntropy);
-                }
+                return scope == DataProtectionScope.CurrentUser
+                    ? GetUserProtector(optionalEntropy)
+                    : GetMachineProtector(optionalEntropy);
             }
 
             private IDataProtector GetUserProtector(byte[] optionalEntropy)
             {
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                var path = Path.Combine(appData, AppName);
-                var info = new DirectoryInfo(path);
-                var provider = DataProtectionProvider.Create(info);
-                var purpose = CreatePurpose(optionalEntropy);
+                string path = Path.Combine(_keyStoreDir, ProtectionDir);
+                DirectoryInfo info = new(path);
+                IDataProtectionProvider provider = DataProtectionProvider.Create(info);
+                string purpose = CreatePurpose(optionalEntropy);
+
                 return provider.CreateProtector(purpose);
             }
 

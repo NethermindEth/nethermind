@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 
@@ -46,6 +47,68 @@ namespace Nethermind.Core.Crypto
         }
     }
 
+    /// <summary>
+    /// Used as dictionary key with implicit conversion to devirtualize comparisions
+    /// </summary>
+    [DebuggerStepThrough]
+    public readonly struct KeccakKey : IEquatable<KeccakKey>, IComparable<KeccakKey>
+    {
+        public byte[] Bytes { get; }
+
+        private KeccakKey(byte[] bytes)
+        {
+            Bytes = bytes;
+        }
+
+        public static implicit operator KeccakKey(Keccak k) => new(k.Bytes);
+
+        public int CompareTo(KeccakKey other)
+        {
+            return Extensions.Bytes.Comparer.Compare(Bytes, other.Bytes);
+        }
+
+        public bool Equals(KeccakKey other)
+        {
+            if (ReferenceEquals(Bytes, other.Bytes))
+            {
+                return true;
+            }
+
+            if (Bytes is null)
+            {
+                return other.Bytes is null;
+            }
+
+            if (other.Bytes is null)
+            {
+                return false;
+            }
+
+            return Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is KeccakKey && Equals((KeccakKey)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            if (Bytes is null) return 0;
+
+            long v0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(Bytes));
+            long v1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long)));
+            long v2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 2));
+            long v3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 3));
+
+            v0 ^= v1;
+            v2 ^= v3;
+            v0 ^= v2;
+
+            return (int)v0 ^ (int)(v0 >> 32);
+        }
+    }
+
     [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>, IComparable<Keccak>
     {
@@ -86,7 +149,7 @@ namespace Nethermind.Core.Crypto
         public byte[] Bytes { get; }
 
         public Keccak(string hexString)
-            : this(Core.Extensions.Bytes.FromHexString(hexString)) { }
+            : this(Extensions.Bytes.FromHexString(hexString)) { }
 
         public Keccak(byte[] bytes)
         {
@@ -154,12 +217,12 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Keccak? other)
         {
-            if (ReferenceEquals(other, null))
+            if (other is null)
             {
                 return false;
             }
 
-            return Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
+            return Extensions.Bytes.AreEqual(other.Bytes, Bytes);
         }
 
         public int CompareTo(Keccak? other)
@@ -174,22 +237,30 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            return MemoryMarshal.Read<int>(Bytes);
+            long v0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(Bytes));
+            long v1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long)));
+            long v2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 2));
+            long v3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 3));
+            v0 ^= v1;
+            v2 ^= v3;
+            v0 ^= v2;
+
+            return (int)v0 ^ (int)(v0 >> 32);
         }
 
         public static bool operator ==(Keccak? a, Keccak? b)
         {
-            if (ReferenceEquals(a, null))
+            if (a is null)
             {
-                return ReferenceEquals(b, null);
+                return b is null;
             }
 
-            if (ReferenceEquals(b, null))
+            if (b is null)
             {
                 return false;
             }
 
-            return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
         public static bool operator !=(Keccak? a, Keccak? b)
@@ -302,15 +373,15 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Keccak? other)
         {
-            if (ReferenceEquals(other, null))
+            if (other is null)
             {
                 return false;
             }
 
-            return Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
+            return Extensions.Bytes.AreEqual(other.Bytes, Bytes);
         }
 
-        public bool Equals(KeccakStructRef other) => Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
+        public bool Equals(KeccakStructRef other) => Extensions.Bytes.AreEqual(other.Bytes, Bytes);
 
         public override bool Equals(object? obj)
         {
@@ -324,27 +395,27 @@ namespace Nethermind.Core.Crypto
 
         public static bool operator ==(KeccakStructRef a, Keccak? b)
         {
-            if (ReferenceEquals(b, null))
+            if (b is null)
             {
                 return false;
             }
 
-            return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
         public static bool operator ==(Keccak? a, KeccakStructRef b)
         {
-            if (ReferenceEquals(a, null))
+            if (a is null)
             {
                 return false;
             }
 
-            return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
         public static bool operator ==(KeccakStructRef a, KeccakStructRef b)
         {
-            return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
         public static bool operator !=(KeccakStructRef a, Keccak b)

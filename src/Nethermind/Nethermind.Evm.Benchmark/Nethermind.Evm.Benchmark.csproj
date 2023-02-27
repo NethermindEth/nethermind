@@ -1,28 +1,28 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net7.0</TargetFramework>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+  </PropertyGroup>
 
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-      <WarningsAsErrors />
-    </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsAsErrors />
+  </PropertyGroup>
 
-    <ItemGroup>
-      <PackageReference Include="BenchmarkDotNet" Version="0.13.2" />
-      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.0.0" />
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="Nethermind.Numerics.Int256" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj" />
-      <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
-      <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
-      <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+    <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <None Remove="bytecode.in" />
-    </ItemGroup>
+  <ItemGroup>
+    <None Remove="bytecode.in" />
+  </ItemGroup>
 
 </Project>

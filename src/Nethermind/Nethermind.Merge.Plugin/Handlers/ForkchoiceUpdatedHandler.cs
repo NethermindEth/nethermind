@@ -11,7 +11,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -23,9 +22,13 @@ using Nethermind.Merge.Plugin.Synchronization;
 namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <summary>
-/// Propagates the change in the fork choice to the execution client. May initiate creating new payload.
-/// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_forkchoiceupdatedv2">engine_forkchoiceupdatedv2</see>.
+/// Provides a fork choice update handler as defined in Engine API
+/// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_forkchoiceupdatedv2">
+/// Shanghai</see> specification.
 /// </summary>
+/// <remarks>
+/// May initiate a new payload creation.
+/// </remarks>
 public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 {
     private readonly IBlockTree _blockTree;
@@ -39,7 +42,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly IBeaconPivot _beaconPivot;
     private readonly ILogger _logger;
     private readonly IPeerRefresher _peerRefresher;
-    private readonly ISpecProvider _specProvider;
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
@@ -52,7 +54,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         IMergeSyncController mergeSyncController,
         IBeaconPivot beaconPivot,
         IPeerRefresher peerRefresher,
-        ISpecProvider specProvider,
         ILogManager logManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -65,7 +66,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _mergeSyncController = mergeSyncController;
         _beaconPivot = beaconPivot;
         _peerRefresher = peerRefresher;
-        _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
     }
 
@@ -183,8 +183,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
         }
 
-        EnsureTerminalBlock(forkchoiceState, blocks);
-
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead && blocks is not null;
         if (shouldUpdateHead)
@@ -231,26 +229,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
             }
 
-            var spec = _specProvider.GetSpec(newHeadBlock.Number + 1, payloadAttributes.Timestamp);
-
-            if (spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is null)
-            {
-                var error = "Withdrawals cannot be null when EIP-4895 activated.";
-
-                if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
-
-                return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
-            }
-
-            if (!spec.WithdrawalsEnabled && payloadAttributes.Withdrawals is not null)
-            {
-                var error = "Withdrawals must be null when EIP-4895 not activated.";
-
-                if (_logger.IsInfo) _logger.Warn($"Invalid payload attributes: {error}");
-
-                return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
-            }
-
             payloadAttributes.GasLimit = null;
             payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
         }
@@ -269,30 +247,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
 
         if (_logger.IsInfo) _logger.Info($"Start a new sync process... Request: {requestStr}.");
-    }
-
-    // This method will detect reorg in terminal PoW block
-    private void EnsureTerminalBlock(ForkchoiceStateV1 forkchoiceState, Block[]? blocks)
-    {
-        // we can reorg terminal block only if we haven't finalized PoS yet and we're not finalizing PoS now
-        // https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#ability-to-jump-between-terminal-pow-blocks
-        bool notFinalizingPoS = forkchoiceState.FinalizedBlockHash == Keccak.Zero;
-        bool notFinalizedPoS = _manualBlockFinalizationManager.LastFinalizedHash == Keccak.Zero;
-        if (notFinalizingPoS && notFinalizedPoS && blocks is not null)
-        {
-            for (int i = 0; i < blocks.Length; ++i)
-            {
-                if (blocks[i].Header.Difficulty != 0 && blocks[i].TotalDifficulty >= _poSSwitcher.TerminalTotalDifficulty)
-                {
-                    if (_poSSwitcher.TryUpdateTerminalBlock(blocks[i].Header))
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Terminal block {blocks[i].Header} updated during the forkchoice");
-                    }
-
-                    break;
-                }
-            }
-        }
     }
 
     private bool IsInconsistent(Keccak blockHash) => blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash);

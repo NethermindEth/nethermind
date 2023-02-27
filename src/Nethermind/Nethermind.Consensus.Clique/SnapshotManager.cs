@@ -25,17 +25,17 @@ namespace Nethermind.Consensus.Clique
         private readonly IBlockTree _blockTree;
         private readonly ICliqueConfig _cliqueConfig;
         private readonly ILogger _logger;
-        private readonly ICache<Keccak, Address> _signatures;
+        private readonly LruCache<KeccakKey, Address> _signatures;
         private readonly IEthereumEcdsa _ecdsa;
         private IDb _blocksDb;
         private ulong _lastSignersCount = 0;
-        private ICache<Keccak, Snapshot> _snapshotCache = new LruCache<Keccak, Snapshot>(Clique.InMemorySnapshots, "clique snapshots");
+        private LruCache<KeccakKey, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
-            _signatures = new LruCache<Keccak, Address>(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
+            _signatures = new(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.Clique
                 throw new BlockchainException($"Clique block without sealer extra data{Environment.NewLine}{header.ToString(BlockHeader.Format.Full)}");
             }
 
-            Span<byte> signatureBytes = header.ExtraData.AsSpan().Slice(header.ExtraData.Length - extraSeal, extraSeal);
+            Span<byte> signatureBytes = header.ExtraData.AsSpan(header.ExtraData.Length - extraSeal, extraSeal);
             Signature signature = new(signatureBytes);
             signature.V += Signature.VOffset;
             Keccak message = CalculateCliqueHeaderHash(header);
@@ -128,7 +128,7 @@ namespace Nethermind.Consensus.Clique
                         for (int i = 0; i < signersCount; i++)
                         {
                             Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));
-                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot is null ? 0L : parentSnapshot.Signers.ContainsKey(signer) ? parentSnapshot.Signers[signer] : 0L);
+                            signers.Add(signer, signer == epochSigner ? number : parentSnapshot is null ? 0L : parentSnapshot.Signers.TryGetValue(signer, out long value) ? value : 0L);
                         }
 
                         snapshot = new Snapshot(number, header.Hash, signers);
@@ -160,7 +160,7 @@ namespace Nethermind.Consensus.Clique
                     {
                         int signerIndex = 0;
                         string word = countAfter > countBefore ? "added to" : "removed from";
-                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + (KnownAddresses.GoerliValidators.ContainsKey(s.Key) ? KnownAddresses.GoerliValidators[s.Key] : s.Key.ToString())))}");
+                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + (KnownAddresses.GoerliValidators.TryGetValue(s.Key, out string value) ? value : s.Key.ToString())))}");
                     }
                 }
 
@@ -240,9 +240,10 @@ namespace Nethermind.Consensus.Clique
 
         private void Store(Snapshot snapshot)
         {
-            Rlp rlp = _decoder.Encode(snapshot);
+            RlpStream stream = new(_decoder.GetLength(snapshot, RlpBehaviors.None));
+            _decoder.Encode(stream, snapshot);
             Keccak key = GetSnapshotKey(snapshot.Hash);
-            _blocksDb.Set(key, rlp.Bytes);
+            _blocksDb.Set(key, stream.Data);
         }
 
         private Snapshot Apply(Snapshot original, List<BlockHeader> headers, ulong epoch)

@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FastEnum" Version="1.8.0" />
+    <PackageReference Include="FastEnum" />
   </ItemGroup>
 
 </Project>

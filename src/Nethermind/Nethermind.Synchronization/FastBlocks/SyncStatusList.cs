@@ -12,7 +12,7 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         private long _queueSize;
         private readonly IBlockTree _blockTree;
-        private readonly FastBlockStatus[] _statuses;
+        private readonly FastBlockStatusList _statuses;
 
         public long LowestInsertWithoutGaps { get; private set; }
         public long QueueSize => _queueSize;
@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _statuses = new FastBlockStatus[pivotNumber + 1];
+            _statuses = new FastBlockStatusList(pivotNumber + 1);
 
             LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
         }
@@ -81,13 +81,6 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 _statuses[blockNumber] = FastBlockStatus.Unknown;
             }
-        }
-
-        private enum FastBlockStatus : byte
-        {
-            Unknown = 0,
-            Sent = 1,
-            Inserted = 2,
         }
     }
 }

@@ -56,7 +56,7 @@ public class EthStatsPlugin : INethermindPlugin
             }
             else
             {
-                _logger.Warn($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
+                if (_logger.IsDebug) _logger.Debug($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
             }
         }
 
@@ -83,7 +83,7 @@ public class EthStatsPlugin : INethermindPlugin
             const bool canUpdateHistory = false;
             string node = ProductInfo.ClientId;
             int port = networkConfig.P2PPort;
-            string network = _api.SpecProvider!.ChainId.ToString();
+            string network = _api.SpecProvider!.NetworkId.ToString();
             string protocol = $"{P2PProtocolInfoProvider.DefaultCapabilitiesToString()}";
 
             _ethStatsClient = new EthStatsClient(

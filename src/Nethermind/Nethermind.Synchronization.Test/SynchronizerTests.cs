@@ -101,6 +101,8 @@ namespace Nethermind.Synchronization.Test
 
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
+            public byte ProtocolVersion { get; }
+            public string ProtocolCode { get; }
 
             public void Disconnect(InitiateDisconnectReason reason, string details)
             {
@@ -305,7 +307,7 @@ namespace Nethermind.Synchronization.Test
                 MemDb blockInfoDb = new();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb,
                     new ChainLevelInfoRepository(blockInfoDb),
-                    new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
+                    new TestSingleReleaseSpecProvider(Constantinople.Instance), NullBloomStorage.Instance, _logManager);
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 NodeStatsManager stats = new(timerFactory, _logManager);
 
@@ -315,7 +317,7 @@ namespace Nethermind.Synchronization.Test
                     mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString();
                 }
                 IBlockCacheService blockCacheService = new BlockCacheService();
-                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), _logManager);
+                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new TestSingleReleaseSpecProvider(Constantinople.Instance), _logManager);
                 IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, _logManager);
 
                 ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);

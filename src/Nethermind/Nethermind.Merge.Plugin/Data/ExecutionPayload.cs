@@ -3,12 +3,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
+using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -35,6 +39,7 @@ public class ExecutionPayload
         Timestamp = block.Timestamp;
         BaseFeePerGas = block.BaseFeePerGas;
         Withdrawals = block.Withdrawals;
+        ExcessDataGas = block.ExcessDataGas;
 
         SetTransactions(block.Transactions);
     }
@@ -78,6 +83,9 @@ public class ExecutionPayload
     /// </summary>
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
+    [JsonConverter(typeof(NullableUInt256Converter))]
+    public UInt256? ExcessDataGas { get; set; }
+
     /// <summary>
     /// Creates the execution block from payload.
     /// </summary>
@@ -112,6 +120,7 @@ public class ExecutionPayload
                 TotalDifficulty = totalDifficulty,
                 TxRoot = new TxTrie(transactions).RootHash,
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
+                ExcessDataGas = ExcessDataGas,
             };
 
             block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);
@@ -143,4 +152,37 @@ public class ExecutionPayload
         .ToArray();
 
     public override string ToString() => $"{BlockNumber} ({BlockHash})";
+}
+
+public static class ExecutionPayloadExtensions
+{
+    public static int GetVersion(this ExecutionPayload executionPayload) =>
+        executionPayload.Withdrawals is null ? 1 : 2;
+
+    public static bool Validate(
+        this ExecutionPayload executionPayload,
+        IReleaseSpec spec,
+        int version,
+        [NotNullWhen(false)] out string? error)
+    {
+        int actualVersion = executionPayload.GetVersion();
+
+        error = actualVersion switch
+        {
+            1 when spec.WithdrawalsEnabled => "ExecutionPayloadV2 expected",
+            > 1 when !spec.WithdrawalsEnabled => "ExecutionPayloadV1 expected",
+            _ => actualVersion > version ? $"ExecutionPayloadV{version} expected" : null
+        };
+
+        return error is null;
+    }
+
+    public static bool Validate(this ExecutionPayload executionPayload,
+        ISpecProvider specProvider,
+        int version,
+        [NotNullWhen(false)] out string? error) =>
+        executionPayload.Validate(
+            specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp),
+            version,
+            out error);
 }

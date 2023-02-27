@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -21,6 +22,8 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using NSubstitute;
+using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -44,7 +47,7 @@ public partial class EngineModuleTests
         };
         Withdrawal[] withdrawals = new[]
         {
-            new Withdrawal { Index = 1, Amount = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
+            new Withdrawal { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
         };
         var payloadAttrs = new
         {
@@ -79,7 +82,7 @@ public partial class EngineModuleTests
             }
         }));
 
-        Keccak blockHash = new("0xed14029504c440624047d5d0223899fb2c8abc4550464ac21e8f42ccdbb472d3");
+        Keccak blockHash = new("0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68");
         Block block = new(
             new(
                 startingHead,
@@ -98,7 +101,7 @@ public partial class EngineModuleTests
                 Hash = blockHash,
                 MixHash = prevRandao,
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
-                StateRoot = new("0xde9a4fd5deef7860dc840612c5e960c942b76a9b2e710504de9bab8289156491"),
+                StateRoot = new("0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51"),
             },
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
@@ -194,7 +197,7 @@ public partial class EngineModuleTests
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
         errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
-        errorResponse!.Error!.Message.Should().Contain("Withdrawals not supported");
+        errorResponse!.Error!.Message.Should().Be("PayloadAttributesV1 expected");
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
@@ -231,8 +234,8 @@ public partial class EngineModuleTests
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
-        errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, string.Empty));
+        errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
+        errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "PayloadAttributes"));
     }
 
     [Test]
@@ -302,7 +305,216 @@ public partial class EngineModuleTests
         ResultWrapper<GetPayloadV2Result?> responseFirst = await rpc.engine_getPayloadV2(payloadId);
         responseFirst.Should().NotBeNull();
         responseFirst.Result.ResultType.Should().Be(ResultType.Failure);
-        responseFirst.ErrorCode.Should().Be(-38001);
+        responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+    }
+
+    [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
+    public async Task getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(
+        IList<Withdrawal> withdrawals)
+    {
+        using var chain = await CreateShanghaiBlockChain();
+        var rpc = CreateEngineModule(chain);
+        var executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
+        var txs = BuildTransactions(
+            chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
+
+        chain.AddTransactions(txs);
+
+        var executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
+        var blockHashes = new Keccak[]
+        {
+            executionPayload1.BlockHash, TestItem.KeccakA,
+            executionPayload2.BlockHash
+        };
+        var payloadBodies = rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
+        var expected = new ExecutionPayloadBodyV1Result?[]
+        {
+            new(Array.Empty<Transaction>(), withdrawals),
+            null,
+            new(txs, withdrawals)
+        };
+
+        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+    }
+
+    [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
+    public async Task getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(
+        IList<Withdrawal> withdrawals)
+    {
+        using var chain = await CreateShanghaiBlockChain();
+        var rpc = CreateEngineModule(chain);
+        var executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
+        var txs = BuildTransactions(
+            chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
+
+        chain.AddTransactions(txs);
+
+        await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
+        var executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
+
+        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload2.BlockHash!,
+            executionPayload2.BlockHash!, executionPayload2.BlockHash!));
+
+        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
+        var expected = new ExecutionPayloadBodyV1Result?[]
+        {
+            new(txs, withdrawals)
+        };
+
+        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+    }
+
+    [Test]
+    public async Task getPayloadBodiesByRangeV1_empty_response()
+    {
+        using var chain = await CreateBlockChain();
+        var rpc = CreateEngineModule(chain);
+        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 1).Result.Data;
+        var expected = Array.Empty<ExecutionPayloadBodyV1Result?>();
+
+        payloadBodies.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public async Task getPayloadBodiesByRangeV1_should_fail_when_too_many_payloads_requested()
+    {
+        using var chain = await CreateBlockChain();
+        var rpc = CreateEngineModule(chain);
+        var result = rpc.engine_getPayloadBodiesByRangeV1(1, 1025);
+
+        result.Result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
+    }
+
+    [Test]
+    public async Task getPayloadBodiesByHashV1_should_fail_when_too_many_payloads_requested()
+    {
+        using var chain = await CreateBlockChain();
+        var rpc = CreateEngineModule(chain);
+        var hashes = Enumerable.Repeat(TestItem.KeccakA, 1025).ToArray();
+        var result = rpc.engine_getPayloadBodiesByHashV1(hashes);
+
+        result.Result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
+    }
+
+    [Test]
+    public async Task getPayloadBodiesByRangeV1_should_fail_when_params_below_1()
+    {
+        using var chain = await CreateBlockChain();
+        var rpc = CreateEngineModule(chain);
+        var result = rpc.engine_getPayloadBodiesByRangeV1(0, 1);
+
+        result.Result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
+
+        result = await rpc.engine_getPayloadBodiesByRangeV1(1, 0);
+
+        result.Result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
+    }
+
+    [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
+    public async Task getPayloadBodiesByRangeV1_should_return_canonical(IList<Withdrawal> withdrawals)
+    {
+        using var chain = await CreateShanghaiBlockChain();
+        var rpc = CreateEngineModule(chain);
+        var executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
+
+        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload1.BlockHash!,
+            executionPayload1.BlockHash!, executionPayload1.BlockHash!));
+
+        var head = chain.BlockTree.Head!;
+
+        // First branch
+        {
+            var txsA = BuildTransactions(
+                chain, executionPayload1.BlockHash!, TestItem.PrivateKeyA, TestItem.AddressA, 1, 0, out _, out _);
+
+            chain.AddTransactions(txsA);
+
+            var executionPayload2 = await BuildAndGetPayloadResultV2(
+                rpc, chain, head.Hash!, head.Hash!, head.Hash!, 1001, Keccak.Zero, Address.Zero, withdrawals);
+            var execResult = await rpc.engine_newPayloadV2(executionPayload2);
+
+            execResult.Data.Status.Should().Be(PayloadStatus.Valid);
+
+            var fcuResult = await rpc.engine_forkchoiceUpdatedV2(
+                new ForkchoiceStateV1(executionPayload2.BlockHash!, head.Hash!, head.Hash!));
+
+            fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+            var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
+            var expected = new ExecutionPayloadBodyV1Result?[]
+            {
+                new(Array.Empty<Transaction>(), withdrawals),
+                new(txsA, withdrawals)
+            };
+
+            payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+        }
+
+        // Second branch
+        {
+            var newBlock = Build.A.Block
+                .WithNumber(head.Number + 1)
+                .WithParent(head)
+                .WithNonce(0)
+                .WithDifficulty(0)
+                .WithStateRoot(head.StateRoot!)
+                .WithBeneficiary(Build.An.Address.TestObject)
+                .WithWithdrawals(withdrawals.ToArray())
+                .TestObject;
+
+            var fcuResult = await rpc.engine_newPayloadV2(new ExecutionPayload(newBlock));
+
+            fcuResult.Data.Status.Should().Be(PayloadStatus.Valid);
+
+            await rpc.engine_forkchoiceUpdatedV2(
+                new ForkchoiceStateV1(newBlock.Hash!, newBlock.Hash!, newBlock.Hash!));
+
+            var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
+            var expected = new ExecutionPayloadBodyV1Result?[]
+            {
+                new(Array.Empty<Transaction>(), withdrawals),
+                new(Array.Empty<Transaction>(), withdrawals)
+            };
+
+            payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+        }
+    }
+
+    [TestCaseSource(nameof(PayloadBodiesByRangeNullTrimTestCases))]
+    public async Task getPayloadBodiesByRangeV1_should_trim_trailing_null_bodies(
+        (Func<CallInfo, Block?> Impl,
+        IEnumerable<ExecutionPayloadBodyV1Result?> Outcome) input)
+    {
+        var blockTree = Substitute.For<IBlockTree>();
+
+        blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
+        blockTree.FindBlock(Arg.Any<long>()).Returns(input.Impl);
+
+        using var chain = await CreateShanghaiBlockChain();
+        chain.BlockTree = blockTree;
+
+        var rpc = CreateEngineModule(chain);
+        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
+
+        payloadBodies.Should().BeEquivalentTo(input.Outcome);
+    }
+
+    [Test]
+    public async Task getPayloadBodiesByRangeV1_should_return_up_to_best_body_number()
+    {
+        var blockTree = Substitute.For<IBlockTree>();
+
+        blockTree.FindBlock(Arg.Any<long>())
+            .Returns(i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
+        blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
+
+        using var chain = await CreateShanghaiBlockChain();
+        chain.BlockTree = blockTree;
+
+        var rpc = CreateEngineModule(chain);
+        var payloadBodies = rpc.engine_getPayloadBodiesByRangeV1(1, 7).Result.Data;
+
+        payloadBodies.Count().Should().Be(5);
     }
 
     [Test]
@@ -336,7 +548,7 @@ public partial class EngineModuleTests
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
         errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
-        errorResponse!.Error!.Message.Should().Contain("Withdrawals not supported");
+        errorResponse!.Error!.Message.Should().Be("ExecutionPayloadV1 expected");
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
@@ -375,19 +587,12 @@ public partial class EngineModuleTests
 
         string response = RpcTest.TestSerializedRequest(rpcModule, "engine_newPayloadV2",
             chain.JsonSerializer.Serialize(expectedPayload));
-        JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
-        {
-            Id = successResponse.Id,
-            Result = new PayloadStatusV1
-            {
-                LatestValidHash = startingHead,
-                Status = PayloadStatus.Invalid,
-                ValidationError = string.Format(input.ErrorMessage, $"in block {blockHash} ")
-            }
-        }));
+        errorResponse.Should().NotBeNull();
+        errorResponse!.Error.Should().NotBeNull();
+        errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
+        errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "ExecutionPayload"));
     }
 
     protected static IEnumerable<(
@@ -399,12 +604,12 @@ public partial class EngineModuleTests
     {
         yield return (
             Shanghai.Instance,
-            "Withdrawals cannot be null {0}when EIP-4895 activated.",
+            "{0}V2 expected",
             null,
             "0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
         yield return (
             London.Instance,
-            "Withdrawals must be null {0}when EIP-4895 not activated.",
+            "{0}V1 expected",
             Enumerable.Empty<Withdrawal>(),
             "0xaa4aa15951a28e6adab430a795e36a84649bbafb1257eda23e38b9131cbd3b98");
     }
@@ -419,20 +624,11 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, input.Withdrawals);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
-        resultWrapper.Data.Status.Should().Be(input.IsValid ? PayloadStatus.Valid : PayloadStatus.Invalid);
-    }
 
-    protected static IEnumerable<(
-        IReleaseSpec releaseSpec,
-        Withdrawal[]? Withdrawals,
-        bool isValid
-        )> ZeroWithdrawalsTestCases()
-    {
-        yield return (London.Instance, null, true);
-        yield return (Shanghai.Instance, null, false);
-        yield return (London.Instance, Array.Empty<Withdrawal>(), false);
-        yield return (Shanghai.Instance, Array.Empty<Withdrawal>(), true);
-        yield return (London.Instance, new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth }, false);
+        if (input.IsValid)
+            resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+        else
+            resultWrapper.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
     }
 
     [TestCaseSource(nameof(WithdrawalsTestCases))]
@@ -548,5 +744,120 @@ public partial class EngineModuleTests
             new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalC_3Eth }, // 4th payload
             new[] { TestItem.WithdrawalB_2Eth, TestItem.WithdrawalF_6Eth }, // 5th payload
         }, new[] { (TestItem.AddressA, 4.Ether()), (TestItem.AddressB, 2.Ether()), (TestItem.AddressC, 3.Ether()), (TestItem.AddressF, 6.Ether()) });
+    }
+
+    protected static IEnumerable<IList<Withdrawal>> GetPayloadWithdrawalsTestCases()
+    {
+        yield return new[]
+        {
+            new Withdrawal { Index = 1, ValidatorIndex = 1 },
+            new Withdrawal { Index = 2, ValidatorIndex = 2 }
+        };
+    }
+
+    private async Task<ExecutionPayload> BuildAndGetPayloadResultV2(
+        IEngineRpcModule rpc,
+        MergeTestBlockchain chain,
+        Keccak headBlockHash,
+        Keccak finalizedBlockHash,
+        Keccak safeBlockHash,
+        ulong timestamp,
+        Keccak random,
+        Address feeRecipient,
+        IList<Withdrawal>? withdrawals,
+        bool waitForBlockImprovement = true)
+    {
+        using var blockImprovementLock = new SemaphoreSlim(0);
+
+        if (waitForBlockImprovement)
+        {
+            chain.PayloadPreparationService!.BlockImproved += (s, e) =>
+            {
+                blockImprovementLock.Release(1);
+            };
+        }
+
+        var forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
+        var payloadAttributes = new PayloadAttributes
+        {
+            Timestamp = timestamp,
+            PrevRandao = random,
+            SuggestedFeeRecipient = feeRecipient,
+            Withdrawals = withdrawals
+        };
+        var payloadId = rpc.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result.Data.PayloadId;
+
+        if (waitForBlockImprovement)
+            await blockImprovementLock.WaitAsync(10000);
+
+        var getPayloadResult = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId!));
+
+        return getPayloadResult.Data!;
+    }
+
+    private async Task<ExecutionPayload> BuildAndSendNewBlockV2(
+        IEngineRpcModule rpc,
+        MergeTestBlockchain chain,
+        bool waitForBlockImprovement,
+        IList<Withdrawal>? withdrawals)
+    {
+        Keccak head = chain.BlockTree.HeadHash;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
+        Keccak random = Keccak.Zero;
+        Address feeRecipient = Address.Zero;
+        ExecutionPayload executionPayload = await BuildAndGetPayloadResultV2(rpc, chain, head,
+            Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);
+        ResultWrapper<PayloadStatusV1> executePayloadResult =
+            await rpc.engine_newPayloadV2(executionPayload);
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        return executionPayload;
+    }
+
+    private async Task<ExecutionPayload> SendNewBlockV2(IEngineRpcModule rpc, MergeTestBlockchain chain, IList<Withdrawal>? withdrawals)
+    {
+        var executionPayload = CreateBlockRequest(
+            CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
+        var executePayloadResult = await rpc.engine_newPayloadV2(executionPayload);
+
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+
+        return executionPayload;
+    }
+
+    protected static IEnumerable<(
+        IReleaseSpec releaseSpec,
+        Withdrawal[]? Withdrawals,
+        bool isValid
+        )> ZeroWithdrawalsTestCases()
+    {
+        yield return (London.Instance, null, true);
+        yield return (Shanghai.Instance, null, false);
+        yield return (London.Instance, Array.Empty<Withdrawal>(), false);
+        yield return (Shanghai.Instance, Array.Empty<Withdrawal>(), true);
+        yield return (London.Instance, new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth }, false);
+    }
+
+    protected static IEnumerable<(
+        Func<CallInfo, Block?>,
+        IEnumerable<ExecutionPayloadBodyV1Result?>
+        )> PayloadBodiesByRangeNullTrimTestCases()
+    {
+        var block = Build.A.Block.TestObject;
+        var result = new ExecutionPayloadBodyV1Result(Array.Empty<Transaction>(), null);
+
+        yield return (
+            new Func<CallInfo, Block?>(i => null),
+            new ExecutionPayloadBodyV1Result?[] { null, null, null, null, null }
+        );
+
+        yield return (
+            new Func<CallInfo, Block?>(i => i.ArgAt<long>(0) % 2 == 0 ? block : null),
+            new[] { null, result, null, result, null }
+        );
+
+        yield return (
+            new Func<CallInfo, Block?>(i => block),
+            Enumerable.Repeat(result, 5)
+        );
     }
 }

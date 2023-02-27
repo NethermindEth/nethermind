@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -27,6 +29,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.KeyStore;
 using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats.Model;
@@ -76,8 +79,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 
             _signerStore = new Signer(specProvider.ChainId, TestItem.PrivateKeyB, logger);
-            _parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }), MainnetSpecProvider.Instance, peerManager);
+            _parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), _signerStore,
+                new MemKeyStore(new[] { TestItem.PrivateKeyA }, Environment.SpecialFolder.ApplicationData.ToString()),
+                MainnetSpecProvider.Instance, peerManager);
 
             int blockNumber = 2;
             Transaction pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
@@ -350,8 +355,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ActivePeers.Returns(new List<Peer> { });
             peerManager.ConnectedPeers.Returns(new List<Peer> { new(new Node(TestItem.PublicKeyA, "111.1.1.1", 11111, true)) });
 
-            IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }), MainnetSpecProvider.Instance, peerManager);
+            IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
+                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
+                MainnetSpecProvider.Instance, peerManager);
 
             string serialized = RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":1,\"max\":0,\"peers\":[]},\"id\":67}";
@@ -378,8 +385,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IPeerManager peerManager = Substitute.For<IPeerManager>();
 
-            IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }), MainnetSpecProvider.Instance, peerManager);
+            IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
+                _signerStore, new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
+                MainnetSpecProvider.Instance, peerManager);
             string serialized = RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":0,\"max\":0,\"peers\":[]},\"id\":67}";
             Assert.AreEqual(expectedResult, serialized);
