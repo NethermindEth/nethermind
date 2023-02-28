@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -15,10 +15,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -752,5 +752,17 @@ public partial class EthRpcModule : IEthRpcModule
                 yield return log;
             }
         }
+    }
+
+    public ResultWrapper<AccountForRpc> eth_getAccount(Address accountAddress, BlockParameter blockParameter)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        if (searchResult.IsError)
+        {
+            return ResultWrapper<AccountForRpc>.Fail(searchResult);
+        }
+        Block block = searchResult.Object;
+        Account account = _stateReader.GetAccount(block.StateRoot, accountAddress);
+        return ResultWrapper<AccountForRpc>.Success(account is null ? null : new AccountForRpc(account));
     }
 }

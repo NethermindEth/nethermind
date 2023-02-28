@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -731,6 +731,39 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         string serialized = ctx.Test.TestEthRpc("eth_getBlockByNumber", "", "true");
         Assert.True(serialized.StartsWith("{\"jsonrpc\":\"2.0\",\"error\""));
+    }
+
+    [Test]
+    public async Task Eth_get_account_notfound()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = ctx.Test.TestEthRpc("eth_getAccount", "0x000000000000000000000000000000000000dead", "latest");
+
+        Assert.True(serialized.Equals("{\"jsonrpc\":\"2.0\",\"result\": null,\"id\":97}"));
+    }
+
+    [Test]
+    public async Task Eth_get_account_found()
+    {
+        using Context ctx = await Context.Create();
+
+        string account_address = TestBlockchain.AccountD.ToString();
+        string account_balance = 1000.Ether().ToHexString(true);
+        string account_codehash = Keccak.OfAnEmptyString.ToString();
+        string account_storageroot = Keccak.EmptyTreeHash.ToString();
+
+        string serialized = ctx.Test.TestEthRpc("eth_getAccount", account_address, "latest");
+
+        Assert.True(serialized.Equals($"{{\"jsonrpc\":\"2.0\",\"result\": {{ \"codeHash\": \"{account_codehash}\", \"storageRoot\": \"{account_storageroot}\", \"balance\": \"{account_balance}\", \"nonce\": \"{account_address}\"}},\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task Eth_get_account_found_incorrect_block()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = ctx.Test.TestEthRpc("eth_getAccount", "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf", "0xffff");
+
+        Assert.True(serialized.Equals("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"header not found\"},\"id\":67}"));
     }
 
 
