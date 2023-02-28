@@ -23,7 +23,7 @@ public class DbOnTheRocks : IDbWithSpan
     private ILogger _logger;
 
     private string? _fullPath;
-
+    private static readonly ReadOptions readOptions = new ReadOptions().SetFillCache(false);
     private static readonly ConcurrentDictionary<string, RocksDb> _dbsByPath = new();
 
     private bool _isDisposing;
@@ -211,7 +211,11 @@ public class DbOnTheRocks : IDbWithSpan
 
         DbOptions options = new();
         options.SetCreateIfMissing();
-        options.SetAdviseRandomOnOpen(true);
+        options.SetAdviseRandomOnOpen(dbConfig.AdviseRandomOnOpen);
+        options.SetDisableAutoCompactions(dbConfig.DisableAutoCompactions);
+
+
+
         options.OptimizeForPointLookup(
             blockCacheSize); // I guess this should be the one option controlled by the DB size property - bind it to LRU cache size
         //options.SetCompression(CompressionTypeEnum.rocksdb_snappy_compression);
@@ -225,8 +229,10 @@ public class DbOnTheRocks : IDbWithSpan
          * TKS: Observed 500MB/s compared to ~100MB/s between multithreaded and single thread compactions on my machine (processor count is returning 12 for 6 cores with hyperthreading)
          * TKS: CPU goes to insane 30% usage on idle - compacting only app
          */
-        options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
-
+        //options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
+        options.SetMaxBackgroundCompactions(dbConfig.MaxBackgroundCompactions);
+        options.SetAllowMmapReads(dbConfig.AllowMmapReads);
+        options.SetMaxOpenFiles(-1);
         if (_perTableDbConfig.MaxOpenFiles.HasValue)
         {
             options.SetMaxOpenFiles(_perTableDbConfig.MaxOpenFiles.Value);
@@ -243,7 +249,7 @@ public class DbOnTheRocks : IDbWithSpan
         options.SetWriteBufferSize(writeBufferSize);
         int writeBufferNumber = (int)_perTableDbConfig.WriteBufferNumber;
         options.SetMaxWriteBufferNumber(writeBufferNumber);
-        options.SetMinWriteBufferNumberToMerge(2);
+        options.SetMinWriteBufferNumberToMerge(2); 
 
         lock (_dbsByPath)
         {
@@ -290,7 +296,7 @@ public class DbOnTheRocks : IDbWithSpan
 
             try
             {
-                return _db.Get(key);
+                return _db.Get(key, readOptions: readOptions);
             }
             catch (RocksDbSharpException e)
             {
