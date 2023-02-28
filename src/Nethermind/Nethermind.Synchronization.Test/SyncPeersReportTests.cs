@@ -162,9 +162,9 @@ namespace Nethermind.Synchronization.Test
 
             string expectedResult =
                 "== Header ==" + Environment.NewLine +
-                "===[Active][Sleep ][Peer(ProtocolVersion/Head/Host:Port/Direction)][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]"  + Environment.NewLine +
-                "--------------------------------------------------------------------------------------------------------------------------------------------------------------"  + Environment.NewLine +
-                "   [HBRNSW][      ][Peer|eth99|    9999|      127.0.0.1: 3030| Out][     |     |     |     |     |     ][]"  + Environment.NewLine +
+                "===[Active][Sleep ][Peer(ProtocolVersion/Head/Host:Port/Direction)][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]" + Environment.NewLine +
+                "--------------------------------------------------------------------------------------------------------------------------------------------------------------" + Environment.NewLine +
+                "   [HBRNSW][      ][Peer|eth99|    9999|      127.0.0.1: 3030| Out][     |     |     |     |     |     ][]" + Environment.NewLine +
                 "   [      ][HBRNSW][Peer|eth99|    9999|      127.0.0.1: 3030|  In][     |     |     |     |     |     ][]";
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
