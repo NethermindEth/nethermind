@@ -15,9 +15,9 @@ public class AccountForRpc
         _Account = account;
     }
 
-    public UInt256 Nonce => _Account.Nonce;
-    public UInt256 Balance => _Account.Balance;
-    public Keccak StorageRoot => _Account.StorageRoot;
     public Keccak CodeHash => _Account.CodeHash;
+    public Keccak StorageRoot => _Account.StorageRoot;
+    public UInt256 Balance => _Account.Balance;
+    public UInt256 Nonce => _Account.Nonce;
 
 }

@@ -754,14 +754,15 @@ public partial class EthRpcModule : IEthRpcModule
         }
     }
 
-    public ResultWrapper<AccountForRpc> eth_getAccount(Address accountAddress, BlockParameter blockParameter)
+    public ResultWrapper<AccountForRpc> eth_getAccount(Address accountAddress, BlockParameter? blockParameter)
     {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter ?? BlockParameter.Latest);
         if (searchResult.IsError)
         {
-            return ResultWrapper<AccountForRpc>.Fail(searchResult);
+            // probably better forward Error of searchResult
+            return ResultWrapper<AccountForRpc>.Fail($"header not found", ErrorCodes.InvalidInput);
         }
-        Block block = searchResult.Object;
+        BlockHeader block = searchResult.Object;
         Account account = _stateReader.GetAccount(block.StateRoot, accountAddress);
         return ResultWrapper<AccountForRpc>.Success(account is null ? null : new AccountForRpc(account));
     }

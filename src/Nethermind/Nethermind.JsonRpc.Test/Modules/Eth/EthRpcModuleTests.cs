@@ -739,31 +739,42 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         string serialized = ctx.Test.TestEthRpc("eth_getAccount", "0x000000000000000000000000000000000000dead", "latest");
 
-        Assert.True(serialized.Equals("{\"jsonrpc\":\"2.0\",\"result\": null,\"id\":97}"));
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}");
     }
 
     [Test]
     public async Task Eth_get_account_found()
     {
         using Context ctx = await Context.Create();
-
-        string account_address = TestBlockchain.AccountD.ToString();
-        string account_balance = 1000.Ether().ToHexString(true);
-        string account_codehash = Keccak.OfAnEmptyString.ToString();
-        string account_storageroot = Keccak.EmptyTreeHash.ToString();
+        string account_address = TestBlockchain.AccountC.ToString();
 
         string serialized = ctx.Test.TestEthRpc("eth_getAccount", account_address, "latest");
+        string expected = "{\"jsonrpc\":\"2.0\",\"result\":{\"codeHash\":\"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470\",\"storageRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"balance\":\"0x3635c9adc5dea00000\",\"nonce\":\"0x0\"},\"id\":67}";
 
-        Assert.True(serialized.Equals($"{{\"jsonrpc\":\"2.0\",\"result\": {{ \"codeHash\": \"{account_codehash}\", \"storageRoot\": \"{account_storageroot}\", \"balance\": \"{account_balance}\", \"nonce\": \"{account_address}\"}},\"id\":67}}"));
+        serialized.Should().Be(expected);
     }
 
     [Test]
-    public async Task Eth_get_account_found_incorrect_block()
+    public async Task Eth_get_account_incorrect_block()
     {
         using Context ctx = await Context.Create();
-        string serialized = ctx.Test.TestEthRpc("eth_getAccount", "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf", "0xffff");
+        string account_address = TestBlockchain.AccountC.ToString();
 
-        Assert.True(serialized.Equals("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"header not found\"},\"id\":67}"));
+        string serialized = ctx.Test.TestEthRpc("eth_getAccount", account_address, "0xffff");
+
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"header not found\"},\"id\":67}");
+    }
+
+    [Test]
+    public async Task Eth_get_account_no_block_argument()
+    {
+        using Context ctx = await Context.Create();
+        string account_address = TestBlockchain.AccountC.ToString();
+
+        string serialized = ctx.Test.TestEthRpc("eth_getAccount", account_address);
+        string expected = "{\"jsonrpc\":\"2.0\",\"result\":{\"codeHash\":\"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470\",\"storageRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"balance\":\"0x3635c9adc5dea00000\",\"nonce\":\"0x0\"},\"id\":67}";
+
+        serialized.Should().Be(expected);
     }
 
 

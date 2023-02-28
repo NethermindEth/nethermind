@@ -88,7 +88,6 @@ public class TestBlockchain : IDisposable
     public static Address AccountA = TestItem.AddressA;
     public static Address AccountB = TestItem.AddressB;
     public static Address AccountC = TestItem.AddressC;
-    public static Address AccountD = TestItem.AddressD;
     public SemaphoreSlim _resetEvent = null!;
     private ManualResetEvent _suggestedBlockResetEvent = null!;
     private AutoResetEvent _oneAtATime = new(true);
@@ -121,7 +120,6 @@ public class TestBlockchain : IDisposable
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
-        State.CreateAccount(TestItem.AddressD, (initialValues ?? InitialValue));
 
         byte[] code = Bytes.FromHexString("0xabcd");
         Keccak codeHash = Keccak.Compute(code);
