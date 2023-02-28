@@ -21,7 +21,7 @@ public class DbConfig : IDbConfig
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 4;
     public ulong ReceiptsDbBlockCacheSize { get; set; } = (ulong)32.MiB();
     public bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; } = false;
-    public int? ReceiptsDbMaxOpenFiles { get; set; } = -1; 
+    public int? ReceiptsDbMaxOpenFiles { get; set; } = -1;
     public long? ReceiptsDbMaxWriteBytesPerSec { get; set; }
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)8.MiB();

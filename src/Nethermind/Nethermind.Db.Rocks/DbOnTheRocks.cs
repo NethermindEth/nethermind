@@ -249,7 +249,7 @@ public class DbOnTheRocks : IDbWithSpan
         options.SetWriteBufferSize(writeBufferSize);
         int writeBufferNumber = (int)_perTableDbConfig.WriteBufferNumber;
         options.SetMaxWriteBufferNumber(writeBufferNumber);
-        options.SetMinWriteBufferNumberToMerge(2); 
+        options.SetMinWriteBufferNumberToMerge(2);
 
         lock (_dbsByPath)
         {
