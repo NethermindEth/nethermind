@@ -90,13 +90,17 @@ namespace Nethermind.Synchronization.SnapSync
 
                 curStartingPath += (byte)partitionSize;
 
-                Keccak limitPath = new Keccak(Keccak.Zero.Bytes.ToArray());
-                limitPath.Bytes[0] = curStartingPath;
+                Keccak limitPath;
 
                 // Special case for the last partition
                 if (i == _accountRangePartitionCount - 1)
                 {
                     limitPath = Keccak.MaxValue;
+                }
+                else
+                {
+                    limitPath = new Keccak(Keccak.Zero.Bytes.ToArray());
+                    limitPath.Bytes[0] = curStartingPath;
                 }
 
                 partition.AccountPathLimit = limitPath;
