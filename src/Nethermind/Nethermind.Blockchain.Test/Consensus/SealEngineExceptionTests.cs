@@ -10,7 +10,7 @@ namespace Nethermind.Blockchain.Test.Consensus
     [TestFixture]
     public class SealEngineExceptionTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Test()
         {
             SealEngineException exception = new("message");

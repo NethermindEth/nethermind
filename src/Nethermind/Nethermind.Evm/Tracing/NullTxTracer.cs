@@ -83,9 +83,9 @@ namespace Nethermind.Evm.Tracing
         public void ReportAccountRead(Address address)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
             => throw new InvalidOperationException(ErrorMessage);
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)

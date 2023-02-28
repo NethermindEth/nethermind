@@ -22,69 +22,53 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateLeaf(HexPrefix key, byte[]? value)
+        public static TrieNode CreateLeaf(byte[] path, byte[]? value)
         {
-            Debug.Assert(
-                key.IsLeaf,
-                $"{nameof(NodeType.Leaf)} should always be created with a leaf {nameof(HexPrefix)}");
-
             TrieNode node = new(NodeType.Leaf);
-            node.Key = key;
+            node.Key = path;
             node.Value = value;
             return node;
         }
 
-        public static TrieNode CreateLeaf(HexPrefix key, byte[]? value, Span<byte> pathToNode)
+        public static TrieNode CreateLeaf(byte[] path, byte[]? value, Span<byte> pathToNode)
         {
-            Debug.Assert(
-                key.IsLeaf,
-                $"{nameof(NodeType.Leaf)} should always be created with a leaf {nameof(HexPrefix)}");
-
             TrieNode node = new(NodeType.Leaf);
-            node.Key = key;
+            node.Key = path;
             node.Value = value;
             node.PathToNode = pathToNode.ToArray();
-            if (node.Path.Length + node.PathToNode.Length != 64)
+            if (node.Key.Length + node.PathToNode.Length != 64)
                 throw new Exception("what?");
             return node;
         }
 
-        public static TrieNode CreateExtension(HexPrefix key)
+        public static TrieNode CreateExtension(byte[] path)
         {
             TrieNode node = new(NodeType.Extension);
-            node.Key = key;
+            node.Key = path;
             return node;
         }
 
-        public static TrieNode CreateExtension(HexPrefix key, Span<byte> pathToNode)
+        public static TrieNode CreateExtension(byte[] path, Span<byte> pathToNode)
         {
             TrieNode node = new(NodeType.Extension);
-            node.Key = key;
+            node.Key = path;
             node.PathToNode = pathToNode.ToArray();
             return node;
         }
 
-        public static TrieNode CreateExtension(HexPrefix key, TrieNode child)
+        public static TrieNode CreateExtension(byte[] path, TrieNode child)
         {
-            Debug.Assert(
-                key.IsExtension,
-                $"{nameof(NodeType.Extension)} should always be created with an extension {nameof(HexPrefix)}");
-
             TrieNode node = new(NodeType.Extension);
             node.SetChild(0, child);
-            node.Key = key;
+            node.Key = path;
             return node;
         }
 
-        public static TrieNode CreateExtension(HexPrefix key, TrieNode child, Span<byte> pathToNode)
+        public static TrieNode CreateExtension(byte[] path, TrieNode child, Span<byte> pathToNode)
         {
-            Debug.Assert(
-                key.IsExtension,
-                $"{nameof(NodeType.Extension)} should always be created with an extension {nameof(HexPrefix)}");
-
             TrieNode node = new(NodeType.Extension);
             node.SetChild(0, child);
-            node.Key = key;
+            node.Key = path;
             node.PathToNode = pathToNode.ToArray();
             return node;
         }

@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Test.Services
 {
     public class HealthHintServiceTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void GetBlockProcessorAndProducerIntervalHint_returns_expected_result(
             [ValueSource(nameof(BlockProcessorIntervalHintTestCases))]
             BlockProcessorIntervalHint test)

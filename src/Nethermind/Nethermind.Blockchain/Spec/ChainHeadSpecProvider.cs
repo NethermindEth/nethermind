@@ -30,6 +30,8 @@ namespace Nethermind.Blockchain.Spec
 
         public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
 
+        public ulong TimestampFork => _specProvider.TimestampFork;
+
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
@@ -37,6 +39,8 @@ namespace Nethermind.Blockchain.Spec
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
+
+        public ulong NetworkId => _specProvider.NetworkId;
 
         public ulong ChainId => _specProvider.ChainId;
 

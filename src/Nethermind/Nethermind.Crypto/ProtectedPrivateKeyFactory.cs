@@ -9,13 +9,15 @@ namespace Nethermind.Crypto
     {
         private readonly ICryptoRandom _random;
         private readonly ITimestamper _timestamper;
+        private readonly string _keyStoreDir;
 
-        public ProtectedPrivateKeyFactory(ICryptoRandom random, ITimestamper timestamper)
+        public ProtectedPrivateKeyFactory(ICryptoRandom random, ITimestamper timestamper, string keyStoreDir)
         {
             _random = random;
             _timestamper = timestamper;
+            _keyStoreDir = keyStoreDir;
         }
 
-        public ProtectedPrivateKey Create(PrivateKey privateKey) => new(privateKey, _random, _timestamper);
+        public ProtectedPrivateKey Create(PrivateKey privateKey) => new(privateKey, _keyStoreDir, _random, _timestamper);
     }
 }

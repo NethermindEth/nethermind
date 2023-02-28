@@ -50,14 +50,14 @@ namespace Nethermind.Blockchain.Test.Producers
                 private async Task<ScenarioBuilder> CreateTestBlockchainAsync(long gasLimit)
                 {
                     await ExecuteAntecedentIfNeeded();
-                    SingleReleaseSpecProvider spec = new(
+                    TestSingleReleaseSpecProvider spec = new(
                         new ReleaseSpec()
                         {
                             IsEip1559Enabled = _eip1559Enabled,
                             Eip1559TransitionBlock = _eip1559TransitionBlock,
                             Eip1559FeeCollector = _eip1559FeeCollector,
                             IsEip155Enabled = true
-                        }, 1);
+                        });
                     BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);
                     _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                         .WithGenesisBlockBuilder(blockBuilder)
@@ -237,7 +237,7 @@ namespace Nethermind.Blockchain.Test.Producers
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BlockProducer_has_blocks_with_zero_base_fee_before_fork()
         {
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
@@ -247,7 +247,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BlockProducer_returns_correct_fork_base_fee()
         {
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
@@ -258,7 +258,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BlockProducer_returns_correctly_decreases_base_fee_on_empty_blocks()
         {
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
@@ -273,7 +273,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BaseFee_should_decrease_when_we_send_transactions_below_gas_target()
         {
             long gasLimit = 3000000;
@@ -291,7 +291,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BaseFee_should_not_change_when_we_send_transactions_equal_gas_target()
         {
             long gasTarget = 3000000;
@@ -309,7 +309,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BaseFee_should_increase_when_we_send_transactions_above_gas_target()
         {
             long gasTarget = 3000000;
@@ -328,7 +328,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task When_base_fee_decreases_previously_fee_too_low_transaction_is_included()
         {
             long gasTarget = 3000000;

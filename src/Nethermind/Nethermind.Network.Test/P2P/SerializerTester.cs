@@ -1,33 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+
 using DotNetty.Buffers;
 using FluentAssertions;
-using FluentAssertions.Equivalency;
-using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
-using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P
 {
     public static class SerializerTester
     {
-        public static void Test<T>(IMessageSerializer<T> serializer, T message, string expectedData = null) where T : P2PMessage
-        {
-            byte[] serialized = serializer.Serialize(message);
-            T deserialized = serializer.Deserialize(serialized);
-            deserialized.Should().BeEquivalentTo(message);
-            byte[] serializedAgain = serializer.Serialize(deserialized);
-            Assert.AreEqual(serialized.ToHexString(), serializedAgain.ToHexString(), "test old way");
-
-            if (expectedData is not null)
-            {
-                Assert.AreEqual(expectedData, serialized.ToHexString());
-            }
-        }
-
         public static void TestZero<T>(IZeroMessageSerializer<T> serializer, T message, string expectedData = null) where T : P2PMessage
         {
             IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);

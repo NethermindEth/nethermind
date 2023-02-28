@@ -55,7 +55,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             blockHeader.TxRoot = Keccak.EmptyTreeHash;
             blockHeader.Bloom = Bloom.Empty;
 
-            return new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
+            return new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }
 
         protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)

@@ -50,8 +50,8 @@ namespace Nethermind.Mev
         public void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
         public void ReportAccountRead(Address address) { }
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after) { }
-        public void ReportStorageRead(StorageCell storageCell) { }
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
+        public void ReportStorageRead(in StorageCell storageCell) { }
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null) { }
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null) { }
         public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) { }

@@ -26,19 +26,19 @@ namespace Nethermind.Core.Test.Builders
     public class BlockTreeBuilder : BuilderBase<BlockTree>
     {
         private readonly Block _genesisBlock;
+        private readonly ISpecProvider _specProvider;
         private IReceiptStorage? _receiptStorage;
-        private ISpecProvider? _specProvider;
         private IEthereumEcdsa? _ecdsa;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
 
         private bool _onlyHeaders;
 
-        public BlockTreeBuilder()
-            : this(Build.A.Block.Genesis.TestObject)
+        public BlockTreeBuilder(ISpecProvider specProvider)
+            : this(Build.A.Block.Genesis.TestObject, specProvider)
         {
         }
 
-        public BlockTreeBuilder(Block genesisBlock, ISpecProvider? specProvider = null)
+        public BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider)
         {
             BlocksDb = new MemDb();
             HeadersDb = new MemDb();
@@ -48,8 +48,9 @@ namespace Nethermind.Core.Test.Builders
             // so we automatically include in all tests my questionable decision of storing Head block header at 00...
             BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             _genesisBlock = genesisBlock;
+            _specProvider = specProvider;
             ChainLevelInfoRepository = new ChainLevelInfoRepository(BlockInfoDb);
-            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, specProvider ?? MainnetSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, specProvider, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
         }
 
         public MemDb BlocksDb { get; set; }
@@ -71,13 +72,14 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, params Address[] blockBeneficiaries)
+
+        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
-            OfChainLength(out _, chainLength, splitVariant, splitFrom, blockBeneficiaries);
+            OfChainLength(out _, chainLength, splitVariant, splitFrom, withWithdrawals, blockBeneficiaries);
             return this;
         }
 
-        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, params Address[] blockBeneficiaries)
+        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
             Block current = _genesisBlock;
             headBlock = _genesisBlock;
@@ -95,7 +97,7 @@ namespace Nethermind.Core.Test.Builders
                     }
 
                     Block parent = current;
-                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary);
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, withWithdrawals, beneficiary);
                 }
                 else
                 {
@@ -109,14 +111,14 @@ namespace Nethermind.Core.Test.Builders
 
                     Block parent = current;
 
-                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary);
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, withWithdrawals, beneficiary);
                 }
             }
 
             return this;
         }
 
-        private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, Address beneficiary)
+        private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, bool withWithdrawals, Address beneficiary)
         {
             Block currentBlock;
             if (_receiptStorage is not null && blockIndex % 3 == 0)
@@ -133,6 +135,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong)splitVariant))
                     .WithTransactions(transactions)
                     .WithBloom(new Bloom())
+                    .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
                     .WithBeneficiary(beneficiary)
                     .TestObject;
 
@@ -170,6 +173,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithParent(parent)
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong)splitVariant))
                     .WithBeneficiary(beneficiary)
+                    .WithWithdrawals(withWithdrawals ? new[] { TestItem.WithdrawalA_1Eth } : null)
                     .TestObject;
             }
 
@@ -241,10 +245,9 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider, Func<Block, Transaction, IEnumerable<LogEntry>>? logsForBlockBuilder = null)
+        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, Func<Block, Transaction, IEnumerable<LogEntry>>? logsForBlockBuilder = null)
         {
-            _specProvider = specProvider;
-            _ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(TestObjectInternal.ChainId, LimboLogs.Instance);
             _receiptStorage = receiptStorage;
             _logCreationFunction = logsForBlockBuilder;
             return this;

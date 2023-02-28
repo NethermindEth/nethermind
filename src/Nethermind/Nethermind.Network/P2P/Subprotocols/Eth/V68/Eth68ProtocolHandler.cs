@@ -7,13 +7,12 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -23,11 +22,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
 public class Eth68ProtocolHandler : Eth67ProtocolHandler
 {
     private readonly IPooledTxsRequestor _pooledTxsRequestor;
-    private readonly TxDecoder _txDecoder = new();
 
     public override string Name => "eth68";
 
-    public override byte ProtocolVersion => 68;
+    public override byte ProtocolVersion => EthVersions.Eth68;
 
     public Eth68ProtocolHandler(ISession session,
         IMessageSerializationService serializer,
@@ -95,9 +93,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             return;
         }
 
-        ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
-        ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
-        ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        using ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
+        using ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        using ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
 
         foreach (Transaction tx in txs)
         {

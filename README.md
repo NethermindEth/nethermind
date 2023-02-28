@@ -6,11 +6,12 @@
 
 # Nethermind Ethereum client
 
-[![Tests](https://github.com/nethermindeth/nethermind/actions/workflows/run-nethermind-tests.yml/badge.svg)](https://github.com/nethermindeth/nethermind/actions/workflows/run-nethermind-tests.yml)
+[![Tests](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml/badge.svg)](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml)
 [![Chat on Discord](https://img.shields.io/discord/629004402170134531?style=social&logo=discord)](https://discord.gg/GXJFaYk)
 [![Follow us on Twitter](https://img.shields.io/twitter/follow/nethermindeth?style=social&label=Follow)](https://twitter.com/nethermindeth)
+[![Ask on Discourse](https://img.shields.io/discourse/posts?style=social&label=Community&logo=discourse&server=https%3A%2F%2Fcommunity.nethermind.io)](https://community.nethermind.io/c/nethermind-client)
 
-Nethermind is a high-performance, highly configurable full Ethereum protocol client built on .NET that runs on Linux, Windows, and macOS, and supports Clique, Aura, Ethash, and Proof-of-Stake consensus algorithms. Nethermind offers very fast sync speeds and support for external plug-ins. Enjoy reliable access to rich on-chain data thanks to high-performance JSON-RPC based on the Kestrel web server. Healthy node monitoring is secured with a Grafana dashboard and Seq enterprise logging.
+Nethermind is a high-performance, highly configurable full Ethereum protocol execution client built on .NET that runs on Linux, Windows, and macOS, and supports Clique, Aura, and Ethash. Nethermind offers very fast sync speeds and support for external plugins. Enjoy reliable access to rich on-chain data thanks to high-performance JSON-RPC based on the Kestrel web server. Healthy node monitoring is secured with Grafana analytics and Seq logging.
 
 ## Documentation
 
@@ -24,14 +25,15 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 Release builds are available on the [Releases page](https://github.com/nethermindeth/nethermind/releases) and at [downloads.nethermind.io](https://downloads.nethermind.io).
 
-#### Using PPA
+#### On Linux using PPA
 
-1. `sudo add-apt-repository ppa:nethermindeth/nethermind`
+1. `sudo add-apt-repository ppa:nethermindeth/nethermind` \
+   If command not found: `sudo apt install software-properties-common`
 2. `sudo apt install nethermind`
 3. To run the launcher: `nethermind`
 4. To run the runner: `nethermind -c mainnet`
 
-#### Using Homebrew
+#### On macOS using Homebrew
 
 1. `brew tap nethermindeth/nethermind`
 2. `brew install nethermind`
@@ -50,7 +52,7 @@ In case of any Docker image need to be updated in the repository, you can update
 docker inspect --format='{{index .RepoDigests 0}}' <image_name>
 ```
 
-The output must show the image digest, and then you can copy that output to the `FROM` tag in the Dockerfile.
+The output should show the image digest, and then you can copy that to the `FROM` tag in the Dockerfile.
 
 ## Build from source
 
@@ -59,7 +61,6 @@ The output must show the image digest, and then you can copy that output to the 
 #### Windows
 
 -   [Install .NET](https://dotnet.microsoft.com/en-us/download?initial-os=windows)
--   For some versions of Windows, you may need to install [Visual C++ Redistributable](https://docs.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
 
 #### macOS
 

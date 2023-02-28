@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -12,7 +13,7 @@ namespace Nethermind.Network.Rlpx
 
         public Packet(ZeroPacket zeroPacket)
         {
-            Data = zeroPacket.Content.ReadAllBytes();
+            Data = zeroPacket.Content.ReadAllBytesAsArray();
             PacketType = zeroPacket.PacketType;
             Protocol = zeroPacket.Protocol;
         }

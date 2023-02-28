@@ -392,7 +392,7 @@ namespace Nethermind.Trie
                     if (traverseContext.UpdateValue is not null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue}");
-                        HexPrefix key = HexPrefix.Leaf(updatePath.Slice(0, nibblesCount).ToArray());
+                        byte[] key = updatePath.Slice(0, nibblesCount).ToArray();
                         RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue, EmptyKeyPath);
                     }
 
@@ -466,7 +466,7 @@ namespace Nethermind.Trie
                             // this only happens when we have branches with values
                             // which is not possible in the Ethereum protocol where keys are of equal lengths
                             // (it is possible in the more general trie definition)
-                            TrieNode leafFromBranch = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(), node.Value);
+                            TrieNode leafFromBranch = TrieNodeFactory.CreateLeaf(Array.Empty<byte>(), node.Value);
                             if (_logger.IsTrace) _logger.Trace($"Converting {node} into {leafFromBranch}");
                             nextNode = leafFromBranch;
                         }
@@ -508,8 +508,7 @@ namespace Nethermind.Trie
                             if (childNode.IsBranch)
                             {
                                 TrieNode extensionFromBranch =
-                                    TrieNodeFactory.CreateExtension(
-                                        HexPrefix.Extension((byte)childNodeIndex), childNode);
+                                    TrieNodeFactory.CreateExtension(new[] { (byte)childNodeIndex }, childNode);
                                 if (_logger.IsTrace)
                                     _logger.Trace(
                                         $"Extending child {childNodeIndex} {childNode} of {node} into {extensionFromBranch}");
@@ -543,8 +542,7 @@ namespace Nethermind.Trie
                                    B B B B B B B B B B B B B B B B
                                    L L - - - - - - - - - - - - - - */
 
-                                HexPrefix newKey
-                                    = HexPrefix.Extension(Bytes.Concat((byte)childNodeIndex, childNode.Path));
+                                byte[] newKey = Bytes.Concat((byte)childNodeIndex, childNode.Key);
                                 TrieNode extendedExtension = childNode.CloneWithChangedKey(newKey);
                                 if (_logger.IsTrace)
                                     _logger.Trace(
@@ -553,7 +551,7 @@ namespace Nethermind.Trie
                             }
                             else if (childNode.IsLeaf)
                             {
-                                HexPrefix newKey = HexPrefix.Leaf(Bytes.Concat((byte)childNodeIndex, childNode.Path));
+                                byte[] newKey = Bytes.Concat((byte)childNodeIndex, childNode.Key);
                                 TrieNode extendedLeaf = childNode.CloneWithChangedKey(newKey);
                                 if (_logger.IsTrace)
                                     _logger.Trace(
@@ -584,7 +582,7 @@ namespace Nethermind.Trie
 
                     if (nextNode.IsLeaf)
                     {
-                        HexPrefix newKey = HexPrefix.Leaf(Bytes.Concat(node.Path, nextNode.Path));
+                        byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
                         TrieNode extendedLeaf = nextNode.CloneWithChangedKey(newKey);
                         if (_logger.IsTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedLeaf}");
@@ -618,8 +616,7 @@ namespace Nethermind.Trie
                            B B B B B B B B B B B B B B B B
                            L L - - - - - - - - - - - - - - */
 
-                        HexPrefix newKey
-                            = HexPrefix.Extension(Bytes.Concat(node.Path, nextNode.Path));
+                        byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
                         TrieNode extendedExtension = nextNode.CloneWithChangedKey(newKey);
                         if (_logger.IsTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedExtension}");
@@ -715,7 +712,7 @@ namespace Nethermind.Trie
                 byte[] leafPath = traverseContext.UpdatePath.Slice(
                     traverseContext.CurrentIndex,
                     traverseContext.UpdatePath.Length - traverseContext.CurrentIndex).ToArray();
-                TrieNode leaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(leafPath), traverseContext.UpdateValue, traverseContext.GetCurrentPath());
+                TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath, traverseContext.UpdateValue, traverseContext.GetCurrentPath());
                 ConnectNodes(leaf);
 
                 return traverseContext.UpdateValue;
@@ -729,7 +726,7 @@ namespace Nethermind.Trie
 
         private byte[]? TraverseLeaf(TrieNode node, TraverseContext traverseContext)
         {
-            if (node.Path is null)
+            if (node.Key is null)
             {
                 throw new InvalidDataException("An attempt to visit a node without a prefix path.");
             }
@@ -737,21 +734,21 @@ namespace Nethermind.Trie
             Span<byte> remaining = traverseContext.GetRemainingUpdatePath();
             Span<byte> shorterPath;
             Span<byte> longerPath;
-            if (traverseContext.RemainingUpdatePathLength - node.Path.Length < 0)
+            if (traverseContext.RemainingUpdatePathLength - node.Key.Length < 0)
             {
                 shorterPath = remaining;
-                longerPath = node.Path;
+                longerPath = node.Key;
             }
             else
             {
-                shorterPath = node.Path;
+                shorterPath = node.Key;
                 longerPath = remaining;
             }
 
             byte[] shorterPathValue;
             byte[] longerPathValue;
 
-            if (Bytes.AreEqual(shorterPath, node.Path))
+            if (Bytes.AreEqual(shorterPath, node.Key))
             {
                 shorterPathValue = node.Value;
                 longerPathValue = traverseContext.UpdateValue;
@@ -805,7 +802,7 @@ namespace Nethermind.Trie
             if (extensionLength != 0)
             {
                 Span<byte> extensionPath = longerPath.Slice(0, extensionLength);
-                TrieNode extension = TrieNodeFactory.CreateExtension(HexPrefix.Extension(extensionPath.ToArray()), traverseContext.GetCurrentPath());
+                TrieNode extension = TrieNodeFactory.CreateExtension(extensionPath.ToArray(), traverseContext.GetCurrentPath());
                 _nodeStack.Push(new StackedNode(extension, 0));
             }
 
@@ -821,14 +818,14 @@ namespace Nethermind.Trie
                 if (shorterPath.Length == 64)
                 {
                     Span<byte> pathToShortLeaf = shorterPath.Slice(0, extensionLength + 1);
-                    shortLeaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(shortLeafPath.ToArray()), shorterPathValue, pathToShortLeaf);
+                    shortLeaf = TrieNodeFactory.CreateLeaf(shortLeafPath.ToArray(), shorterPathValue, pathToShortLeaf);
                 }
                 else
                 {
                     Span<byte> pathToShortLeaf = stackalloc byte[branch.PathToNode.Length + 1];
                     branch.PathToNode.CopyTo(pathToShortLeaf);
                     pathToShortLeaf[branch.PathToNode.Length] = shorterPath[extensionLength];
-                    shortLeaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(shortLeafPath.ToArray()), shorterPathValue, pathToShortLeaf);
+                    shortLeaf = TrieNodeFactory.CreateLeaf(shortLeafPath.ToArray(), shorterPathValue, pathToShortLeaf);
                 }
                 branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
@@ -837,8 +834,7 @@ namespace Nethermind.Trie
             Span<byte> pathToLeaf = stackalloc byte[branch.PathToNode.Length + 1];
             branch.PathToNode.CopyTo(pathToLeaf);
             pathToLeaf[branch.PathToNode.Length] = longerPath[extensionLength];
-            TrieNode withUpdatedKeyAndValue = node.CloneWithChangedKeyAndValue(
-                HexPrefix.Leaf(leafPath.ToArray()), longerPathValue, pathToLeaf.ToArray());
+            TrieNode withUpdatedKeyAndValue = node.CloneWithChangedKeyAndValue(leafPath.ToArray(), longerPathValue, pathToLeaf.ToArray());
 
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
             ConnectNodes(withUpdatedKeyAndValue);
@@ -848,7 +844,7 @@ namespace Nethermind.Trie
 
         private byte[]? TraverseExtension(TrieNode node, TraverseContext traverseContext)
         {
-            if (node.Path is null)
+            if (node.Key is null)
             {
                 throw new InvalidDataException("An attempt to visit a node without a prefix path.");
             }
@@ -856,8 +852,8 @@ namespace Nethermind.Trie
             TrieNode originalNode = node;
             Span<byte> remaining = traverseContext.GetRemainingUpdatePath();
 
-            int extensionLength = FindCommonPrefixLength(remaining, node.Path);
-            if (extensionLength == node.Path.Length)
+            int extensionLength = FindCommonPrefixLength(remaining, node.Key);
+            if (extensionLength == node.Key.Length)
             {
                 traverseContext.CurrentIndex += extensionLength;
                 if (traverseContext.IsUpdate)
@@ -893,11 +889,11 @@ namespace Nethermind.Trie
                     $"Could find the leaf node to delete: {traverseContext.UpdatePath.ToHexString()}");
             }
 
-            byte[] pathBeforeUpdate = node.Path;
+            byte[] pathBeforeUpdate = node.Key;
             if (extensionLength != 0)
             {
-                byte[] extensionPath = node.Path.Slice(0, extensionLength);
-                node = node.CloneWithChangedKey(HexPrefix.Extension(extensionPath));
+                byte[] extensionPath = node.Key.Slice(0, extensionLength);
+                node = node.CloneWithChangedKey(extensionPath);
                 _nodeStack.Push(new StackedNode(node, 0));
             }
 
@@ -909,7 +905,7 @@ namespace Nethermind.Trie
             else
             {
                 byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1).ToArray();
-                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(path), traverseContext.UpdateValue, traverseContext.UpdatePath.Slice(0, traverseContext.CurrentIndex + extensionLength + 1));
+                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(path, traverseContext.UpdateValue, traverseContext.UpdatePath.Slice(0, traverseContext.CurrentIndex + extensionLength + 1));
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
@@ -926,7 +922,7 @@ namespace Nethermind.Trie
                 Span<byte> fullPath = traverseContext.UpdatePath.Slice(0, traverseContext.CurrentIndex + extensionLength + 1);
                 fullPath[traverseContext.CurrentIndex + extensionLength] = pathBeforeUpdate[extensionLength];
                 TrieNode secondExtension
-                    = TrieNodeFactory.CreateExtension(HexPrefix.Extension(extensionPath), originalNodeChild, fullPath);
+                    = TrieNodeFactory.CreateExtension(extensionPath, originalNodeChild, fullPath);
                 branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
             }
             else

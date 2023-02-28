@@ -15,7 +15,7 @@ namespace Nethermind.Network.Rlpx
     {
         private readonly ILogger _logger;
         private readonly IFrameCipher _cipher;
-        private readonly IFrameMacProcessor _authenticator;
+        private readonly FrameMacProcessor _authenticator;
 
         private readonly byte[] _headerBytes = new byte[Frame.HeaderSize];
         private readonly byte[] _macBytes = new byte[Frame.MacSize];
@@ -23,15 +23,21 @@ namespace Nethermind.Network.Rlpx
         private readonly byte[] _decryptedBytes = new byte[Frame.BlockSize];
 
         private FrameDecoderState _state = FrameDecoderState.WaitingForHeader;
-        private IByteBuffer _innerBuffer;
+        private IByteBuffer? _innerBuffer;
         private int _frameSize;
         private int _remainingPayloadBlocks;
 
-        public ZeroFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
+        public ZeroFrameDecoder(IFrameCipher frameCipher, FrameMacProcessor frameMacProcessor, ILogManager logManager)
         {
             _cipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
             _authenticator = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
             _logger = logManager?.GetClassLogger<ZeroFrameDecoder>() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+
+        public override void HandlerRemoved(IChannelHandlerContext context)
+        {
+            base.HandlerRemoved(context);
+            _innerBuffer?.Release();
         }
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)

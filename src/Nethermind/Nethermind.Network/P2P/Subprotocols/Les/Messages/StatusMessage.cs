@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
         public static class KeyNames
         {
             public const string ProtocolVersion = "protocolVersion";
-            public const string ChainId = "networkId";
+            public const string NetworkId = "networkId";
             public const string TotalDifficulty = "headTd";
             public const string BestHash = "headHash";
             public const string HeadBlockNo = "headNum";
@@ -30,9 +30,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
         }
 
         public override int PacketType { get; } = LesMessageCode.Status;
-        public override string Protocol => P2P.Protocol.Les;
+        public override string Protocol => Contract.P2P.Protocol.Les;
         public byte ProtocolVersion { get; set; }
-        public UInt256 ChainId { get; set; }
+        public UInt256 NetworkId { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public Keccak BestHash { get; set; }
         public long HeadBlockNo { get; set; }

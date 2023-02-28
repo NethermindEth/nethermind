@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
         public ZeroFrameMergerTestWrapper()
             : base(LimboLogs.Instance)
         {
-            _context.Allocator.Returns(PooledByteBufferAllocator.Default);
+            _context.Allocator.Returns(UnpooledByteBufferAllocator.Default);
         }
 
         private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();

@@ -234,13 +234,13 @@ namespace Nethermind.Trie.Pruning
                     throw new TrieStoreException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
                 }
 
-                if (node!.LastSeen.HasValue)
+                if (node!.LastSeen != TrieNode.LastSeenNotSet)
                 {
                     throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
                 }
 
                 node = SaveOrReplaceInDirtyNodesCache(nodeCommitInfo, node);
-                node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
+                node.LastSeen = Math.Max(blockNumber, node.LastSeen);
 
                 if (!_pruningStrategy.PruningEnabled)
                 {
@@ -699,7 +699,7 @@ namespace Nethermind.Trie.Pruning
 
             if (currentNode.Keccak is not null)
             {
-                Debug.Assert(currentNode.LastSeen.HasValue, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
+                Debug.Assert(blockNumber == TrieNode.LastSeenNotSet || currentNode.LastSeen != TrieNode.LastSeenNotSet, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
@@ -713,7 +713,7 @@ namespace Nethermind.Trie.Pruning
                 SaveNodeDirectly(blockNumber, currentNode, _currentBatch);
 
                 currentNode.IsPersisted = true;
-                currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
+                currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen);
 
                 PersistedNodesCount++;
             }
@@ -726,7 +726,7 @@ namespace Nethermind.Trie.Pruning
 
         private bool IsNoLongerNeeded(TrieNode node)
         {
-            Debug.Assert(node.LastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
+            Debug.Assert(node.LastSeen != TrieNode.LastSeenNotSet, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
             return node.LastSeen < LastPersistedBlockNumber
                    && node.LastSeen < LatestCommittedBlockNumber - Reorganization.MaxDepth;
         }
@@ -894,7 +894,7 @@ namespace Nethermind.Trie.Pruning
 
             byte[] pathBytes = trieNode.FullPath.Length < 64 ?
                 Nibbles.ToEncodedStorageBytes(trieNode.FullPath) : Nibbles.ToBytes(trieNode.FullPath);
-            if (trieNode.IsLeaf && (trieNode.Key.Path.Length < 64 || trieNode.PathToNode.Length == 0))
+            if (trieNode.IsLeaf && (trieNode.Key.Length < 64 || trieNode.PathToNode.Length == 0))
             {
                 byte[] pathToNodeBytes = Nibbles.ToEncodedStorageBytes(trieNode.PathToNode);
                 keyValueStore[pathToNodeBytes] = pathBytes;
