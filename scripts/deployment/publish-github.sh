@@ -9,7 +9,7 @@ echo "Publishing packages to GitHub"
 PACKAGE_PATH=$GITHUB_WORKSPACE/$PACKAGE_DIR
 
 BODY=$(printf \
-  '{"tag_name": "%s", "target_commitish": "%s", "name": "v%s", "body": "## Release notes\\n\\n", "draft": true, "prerelease": %s}' \
+  '{"tag_name": "%s", "target_commitish": "%s", "name": "v%s", "body": "## Release notes\\n\\n", "draft": false, "prerelease": %s}' \
   $GIT_TAG $GIT_COMMIT $GIT_TAG $PRERELEASE)
 
 echo "Drafting release $GIT_TAG"

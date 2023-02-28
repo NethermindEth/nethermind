@@ -286,3 +286,15 @@ jobs:
         done
         rm -f /tmp/lp_credentials
 
+  publish-winget:
+    name: Publish to Windows Package Manager
+    runs-on: windows-latest
+    needs: [approval, build, publish-github]
+    if: needs.build.outputs.PRERELEASE == 'false'
+    steps:
+    - name: Submit package
+      run: | 
+        $releaseInfo = irm -uri "https://api.github.com/repos/nethermindeth/nethermind/releases/latest"
+        $releaseUrl = $releaseInfo | Select -ExpandProperty assets | Where-Object -Property name -match 'windows' | Select -ExpandProperty browser_download_url
+        iwr https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+        wingetcreate.exe update Nethermind.Nethermind -s -v ${{ github.event.inputs.tag }} -u $releaseUrl -t ${{ secrets.WINGET_PAT }}
