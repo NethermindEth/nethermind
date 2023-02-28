@@ -40,7 +40,6 @@ Release builds are available on the [Releases page](https://github.com/nethermin
 3. To run the runner: `nethermind.runner.exe -c mainnet` \
    Or simply `nethermind -c mainnet` if step 1 run as administrator
 
-
 #### On macOS using Homebrew
 
 1. `brew tap nethermindeth/nethermind`
