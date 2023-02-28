@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
         }
 
@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.Test
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
         }
 
@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.Test
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
         }
 
@@ -79,11 +79,11 @@ namespace Nethermind.Synchronization.Test
             syncPeerPool.AllPeers.Returns(peers);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
 
             syncPeerSyncPeer.IsInitialized = true;
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
         }
 
@@ -137,11 +137,11 @@ namespace Nethermind.Synchronization.Test
             syncPeerPool.AllPeers.Returns(peers);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
 
             syncPeerSyncPeer.IsInitialized = true;
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
         }
 
