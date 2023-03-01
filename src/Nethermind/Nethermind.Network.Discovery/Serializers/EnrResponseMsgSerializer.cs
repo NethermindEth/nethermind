@@ -1,16 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<EnrResponseMsg>
+public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<EnrResponseMsg>
 {
     private readonly NodeRecordSigner _nodeRecordSigner;
 
@@ -20,25 +21,27 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeri
         _nodeRecordSigner = new NodeRecordSigner(ecdsa, nodeKey.Generate());
     }
 
-    public byte[] Serialize(EnrResponseMsg msg)
+    public void Serialize(IByteBuffer byteBuffer, EnrResponseMsg msg)
     {
         int contentLength = Rlp.LengthOfKeccakRlp;
         contentLength += msg.NodeRecord.GetRlpLengthWithSignature();
         int totalLength = Rlp.LengthOfSequence(contentLength);
 
-        RlpStream rlpStream = new(totalLength);
+        byteBuffer.MarkIndex();
+        PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
+        NettyRlpStream rlpStream = new(byteBuffer);
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(msg.RequestKeccak);
         msg.NodeRecord.Encode(rlpStream);
 
-        byte[] serializedMsg = Serialize((byte)msg.MsgType, rlpStream.Data);
-        return serializedMsg;
+        byteBuffer.ResetIndex();
+        AddSignatureAndMdc(byteBuffer, totalLength + 1);
     }
 
-    public EnrResponseMsg Deserialize(byte[] msgBytes)
+    public EnrResponseMsg Deserialize(IByteBuffer msgBytes)
     {
-        (PublicKey? farPublicKey, _, byte[]? data) = PrepareForDeserialization(msgBytes);
-        RlpStream rlpStream = data.AsRlpStream();
+        (PublicKey? farPublicKey, _, IByteBuffer? data) = PrepareForDeserialization(msgBytes);
+        NettyRlpStream rlpStream = new(data);
         rlpStream.ReadSequenceLength();
         Keccak? requestKeccak = rlpStream.DecodeKeccak(); // skip (not sure if needed to verify)
 
@@ -46,11 +49,18 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeri
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);
         if (!_nodeRecordSigner.Verify(nodeRecord))
         {
-            string resHex = data.Slice(positionForHex).ToHexString();
+            string resHex = data.ReadBytes(positionForHex).ReadAllHex();
             throw new NetworkingException($"Invalid ENR signature: {resHex}", NetworkExceptionType.Discovery);
         }
 
         EnrResponseMsg msg = new(farPublicKey, nodeRecord, requestKeccak!);
         return msg;
+    }
+
+    public int GetLength(EnrResponseMsg msg, out int contentLength)
+    {
+        contentLength = Rlp.LengthOfKeccakRlp;
+        contentLength += msg.NodeRecord.GetRlpLengthWithSignature();
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

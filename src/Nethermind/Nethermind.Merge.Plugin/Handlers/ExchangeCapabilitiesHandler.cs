@@ -12,8 +12,6 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumerable<string>>
 {
-    private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(1);
-
     private readonly ILogger _logger;
     private readonly IRpcCapabilitiesProvider _engineRpcCapabilitiesProvider;
 
@@ -28,7 +26,7 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
 
     public ResultWrapper<IEnumerable<string>> Handle(IEnumerable<string> methods)
     {
-        var capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
+        IReadOnlyDictionary<string, bool> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
         CheckCapabilities(methods, capabilities);
 
         return ResultWrapper<IEnumerable<string>>.Success(capabilities.Keys);
@@ -36,13 +34,13 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
 
     private void CheckCapabilities(IEnumerable<string> methods, IReadOnlyDictionary<string, bool> capabilities)
     {
-        var missing = new List<string>();
+        List<string> missing = new();
 
-        foreach (var capability in capabilities)
+        foreach (KeyValuePair<string, bool> capability in capabilities)
         {
-            var found = false;
+            bool found = false;
 
-            foreach (var method in methods)
+            foreach (string method in methods)
                 if (method.Equals(capability.Key, StringComparison.Ordinal))
                 {
                     found = true;

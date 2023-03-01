@@ -224,6 +224,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
                 ProtocolVersion = status.ProtocolVersion,
+                ForkId = status.ForkId,
                 TotalDifficulty = status.TotalDifficulty
             };
 

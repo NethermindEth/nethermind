@@ -19,7 +19,7 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 ### Supported networks
 
-**`Mainnet`** **`Goerli`** **`Rinkeby`** **`Ropsten`** **`Sepolia`** **`Gnosis (xDai)`** **`Energy Web`** **`Volta`** **`Kovan`**
+**`Mainnet`** **`Goerli`** **`Sepolia`** **`Gnosis (xDai)`** **`Energy Web`** **`Volta`**
 
 ## Download and run
 
