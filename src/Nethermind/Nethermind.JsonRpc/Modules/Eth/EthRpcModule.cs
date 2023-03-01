@@ -762,8 +762,13 @@ public partial class EthRpcModule : IEthRpcModule
             // probably better forward Error of searchResult
             return ResultWrapper<AccountForRpc>.Fail($"header not found", ErrorCodes.InvalidInput);
         }
-        BlockHeader block = searchResult.Object;
-        Account account = _stateReader.GetAccount(block.StateRoot, accountAddress);
+        BlockHeader header = searchResult.Object;
+        if (!HasStateForBlock(_blockchainBridge, header))
+        {
+            return ResultWrapper<AccountForRpc>.Fail($"No state available for block {header.Hash}",
+                ErrorCodes.ResourceUnavailable);
+        }
+        Account account = _stateReader.GetAccount(header.StateRoot, accountAddress);
         return ResultWrapper<AccountForRpc>.Success(account is null ? null : new AccountForRpc(account));
     }
 }
