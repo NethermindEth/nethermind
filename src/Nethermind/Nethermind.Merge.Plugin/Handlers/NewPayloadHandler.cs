@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -13,6 +14,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -45,7 +47,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly LruCache<KeccakKey, bool>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
-
+    private StreamWriter _fileWriter;
+    private int _txsToWrite = 50000;
     public NewPayloadHandler(
         IBlockValidator blockValidator,
         IBlockTree blockTree,
@@ -77,6 +80,31 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
         if (cacheSize > 0)
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
+
+        FileStream file = File.Open("C:/praca/validRawTxs.txt", FileMode.Create, FileAccess.Write);
+        _fileWriter = new StreamWriter(file);
+    }
+
+    private void WriteRawTxsToFile(ExecutionPayload request)
+    {
+        if (_txsToWrite < 0)
+        {
+            return;
+        }
+
+        _logger.Warn($"writing txs from block. {_txsToWrite} left");
+        foreach (byte[] tx in request.Transactions)
+        {
+            if (_txsToWrite <= 0)
+            {
+                _fileWriter.Dispose();
+                _txsToWrite = int.MinValue;
+                _logger.Error("finished writing txs");
+                break;
+            }
+            _txsToWrite--;
+            _fileWriter.WriteLine(tx.ToHexString());
+        }
     }
 
     /// <summary>
@@ -164,6 +192,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
             _beaconPivot.EnsurePivot(block.Header, true);
             _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, insertHeaderOptions);
+            WriteRawTxsToFile(request);
 
             if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Inserting block {block}.");
             return NewPayloadV1Result.Syncing;
