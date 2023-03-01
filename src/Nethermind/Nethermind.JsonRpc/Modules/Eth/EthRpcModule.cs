@@ -765,7 +765,7 @@ public partial class EthRpcModule : IEthRpcModule
         BlockHeader header = searchResult.Object;
         if (!HasStateForBlock(_blockchainBridge, header))
         {
-            return ResultWrapper<AccountForRpc>.Fail($"No state available for block {header.Hash}",
+            return ResultWrapper<AccountForRpc>.Fail($"No state available for {blockParameter}",
                 ErrorCodes.ResourceUnavailable);
         }
         Account account = _stateReader.GetAccount(header.StateRoot, accountAddress);
