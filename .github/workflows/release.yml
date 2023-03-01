@@ -297,4 +297,4 @@ jobs:
         $releaseInfo = irm -uri "https://api.github.com/repos/nethermindeth/nethermind/releases/latest"
         $releaseUrl = $releaseInfo | Select -ExpandProperty assets | Where-Object -Property name -match 'windows' | Select -ExpandProperty browser_download_url
         iwr https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
-        wingetcreate.exe update Nethermind.Nethermind -s -v ${{ github.event.inputs.tag }} -u $releaseUrl -t ${{ secrets.WINGET_PAT }}
+        wingetcreate.exe update Nethermind.Nethermind -s -v ${{ github.event.inputs.tag }} -u $releaseUrl -t ${{ secrets.WINGET_TOKEN }}
