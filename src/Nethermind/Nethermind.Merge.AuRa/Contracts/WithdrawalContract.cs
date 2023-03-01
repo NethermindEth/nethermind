@@ -6,6 +6,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 
 namespace Nethermind.Merge.AuRa.Contracts;
 
@@ -17,12 +18,12 @@ public class WithdrawalContract : CallableContract, IWithdrawalContract
         Address contractAddress)
         : base(transactionProcessor, abiEncoder, contractAddress) { }
 
-    public void ExecuteWithdrawals(BlockHeader blockHeader, ulong[] amounts, Address[] addresses)
+    public void ExecuteWithdrawals(BlockHeader blockHeader, UInt256 failedMaxCount, ulong[] amounts, Address[] addresses)
     {
         ArgumentNullException.ThrowIfNull(blockHeader);
         ArgumentNullException.ThrowIfNull(amounts);
         ArgumentNullException.ThrowIfNull(addresses);
 
-        Call(blockHeader, "executeSystemWithdrawals", Address.SystemUser, UnlimitedGas, amounts, addresses);
+        Call(blockHeader, "executeSystemWithdrawals", Address.SystemUser, UnlimitedGas, failedMaxCount, amounts, addresses);
     }
 }

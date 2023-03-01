@@ -2,6 +2,11 @@
   {
     "inputs": [
       {
+        "internalType": "uint256",
+        "name": "maxNumberOfFailedWithdrawalsToProcess",
+        "type": "uint256"
+      },
+      {
         "internalType": "uint64[]",
         "name": "amounts",
         "type": "uint64[]"
