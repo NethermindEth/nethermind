@@ -23,7 +23,7 @@ namespace Nethermind.TxPool.Filters
         {
             Account account = state.SenderAccount;
             UInt256 balance = account.Balance;
-            
+
             if (!tx.IsFree() && balance.IsZero)
             {
                 Metrics.PendingTransactionsZeroBalance++;

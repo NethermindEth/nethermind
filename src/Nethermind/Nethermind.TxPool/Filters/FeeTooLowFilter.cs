@@ -45,18 +45,7 @@ namespace Nethermind.TxPool.Filters
             }
 
             IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
-            bool isEip1559Enabled = spec.IsEip1559Enabled;
-            if (isEip1559Enabled && tx.IsEip1559)
-            {
-                if (tx.GasLimit < spec.MinGasLimit || tx.GasPrice < spec.Eip1559BaseFeeMinValue)
-                {
-                    // Amounts too low for spec
-                    Metrics.PendingTransactionsTooLowFee++;
-                    return AcceptTxResult.FeeTooLow.WithMessage("GasLimit or GasPrice too low for Eip1559 spec");
-                }
-            }
-
-            UInt256 affordableGasPrice = tx.CalculateGasPrice(isEip1559Enabled, _headInfo.CurrentBaseFee);
+            UInt256 affordableGasPrice = tx.CalculateGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee);
 
             // Don't accept zero fee txns even if pool is empty as will never run
             if (affordableGasPrice.IsZero)
