@@ -23,11 +23,16 @@ namespace Nethermind.TxPool.Filters
         {
             Account account = state.SenderAccount;
             UInt256 balance = account.Balance;
-
-            if (balance.IsZero)
+            
+            if (!tx.IsFree() && balance.IsZero)
             {
                 Metrics.PendingTransactionsZeroBalance++;
                 return AcceptTxResult.InsufficientFunds.WithMessage("Account balance: 0");
+            }
+            if (balance < tx.Value)
+            {
+                Metrics.PendingTransactionsBalanceBelowValue++;
+                return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance {balance} below txn value {tx.Value}");
             }
 
             return AcceptTxResult.Accepted;

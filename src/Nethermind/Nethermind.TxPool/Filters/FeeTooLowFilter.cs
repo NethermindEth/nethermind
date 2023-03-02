@@ -28,16 +28,15 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
 
-        private readonly static UInt256 GweiToWeiFactor = new UInt256(1_000_000_000);
-        private UInt256 GasLimitToWei(long gasLimitGwei)
-        {
-            return GweiToWeiFactor * new UInt256((ulong)gasLimitGwei);
-        }
-
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
+            if (tx.IsFree())
+            {
+                return AcceptTxResult.Accepted;
+            }
+
             bool isTrace = _logger.IsTrace;
-            if (tx.GasLimit <= 0 || tx.GasLimit < Transaction.BaseTxGasCost)
+            if (tx.GasLimit < Transaction.BaseTxGasCost)
             {
                 // Not high enough GasLimit to run a txn
                 Metrics.PendingTransactionsTooLowFee++;
@@ -60,7 +59,7 @@ namespace Nethermind.TxPool.Filters
             UInt256 affordableGasPrice = tx.CalculateGasPrice(isEip1559Enabled, _headInfo.CurrentBaseFee);
 
             // Don't accept zero fee txns even if pool is empty as will never run
-            if (affordableGasPrice.IsZero && !_headInfo.CurrentBaseFee.IsZero)
+            if (affordableGasPrice.IsZero)
             {
                 Metrics.PendingTransactionsTooLowFee++;
                 if (isTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");

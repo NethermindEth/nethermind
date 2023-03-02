@@ -25,6 +25,11 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
+            if (tx.IsFree())
+            {
+                return AcceptTxResult.Accepted;
+            }
+
             Account account = state.SenderAccount;
             UInt256 balance = account.Balance;
 

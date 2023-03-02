@@ -28,6 +28,9 @@ namespace Nethermind.TxPool
         [Description("Number of pending transactions received that were ignored because balance is zero and cannot pay gas.")]
         public static long PendingTransactionsZeroBalance { get; set; }
 
+        [Description("Number of pending transactions received that were ignored because balance is less than txn value.")]
+        public static long PendingTransactionsBalanceBelowValue { get; set; }
+
         [Description("Number of pending transactions received that were ignored because balance too low for fee to be higher than the lowest fee in transaction pool.")]
         public static long PendingTransactionsTooLowBalance { get; set; }
 

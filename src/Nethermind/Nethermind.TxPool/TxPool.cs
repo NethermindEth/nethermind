@@ -630,9 +630,10 @@ Discarded at Filter Stage:
 5.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,18:0}
 6.  Nonce used:         {Metrics.PendingTransactionsLowNonce,18:0}
 7.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,18:0}
-8.  Nonces skipped:     {Metrics.PendingTransactionsNonceGap,18:0}
-9.  Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,18:0}
-10. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,18:0}
+8.  Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,18:0}
+9.  Nonces skipped:     {Metrics.PendingTransactionsNonceGap,18:0}
+10. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,18:0}
+11. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,18:0}
 ------------------------------------------
 Validated via State:    {Metrics.PendingTransactionsWithExpensiveFiltering,18:0}
 ------------------------------------------
