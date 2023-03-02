@@ -21,13 +21,15 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class TrieStore : ITrieStore
     {
-        private class DirtyNodesCache
+        public class DirtyNodesCache
         {
             private readonly TrieStore _trieStore;
+            private readonly ILogger _logger;
 
             public DirtyNodesCache(TrieStore trieStore)
             {
                 _trieStore = trieStore;
+                _logger = _trieStore._logger;
             }
 
             public void SaveInCache(TrieNode node)
@@ -96,7 +98,7 @@ namespace Nethermind.Trie.Pruning
 
             public void Remove(Keccak hash)
             {
-                if (_objectsCache.Remove(hash, out _))
+                if (_objectsCache.TryRemove(hash, out _))
                 {
                     Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
                 }
@@ -120,6 +122,73 @@ namespace Nethermind.Trie.Pruning
                 Interlocked.Exchange(ref _count, 0);
                 Metrics.CachedNodesCount = 0;
                 _trieStore.MemoryUsedByDirtyCache = 0;
+            }
+
+            /// <summary>
+            /// This method is responsible for reviewing the nodes that are directly in the cache and
+            /// removing ones that are either no longer referenced or already persisted.
+            /// </summary>
+            /// <exception cref="InvalidOperationException"></exception>
+            public void PruneCache()
+            {
+                if (_logger.IsDebug) _logger.Debug($"Pruning nodes {_trieStore.MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {_trieStore.LastPersistedBlockNumber} current: {_trieStore.LatestCommittedBlockNumber}.");
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                List<TrieNode> toRemove = new(); // TODO: resettable
+
+                long newMemory = 0;
+                foreach ((Keccak key, TrieNode node) in AllNodes)
+                {
+                    if (node.IsPersisted)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
+                        if (node.Keccak is null)
+                        {
+                            node.ResolveKey(_trieStore, true); // TODO: hack
+                            if (node.Keccak != key)
+                            {
+                                throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                            }
+                        }
+                        toRemove.Add(node);
+
+                        Metrics.PrunedPersistedNodesCount++;
+                    }
+                    else if (_trieStore.IsNoLongerNeeded(node))
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
+                        if (node.Keccak is null)
+                        {
+                            throw new InvalidOperationException($"Removed {node}");
+                        }
+
+                        toRemove.Add(node);
+
+                        Metrics.PrunedTransientNodesCount++;
+                    }
+                    else
+                    {
+                        node.PrunePersistedRecursively(1);
+                        newMemory += node.GetMemorySize(false);
+                    }
+                }
+
+                for (int index = 0; index < toRemove.Count; index++)
+                {
+                    TrieNode trieNode = toRemove[index];
+                    if (trieNode.Keccak is null)
+                    {
+                        throw new InvalidOperationException($"{trieNode} has a null key");
+                    }
+
+                    Remove(trieNode.Keccak);
+                }
+
+                _trieStore.MemoryUsedByDirtyCache = newMemory;
+                Metrics.CachedNodesCount = this.Count;
+
+                stopwatch.Stop();
+                Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
+                if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {_trieStore.MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {_trieStore.LastPersistedBlockNumber} current: {_trieStore.LatestCommittedBlockNumber}.");
             }
         }
 
@@ -391,7 +460,7 @@ namespace Nethermind.Trie.Pruning
 
                                 while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
                                 {
-                                    PruneCache();
+                                    _dirtyNodes.PruneCache();
 
                                     if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
                                     {
@@ -480,73 +549,6 @@ namespace Nethermind.Trie.Pruning
         }
 
         /// <summary>
-        /// This method is responsible for reviewing the nodes that are directly in the cache and
-        /// removing ones that are either no longer referenced or already persisted.
-        /// </summary>
-        /// <exception cref="InvalidOperationException"></exception>
-        private void PruneCache()
-        {
-            if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            List<TrieNode> toRemove = new(); // TODO: resettable
-
-            long newMemory = 0;
-            foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
-            {
-                if (node.IsPersisted)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
-                    if (node.Keccak is null)
-                    {
-                        node.ResolveKey(this, true); // TODO: hack
-                        if (node.Keccak != key)
-                        {
-                            throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
-                        }
-                    }
-                    toRemove.Add(node);
-
-                    Metrics.PrunedPersistedNodesCount++;
-                }
-                else if (IsNoLongerNeeded(node))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
-                    if (node.Keccak is null)
-                    {
-                        throw new InvalidOperationException($"Removed {node}");
-                    }
-
-                    toRemove.Add(node);
-
-                    Metrics.PrunedTransientNodesCount++;
-                }
-                else
-                {
-                    node.PrunePersistedRecursively(1);
-                    newMemory += node.GetMemorySize(false);
-                }
-            }
-
-            for (int index = 0; index < toRemove.Count; index++)
-            {
-                TrieNode trieNode = toRemove[index];
-                if (trieNode.Keccak is null)
-                {
-                    throw new InvalidOperationException($"{trieNode} has a null key");
-                }
-
-                _dirtyNodes.Remove(trieNode.Keccak);
-            }
-
-            MemoryUsedByDirtyCache = newMemory;
-            Metrics.CachedNodesCount = _dirtyNodes.Count;
-
-            stopwatch.Stop();
-            Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-            if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
-        }
-
-        /// <summary>
         /// This method is here to support testing.
         /// </summary>
         public void ClearCache() => _dirtyNodes.Clear();
@@ -583,7 +585,12 @@ namespace Nethermind.Trie.Pruning
 
         private bool IsCurrentListSealed => CurrentPackage is null || CurrentPackage.IsSealed;
 
-        private long LatestCommittedBlockNumber { get; set; }
+        public long LatestCommittedBlockNumber { get; set; }
+
+        public ILogger Logger
+        {
+            get { return _logger; }
+        }
 
         private void CreateCommitSet(long blockNumber)
         {
@@ -667,7 +674,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private bool IsNoLongerNeeded(TrieNode node)
+        public bool IsNoLongerNeeded(TrieNode node)
         {
             Debug.Assert(node.LastSeen != TrieNode.LastSeenNotSet, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
             return node.LastSeen < LastPersistedBlockNumber
