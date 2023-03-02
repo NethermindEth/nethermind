@@ -35,10 +35,9 @@ Release builds are available on the [Releases page](https://github.com/nethermin
 
 #### On Windows using Windows Package Manager
 
-1. `winget install nethermind` (running as administrator recommended)
+1. `winget install nethermind`
 2. To run the launcher: `nethermind.launcher.exe`
-3. To run the runner: `nethermind.runner.exe -c mainnet` \
-   Or simply `nethermind -c mainnet` if step 1 has been run as administrator
+3. To run the runner: `nethermind.runner.exe -c mainnet`
 
 #### On macOS using Homebrew
 
