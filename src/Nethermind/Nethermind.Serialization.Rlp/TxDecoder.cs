@@ -12,6 +12,8 @@ namespace Nethermind.Serialization.Rlp
 {
     public class TxDecoder : TxDecoder<Transaction>, ITransactionSizeCalculator
     {
+        public const int MaxDelayedHashTxnSize = 32768;
+
         public int GetLength(Transaction tx)
         {
             return GetLength(tx, RlpBehaviors.None);
@@ -85,7 +87,17 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(lastCheck);
             }
 
-            transaction.Hash = Keccak.Compute(transactionSequence);
+            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
+            {
+                // Delay hash generation, as may be filtered as having too low gas etc
+                transaction.SetPreHash(transactionSequence);
+            }
+            else
+            {
+                // Just calculate the Hash as txn too large
+                transaction.Hash = Keccak.Compute(transactionSequence);
+            }
+
             return transaction;
         }
 
@@ -256,7 +268,16 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
-            transaction.Hash = Keccak.Compute(transactionSequence);
+            if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize)
+            {
+                // Delay hash generation, as may be filtered as having too low gas etc
+                transaction.SetPreHash(transactionSequence);
+            }
+            else
+            {
+                // Just calculate the Hash immediately as txn too large
+                transaction.Hash = Keccak.Compute(transactionSequence);
+            }
             return transaction;
         }
 

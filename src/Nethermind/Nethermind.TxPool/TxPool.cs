@@ -258,9 +258,6 @@ namespace Nethermind.TxPool
         {
             Metrics.PendingTransactionsReceived++;
 
-            if (tx.Hash is null)
-                return AcceptTxResult.Invalid;
-
             // assign a sequence number to transaction so we can order them by arrival times when
             // gas prices are exactly the same
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);
@@ -290,16 +287,31 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, TxFilteringState state)
         {
-            AcceptTxResult accepted = _filterNullHashTx.Accept(tx, state, handlingOptions);
-            if (!accepted) return accepted;
+            AcceptTxResult
 
             accepted = _filterGasLimitTx.Accept(tx, state, handlingOptions);
-            if (!accepted) return accepted;
+            if (!accepted)
+            {
+                tx.ClearPreHash();
+                return accepted;
+            }
 
             accepted = _filterMalformedTx.Accept(tx, state, handlingOptions);
-            if (!accepted) return accepted;
+            if (!accepted)
+            {
+                tx.ClearPreHash();
+                return accepted;
+            }
 
             accepted = _filterFeeTooLow.Accept(tx, state, handlingOptions);
+            if (!accepted)
+            {
+                tx.ClearPreHash();
+                return accepted;
+            }
+            
+            // has to be before AlreadyKnownTxFilter as it calculates the hash
+            accepted = _filterNullHashTx.Accept(tx, state, handlingOptions);
             if (!accepted) return accepted;
 
             accepted = _filterAlreadyKnownTx.Accept(tx, state, handlingOptions);
