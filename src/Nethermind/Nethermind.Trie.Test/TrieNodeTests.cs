@@ -579,7 +579,7 @@ namespace Nethermind.Trie.Test
         {
             TrieNode trieNode = new(NodeType.Extension);
             trieNode.SetChild(0, null);
-            trieNode.GetMemorySize(false).Should().Be(48);
+            trieNode.GetMemorySize(false).Should().Be(64);
         }
 
         [Test]
