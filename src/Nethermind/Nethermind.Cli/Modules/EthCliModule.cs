@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
 using System.Numerics;
 using Jint.Native;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -235,6 +236,12 @@ namespace Nethermind.Cli.Modules
         public JsValue MaxPriorityFeePerGas()
         {
             return NodeManager.PostJint("eth_maxPriorityFeePerGas").Result;
+        }
+
+        [CliFunction("eth", "getAccount")]
+        public JsValue GetAccount(Address accountAddress, BlockParameter? blockParam = null)
+        {
+            return NodeManager.PostJint("eth_getAccount", accountAddress, blockParam).Result;
         }
 
         public EthCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
