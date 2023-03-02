@@ -4,7 +4,6 @@
 using System.Linq;
 using System.Numerics;
 using Jint.Native;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -239,9 +238,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getAccount")]
-        public JsValue GetAccount(Address accountAddress, BlockParameter? blockParam = null)
+        public JsValue GetAccount(Address accountAddress, string? blockParam = null)
         {
-            return NodeManager.PostJint("eth_getAccount", accountAddress, blockParam).Result;
+            return NodeManager.PostJint("eth_getAccount", accountAddress, blockParam ?? "latest").Result;
         }
 
         public EthCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
