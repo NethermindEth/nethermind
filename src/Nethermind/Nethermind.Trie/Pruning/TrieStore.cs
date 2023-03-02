@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
@@ -96,7 +97,7 @@ namespace Nethermind.Trie.Pruning
 
             public int Count => _count;
 
-            public void Remove(Keccak hash)
+            private void Remove(Keccak hash)
             {
                 if (_objectsCache.TryRemove(hash, out _))
                 {
@@ -124,6 +125,9 @@ namespace Nethermind.Trie.Pruning
                 _trieStore.MemoryUsedByDirtyCache = 0;
             }
 
+            private readonly ResettableList<TrieNode> _toRemovePersisted = new();
+            private readonly ResettableList<TrieNode> _toRemoveTransient = new();
+
             /// <summary>
             /// This method is responsible for reviewing the nodes that are directly in the cache and
             /// removing ones that are either no longer referenced or already persisted.
@@ -131,64 +135,72 @@ namespace Nethermind.Trie.Pruning
             /// <exception cref="InvalidOperationException"></exception>
             public void PruneCache()
             {
-                if (_logger.IsDebug) _logger.Debug($"Pruning nodes {_trieStore.MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {_trieStore.LastPersistedBlockNumber} current: {_trieStore.LatestCommittedBlockNumber}.");
-                Stopwatch stopwatch = Stopwatch.StartNew();
-                List<TrieNode> toRemove = new(); // TODO: resettable
-
-                long newMemory = 0;
-                foreach ((Keccak key, TrieNode node) in AllNodes)
+                try
                 {
-                    if (node.IsPersisted)
+                    if (_logger.IsDebug) _logger.Debug($"Pruning nodes {_trieStore.MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {_trieStore.LastPersistedBlockNumber} current: {_trieStore.LatestCommittedBlockNumber}.");
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+
+                    long newMemory = 0;
+                    foreach ((Keccak key, TrieNode node) in AllNodes)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
-                        if (node.Keccak is null)
+                        if (node.IsPersisted)
                         {
-                            node.ResolveKey(_trieStore, true); // TODO: hack
-                            if (node.Keccak != key)
+                            if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
+                            if (node.Keccak is null)
                             {
-                                throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                                node.ResolveKey(_trieStore, true); // TODO: hack
+                                if (node.Keccak != key)
+                                {
+                                    throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                                }
                             }
+                            _toRemovePersisted.Add(node);
                         }
-                        toRemove.Add(node);
-
-                        Metrics.PrunedPersistedNodesCount++;
-                    }
-                    else if (_trieStore.IsNoLongerNeeded(node))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
-                        if (node.Keccak is null)
+                        else if (_trieStore.IsNoLongerNeeded(node))
                         {
-                            throw new InvalidOperationException($"Removed {node}");
+                            if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
+                            if (node.Keccak is null)
+                            {
+                                throw new InvalidOperationException($"Removed {node}");
+                            }
+
+                            _toRemoveTransient.Add(node);
                         }
+                        else
+                        {
+                            node.PrunePersistedRecursively(1);
+                            newMemory += node.GetMemorySize(false);
+                        }
+                    }
 
-                        toRemove.Add(node);
+                    // pruning persisted
+                    for (int i = 0; i < _toRemovePersisted.Count; i++)
+                    {
+                        TrieNode trieNode = _toRemovePersisted[i];
+                        Metrics.PrunedPersistedNodesCount++;
+                        Remove(trieNode.Keccak!);
+                    }
 
+                    // pruning transient
+                    for (int i = 0; i < _toRemoveTransient.Count; i++)
+                    {
+                        TrieNode trieNode = _toRemoveTransient[i];
                         Metrics.PrunedTransientNodesCount++;
+                        Remove(trieNode.Keccak!);
                     }
-                    else
-                    {
-                        node.PrunePersistedRecursively(1);
-                        newMemory += node.GetMemorySize(false);
-                    }
-                }
 
-                for (int index = 0; index < toRemove.Count; index++)
+                    _trieStore.MemoryUsedByDirtyCache = newMemory;
+                    Metrics.CachedNodesCount = Count;
+
+                    stopwatch.Stop();
+                    Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
+                    if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {_trieStore.MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {_trieStore.LastPersistedBlockNumber} current: {_trieStore.LatestCommittedBlockNumber}.");
+                }
+                finally
                 {
-                    TrieNode trieNode = toRemove[index];
-                    if (trieNode.Keccak is null)
-                    {
-                        throw new InvalidOperationException($"{trieNode} has a null key");
-                    }
-
-                    Remove(trieNode.Keccak);
+                    _toRemovePersisted.Reset();
+                    _toRemoveTransient.Reset();
                 }
-
-                _trieStore.MemoryUsedByDirtyCache = newMemory;
-                Metrics.CachedNodesCount = this.Count;
-
-                stopwatch.Stop();
-                Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-                if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {_trieStore.MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {_trieStore.LastPersistedBlockNumber} current: {_trieStore.LatestCommittedBlockNumber}.");
             }
         }
 
