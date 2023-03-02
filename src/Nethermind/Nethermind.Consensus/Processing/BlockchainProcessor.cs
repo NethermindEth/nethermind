@@ -557,7 +557,7 @@ namespace Nethermind.Consensus.Processing
             do
             {
                 iterations++;
-                if (!options.ContainsFlag(ProcessingOptions.ForceProcessing))
+                if (!options.ContainsFlag(ProcessingOptions.Trace))
                 {
                     blocksToBeAddedToMain.Add(toBeProcessed);
                 }
