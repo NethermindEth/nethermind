@@ -38,7 +38,6 @@ namespace Nethermind.TxPool
         private readonly TxDistinctSortedPool _transactions;
 
         private readonly IChainHeadSpecProvider _specProvider;
-        private readonly IEthereumEcdsa _ecdsa;
 
         private readonly IAccountStateProvider _accounts;
 
@@ -54,18 +53,18 @@ namespace Nethermind.TxPool
         /// </summary>
         private ulong _txIndex;
 
-        private NullHashTxFilter _filterNullHashTx;
-        private FeeTooLowFilter _filterFeeTooLow;
-        private AlreadyKnownTxFilter _filterAlreadyKnownTx;
-        private MalformedTxFilter _filterMalformedTx;
-        private GasLimitTxFilter _filterGasLimitTx;
-        private UnknownSenderFilter _filterUnknownSender;
-        private LowNonceFilter _filterLowNonce;
-        private BalanceZeroFilter _filterBalanceZero;
-        private GapNonceFilter _filterGapNonce;
-        private BalanceTooLowFilter _filterBalanceTooLow;
-        private IIncomingTxFilter? _filterIncomingTx;
-        private DeployedCodeFilter _filterDeployedCode;
+        private readonly GasLimitTxFilter _filterGasLimitTx;
+        private readonly MalformedTxFilter _filterMalformedTx;
+        private readonly FeeTooLowFilter _filterFeeTooLow;
+        private readonly NullHashTxFilter _filterNullHashTx;
+        private readonly AlreadyKnownTxFilter _filterAlreadyKnownTx;
+        private readonly UnknownSenderFilter _filterUnknownSender;
+        private readonly LowNonceFilter _filterLowNonce;
+        private readonly BalanceZeroFilter _filterBalanceZero;
+        private readonly GapNonceFilter _filterGapNonce;
+        private readonly BalanceTooLowFilter _filterBalanceTooLow;
+        private readonly IIncomingTxFilter? _filterIncomingTx;
+        private readonly DeployedCodeFilter _filterDeployedCode;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -93,7 +92,6 @@ namespace Nethermind.TxPool
             _txPoolConfig = txPoolConfig;
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
-            _ecdsa = ecdsa;
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             AddNodeInfoEntryForTxPool();
@@ -103,16 +101,16 @@ namespace Nethermind.TxPool
 
             _headInfo.HeadChanged += OnHeadChange;
 
-            _filterNullHashTx = new NullHashTxFilter();
-            _filterMalformedTx = new MalformedTxFilter(_specProvider, validator, _logger);
             _filterGasLimitTx = new GasLimitTxFilter(_headInfo, txPoolConfig, _logger);
+            _filterMalformedTx = new MalformedTxFilter(_specProvider, validator, _logger);
             _filterFeeTooLow = new FeeTooLowFilter(_headInfo, _transactions, _logger);
+            _filterNullHashTx = new NullHashTxFilter();
             _filterAlreadyKnownTx = new AlreadyKnownTxFilter(_hashCache, _logger);
             _filterUnknownSender = new UnknownSenderFilter(ecdsa, _logger);
-            _filterLowNonce = new LowNonceFilter(_logger); // has to be after UnknownSenderFilter as it uses sender
             _filterBalanceZero = new BalanceZeroFilter(_logger);
-            _filterGapNonce = new GapNonceFilter(_transactions, _logger);
             _filterBalanceTooLow = new BalanceTooLowFilter(_transactions, _logger);
+            _filterLowNonce = new LowNonceFilter(_logger); // has to be after UnknownSenderFilter as it uses sender
+            _filterGapNonce = new GapNonceFilter(_transactions, _logger);
             _filterIncomingTx = incomingTxFilter;
             _filterDeployedCode = new DeployedCodeFilter(_specProvider, _accounts);
 
@@ -289,6 +287,7 @@ namespace Nethermind.TxPool
         {
             AcceptTxResult
 
+            // Simple comparison
             accepted = _filterGasLimitTx.Accept(tx, state, handlingOptions);
             if (!accepted)
             {
@@ -296,6 +295,7 @@ namespace Nethermind.TxPool
                 return accepted;
             }
 
+            // More complex calculations
             accepted = _filterMalformedTx.Accept(tx, state, handlingOptions);
             if (!accepted)
             {
@@ -303,33 +303,40 @@ namespace Nethermind.TxPool
                 return accepted;
             }
 
+            // Accesses last txn in pool and takes lock
             accepted = _filterFeeTooLow.Accept(tx, state, handlingOptions);
             if (!accepted)
             {
                 tx.ClearPreHash();
                 return accepted;
             }
-            
-            // has to be before AlreadyKnownTxFilter as it calculates the hash
+
+            // has to be before AlreadyKnownTxFilter as it calculates and allocates the hash
             accepted = _filterNullHashTx.Accept(tx, state, handlingOptions);
             if (!accepted) return accepted;
 
+            // allocates a entry for tracking
             accepted = _filterAlreadyKnownTx.Accept(tx, state, handlingOptions);
             if (!accepted) return accepted;
 
+            // Starts accessing state
             accepted = _filterUnknownSender.Accept(tx, state, handlingOptions);
             if (!accepted) return accepted;
 
             // has to be after UnknownSenderFilter as it uses sender
-            accepted = _filterLowNonce.Accept(tx, state, handlingOptions);
-            if (!accepted) return accepted;
-
+            // Heavier state access
             accepted = _filterBalanceZero.Accept(tx, state, handlingOptions);
             if (!accepted) return accepted;
 
+            // Uses same state as above
+            accepted = _filterLowNonce.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            // Checks other txns in pool
             accepted = _filterGapNonce.Accept(tx, state, handlingOptions);
             if (!accepted) return accepted;
 
+            // Checks other txns in pool
             accepted = _filterBalanceTooLow.Accept(tx, state, handlingOptions);
             if (!accepted) return accepted;
 
@@ -626,7 +633,8 @@ namespace Nethermind.TxPool
             if (float.IsNaN(preStateDiscards)) preStateDiscards = 0;
             if (float.IsNaN(receivedDiscarded)) receivedDiscarded = 0;
 
-            logger.Info(@$"Txn Pool State ({Metrics.TransactionCount:0} txns queued)
+            logger.Info(@$"
+Txn Pool State ({Metrics.TransactionCount:0} txns queued)
 ------------------------------------------
 Sent
 * Transactions:         {Metrics.PendingTransactionsSent,18:0}
@@ -635,14 +643,14 @@ Sent
 Total Received:         {Metrics.PendingTransactionsReceived,18:0}
 ------------------------------------------
 Discarded at Filter Stage:        
-1.  Malformed           {Metrics.PendingTransactionsMalformed,18:0}
-2.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,18:0}
+1.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,18:0}
+2.  Malformed           {Metrics.PendingTransactionsMalformed,18:0}
 3.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,18:0}
 4.  Duplicate:          {Metrics.PendingTransactionsKnown,18:0}
 5.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,18:0}
-6.  Nonce used:         {Metrics.PendingTransactionsLowNonce,18:0}
-7.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,18:0}
-8.  Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,18:0}
+6.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,18:0}
+7.  Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,18:0}
+8.  Nonce used:         {Metrics.PendingTransactionsLowNonce,18:0}
 9.  Nonces skipped:     {Metrics.PendingTransactionsNonceGap,18:0}
 10. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,18:0}
 11. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,18:0}

@@ -43,7 +43,7 @@ namespace Nethermind.Core
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
-        
+
         private Keccak? _hash;
         public Keccak? Hash
         {
