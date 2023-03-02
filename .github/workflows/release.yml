@@ -191,11 +191,23 @@ jobs:
     - name: Build and push image to Docker Hub / Trigger DAppNode build
       if: needs.build.outputs.PRERELEASE == 'false'
       run: |
-        docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:latest" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
-        curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches
+        docker buildx build --platform=linux/amd64,linux/arm64 -f Dockerfile \
+          -t "${{ env.DOCKER_IMAGE }}:latest" \
+          -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" \
+          --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} \
+          --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
+        curl -s -X POST https://api.github.com/repos/$GITHUB_REPOSITORY/dispatches \
+          -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" \
+          -d '{"event_type":"dappnode","client_payload":{"tag":"${{ github.event.inputs.tag }}"}}' \
+          -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
     - name: Build and push image to Docker Hub
       if: needs.build.outputs.PRERELEASE == 'true'
-      run: docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ env.DOCKER_IMAGE }}:unstable" -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" -f Dockerfile --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
+      run: |
+        docker buildx build --platform=linux/amd64,linux/arm64 -f Dockerfile \
+          -t "${{ env.DOCKER_IMAGE }}:unstable" \
+          -t "${{ env.DOCKER_IMAGE }}:${{ github.event.inputs.tag }}" \
+          --build-arg COMMIT_HASH=${{ needs.build.outputs.COMMIT_HASH }} \
+          --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.BUILD_TIMESTAMP }} . --push
     - name: Clear Docker cache
       if: always()
       run: rm -f $HOME/.docker/config.json
