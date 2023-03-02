@@ -31,8 +31,6 @@ namespace Nethermind.TxPool
     {
         private readonly object _locker = new();
 
-        private readonly List<IIncomingTxFilter> _filterPipeline = new();
-
         private readonly HashCache _hashCache = new();
 
         private readonly TxBroadcaster _broadcaster;
@@ -56,6 +54,18 @@ namespace Nethermind.TxPool
         /// </summary>
         private ulong _txIndex;
 
+        private NullHashTxFilter _filterNullHashTx;
+        private FeeTooLowFilter _filterFeeTooLow;
+        private AlreadyKnownTxFilter _filterAlreadyKnownTx;
+        private MalformedTxFilter _filterMalformedTx;
+        private GasLimitTxFilter _filterGasLimitTx;
+        private UnknownSenderFilter _filterUnknownSender;
+        private LowNonceFilter _filterLowNonce;
+        private BalanceZeroFilter _filterBalanceZero;
+        private GapNonceFilter _filterGapNonce;
+        private BalanceTooLowFilter _filterBalanceTooLow;
+        private IIncomingTxFilter? _filterIncomingTx;
+        private DeployedCodeFilter _filterDeployedCode;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -93,21 +103,18 @@ namespace Nethermind.TxPool
 
             _headInfo.HeadChanged += OnHeadChange;
 
-            _filterPipeline.Add(new NullHashTxFilter());
-            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _transactions, _logger));
-            _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache, _logger));
-            _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
-            _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
-            _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
-            _filterPipeline.Add(new LowNonceFilter(_logger)); // has to be after UnknownSenderFilter as it uses sender
-            _filterPipeline.Add(new BalanceZeroFilter(_logger));
-            _filterPipeline.Add(new GapNonceFilter(_transactions, _logger));
-            _filterPipeline.Add(new BalanceTooLowFilter(_transactions, _logger));
-            if (incomingTxFilter is not null)
-            {
-                _filterPipeline.Add(incomingTxFilter);
-            }
-            _filterPipeline.Add(new DeployedCodeFilter(_specProvider, _accounts));
+            _filterNullHashTx = new NullHashTxFilter();
+            _filterFeeTooLow = new FeeTooLowFilter(_headInfo, _transactions, _logger);
+            _filterAlreadyKnownTx = new AlreadyKnownTxFilter(_hashCache, _logger);
+            _filterMalformedTx = new MalformedTxFilter(_specProvider, validator, _logger);
+            _filterGasLimitTx = new GasLimitTxFilter(_headInfo, txPoolConfig, _logger);
+            _filterUnknownSender = new UnknownSenderFilter(ecdsa, _logger);
+            _filterLowNonce = new LowNonceFilter(_logger); // has to be after UnknownSenderFilter as it uses sender
+            _filterBalanceZero = new BalanceZeroFilter(_logger);
+            _filterGapNonce = new GapNonceFilter(_transactions, _logger);
+            _filterBalanceTooLow = new BalanceTooLowFilter(_transactions, _logger);
+            _filterIncomingTx = incomingTxFilter;
+            _filterDeployedCode = new DeployedCodeFilter(_specProvider, _accounts);
 
             ProcessNewHeads();
         }
@@ -269,18 +276,59 @@ namespace Nethermind.TxPool
                     $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
 
             TxFilteringState state = new(tx, _accounts);
-            for (int i = 0; i < _filterPipeline.Count; i++)
+
+            AcceptTxResult accepted = FilterTransactions(tx, handlingOptions, state);
+
+            if (!accepted)
             {
-                IIncomingTxFilter incomingTxFilter = _filterPipeline[i];
-                AcceptTxResult accepted = incomingTxFilter.Accept(tx, state, handlingOptions);
-                if (!accepted)
-                {
-                    Metrics.PendingTransactionsDiscarded++;
-                    return accepted;
-                }
+                Metrics.PendingTransactionsDiscarded++;
+                return accepted;
             }
 
             return AddCore(tx, startBroadcast);
+        }
+
+        private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, TxFilteringState state)
+        {
+            AcceptTxResult accepted = _filterNullHashTx.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            accepted = _filterFeeTooLow.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            accepted = _filterAlreadyKnownTx.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            accepted = _filterMalformedTx.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            accepted = _filterGasLimitTx.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            accepted = _filterUnknownSender.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            // has to be after UnknownSenderFilter as it uses sender
+            accepted = _filterLowNonce.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            accepted = _filterBalanceZero.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            accepted = _filterGapNonce.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            accepted = _filterBalanceTooLow.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            if (_filterIncomingTx is not null)
+            {
+                accepted = _filterIncomingTx.Accept(tx, state, handlingOptions);
+                if (!accepted) return accepted;
+            }
+
+            accepted = _filterDeployedCode.Accept(tx, state, handlingOptions);
+            return accepted;
         }
 
         private AcceptTxResult AddCore(Transaction tx, bool isPersistentBroadcast)
