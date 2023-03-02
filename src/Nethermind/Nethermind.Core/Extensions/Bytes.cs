@@ -166,28 +166,14 @@ namespace Nethermind.Core.Extensions
 
         public static int LeadingZerosCount(this Span<byte> bytes, int startIndex = 0)
         {
-            for (int i = startIndex; i < bytes.Length; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return i - startIndex;
-                }
-            }
-
-            return bytes.Length - startIndex;
+            int nonZeroIndex = bytes[startIndex..].IndexOfAnyExcept((byte)0);
+            return nonZeroIndex < 0 ? bytes.Length - startIndex : nonZeroIndex;
         }
 
         public static int TrailingZerosCount(this byte[] bytes)
         {
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                if (bytes[bytes.Length - i - 1] != 0)
-                {
-                    return i;
-                }
-            }
-
-            return bytes.Length;
+            int lastIndex = bytes.AsSpan().LastIndexOfAnyExcept((byte)0);
+            return lastIndex < 0 ? bytes.Length : bytes.Length - lastIndex - 1;
         }
 
         public static Span<byte> WithoutLeadingZeros(this byte[] bytes)
@@ -197,15 +183,10 @@ namespace Nethermind.Core.Extensions
 
         public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return bytes.Slice(i, bytes.Length - i);
-                }
-            }
+            if (bytes.Length == 0) return new byte[] { 0 };
 
-            return new byte[] { 0 };
+            int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
+            return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)
