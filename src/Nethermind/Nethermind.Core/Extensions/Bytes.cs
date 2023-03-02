@@ -151,35 +151,17 @@ namespace Nethermind.Core.Extensions
 
         public static bool IsZero(this byte[] bytes)
         {
-            return IsZero((ReadOnlySpan<byte>)bytes);
+            return bytes.AsSpan().IndexOfAnyExcept((byte)0) < 0;
         }
 
         public static bool IsZero(this Span<byte> bytes)
         {
-            return IsZero((ReadOnlySpan<byte>)bytes);
+            return bytes.IndexOfAnyExcept((byte)0) < 0;
         }
 
         public static bool IsZero(this ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length == 32)
-            {
-                return bytes[31] == 0 && bytes.SequenceEqual(Zero32);
-            }
-
-            for (int i = 0; i < bytes.Length / 2; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return false;
-                }
-
-                if (bytes[bytes.Length - i - 1] != 0)
-                {
-                    return false;
-                }
-            }
-
-            return bytes.Length % 2 == 0 || bytes[bytes.Length / 2] == 0;
+            return bytes.IndexOfAnyExcept((byte)0) < 0;
         }
 
         public static int LeadingZerosCount(this Span<byte> bytes, int startIndex = 0)
