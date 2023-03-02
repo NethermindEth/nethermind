@@ -104,10 +104,10 @@ namespace Nethermind.TxPool
             _headInfo.HeadChanged += OnHeadChange;
 
             _filterNullHashTx = new NullHashTxFilter();
-            _filterFeeTooLow = new FeeTooLowFilter(_headInfo, _transactions, _logger);
-            _filterAlreadyKnownTx = new AlreadyKnownTxFilter(_hashCache, _logger);
             _filterMalformedTx = new MalformedTxFilter(_specProvider, validator, _logger);
             _filterGasLimitTx = new GasLimitTxFilter(_headInfo, txPoolConfig, _logger);
+            _filterFeeTooLow = new FeeTooLowFilter(_headInfo, _transactions, _logger);
+            _filterAlreadyKnownTx = new AlreadyKnownTxFilter(_hashCache, _logger);
             _filterUnknownSender = new UnknownSenderFilter(ecdsa, _logger);
             _filterLowNonce = new LowNonceFilter(_logger); // has to be after UnknownSenderFilter as it uses sender
             _filterBalanceZero = new BalanceZeroFilter(_logger);
@@ -293,16 +293,16 @@ namespace Nethermind.TxPool
             AcceptTxResult accepted = _filterNullHashTx.Accept(tx, state, handlingOptions);
             if (!accepted) return accepted;
 
-            accepted = _filterFeeTooLow.Accept(tx, state, handlingOptions);
-            if (!accepted) return accepted;
-
-            accepted = _filterAlreadyKnownTx.Accept(tx, state, handlingOptions);
+            accepted = _filterGasLimitTx.Accept(tx, state, handlingOptions);
             if (!accepted) return accepted;
 
             accepted = _filterMalformedTx.Accept(tx, state, handlingOptions);
             if (!accepted) return accepted;
 
-            accepted = _filterGasLimitTx.Accept(tx, state, handlingOptions);
+            accepted = _filterFeeTooLow.Accept(tx, state, handlingOptions);
+            if (!accepted) return accepted;
+
+            accepted = _filterAlreadyKnownTx.Accept(tx, state, handlingOptions);
             if (!accepted) return accepted;
 
             accepted = _filterUnknownSender.Accept(tx, state, handlingOptions);
@@ -623,10 +623,10 @@ Sent
 Total Received:         {Metrics.PendingTransactionsReceived,18:0}
 ------------------------------------------
 Discarded at Filter Stage:        
-1.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,18:0}
-2.  Duplicate:          {Metrics.PendingTransactionsKnown,18:0}
-3.  Malformed           {Metrics.PendingTransactionsMalformed,18:0}
-4.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,18:0}
+1.  Malformed           {Metrics.PendingTransactionsMalformed,18:0}
+2.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,18:0}
+3.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,18:0}
+4.  Duplicate:          {Metrics.PendingTransactionsKnown,18:0}
 5.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,18:0}
 6.  Nonce used:         {Metrics.PendingTransactionsLowNonce,18:0}
 7.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,18:0}

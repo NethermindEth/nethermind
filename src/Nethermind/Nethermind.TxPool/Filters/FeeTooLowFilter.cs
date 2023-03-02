@@ -30,28 +30,13 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            if (tx.IsFree())
-            {
-                return AcceptTxResult.Accepted;
-            }
-
-            bool isTrace = _logger.IsTrace;
-            if (tx.GasLimit < Transaction.BaseTxGasCost)
-            {
-                // Not high enough GasLimit to run a txn
-                Metrics.PendingTransactionsTooLowFee++;
-                if (isTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low gas limit for a txn at price {tx.GasPrice}");
-                return AcceptTxResult.FeeTooLow.WithMessage("GasLimit too low to start txn at GasPrice");
-            }
-
             IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
             UInt256 affordableGasPrice = tx.CalculateGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee);
-
             // Don't accept zero fee txns even if pool is empty as will never run
-            if (affordableGasPrice.IsZero)
+            if (!tx.IsFree() && affordableGasPrice.IsZero)
             {
                 Metrics.PendingTransactionsTooLowFee++;
-                if (isTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
                 return AcceptTxResult.FeeTooLow.WithMessage("Affordable FeePerGas of 0 rejected.");
             }
 
@@ -65,7 +50,7 @@ namespace Nethermind.TxPool.Filters
                 && affordableGasPrice <= lastTx?.GasBottleneck)
             {
                 Metrics.PendingTransactionsTooLowFee++;
-                if (isTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
                 return AcceptTxResult.FeeTooLow.WithMessage($"FeePerGas needs to be higher than {lastTx.GasBottleneck.Value} to be added to the TxPool. FeePerGas of rejected tx: {affordableGasPrice}.");
             }
 
