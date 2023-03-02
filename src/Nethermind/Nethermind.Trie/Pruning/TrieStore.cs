@@ -21,6 +21,7 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class TrieStore : ITrieStore
     {
+        // made public for benchmarks
         public class DirtyNodesCache
         {
             private readonly TrieStore _trieStore;
@@ -42,18 +43,16 @@ namespace Nethermind.Trie.Pruning
 
             public TrieNode FindCachedOrUnknown(Keccak hash)
             {
-                if (_objectsCache.TryGetValue(hash, out TrieNode trieNode))
-                {
-                    Metrics.LoadedFromCacheNodesCount++;
-                }
-                else
-                {
-                    if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
-                    trieNode = new TrieNode(NodeType.Unknown, hash);
-                    SaveInCache(trieNode);
-                }
+                Metrics.LoadedFromCacheNodesCount++;
 
-                return trieNode;
+                return _objectsCache.GetOrAdd(hash, static (key, logger) =>
+                {
+                    Metrics.LoadedFromCacheNodesCount--;
+
+                    TrieNode trieNode = new(NodeType.Unknown, key);
+                    if (logger.IsTrace) logger.Trace($"Creating new node {trieNode}");
+                    return trieNode;
+                }, _trieStore._logger);
             }
 
             public TrieNode FromCachedRlpOrUnknown(Keccak hash)
@@ -96,7 +95,7 @@ namespace Nethermind.Trie.Pruning
 
             public void Remove(Keccak hash)
             {
-                if (_objectsCache.Remove(hash, out _))
+                if (_objectsCache.TryRemove(hash, out _))
                 {
                     Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
                 }
