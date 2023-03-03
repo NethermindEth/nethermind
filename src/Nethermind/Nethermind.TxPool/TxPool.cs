@@ -653,44 +653,45 @@ namespace Nethermind.TxPool
             if (float.IsNaN(receivedDiscarded)) receivedDiscarded = 0;
 
             logger.Info(@$"
-Txn Pool State ({Metrics.TransactionCount:0} txns queued)
-------------------------------------------
+Txn Pool State ({Metrics.TransactionCount:N0} txns queued)
+------------------------------------------------
 Sent
-* Transactions:         {Metrics.PendingTransactionsSent,18:0}
-* Hashes:               {Metrics.PendingTransactionsHashesSent,18:0}
-------------------------------------------
-Total Received:         {Metrics.PendingTransactionsReceived,18:0}
-------------------------------------------
+* Transactions:         {Metrics.PendingTransactionsSent,24:N0}
+* Hashes:               {Metrics.PendingTransactionsHashesSent,24:N0}
+------------------------------------------------
+Total Received:         {Metrics.PendingTransactionsReceived,24:N0}
+------------------------------------------------
 Discarded at Filter Stage:        
-1.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,18:0}
-2.  Malformed           {Metrics.PendingTransactionsMalformed,18:0}
-3.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,18:0}
-4.  Duplicate:          {Metrics.PendingTransactionsKnown,18:0}
-5.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,18:0}
-6.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,18:0}
-7.  Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,18:0}
-8.  Nonce used:         {Metrics.PendingTransactionsLowNonce,18:0}
-9.  Nonces skipped:     {Metrics.PendingTransactionsNonceGap,18:0}
-10. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,18:0}
-11. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,18:0}
-------------------------------------------
-Validated via State:    {Metrics.PendingTransactionsWithExpensiveFiltering,18:0}
-------------------------------------------
-Total Discarded:        {Metrics.PendingTransactionsDiscarded,18:0}
+1.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
+2.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}
+3.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
+4.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
+5.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,24:N0}
+6.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
+7.  Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
+8.  Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
+9.  Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
+10. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,24:N0}
+11. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
+------------------------------------------------
+Validated via State:    {Metrics.PendingTransactionsWithExpensiveFiltering,24:N0}
+------------------------------------------------
+Total Discarded:        {Metrics.PendingTransactionsDiscarded,24:N0}
+------------------------------------------------
+Discard Ratios:
+* Pre-state Discards:   {preStateDiscards,24:P5}
+* Received Discarded:   {receivedDiscarded,24:P5}
+------------------------------------------------
+Total Added:            {Metrics.PendingTransactionsAdded,24:N0}
+* Eip1559 Added:        {Metrics.Pending1559TransactionsAdded,24:N0}
+------------------------------------------------
+Total Evicted:          {Metrics.PendingTransactionsEvicted,24:N0}
+------------------------------------------------
 Ratios:
-* Pre-state Discards:   {preStateDiscards,18:P5}
-* Received Discarded:   {receivedDiscarded,18:P5}
-------------------------------------------
-Total Added:            {Metrics.PendingTransactionsAdded,18:0}
-* Eip1559 Added:        {Metrics.Pending1559TransactionsAdded,18:0}
-------------------------------------------
-Total Evicted:          {Metrics.PendingTransactionsEvicted,18:0}
-------------------------------------------
-Ratios:
-* Eip1559 Transactions: {Metrics.Eip1559TransactionsRatio,18:P5}
-* DarkPool Level1:      {Metrics.DarkPoolRatioLevel1,18:P5}
-* DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,18:P5}
-------------------------------------------
+* Eip1559 Transactions: {Metrics.Eip1559TransactionsRatio,24:P5}
+* DarkPool Level1:      {Metrics.DarkPoolRatioLevel1,24:P5}
+* DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,24:P5}
+------------------------------------------------
 ");
         }
     }
