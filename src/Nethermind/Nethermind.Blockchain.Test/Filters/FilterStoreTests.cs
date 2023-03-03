@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Test.Filters
     [TestFixture]
     public class FilterStoreTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_save_and_load_block_filter()
         {
             FilterStore store = new();
@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Test.Filters
             Assert.AreEqual(FilterType.BlockFilter, store.GetFilterType(filter.Id), "type");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_save_and_load_log_filter()
         {
             FilterStore store = new();
@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Test.Filters
             Assert.AreEqual(FilterType.LogFilter, store.GetFilterType(filter.Id), "type");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cannot_overwrite_filters()
         {
             FilterStore store = new();
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test.Filters
             Assert.Throws<InvalidOperationException>(() => store.SaveFilter(externalFilter));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Ids_are_incremented_when_storing_externally_created_filter()
         {
             FilterStore store = new();
@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Test.Filters
             Assert.AreEqual(FilterType.LogFilter, store.GetFilterType(filter.Id), "type");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Remove_filter_removes_and_notifies()
         {
             FilterStore store = new();
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Test.Filters
             Assert.False(store.FilterExists(0), "exists");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_get_filters_by_type()
         {
             FilterStore store = new();

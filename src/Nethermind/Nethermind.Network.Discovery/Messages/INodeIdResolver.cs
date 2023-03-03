@@ -7,5 +7,5 @@ namespace Nethermind.Network.Discovery.Messages;
 
 public interface INodeIdResolver
 {
-    PublicKey GetNodeId(byte[] signature, int recoveryId, Span<byte> typeAndData);
+    PublicKey GetNodeId(ReadOnlySpan<byte> signature, int recoveryId, Span<byte> typeAndData);
 }

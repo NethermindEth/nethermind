@@ -12,7 +12,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void clone_test()
         {
-            RocksDbSettings settings = new("Name", "Path")
+            RocksDbSettings settings = new("name", "path")
             {
                 BlockCacheSize = 1,
                 UpdateReadMetrics = () => { },

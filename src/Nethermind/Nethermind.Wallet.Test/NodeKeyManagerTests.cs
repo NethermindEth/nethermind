@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Security;
@@ -35,7 +36,7 @@ namespace Nethermind.Wallet.Test
             test.PasswordProvider.GetPassword(TestItem.AddressA).Returns("p1".Secure());
             test.KeyStore.GetProtectedKey(TestItem.AddressA, Arg.Any<SecureString>()).Returns(
                 c => ((SecureString)c[1]).Unsecure() == "p1"
-                    ? (new ProtectedPrivateKey(TestItem.PrivateKeyA), Result.Success)
+                    ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())), Result.Success)
                     : ((ProtectedPrivateKey)null, Result.Fail("nope")));
             test.NodeKeyManager.LoadNodeKey().Unprotect().Should().Be(TestItem.PrivateKeyA);
         }
@@ -86,7 +87,7 @@ namespace Nethermind.Wallet.Test
             test.PasswordProvider.GetPassword(TestItem.AddressA).Returns("p1".Secure());
             test.KeyStore.GetProtectedKey(TestItem.AddressA, Arg.Any<SecureString>()).Returns(
                 c => ((SecureString)c[1]).Unsecure() == "p1"
-                    ? (new ProtectedPrivateKey(TestItem.PrivateKeyA), Result.Success)
+                    ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())), Result.Success)
                     : ((ProtectedPrivateKey)null, Result.Fail("nope")));
             test.NodeKeyManager.LoadSignerKey().Unprotect().Should().Be(TestItem.PrivateKeyA);
         }
