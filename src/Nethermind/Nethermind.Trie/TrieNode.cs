@@ -342,7 +342,7 @@ namespace Nethermind.Trie
                             if (PathToNode is null)
                                 throw new TrieException("Unable to resolve node without its path");
 
-                            fullRlp = tree.LoadRlp(Keccak);
+                            fullRlp = tree.LoadRlp(FullPath);
                         }
                         IsPersisted = true;
 

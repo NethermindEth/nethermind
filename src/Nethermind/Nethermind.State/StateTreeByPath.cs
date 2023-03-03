@@ -51,7 +51,7 @@ namespace Nethermind.State
                 }
             }
 
-            if (bytes is null && RootHash == rootHash)
+            if (bytes is null && (rootHash is null || RootHash == rootHash))
             {
                 if (RootRef?.IsPersisted == true)
                 {

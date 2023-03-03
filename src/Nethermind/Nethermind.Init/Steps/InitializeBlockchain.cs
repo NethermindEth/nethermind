@@ -38,6 +38,7 @@ using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
+using Nethermind.Trie.ByPath;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -124,7 +125,8 @@ namespace Nethermind.Init.Steps
                     stateWitnessedBy,
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
                     persistenceStrategy,
-                    getApi.LogManager);
+                    getApi.LogManager,
+                    new FullLeafHistory(128)); //TDOD - change, so that object init is done in class based on strategy - should be same as persistance strategy?
                 //TODO - remove seprate store for this
                 storageStore = new TrieStore(
                     stateWitnessedBy,
@@ -148,7 +150,8 @@ namespace Nethermind.Init.Steps
                     stateWitnessedBy,
                     No.Pruning,
                     Persist.EveryBlock,
-                    getApi.LogManager);
+                    getApi.LogManager,
+                    new FullLeafHistory(128));
                 storageStore = new TrieStore(
                     stateWitnessedBy,
                     No.Pruning,
