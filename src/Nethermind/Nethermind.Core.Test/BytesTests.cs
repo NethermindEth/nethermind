@@ -275,6 +275,13 @@ namespace Nethermind.Core.Test
 
         [TestCase("0x", 0)]
         [TestCase("0x1000", 1)]
+        [TestCase("0x100000", 2)]
+        [TestCase("0x10000000", 3)]
+        [TestCase("0x1000000000", 4)]
+        [TestCase("0x100000000000", 5)]
+        [TestCase("0x10000000000000", 6)]
+        [TestCase("0x1000000000000000", 7)]
+        [TestCase("0x100000000000000000", 8)]
         [TestCase("0x0000", 2)]
         [TestCase("0x000100", 1)]
         public void Trailing_zeros_count_works(string hex, int expectedResult)

@@ -3,7 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,10 +20,14 @@ namespace Nethermind.Network
 {
     public class NetworkStorage : INetworkStorage
     {
+        private readonly object _lock = new();
         private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
+        private readonly List<NetworkNode> _nodesList = new();
+        private readonly HashSet<PublicKey> _nodePublicKeys = new();
         private long _updateCounter;
         private long _removeCounter;
+        private NetworkNode[] _nodes;
 
         public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
         {
@@ -27,41 +35,78 @@ namespace Nethermind.Network
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public int PersistedNodesCount
-        {
-            get
-            {
-                return _fullDb.Values.Count;
-            }
-        }
+        public int PersistedNodesCount => GetPersistedNodes().Length;
 
         public NetworkNode[] GetPersistedNodes()
         {
-            List<NetworkNode> nodes = new();
-            foreach (byte[]? nodeRlp in _fullDb.Values)
+            NetworkNode[] nodes = _nodes;
+            return nodes is not null ? nodes : GenerateNodes();
+        }
+
+        private NetworkNode[] GenerateNodes()
+        {
+            NetworkNode[] nodes = Volatile.Read(ref _nodes);
+            lock (_lock)
             {
-                if (nodeRlp is null)
+                if (_nodes != nodes)
                 {
-                    continue;
+                    // Already updated
+                    return _nodes;
                 }
 
-                try
+                _nodePublicKeys.Clear();
+                _nodesList.Clear();
+                foreach (byte[]? nodeRlp in _fullDb.Values)
                 {
-                    nodes.Add(GetNode(nodeRlp));
+                    if (nodeRlp is null)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        NetworkNode node = GetNode(nodeRlp);
+                        _nodesList.Add(node);
+                        _nodePublicKeys.Add(node.NodeId);
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
+                    }
                 }
-                catch (Exception e)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
-                }
+
+                nodes = _nodes = _nodesList.ToArray();
             }
 
-            return nodes.ToArray();
+            return nodes;
         }
 
         public void UpdateNode(NetworkNode node)
         {
-            (_currentBatch ?? (IKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
-            _updateCounter++;
+            lock (_lock)
+            {
+                (_currentBatch ?? (IKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
+                _updateCounter++;
+
+                if (!_nodePublicKeys.Contains(node.NodeId))
+                {
+                    _nodePublicKeys.Add(node.NodeId);
+                    _nodesList.Add(node);
+                    // New node, generate the cache
+                    _nodes = _nodesList.ToArray();
+                }
+                else
+                {
+                    Span<NetworkNode> span = CollectionsMarshal.AsSpan(_nodesList);
+                    for (int i = 0; i < span.Length; i++)
+                    {
+                        if (node.NodeId == span[i].NodeId)
+                        {
+                            span[i] = node;
+                        }
+                    }
+                }
+            }
         }
 
         public void UpdateNodes(IEnumerable<NetworkNode> nodes)
@@ -76,6 +121,27 @@ namespace Nethermind.Network
         {
             (_currentBatch ?? (IKeyValueStore)_fullDb)[nodeId.Bytes] = null;
             _removeCounter++;
+
+            RemoveLocal(nodeId);
+        }
+
+        private void RemoveLocal(PublicKey nodeId)
+        {
+            lock (_lock)
+            {
+                Span<NetworkNode> span = CollectionsMarshal.AsSpan(_nodesList);
+                for (int i = 0; i < span.Length; i++)
+                {
+                    if (nodeId == span[i].NodeId)
+                    {
+                        _nodesList.RemoveAt(i);
+                        _nodePublicKeys.Remove(nodeId);
+                        // Node removed, generate the cache
+                        _nodes = _nodesList.ToArray();
+                        return;
+                    }
+                }
+            }
         }
 
         private IBatch? _currentBatch;

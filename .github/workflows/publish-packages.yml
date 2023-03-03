@@ -1,0 +1,140 @@
+name: Publish packages
+
+on:
+  release:
+    types: [published]
+
+env:
+  RELEASE_URL: https://api.github.com/repos/nethermindeth/nethermind/releases/latest
+
+jobs:
+  get-release:
+    name: Get latest release
+    runs-on: ubuntu-latest
+    outputs:
+      PRERELEASE: ${{ steps.release.outputs.PRERELEASE }}
+      VERSION: ${{ steps.release.outputs.VERSION }}
+    steps:
+    - name: Get release metadata
+      id: release
+      run: |
+        read tag_name prerelase < <(echo $(curl -s ${{ env.RELEASE_URL }} | jq -r '.tag_name, .prerelease'))
+        echo "PRERELEASE=$prerelase" >> $GITHUB_OUTPUT
+        echo "VERSION=$tag_name" >> $GITHUB_OUTPUT
+
+  publish-ppa:
+    name: Publish on PPA
+    runs-on: ubuntu-latest
+    needs: get-release
+    if: needs.get-release.outputs.PRERELEASE == 'false'
+    steps:
+    - name: Check out Nethermind repository
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ needs.get-release.outputs.VERSION }}
+    - name: Set up GPG
+      env:
+        GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
+        GPG_SECRET_KEY: ${{ secrets.PPA_GPG_SECRET_KEY }}
+      run: |
+        echo $GPG_SECRET_KEY > SECRET_KEY
+        echo $GPG_PASSPHRASE > $GITHUB_WORKSPACE/PASSPHRASE
+        echo "Import GPG key"
+        base64 --decode -i SECRET_KEY | gpg --import --no-tty --batch --yes
+        echo "Import GPG owner trust"
+        echo ${{ secrets.GPG_OWNERTRUST }} | base64 --decode | gpg --import-ownertrust
+    - name: Install PPA dependencies
+      run: sudo apt update && sudo apt install debhelper devscripts -y
+    - name: Submit package
+      env:
+        PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
+        VERSION: ${{ needs.get-release.outputs.VERSION }}
+      working-directory: scripts/deployment
+      run: | 
+        # This hack must be removed once we reach the v2
+        echo $VERSION > ver
+        FIXED_VERSION=$(awk -F. '{ print $1"."$2$3$4"0"}' ver)
+        changelog="nethermind ($FIXED_VERSION) jammy; urgency=high\n"
+        changelog+="  * Nethermind v$VERSION\n"
+        changelog+=" -- Nethermind <devops@nethermind.io>  $(date -R)"
+        echo -e "$changelog" > debian/changelog
+        debuild -S -uc -us
+        cd ..
+        debsign -p "gpg --batch --yes --no-tty --pinentry-mode loopback --passphrase-file $GITHUB_WORKSPACE/PASSPHRASE" -S -k$PPA_GPG_KEYID nethermind_${FIXED_VERSION}_source.changes
+        dput -f ppa:nethermindeth/nethermind nethermind_${FIXED_VERSION}_source.changes
+
+  copy-ppa:
+    name: Copy PPA package
+    runs-on: ubuntu-latest
+    needs: publish-ppa
+    steps:
+    - name: Wait for 1 hour
+      run: sleep 1h
+    - name: Install PPA dependencies
+      run: |
+        sudo apt update
+        sudo apt install debhelper devscripts ubuntu-dev-tools -y --no-install-recommends
+    - name: Install Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.x
+    - name: Install launchpadlib
+      run: pip install launchpadlib --upgrade
+    - name: Copy to other Ubuntu releases
+      env: 
+        LP_CREDENTIALS_FILE: /tmp/lp_credentials
+      run: |
+        echo ${{ secrets.PPA_COPY_TOKEN }} | base64 --decode > /tmp/lp_credentials
+        git clone https://git.launchpad.net/ubuntu-archive-tools
+        cd ubuntu-archive-tools
+        for release in "trusty" "bionic" "focal" "kinetic"
+        do
+          python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s jammy --to-suite=$release nethermind
+        done
+        rm -f /tmp/lp_credentials
+
+  publish-winget:
+    name: Publish on Windows Package Manager
+    runs-on: windows-latest
+    needs: get-release
+    if: needs.get-release.outputs.PRERELEASE == 'false'
+    steps:
+    - name: Submit package
+      run: |
+        $releaseInfo = curl -s ${{ env.RELEASE_URL }} | ConvertFrom-Json
+        $releaseUrl = $releaseInfo | Select -ExpandProperty assets | Where-Object -Property name -match 'windows' | Select -ExpandProperty browser_download_url
+        curl -sL https://aka.ms/wingetcreate/latest -o wingetcreate.exe
+        ./wingetcreate.exe update Nethermind.Nethermind -s -v ${{ needs.get-release.outputs.VERSION }} -u $releaseUrl -t ${{ secrets.WINGET_TOKEN }}
+
+  publish-homebrew:
+    name: Publish on Homebrew
+    runs-on: ubuntu-latest
+    needs: get-release
+    if: needs.get-release.outputs.PRERELEASE == 'false'
+    steps:
+    - name: Check out homebrew-nethermind repository
+      uses: actions/checkout@v3
+      with:
+        repository: NethermindEth/homebrew-nethermind
+    - name: Update formula file
+      run: |
+        json=$(curl -s ${{ env.RELEASE_URL }})
+        macos_x64_url=$(echo "$json" | jq -r '.assets[].browser_download_url | select(contains("macos-x64"))')
+        macos_x64_hash=$(curl -sL $macos_x64_url | shasum -a 256 | awk '{print $1}')
+        macos_arm64_url=$(echo "$json" | jq -r '.assets[].browser_download_url | select(contains("macos-arm64"))')
+        macos_arm64_hash=$(curl -sL $macos_arm64_url | shasum -a 256 | awk '{print $1}')
+        sed -i "s/version .*/version \"${{ needs.get-release.outputs.VERSION }}\"/" nethermind.rb
+        awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url \"'$macos_x64_url'\""); } 1' nethermind.rb
+        awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url \"'$macos_arm64_url'\""); } 1' nethermind.rb
+        awk -i inplace -v n=1 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$macos_x64_hash'\""); } 1' nethermind.rb
+        awk -i inplace -v n=2 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$macos_arm64_hash'\""); } 1' nethermind.rb
+    - name: Submit package
+      uses: peter-evans/create-pull-request@v4
+      with:
+        token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        commit-message: Update Homebrew formula
+        title: '[Release] Update Homebrew'
+        reviewers: falcoxyz, AntiD2ta, matilote
+        draft: false
+        add-paths: |
+          nethermind.rb
