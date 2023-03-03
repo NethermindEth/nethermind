@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net7.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  
+  <ItemGroup>
+    <ProjectReference Include="..\..\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\..\Nethermind\Nethermind.Logging\Nethermind.Logging.csproj" />
+    <ProjectReference Include="..\..\Nethermind\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <ProjectReference Include="..\..\Nethermind\Nethermind.Evm\Nethermind.Evm.csproj" />
+  </ItemGroup>
+
+
+</Project>
