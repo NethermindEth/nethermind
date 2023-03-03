@@ -214,6 +214,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.MuirGlacierNumber.Should().Be(null);
             chainSpec.BerlinBlockNumber.Should().Be(GoerliSpecProvider.BerlinBlockNumber);
             chainSpec.LondonBlockNumber.Should().Be(GoerliSpecProvider.LondonBlockNumber);
+            chainSpec.ShanghaiTimestamp.Should().Be(GoerliSpecProvider.ShanghaiTimestamp);
         }
 
         [Test]
