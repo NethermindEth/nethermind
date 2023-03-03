@@ -48,6 +48,7 @@ namespace Nethermind.TxPool.Collections
                     {
                         _worstSortedValues.Add(tx, tx.Hash!);
                     }
+                    _worstValue = _worstSortedValues.Max;
                 }
                 else
                 {

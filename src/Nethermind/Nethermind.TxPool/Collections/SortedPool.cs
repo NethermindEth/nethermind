@@ -35,6 +35,7 @@ namespace Nethermind.TxPool.Collections
 
         // worst element from every group, used to determine element that will be evicted when pool is full
         protected readonly DictionarySortedSet<TValue, TKey> _worstSortedValues;
+        protected KeyValuePair<TValue, TKey>? _worstValue = null;
         private TValue[]? _snapshot;
 
         /// <summary>
@@ -155,10 +156,9 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets last element in supplied comparer order.
         /// </summary>
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGetLast(out TValue last)
+        public bool TryGetLast(out TValue? last)
         {
-            last = _worstSortedValues.Max.Key;
+            last = _worstValue is not null ? _worstValue.Value.Key : default;
             return last is not null;
         }
 
@@ -190,7 +190,10 @@ namespace Nethermind.TxPool.Collections
                             {
                                 _buckets.Remove(groupMapping);
                                 if (last is not null)
+                                {
                                     _worstSortedValues.Remove(last);
+                                    _worstValue = _worstSortedValues.Max;
+                                }
                             }
                             else
                             {
@@ -299,7 +302,14 @@ namespace Nethermind.TxPool.Collections
 
         private void RemoveLast(out TValue? removed)
         {
-            TryRemove(_worstSortedValues.Max.Value, true, out removed, out _);
+            if (_worstValue is not null)
+            {
+                TryRemove(_worstValue.Value.Value, true, out removed, out _);
+            }
+            else
+            {
+                removed = default;
+            }
         }
 
         /// <summary>
@@ -344,8 +354,13 @@ namespace Nethermind.TxPool.Collections
                 {
                     _worstSortedValues.Remove(previousLast);
                 }
+
                 if (newLast is not null)
+                {
                     _worstSortedValues.Add(newLast, GetKey(newLast));
+                }
+
+                _worstValue = _worstSortedValues.Max;
             }
         }
 
