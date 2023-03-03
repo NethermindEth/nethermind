@@ -45,7 +45,7 @@ namespace Nethermind.TxPool.Filters
                     continue;
                 }
 
-                if (tx.Nonce < tx.Nonce)
+                if (otherTx.Nonce < tx.Nonce)
                 {
                     overflow |= UInt256.MultiplyOverflow(otherTx.MaxFeePerGas, (UInt256)otherTx.GasLimit, out UInt256 maxTxCost);
                     overflow |= UInt256.AddOverflow(cumulativeCost, maxTxCost, out cumulativeCost);
