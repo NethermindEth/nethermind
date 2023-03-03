@@ -558,7 +558,15 @@ namespace Nethermind.Trie
 
             InitData();
             int index = IsExtension ? i + 1 : i;
-            _data![index] = node ?? _nullNode;
+            if (node != null)
+            {
+                node.CacheHint = ChildSearchHint;
+                _data![index] = node;
+            }
+            else
+            {
+                _data![index] = _nullNode;
+            }
             Keccak = null;
         }
 
