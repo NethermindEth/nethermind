@@ -3,10 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -236,7 +239,48 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected void Handle(TransactionsMessage msg)
         {
-            IList<Transaction> transactions = msg.Transactions;
+            IList<Transaction> iList = msg.Transactions;
+
+            if (iList is ArrayPoolList<Transaction> apl)
+            {
+                HandleFast(apl.AsSpan());
+            }
+            else if (iList is Transaction[] array)
+            {
+                HandleFast(array.AsSpan());
+            }
+            else if (iList is List<Transaction> list)
+            {
+                HandleFast(CollectionsMarshal.AsSpan(list));
+            }
+            else
+            {
+                HandleSlow(iList);
+            }
+        }
+
+        private void HandleFast(Span<Transaction> transactions)
+        {
+            bool isTrace = Logger.IsTrace;
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Transaction tx = transactions[i];
+                tx.DeliveredBy = Node.Id;
+                tx.Timestamp = _timestamper.UnixTime.Seconds;
+                AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
+                _floodController.Report(accepted);
+
+                if (isTrace) Log(tx, accepted);
+            }
+
+            void Log(Transaction tx, AcceptTxResult accepted)
+            {
+                Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
+            }
+        }
+
+        private void HandleSlow(IList<Transaction> transactions)
+        {
             for (int i = 0; i < transactions.Count; i++)
             {
                 Transaction tx = transactions[i];
