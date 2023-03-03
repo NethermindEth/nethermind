@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Comparers
 {
@@ -31,7 +30,7 @@ namespace Nethermind.Consensus.Comparers
             // if not, different method of sorting by gas price is needed
             if (x.GasBottleneck is not null && y.GasBottleneck is not null)
             {
-                return y!.GasBottleneck.Value.CompareTo(x!.GasBottleneck);
+                return y!.GasBottleneck.Value.CompareTo(x!.GasBottleneck.GetValueOrDefault());
             }
 
             // When we're adding Tx to TxPool we don't know the base fee of the block in which transaction will be added.
@@ -39,7 +38,7 @@ namespace Nethermind.Consensus.Comparers
             Block block = _blockFinder.Head;
             bool isEip1559Enabled = _specProvider.GetSpecFor1559(block?.Number ?? 0L).IsEip1559Enabled;
 
-            return GasPriceTxComparerHelper.Compare(x, y, block?.Header.BaseFeePerGas ?? UInt256.Zero, isEip1559Enabled);
+            return GasPriceTxComparerHelper.Compare(x, y, (block?.Header.BaseFeePerGas).GetValueOrDefault(), isEip1559Enabled);
         }
     }
 }
