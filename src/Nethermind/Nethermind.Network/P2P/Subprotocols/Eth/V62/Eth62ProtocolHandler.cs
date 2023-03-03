@@ -264,33 +264,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             bool isTrace = Logger.IsTrace;
             for (int i = 0; i < transactions.Length; i++)
             {
-                Transaction tx = transactions[i];
-                tx.DeliveredBy = Node.Id;
-                tx.Timestamp = _timestamper.UnixTime.Seconds;
-                AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
-                _floodController.Report(accepted);
-
-                if (isTrace) Log(tx, accepted);
-            }
-
-            void Log(Transaction tx, AcceptTxResult accepted)
-            {
-                Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
+                PrepareAndSubmitTransaction(transactions[i], isTrace);
             }
         }
 
         private void HandleSlow(IList<Transaction> transactions)
         {
-            for (int i = 0; i < transactions.Count; i++)
+            bool isTrace = Logger.IsTrace;
+            int count = transactions.Count;
+            for (int i = 0; i < count; i++)
             {
-                Transaction tx = transactions[i];
-                tx.DeliveredBy = Node.Id;
-                tx.Timestamp = _timestamper.UnixTime.Seconds;
-                AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
-                _floodController.Report(accepted);
+                PrepareAndSubmitTransaction(transactions[i], isTrace);
+            }
+        }
 
-                if (Logger.IsTrace) Logger.Trace(
-                    $"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
+        private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
+        {
+            tx.DeliveredBy = Node.Id;
+            tx.Timestamp = _timestamper.UnixTime.Seconds;
+            AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            _floodController.Report(accepted);
+
+            if (isTrace) Log(tx, accepted);
+
+            void Log(Transaction tx, in AcceptTxResult accepted)
+            {
+                Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
             }
         }
 
