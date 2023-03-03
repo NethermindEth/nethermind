@@ -576,7 +576,7 @@ namespace Nethermind.Trie.Pruning
         }
 
         /// <summary>
-        /// Tries to store the rlp cache
+        /// Tries to store the rlp cache.
         /// </summary>
         /// <param name="node"></param>
         private void SetRlpCache(TrieNode node)
@@ -612,7 +612,7 @@ namespace Nethermind.Trie.Pruning
             return default;
         }
 
-        private static int GetRlpCacheBucket(Keccak keccak) => MemoryMarshal.Read<short>(keccak.Bytes) % RlpCacheSize;
+        private static int GetRlpCacheBucket(Keccak keccak) => (int)(MemoryMarshal.Read<uint>(keccak.Bytes) % RlpCacheSize);
 
         /// <summary>
         /// This method is here to support testing.
