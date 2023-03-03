@@ -66,6 +66,8 @@ namespace Nethermind.TxPool
         private readonly IIncomingTxFilter? _filterIncomingTx;
         private readonly DeployedCodeFilter _filterDeployedCode;
 
+        private readonly ITimer? _timer;
+
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
         /// (by miners or validators) or simply informing other nodes about known pending transactions (broadcasting).
@@ -113,6 +115,15 @@ namespace Nethermind.TxPool
             _filterGapNonce = new GapNonceFilter(_transactions, _logger);
             _filterIncomingTx = incomingTxFilter;
             _filterDeployedCode = new DeployedCodeFilter(_specProvider, _accounts);
+
+            int? reportMinutes = txPoolConfig.ReportMinutes;
+            if (reportMinutes.HasValue)
+            {
+                _timer = TimerFactory.Default.CreateTimer(TimeSpan.FromMinutes(reportMinutes.Value));
+                _timer.AutoReset = false;
+                _timer.Elapsed += TimerOnElapsed;
+                _timer.Start();
+            }
 
             ProcessNewHeads();
         }
@@ -604,6 +615,7 @@ namespace Nethermind.TxPool
 
         public void Dispose()
         {
+            _timer?.Dispose();
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
@@ -619,7 +631,14 @@ namespace Nethermind.TxPool
                     .PadLeft(8));
         }
 
-        public static void WriteTxnPoolReport(ILogger logger)
+        private void TimerOnElapsed(object? sender, EventArgs e)
+        {
+            WriteTxnPoolReport(_logger);
+
+            _timer!.Enabled = true;
+        }
+
+        private static void WriteTxnPoolReport(ILogger logger)
         {
             if (!logger.IsInfo)
             {

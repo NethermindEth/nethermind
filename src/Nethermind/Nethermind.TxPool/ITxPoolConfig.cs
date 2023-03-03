@@ -20,6 +20,11 @@ namespace Nethermind.TxPool
 
         [ConfigItem(DefaultValue = "null",
             Description = "Max transaction gas allowed.")]
+
         long? GasLimit { get; set; }
+
+        [ConfigItem(DefaultValue = "null",
+            Description = "Minutes between reporting on current state of tx pool.")]
+        int? ReportMinutes { get; set; }
     }
 }

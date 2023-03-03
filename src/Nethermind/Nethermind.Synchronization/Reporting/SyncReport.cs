@@ -91,7 +91,6 @@ namespace Nethermind.Synchronization.Reporting
             if (_reportId % SyncFullPeersReportFrequency == 0)
             {
                 _syncPeersReport.WriteFullReport();
-                Nethermind.TxPool.TxPool.WriteTxnPoolReport(_logger);
             }
             else if (_reportId % SyncAllocatedPeersReportFrequency == 0)
             {
