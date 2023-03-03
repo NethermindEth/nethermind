@@ -1334,7 +1334,7 @@ namespace Nethermind.TxPool.Test
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
 
-            _txPool.SubmitTx(zeroCostTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(zeroCostTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
 
             // Cumulative cost should be 1
             Transaction expensiveTx = Build.A.Transaction
@@ -1345,7 +1345,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(0)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
-            _txPool.SubmitTx(expensiveTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(expensiveTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
         }
 
         [Test]
@@ -1543,17 +1543,38 @@ namespace Nethermind.TxPool.Test
 
         private Transaction GetTransaction(PrivateKey privateKey, Address to = null, UInt256? nonce = null)
         {
-            Transaction transaction = GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, nonce ?? 1000, to, Array.Empty<byte>(), privateKey);
+            Transaction transaction = GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, (nonce ?? 999) + 1, to, Array.Empty<byte>(), privateKey);
             EnsureSenderBalance(transaction);
             return transaction;
         }
 
         private void EnsureSenderBalance(Transaction transaction)
         {
+            UInt256 requiredBalance;
             if (transaction.IsEip1559)
-                EnsureSenderBalance(transaction.SenderAddress, transaction.MaxFeePerGas * (UInt256)transaction.GasLimit + transaction.Value);
+            {
+                if (UInt256.MultiplyOverflow(transaction.MaxFeePerGas, (UInt256)transaction.GasLimit, out requiredBalance))
+                {
+                    requiredBalance = UInt256.MaxValue;
+                }
+                if (UInt256.AddOverflow(requiredBalance, transaction.Value, out requiredBalance))
+                {
+                    requiredBalance = UInt256.MaxValue;
+                }
+            }
             else
-                EnsureSenderBalance(transaction.SenderAddress, transaction.GasPrice * (UInt256)transaction.GasLimit + transaction.Value);
+            {
+                if (UInt256.MultiplyOverflow(transaction.GasPrice, (UInt256)transaction.GasLimit, out requiredBalance))
+                {
+                    requiredBalance = UInt256.MaxValue;
+                }
+                if (UInt256.AddOverflow(requiredBalance, transaction.Value, out requiredBalance))
+                {
+                    requiredBalance = UInt256.MaxValue;
+                }
+            }
+
+            EnsureSenderBalance(transaction.SenderAddress, requiredBalance);
         }
 
         private void EnsureSenderBalance(Address address, UInt256 balance)

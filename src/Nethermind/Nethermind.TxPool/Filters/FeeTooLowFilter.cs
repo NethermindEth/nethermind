@@ -30,20 +30,21 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
-            UInt256 affordableGasPrice = tx.CalculateGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee);
-            // Don't accept zero fee txns even if pool is empty as will never run
-            if (!tx.IsFree() && affordableGasPrice.IsZero)
-            {
-                Metrics.PendingTransactionsTooLowFee++;
-                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
-                return AcceptTxResult.FeeTooLow.WithMessage("Affordable FeePerGas of 0 rejected.");
-            }
-
             bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
             if (isLocal)
             {
                 return AcceptTxResult.Accepted;
+            }
+
+            IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
+            bool isEip1559Enabled = spec.IsEip1559Enabled;
+            UInt256 affordableGasPrice = tx.CalculateGasPrice(isEip1559Enabled, _headInfo.CurrentBaseFee);
+            // Don't accept zero fee txns even if pool is empty as will never run
+            if (isEip1559Enabled && !tx.IsFree() && affordableGasPrice.IsZero)
+            {
+                Metrics.PendingTransactionsTooLowFee++;
+                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
+                return AcceptTxResult.FeeTooLow.WithMessage("Affordable FeePerGas of 0 rejected.");
             }
 
             if (_txs.IsFull() && _txs.TryGetLast(out Transaction? lastTx)
