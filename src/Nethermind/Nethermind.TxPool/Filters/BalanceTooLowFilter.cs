@@ -39,16 +39,17 @@ namespace Nethermind.TxPool.Filters
 
             for (int i = 0; i < transactions.Length; i++)
             {
-                if (transactions[i].Nonce < account.Nonce)
+                Transaction otherTx = transactions[i];
+                if (otherTx.Nonce < account.Nonce)
                 {
                     continue;
                 }
 
-                if (transactions[i].Nonce < tx.Nonce)
+                if (tx.Nonce < tx.Nonce)
                 {
-                    overflow |= UInt256.MultiplyOverflow(transactions[i].MaxFeePerGas, (UInt256)transactions[i].GasLimit, out UInt256 maxTxCost);
+                    overflow |= UInt256.MultiplyOverflow(otherTx.MaxFeePerGas, (UInt256)otherTx.GasLimit, out UInt256 maxTxCost);
                     overflow |= UInt256.AddOverflow(cumulativeCost, maxTxCost, out cumulativeCost);
-                    overflow |= UInt256.AddOverflow(cumulativeCost, transactions[i].Value, out cumulativeCost);
+                    overflow |= UInt256.AddOverflow(cumulativeCost, otherTx.Value, out cumulativeCost);
                 }
                 else
                 {
