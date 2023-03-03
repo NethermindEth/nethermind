@@ -181,10 +181,7 @@ namespace Nethermind.Trie.Pruning
                         }
                         else
                         {
-                            if (level == PruningLevel.TransientAndPersisted)
-                            {
-                                node.PrunePersistedRecursively(1);
-                            }
+                            node.PrunePersistedRecursively(1);
                             newMemory += node.GetMemorySize(false);
                         }
                     }
@@ -488,7 +485,7 @@ namespace Nethermind.Trie.Pruning
                             {
                                 using (_dirtyNodes.AllNodes.AcquireLock())
                                 {
-                                    if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
+                                    if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning spin.");
 
                                     _dirtyNodes.PruneCache(level);
 
@@ -497,13 +494,13 @@ namespace Nethermind.Trie.Pruning
                                         break;
                                     }
 
-                                    // on looping again, gather both transient and persisted
-                                    level = DirtyNodesCache.PruningLevel.TransientAndPersisted;
+                                    if (_logger.IsDebug) _logger.Debug($"Pruning spin finished. Unlocked {nameof(TrieStore)}.");
                                 }
                             }
-                        }
 
-                        if (_logger.IsDebug) _logger.Debug($"Pruning finished. Unlocked {nameof(TrieStore)}.");
+                            // on looping again, gather both transient and persisted
+                            level = DirtyNodesCache.PruningLevel.TransientAndPersisted;
+                        }
                     }
                     catch (Exception e)
                     {
