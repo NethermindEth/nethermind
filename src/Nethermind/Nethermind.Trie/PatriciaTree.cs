@@ -293,7 +293,8 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                RootRef = TrieStore.FindCachedOrUnknown(_rootHash);
+                RootRef = TrieStore.FindCachedOrUnknown(_rootHash,
+                    TrieType == TrieType.State ? SearchHint.StateRoot : SearchHint.StorageRoot);
             }
         }
 
@@ -373,7 +374,7 @@ namespace Nethermind.Trie
             if (startRootHash is not null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
-                TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash);
+                TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash, SearchHint.None); // this reads from a separate root so no much value for future gets
                 startNode.ResolveNode(TrieStore);
                 result = TraverseNode(startNode, traverseContext);
             }
@@ -997,7 +998,7 @@ namespace Nethermind.Trie
             TrieNode rootRef = null;
             if (!rootHash.Equals(Keccak.EmptyTreeHash))
             {
-                rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash);
+                rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash, TrieType == TrieType.State ? SearchHint.StateRoot : SearchHint.StorageRoot);
                 try
                 {
                     rootRef!.ResolveNode(TrieStore);

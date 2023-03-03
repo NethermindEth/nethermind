@@ -30,7 +30,7 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash)
+        public TrieNode FindCachedOrUnknown(Keccak hash, SearchHint hint)
         {
             return new(NodeType.Unknown, hash);
         }

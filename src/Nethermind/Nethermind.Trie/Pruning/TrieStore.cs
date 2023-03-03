@@ -2,15 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
@@ -40,7 +44,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            public TrieNode FindCachedOrUnknown(Keccak hash)
+            public TrieNode FindCachedOrUnknown(Keccak hash, SearchHint hint)
             {
                 if (_objectsCache.TryGetValue(hash, out TrieNode trieNode))
                 {
@@ -49,7 +53,8 @@ namespace Nethermind.Trie.Pruning
                 else
                 {
                     if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
-                    trieNode = new TrieNode(NodeType.Unknown, hash);
+                    trieNode = new TrieNode(NodeType.Unknown, hash) { CacheHint = hint };
+
                     SaveInCache(trieNode);
                 }
 
@@ -96,7 +101,7 @@ namespace Nethermind.Trie.Pruning
 
             public void Remove(Keccak hash)
             {
-                if (_objectsCache.Remove(hash, out _))
+                if (_objectsCache.TryRemove(hash, out _))
                 {
                     Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
                 }
@@ -123,11 +128,18 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
+        private record RlpCacheItem(Keccak Keccak, byte[] Rlp);
+
         private int _isFirst;
 
         private IBatch? _currentBatch = null;
 
         private readonly DirtyNodesCache _dirtyNodes;
+
+        // rlp cache
+        private readonly RlpCacheItem[] _rlpCache;
+        private readonly BitArray _rlpCacheSet;
+        private const int RlpCacheSize = 2048;
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -149,6 +161,8 @@ namespace Nethermind.Trie.Pruning
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
+            _rlpCache = new RlpCacheItem[RlpCacheSize];
+            _rlpCacheSet = new BitArray(RlpCacheSize);
         }
 
         public long LastPersistedBlockNumber
@@ -247,7 +261,7 @@ namespace Nethermind.Trie.Pruning
             {
                 if (IsNodeCached(node.Keccak))
                 {
-                    TrieNode cachedNodeCopy = FindCachedOrUnknown(node.Keccak);
+                    TrieNode cachedNodeCopy = FindCachedOrUnknown(node.Keccak, node.CacheHint);
                     if (!ReferenceEquals(cachedNodeCopy, node))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
@@ -318,7 +332,8 @@ namespace Nethermind.Trie.Pruning
         internal byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore)
         {
             keyValueStore ??= _keyValueStore;
-            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? keyValueStore[keccak.Bytes];
+
+            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? GetRlpCache(keccak) ?? keyValueStore[keccak.Bytes];
 
             if (rlp is null)
             {
@@ -353,12 +368,12 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsNodeCached(Keccak hash) => _dirtyNodes.IsNodeCached(hash);
 
-        public TrieNode FindCachedOrUnknown(Keccak? hash)
+        public TrieNode FindCachedOrUnknown(Keccak? hash, SearchHint hint)
         {
-            return FindCachedOrUnknown(hash, false);
+            return FindCachedOrUnknown(hash, false, hint);
         }
 
-        internal TrieNode FindCachedOrUnknown(Keccak? hash, bool isReadOnly)
+        internal TrieNode FindCachedOrUnknown(Keccak? hash, bool isReadOnly, SearchHint hint)
         {
             if (hash is null)
             {
@@ -370,7 +385,7 @@ namespace Nethermind.Trie.Pruning
                 return new TrieNode(NodeType.Unknown, hash);
             }
 
-            return isReadOnly ? _dirtyNodes.FromCachedRlpOrUnknown(hash) : _dirtyNodes.FindCachedOrUnknown(hash);
+            return isReadOnly ? _dirtyNodes.FromCachedRlpOrUnknown(hash) : _dirtyNodes.FindCachedOrUnknown(hash, hint);
         }
 
         public void Dump() => _dirtyNodes.Dump();
@@ -479,6 +494,8 @@ namespace Nethermind.Trie.Pruning
             Metrics.DeepPruningTime = stopwatch.ElapsedMilliseconds;
         }
 
+        private readonly ResettableList<TrieNode> _toRemove = new();
+
         /// <summary>
         /// This method is responsible for reviewing the nodes that are directly in the cache and
         /// removing ones that are either no longer referenced or already persisted.
@@ -486,65 +503,116 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
-            if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            List<TrieNode> toRemove = new(); // TODO: resettable
-
-            long newMemory = 0;
-            foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
+            try
             {
-                if (node.IsPersisted)
+                if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                long newMemory = 0;
+
+                // clear the write set before starting the walk
+                _rlpCacheSet.SetAll(false);
+
+                foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
-                    if (node.Keccak is null)
+                    if (node.IsPersisted)
                     {
-                        node.ResolveKey(this, true); // TODO: hack
-                        if (node.Keccak != key)
+                        if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
+                        if (node.Keccak is null)
                         {
-                            throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                            node.ResolveKey(this, true); // TODO: hack
+                            if (node.Keccak != key)
+                            {
+                                throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                            }
                         }
-                    }
-                    toRemove.Add(node);
+                        _toRemove.Add(node);
 
-                    Metrics.PrunedPersistedNodesCount++;
-                }
-                else if (IsNoLongerNeeded(node))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
-                    if (node.Keccak is null)
+                        SetRlpCache(node);
+
+                        Metrics.PrunedPersistedNodesCount++;
+                    }
+                    else if (IsNoLongerNeeded(node))
                     {
-                        throw new InvalidOperationException($"Removed {node}");
+                        if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
+                        if (node.Keccak is null)
+                        {
+                            throw new InvalidOperationException($"Removed {node}");
+                        }
+
+                        _toRemove.Add(node);
+
+                        Metrics.PrunedTransientNodesCount++;
+                    }
+                    else
+                    {
+                        node.PrunePersistedRecursively(1);
+                        newMemory += node.GetMemorySize(false);
+                    }
+                }
+
+                for (int index = 0; index < _toRemove.Count; index++)
+                {
+                    TrieNode trieNode = _toRemove[index];
+                    if (trieNode.Keccak is null)
+                    {
+                        throw new InvalidOperationException($"{trieNode} has a null key");
                     }
 
-                    toRemove.Add(node);
+                    _dirtyNodes.Remove(trieNode.Keccak);
+                }
 
-                    Metrics.PrunedTransientNodesCount++;
-                }
-                else
-                {
-                    node.PrunePersistedRecursively(1);
-                    newMemory += node.GetMemorySize(false);
-                }
+                MemoryUsedByDirtyCache = newMemory;
+                Metrics.CachedNodesCount = _dirtyNodes.Count;
+
+                stopwatch.Stop();
+                Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
+                if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             }
-
-            for (int index = 0; index < toRemove.Count; index++)
+            finally
             {
-                TrieNode trieNode = toRemove[index];
-                if (trieNode.Keccak is null)
-                {
-                    throw new InvalidOperationException($"{trieNode} has a null key");
-                }
+                _toRemove.Reset();
+            }
+        }
 
-                _dirtyNodes.Remove(trieNode.Keccak);
+        /// <summary>
+        /// Tries to store the rlp cache
+        /// </summary>
+        /// <param name="node"></param>
+        private void SetRlpCache(TrieNode node)
+        {
+            if (node.CacheHint is SearchHint.StorageRoot or SearchHint.StorageChildNode)
+            {
+                int bucket = GetRlpCacheBucket(node.Keccak!);
+                if (_rlpCacheSet.Get(bucket) == false)
+                {
+                    // nothing written this round, write and set
+                    Volatile.Write(ref _rlpCache[bucket], new RlpCacheItem(node.Keccak, node.FullRlp!));
+
+                    _rlpCacheSet.Set(bucket, true);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Reads through the Rlp cache.
+        /// </summary>
+        /// <param name="keccak"></param>
+        /// <returns></returns>
+        private byte[]? GetRlpCache(Keccak keccak)
+        {
+            RlpCacheItem item = Volatile.Read(ref _rlpCache[GetRlpCacheBucket(keccak)]);
+            if (item != null && item.Keccak == keccak)
+            {
+                Metrics.RlpCacheHit++;
+                return item.Rlp;
             }
 
-            MemoryUsedByDirtyCache = newMemory;
-            Metrics.CachedNodesCount = _dirtyNodes.Count;
-
-            stopwatch.Stop();
-            Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-            if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+            Metrics.RlpCacheMiss++;
+            return default;
         }
+
+        private static int GetRlpCacheBucket(Keccak keccak) => MemoryMarshal.Read<short>(keccak.Bytes) % RlpCacheSize;
 
         /// <summary>
         /// This method is here to support testing.
