@@ -34,6 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private readonly MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]> _receiptsRequests66;
         private readonly IPooledTxsRequestor _pooledTxsRequestor;
+        private readonly Action<GetPooledTransactionsMessage> _sendAction;
 
         public Eth66ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -51,6 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]>(Send);
             _pooledTxsRequestor = pooledTxsRequestor;
+            _sendAction = Send;
         }
 
         public override string Name => "eth66";
@@ -192,7 +194,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
 
-            _pooledTxsRequestor.RequestTransactionsEth66(Send, msg.Hashes);
+            _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, msg.Hashes);
 
             stopwatch.Stop();
             if (Logger.IsTrace)
