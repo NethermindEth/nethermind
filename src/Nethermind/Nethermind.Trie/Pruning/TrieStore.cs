@@ -128,18 +128,11 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private record RlpCacheItem(Keccak Keccak, byte[] Rlp);
-
         private int _isFirst;
 
         private IBatch? _currentBatch = null;
 
         private readonly DirtyNodesCache _dirtyNodes;
-
-        // rlp cache
-        private readonly RlpCacheItem[] _rlpCache;
-        private readonly BitArray _rlpCacheSet;
-        private const int RlpCacheSize = 2048;
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -156,13 +149,13 @@ namespace Nethermind.Trie.Pruning
             IPersistenceStrategy? persistenceStrategy,
             ILogManager? logManager)
         {
+            _rlpCache = new RlpCache();
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
-            _rlpCache = new RlpCacheItem[RlpCacheSize];
-            _rlpCacheSet = new BitArray(RlpCacheSize);
+            _rlpCache = new RlpCache();
         }
 
         public long LastPersistedBlockNumber
@@ -333,7 +326,7 @@ namespace Nethermind.Trie.Pruning
         {
             keyValueStore ??= _keyValueStore;
 
-            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? GetRlpCache(keccak) ?? keyValueStore[keccak.Bytes];
+            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _rlpCache.GetRlpCache(keccak) ?? keyValueStore[keccak.Bytes];
 
             if (rlp is null)
             {
@@ -511,7 +504,7 @@ namespace Nethermind.Trie.Pruning
                 long newMemory = 0;
 
                 // clear the write set before starting the walk
-                _rlpCacheSet.SetAll(false);
+                _rlpCache.ClearSetFlags();
 
                 foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
                 {
@@ -528,7 +521,7 @@ namespace Nethermind.Trie.Pruning
                         }
                         _toRemove.Add(node);
 
-                        SetRlpCache(node);
+                        _rlpCache.SetRlpCache(node);
 
                         Metrics.PrunedPersistedNodesCount++;
                     }
@@ -576,48 +569,13 @@ namespace Nethermind.Trie.Pruning
         }
 
         /// <summary>
-        /// Tries to store the rlp cache.
-        /// </summary>
-        /// <param name="node"></param>
-        private void SetRlpCache(TrieNode node)
-        {
-            if (node.CacheHint is SearchHint.StorageRoot or SearchHint.StorageChildNode)
-            {
-                int bucket = GetRlpCacheBucket(node.Keccak!);
-                if (_rlpCacheSet.Get(bucket) == false)
-                {
-                    // nothing written this round, write and set
-                    Volatile.Write(ref _rlpCache[bucket], new RlpCacheItem(node.Keccak, node.FullRlp!));
-
-                    _rlpCacheSet.Set(bucket, true);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Reads through the Rlp cache.
-        /// </summary>
-        /// <param name="keccak"></param>
-        /// <returns></returns>
-        private byte[]? GetRlpCache(Keccak keccak)
-        {
-            RlpCacheItem item = Volatile.Read(ref _rlpCache[GetRlpCacheBucket(keccak)]);
-            if (item != null && item.Keccak == keccak)
-            {
-                Metrics.RlpCacheHit++;
-                return item.Rlp;
-            }
-
-            Metrics.RlpCacheMiss++;
-            return default;
-        }
-
-        private static int GetRlpCacheBucket(Keccak keccak) => (int)(MemoryMarshal.Read<uint>(keccak.Bytes) % RlpCacheSize);
-
-        /// <summary>
         /// This method is here to support testing.
         /// </summary>
-        public void ClearCache() => _dirtyNodes.Clear();
+        public void ClearCache()
+        {
+            _dirtyNodes.Clear();
+            _rlpCache.Clear();
+        }
 
         public void Dispose()
         {
@@ -646,6 +604,8 @@ namespace Nethermind.Trie.Pruning
         private int _persistedNodesCount;
 
         private long _latestPersistedBlockNumber;
+
+        private readonly RlpCache _rlpCache;
 
         private BlockCommitSet? CurrentPackage { get; set; }
 

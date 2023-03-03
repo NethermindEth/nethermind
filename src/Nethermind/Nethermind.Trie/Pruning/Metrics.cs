@@ -52,6 +52,12 @@ namespace Nethermind.Trie.Pruning
         [Description("Estimated memory used by cache.")]
         public static long MemoryUsedByCache { get; set; }
 
+        [Description("RLP cache write attempts")]
+        public static long RlpCacheWriteAttempts { get; set; }
+
+        [Description("RLP cache write performed")]
+        public static long RlpCacheWrites { get; set; }
+
         [Description("RLP cache hit")]
         public static long RlpCacheHit { get; set; }
 
