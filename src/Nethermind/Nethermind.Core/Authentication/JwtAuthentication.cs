@@ -64,7 +64,7 @@ public partial class JwtAuthentication : IRpcAuthentication
                 throw;
             }
 
-            if (logger.IsInfo) logger.Info($"Authentication secret has been written to '{fileInfo.FullName}'.");
+            if (logger.IsWarn) logger.Warn($"The authentication secret hasn't been found in '{fileInfo.FullName}'so it has been automatically created.");
 
             return new(secret, timestamper, logger);
         }
