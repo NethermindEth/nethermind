@@ -1,19 +1,18 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
-using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -279,6 +278,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, UInt256[] hashRate,
             BlockParameter blockParameter)
+        {
+            throw new NotSupportedException();
+        }
+
+        public ResultWrapper<AccountForRpc> eth_getAccount(Address accountAddress, BlockParameter blockParameter)
         {
             throw new NotSupportedException();
         }
