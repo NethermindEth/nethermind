@@ -128,12 +128,18 @@ namespace Nethermind.Trie.Pruning
             private readonly ResettableList<TrieNode> _toRemovePersisted = new();
             private readonly ResettableList<TrieNode> _toRemoveTransient = new();
 
+            public enum PruningLevel
+            {
+                OnlyTransient = 1,
+                TransientAndPersisted = 2,
+            }
+
             /// <summary>
             /// This method is responsible for reviewing the nodes that are directly in the cache and
             /// removing ones that are either no longer referenced or already persisted.
             /// </summary>
             /// <exception cref="InvalidOperationException"></exception>
-            public void PruneCache()
+            public void PruneCache(PruningLevel level)
             {
                 try
                 {
@@ -145,16 +151,23 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (node.IsPersisted)
                         {
-                            if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
-                            if (node.Keccak is null)
+                            if (level == PruningLevel.TransientAndPersisted)
                             {
-                                node.ResolveKey(_trieStore, true); // TODO: hack
-                                if (node.Keccak != key)
+                                if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
+                                if (node.Keccak is null)
                                 {
-                                    throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                                    node.ResolveKey(_trieStore, true); // TODO: hack
+                                    if (node.Keccak != key)
+                                    {
+                                        throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
+                                    }
                                 }
+                                _toRemovePersisted.Add(node);
                             }
-                            _toRemovePersisted.Add(node);
+                            else
+                            {
+                                newMemory += node.GetMemorySize(false);
+                            }
                         }
                         else if (_trieStore.IsNoLongerNeeded(node))
                         {
@@ -168,7 +181,10 @@ namespace Nethermind.Trie.Pruning
                         }
                         else
                         {
-                            node.PrunePersistedRecursively(1);
+                            if (level == PruningLevel.TransientAndPersisted)
+                            {
+                                node.PrunePersistedRecursively(1);
+                            }
                             newMemory += node.GetMemorySize(false);
                         }
                     }
@@ -464,6 +480,8 @@ namespace Nethermind.Trie.Pruning
                 {
                     try
                     {
+                        DirtyNodesCache.PruningLevel level = DirtyNodesCache.PruningLevel.OnlyTransient;
+
                         while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
                         {
                             lock (_dirtyNodes)
@@ -472,12 +490,15 @@ namespace Nethermind.Trie.Pruning
                                 {
                                     if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
-                                    _dirtyNodes.PruneCache();
+                                    _dirtyNodes.PruneCache(level);
 
                                     if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
                                     {
                                         break;
                                     }
+
+                                    // on looping again, gather both transient and persisted
+                                    level = DirtyNodesCache.PruningLevel.TransientAndPersisted;
                                 }
                             }
                         }
