@@ -13,7 +13,11 @@ namespace Nethermind.Core.Test.Json
         [TestCase(null)]
         [TestCase(new byte[0])]
         [TestCase(new byte[] { 1 })]
-        public void Empty_value(byte[] values)
+        [TestCase(new byte[] { 0, 1 })]
+        [TestCase(new byte[] { 0, 0, 1 })]
+        [TestCase(new byte[] { 0, 0, 1, 0 })]
+        [TestCase(new byte[] { 0, 0, 1, 0, 0 })]
+        public void ValueWithAndWithoutLeadingZeros_are_equal(byte[] values)
         {
             TestConverter(
                 values,
