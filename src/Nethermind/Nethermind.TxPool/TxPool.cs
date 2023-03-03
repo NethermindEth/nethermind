@@ -96,8 +96,8 @@ namespace Nethermind.TxPool
             _preHashFilters = new IIncomingTxFilter[]
             {
                 new GasLimitTxFilter(_headInfo, txPoolConfig, _logger),
-                new MalformedTxFilter(_specProvider, validator, _logger),
-                new FeeTooLowFilter(_headInfo, _transactions, _logger)
+                new FeeTooLowFilter(_headInfo, _transactions, _logger),
+                new MalformedTxFilter(_specProvider, validator, _logger)
             };
 
             List<IIncomingTxFilter> postHashFilters = new()
@@ -625,8 +625,8 @@ Total Received:         {Metrics.PendingTransactionsReceived,24:N0}
 ------------------------------------------------
 Discarded at Filter Stage:        
 1.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
-2.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}
-3.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
+2.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
+3.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}
 4.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
 5.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,24:N0}
 6.  Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
