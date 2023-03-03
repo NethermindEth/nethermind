@@ -464,14 +464,14 @@ namespace Nethermind.Trie.Pruning
                 {
                     try
                     {
-                        lock (_dirtyNodes)
+                        while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
                         {
-                            using (_dirtyNodes.AllNodes.AcquireLock())
+                            lock (_dirtyNodes)
                             {
-                                if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
-
-                                while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                                using (_dirtyNodes.AllNodes.AcquireLock())
                                 {
+                                    if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
+
                                     _dirtyNodes.PruneCache();
 
                                     if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
