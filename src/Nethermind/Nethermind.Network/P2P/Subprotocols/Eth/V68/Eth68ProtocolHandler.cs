@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Consensus;
@@ -27,6 +28,8 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
     public override byte ProtocolVersion => EthVersions.Eth68;
 
+    Action<V66.Messages.GetPooledTransactionsMessage> _sendAction;
+
     public Eth68ProtocolHandler(ISession session,
         IMessageSerializationService serializer,
         INodeStatsManager nodeStatsManager,
@@ -40,6 +43,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             forkInfo, logManager)
     {
         _pooledTxsRequestor = pooledTxsRequestor;
+
+        // Capture Action once rather than per call
+        _sendAction = Send<V66.Messages.GetPooledTransactionsMessage>;
     }
 
     public override void HandleMessage(ZeroPacket message)
@@ -76,7 +82,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         Stopwatch stopwatch = Stopwatch.StartNew();
 
-        _pooledTxsRequestor.RequestTransactionsEth66(Send, message.Hashes);
+        _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, message.Hashes);
 
         stopwatch.Stop();
 
