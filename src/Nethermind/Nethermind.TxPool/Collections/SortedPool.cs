@@ -159,7 +159,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         public bool TryGetLast(out TValue? last)
         {
-            KeyValuePair<TValue,TKey>? worstValue = _worstValue;
+            KeyValuePair<TValue, TKey>? worstValue = _worstValue;
             last = worstValue is not null ? worstValue.Value.Key : default;
             return last is not null;
         }
@@ -308,7 +308,7 @@ namespace Nethermind.TxPool.Collections
 
         private void RemoveLast(out TValue? removed)
         {
-            KeyValuePair<TValue,TKey>? worstValue = _worstValue;
+            KeyValuePair<TValue, TKey>? worstValue = _worstValue;
             if (worstValue is not null)
             {
                 TryRemove(worstValue.Value.Value, true, out removed, out _);
