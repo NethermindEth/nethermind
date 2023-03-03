@@ -52,6 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, TxReceipt[][]>(Send);
             _pooledTxsRequestor = pooledTxsRequestor;
+            // Capture Action once rather than per call
             _sendAction = Send;
         }
 
