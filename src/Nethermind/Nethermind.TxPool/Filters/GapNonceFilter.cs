@@ -45,7 +45,7 @@ namespace Nethermind.TxPool.Filters
                 }
                 else
                 {
-                    return AcceptTxResult.NonceGap.WithMessage("Future nonce. Not next in order");
+                    return AcceptTxResult.NonceGap;
                 }
             }
 

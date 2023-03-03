@@ -77,7 +77,7 @@ namespace Nethermind.TxPool.Filters
                 }
                 else
                 {
-                    return AcceptTxResult.InsufficientFunds.WithMessage("Account balance to low for cumulative cost of queued txs.");
+                    return AcceptTxResult.InsufficientFunds;
                 }
             }
 

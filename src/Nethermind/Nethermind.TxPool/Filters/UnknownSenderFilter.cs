@@ -33,9 +33,10 @@ namespace Nethermind.TxPool.Filters
                 tx.SenderAddress = _ecdsa.RecoverAddress(tx);
                 if (tx.SenderAddress is null)
                 {
+                    Metrics.PendingTransactionsUnresolvableSender++;
+
                     if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
 
-                    Metrics.PendingTransactionsUnresolvableSender++;
                     return AcceptTxResult.FailedToResolveSender;
                 }
             }

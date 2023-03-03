@@ -29,10 +29,17 @@ namespace Nethermind.TxPool.Filters
             long gasLimit = Math.Min(_chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
             if (tx.GasLimit > gasLimit)
             {
-                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
-
                 Metrics.PendingTransactionsGasLimitTooHigh++;
-                return AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {tx.GasLimit}");
+
+                if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
+                    return AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {tx.GasLimit}");
+                }
+                else
+                {
+                    return AcceptTxResult.GasLimitExceeded;
+                }
             }
 
             return AcceptTxResult.Accepted;

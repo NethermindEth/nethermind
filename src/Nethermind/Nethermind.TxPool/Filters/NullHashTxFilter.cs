@@ -16,7 +16,7 @@ namespace Nethermind.TxPool.Filters
         {
             if (tx.Hash is null)
             {
-                return AcceptTxResult.Invalid.WithMessage("transaction Hash is null");
+                return AcceptTxResult.Invalid;
             }
 
             return AcceptTxResult.Accepted;

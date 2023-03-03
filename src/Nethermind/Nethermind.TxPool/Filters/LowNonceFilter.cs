@@ -29,9 +29,16 @@ namespace Nethermind.TxPool.Filters
             UInt256 currentNonce = account.Nonce;
             if (tx.Nonce < currentNonce)
             {
-                if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
                 Metrics.PendingTransactionsLowNonce++;
-                return AcceptTxResult.OldNonce.WithMessage($"Current nonce: {currentNonce}, nonce of rejected tx: {tx.Nonce}");
+                if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
+                    return AcceptTxResult.OldNonce.WithMessage($"Current nonce: {currentNonce}, nonce of rejected tx: {tx.Nonce}");
+                }
+                else
+                {
+                    return AcceptTxResult.OldNonce;
+                }
             }
 
             return AcceptTxResult.Accepted;

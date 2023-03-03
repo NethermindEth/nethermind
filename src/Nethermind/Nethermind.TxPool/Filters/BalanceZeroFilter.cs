@@ -27,12 +27,12 @@ namespace Nethermind.TxPool.Filters
             if (!tx.IsFree() && balance.IsZero)
             {
                 Metrics.PendingTransactionsZeroBalance++;
-                return AcceptTxResult.InsufficientFunds.WithMessage("Account balance: 0");
+                return AcceptTxResult.InsufficientFunds;
             }
             if (balance < tx.Value)
             {
                 Metrics.PendingTransactionsBalanceBelowValue++;
-                return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance {balance} below txn value {tx.Value}");
+                return AcceptTxResult.InsufficientFunds;
             }
 
             return AcceptTxResult.Accepted;
