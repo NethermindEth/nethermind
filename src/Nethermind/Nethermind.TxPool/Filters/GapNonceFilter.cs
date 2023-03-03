@@ -39,8 +39,14 @@ namespace Nethermind.TxPool.Filters
             {
                 Metrics.PendingTransactionsNonceGap++;
                 if (_logger.IsTrace)
+                {
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
-                return AcceptTxResult.NonceGap.WithMessage($"Future nonce. Expected nonce: {nextNonceInOrder}");
+                    return AcceptTxResult.NonceGap.WithMessage($"Future nonce. Expected nonce: {nextNonceInOrder}");
+                }
+                else
+                {
+                    return AcceptTxResult.NonceGap.WithMessage("Future nonce. Not next in order");
+                }
             }
 
             return AcceptTxResult.Accepted;

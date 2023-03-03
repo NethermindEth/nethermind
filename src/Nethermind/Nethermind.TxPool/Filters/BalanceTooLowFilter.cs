@@ -68,11 +68,17 @@ namespace Nethermind.TxPool.Filters
 
             if (balance < cumulativeCost)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
-
                 Metrics.PendingTransactionsTooLowBalance++;
-                return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, cumulative cost: {cumulativeCost}");
+
+                if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
+                    return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, cumulative cost: {cumulativeCost}");
+                }
+                else
+                {
+                    return AcceptTxResult.InsufficientFunds.WithMessage("Account balance to low for cumulative cost of queued txs.");
+                }
             }
 
             return AcceptTxResult.Accepted;
