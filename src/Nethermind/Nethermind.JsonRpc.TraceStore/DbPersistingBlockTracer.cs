@@ -63,10 +63,17 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : IBlockTracer where TTrac
     {
         _blockTracer.EndBlockTrace();
         IReadOnlyCollection<TTrace> result = _tracerWithResults.BuildResult();
-        byte[] tracesSerialized = _traceSerializer.Serialize(result);
         Keccak currentBlockHash = _currentBlockHash;
         long currentBlockNumber = _currentBlockNumber;
-        _db.Set(currentBlockHash, tracesSerialized);
-        if (_logger.IsTrace) _logger.Trace($"Saved traces for block {currentBlockNumber} ({currentBlockHash}) with size {tracesSerialized.Length} bytes for {result.Count} traces.");
+        try
+        {
+            byte[] tracesSerialized = _traceSerializer.Serialize(result);
+            _db.Set(currentBlockHash, tracesSerialized);
+            if (_logger.IsTrace) _logger.Trace($"Saved traces for block {currentBlockNumber} ({currentBlockHash}) with size {tracesSerialized.Length} bytes for {result.Count} traces.");
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Couldn't save traces for block {currentBlockNumber} ({currentBlockHash}), {ex.Message}");
+        }
     }
 }

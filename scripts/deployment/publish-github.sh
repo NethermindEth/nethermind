@@ -8,19 +8,19 @@ echo "Publishing packages to GitHub"
 
 PACKAGE_PATH=$GITHUB_WORKSPACE/$PACKAGE_DIR
 
-BODY=$(printf \
-  '{"tag_name": "%s", "target_commitish": "%s", "name": "v%s", "body": "## Release notes\\n\\n", "draft": true, "prerelease": %s}' \
-  $GIT_TAG $GIT_COMMIT $GIT_TAG $PRERELEASE)
-
 echo "Drafting release $GIT_TAG"
 
-RELEASE_ID=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$GIT_TAG \
+RELEASE_ID=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
   -X GET \
   -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer $GITHUB_TOKEN" | jq -r '.id')
+  -H "Authorization: Bearer $GITHUB_TOKEN" | jq -r '.[] | select(.tag_name == "'$GIT_TAG'") | .id')
 
-if [ "$RELEASE_ID" == "null" ]
+if [ "$RELEASE_ID" == "" ]
 then
+  BODY=$(printf \
+    '{"tag_name": "%s", "target_commitish": "%s", "name": "v%s", "body": "## Release notes\\n\\n", "draft": true, "prerelease": %s}' \
+    $GIT_TAG $GIT_COMMIT $GIT_TAG $PRERELEASE)
+
   RELEASE_ID=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
     -X POST \
     --fail-with-body \
@@ -28,6 +28,10 @@ then
     -H "Authorization: Bearer $GITHUB_TOKEN" \
     -d "$BODY" | jq -r '.id')
 else
+  BODY=$(printf \
+    '{"target_commitish": "%s", "name": "v%s", "draft": false, "prerelease": %s}' \
+    $GIT_COMMIT $GIT_TAG $PRERELEASE)
+
   curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID \
     -X PATCH \
     --fail-with-body \

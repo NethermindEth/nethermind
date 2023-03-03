@@ -447,49 +447,6 @@ namespace Nethermind.Runner.Test
             "energyweb_archive.cfg",
         };
 
-        private IEnumerable<string> Resolve(string configWildcard)
-        {
-            Dictionary<string, IEnumerable<string>> groups = BuildConfigGroups();
-            string[] configWildcards = configWildcard.Split(" ");
-
-            List<IEnumerable<string>> toIntersect = new List<IEnumerable<string>>();
-            foreach (string singleWildcard in configWildcards)
-            {
-                string singleWildcardBase = singleWildcard.Replace("^", string.Empty);
-                var result = groups.TryGetValue(singleWildcardBase, out IEnumerable<string> value) ? value : Enumerable.Repeat(singleWildcardBase, 1);
-
-                if (singleWildcard.StartsWith("^"))
-                {
-                    result = Configs.Except(result);
-                }
-
-                toIntersect.Add(result);
-            }
-
-            var intersection = toIntersect.First();
-            foreach (IEnumerable<string> next in toIntersect.Skip(1))
-            {
-                intersection = intersection.Intersect(next);
-            }
-
-            return intersection;
-        }
-
-        private Dictionary<string, IEnumerable<string>> BuildConfigGroups()
-        {
-            Dictionary<string, IEnumerable<string>> groups = new Dictionary<string, IEnumerable<string>>();
-            foreach (PropertyInfo propertyInfo in GetType().GetProperties(BindingFlags.Instance | BindingFlags.NonPublic))
-            {
-                ConfigFileGroup groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
-                if (groupAttribute is not null)
-                {
-                    groups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this));
-                }
-            }
-
-            return groups;
-        }
-
         public IEnumerable<int> AllIndexesOf(string str, string searchString)
         {
             int minIndex = str.IndexOf(searchString);
