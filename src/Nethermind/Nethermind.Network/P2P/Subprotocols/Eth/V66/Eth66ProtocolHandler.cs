@@ -193,7 +193,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         protected override void Handle(NewPooledTransactionHashesMessage msg)
         {
-            
+
             bool isTrace = Logger.IsTrace;
             Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
 
