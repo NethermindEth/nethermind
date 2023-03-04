@@ -193,12 +193,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         protected override void Handle(NewPooledTransactionHashesMessage msg)
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            
+            bool isTrace = Logger.IsTrace;
+            Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
 
             _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, msg.Hashes);
 
-            stopwatch.Stop();
-            if (Logger.IsTrace)
+            stopwatch?.Stop();
+            if (isTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
                              $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
