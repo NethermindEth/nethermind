@@ -59,9 +59,6 @@ namespace Nethermind.Trie.Pruning
         public static long RlpCacheWrites { get; set; }
 
         [Description("RLP cache hit")]
-        public static long RlpCacheHit { get; set; }
-
-        [Description("RLP cache miss")]
-        public static long RlpCacheMiss { get; set; }
+        public static long RlpCacheHits { get; set; }
     }
 }

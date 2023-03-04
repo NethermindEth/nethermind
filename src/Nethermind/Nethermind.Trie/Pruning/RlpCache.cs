@@ -6,15 +6,18 @@ using System.Collections;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie.Pruning;
 
 public class RlpCache
 {
     private readonly int _size;
-    private const int DefaultRlpCacheSize = 2048;
+    private const int DefaultRlpCacheSize = 4096;
     private readonly RlpCacheItem[] _items;
     private readonly BitArray _rlpCacheSet;
+
+    private const bool IsSet = true;
 
     public RlpCache(int size = DefaultRlpCacheSize)
     {
@@ -31,22 +34,34 @@ public class RlpCache
     /// <param name="node"></param>
     public void SetRlpCache(TrieNode node)
     {
-        if (node.CacheHint is SearchHint.StorageRoot or SearchHint.StorageChildNode)
+        if (ShouldCache(node))
         {
             int bucket = GetRlpCacheBucket(node.Keccak!);
 
             Metrics.RlpCacheWriteAttempts++;
 
-            if (_rlpCacheSet.Get(bucket) == false)
+            if (_rlpCacheSet.Get(bucket) != IsSet)
             {
                 // nothing written this round, write and set
                 Volatile.Write(ref _items[bucket], new RlpCacheItem(node.Keccak, node.FullRlp!));
 
                 Metrics.RlpCacheWrites++;
 
-                _rlpCacheSet.Set(bucket, true);
+                _rlpCacheSet.Set(bucket, IsSet);
             }
         }
+    }
+
+    /// <summary>
+    /// Provides a heuristic whether the given node should be tried to have its rlp cached.
+    /// </summary>
+    private static bool ShouldCache(TrieNode node)
+    {
+        // cache only a storage branch that has 3+ children
+        return node.IsBranch
+               && (node.CacheHint == SearchHint.StorageRoot ||
+                   node.CacheHint == SearchHint.StorageChildNode)
+               && node.IsValidWithOneNodeLess;
     }
 
     /// <summary>
@@ -59,20 +74,26 @@ public class RlpCache
         RlpCacheItem item = Volatile.Read(ref _items[GetRlpCacheBucket(keccak)]);
         if (item != null && item.Keccak == keccak)
         {
-            Metrics.RlpCacheHit++;
+            Metrics.RlpCacheHits++;
             return item.Rlp;
         }
 
-        Metrics.RlpCacheMiss++;
         return default;
     }
 
-    private int GetRlpCacheBucket(Keccak keccak) => (int)(MemoryMarshal.Read<uint>(keccak.Bytes) % _size);
+    /// <summary>
+    /// Gets the bucket of the given keccak.
+    /// </summary>
+    /// <remarks>
+    /// The last 4 ints are used so that the comparison can faster fail.
+    /// </remarks>
+    private int GetRlpCacheBucket(Keccak keccak) =>
+        (int)(MemoryMarshal.Read<uint>(keccak.Bytes.Slice(Keccak.Size - sizeof(uint))) % _size);
 
     /// <summary>
     /// Clears the set flags, so that all the cache items can be written again.
     /// </summary>
-    public void ClearSetFlags() => _rlpCacheSet.SetAll(false);
+    public void ClearSetFlags() => _rlpCacheSet.SetAll(!IsSet);
 
     public void Clear()
     {

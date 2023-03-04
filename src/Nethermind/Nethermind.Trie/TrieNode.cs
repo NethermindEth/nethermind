@@ -914,7 +914,7 @@ namespace Nethermind.Trie
         }
 
         /// <summary>
-        /// Provides a hint for searching for the child of this node.
+        /// Provides a hint for searching for the child of this node. <see cref="RlpCache"/> for more.
         /// </summary>
         private SearchHint ChildSearchHint =>
             CacheHint == SearchHint.StorageRoot ? SearchHint.StorageChildNode : SearchHint.None;
