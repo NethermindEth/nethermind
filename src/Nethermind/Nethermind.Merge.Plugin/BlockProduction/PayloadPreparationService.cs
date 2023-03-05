@@ -128,7 +128,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
             _currentBuildingContext = blockImprovementContext;
             blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
-            blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
+            blockImprovementContext.ImprovementTask.ContinueWith(async t =>
             {
                 // if after delay we still have time to try producing the block in this slot
                 DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + _improvementDelay + _minTimeForProduction;
@@ -137,7 +137,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 {
                     if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
                     await Task.Delay(_improvementDelay);
-                    if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
+                    if (!blockImprovementContext.Disposed && t.IsCanceled == false) // if GetPayload wasn't called for this item or it wasn't cleared
                     {
                         Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
                         ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
