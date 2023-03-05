@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -101,7 +102,11 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         private void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime) =>
             _payloadStorage.AddOrUpdate(payloadId,
-                id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime),
+                id =>
+                {
+                    _currentBuildingContext?.Dispose();
+                    return CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+                },
                 (id, currentContext) =>
                 {
                     // if there is payload improvement and its not yet finished leave it be
@@ -120,7 +125,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
         {
             if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
-            _currentBuildingContext?.Dispose();
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
             _currentBuildingContext = blockImprovementContext;
             blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
