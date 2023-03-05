@@ -31,6 +31,7 @@ public partial class VirtualMachine
         AccessViolation
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionEXTCODEHASH(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
     {
         if (!UpdateGas(spec.GetExtCodeHashCost(), ref gasAvailable)) return false;
@@ -50,6 +51,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionSELFDESTRUCT(ref EvmStack stack, ref long gasAvailable, EvmState vmState, Address executingAccount, IReleaseSpec spec)
     {
         Metrics.SelfDestructs++;
@@ -88,6 +90,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionSHL(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -108,6 +111,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionSHR(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -128,6 +132,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionSAR(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -155,6 +160,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private (InstructionReturn result, EvmState? callState) InstructionCREATE(Instruction instruction, ref EvmStack stack, ref long gasAvailable, ref ExecutionEnvironment env, EvmState vmState, IReleaseSpec spec)
     {
         // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
@@ -236,7 +242,7 @@ public partial class VirtualMachine
         bool accountExists = _state.AccountExists(contractAddress);
         if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
         {
-/* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
+            /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
             if (_logger.IsTrace) _logger.Trace($"Contract collision at {contractAddress}");
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
@@ -279,7 +285,8 @@ public partial class VirtualMachine
 
         return (InstructionReturn.Success, callState);
     }
-    
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionSSTORE(ref EvmStack stack, ref long gasAvailable, Address executingAccount, EvmState vmState, IReleaseSpec spec)
     {
         stack.PopUInt256(out UInt256 storageIndex);
@@ -416,7 +423,8 @@ public partial class VirtualMachine
 
         return true;
     }
-    
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionBLOCKHASH(ref EvmStack stack, ref long gasAvailable, BlockHeader header)
     {
         Metrics.BlockhashOpcode++;
@@ -439,6 +447,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private InstructionReturn InstructionRETURNDATACOPY(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory? memory)
     {
         stack.PopUInt256(out UInt256 dest);
@@ -466,12 +475,14 @@ public partial class VirtualMachine
         return InstructionReturn.Success;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionRETURNDATASIZE(ref EvmStack stack)
     {
         UInt256 res = (UInt256)_returnDataBuffer.Length;
         stack.PushUInt256(in res);
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionEXTCODECOPY(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
     {
         Address address = stack.PopAddress();
@@ -500,6 +511,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionEXTCODESIZE(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
     {
         if (!UpdateGas(spec.GetExtCodeCost(), ref gasAvailable)) return false;
@@ -514,6 +526,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionCODECOPY(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory? memory, in Span<byte> code)
     {
         stack.PopUInt256(out UInt256 dest);
@@ -533,6 +546,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionCODESIZE(ref EvmStack stack, ref long gasAvailable, int codeLength)
     {
         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return false;
@@ -543,6 +557,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionCALLDATACOPY(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory? memory, in ReadOnlyMemory<byte> inputData)
     {
         stack.PopUInt256(out UInt256 dest);
@@ -566,6 +581,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionCALLDATASIZE(ref EvmStack stack, ref long gasAvailable, in ReadOnlyMemory<byte> inputData)
     {
         if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return false;
@@ -576,6 +592,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionCALLDATALOAD(ref EvmStack stack, ref long gasAvailable, in ReadOnlyMemory<byte> inputData)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -586,6 +603,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionBALANCE(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
     {
         long gasCost = spec.GetBalanceCost();
@@ -599,6 +617,8 @@ public partial class VirtualMachine
 
         return true;
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionSHA3(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory memory)
     {
         stack.PopUInt256(out UInt256 memSrc);
@@ -615,6 +635,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionBYTE(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -641,6 +662,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionNOT(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -655,6 +677,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionXOR(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -671,6 +694,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionOR(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -687,6 +711,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionAND(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -703,6 +728,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionISZERO(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -720,6 +746,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionEQ(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -738,6 +765,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionSGT(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -756,6 +784,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionSLT(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -775,6 +804,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionGT(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -793,6 +823,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionLT(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -811,6 +842,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionSIGNEXTEND(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
@@ -840,10 +872,11 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionEXP(ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
     {
         Metrics.ModExpOpcode++;
-        
+
         if (!UpdateGas(GasCostOf.Exp, ref gasAvailable)) return false;
 
         stack.PopUInt256(out UInt256 baseInt);
@@ -878,6 +911,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionMULMOD(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) return false;
@@ -899,6 +933,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionADDMOD(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) return false;
@@ -920,6 +955,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionSMOD(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
@@ -939,6 +975,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionMOD(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
@@ -951,6 +988,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionDIV(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
@@ -970,6 +1008,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionSDIV(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
@@ -995,6 +1034,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionSUB(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
@@ -1008,6 +1048,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionMUL(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
@@ -1020,6 +1061,7 @@ public partial class VirtualMachine
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionADD(ref EvmStack stack, ref long gasAvailable)
     {
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;

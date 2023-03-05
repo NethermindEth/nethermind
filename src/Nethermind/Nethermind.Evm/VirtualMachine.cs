@@ -643,7 +643,7 @@ namespace Nethermind.Evm
             int programCounter = vmState.ProgramCounter;
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
 
-
+            [MethodImpl(MethodImplOptions.NoInlining)]
             static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
             {
                 state.ProgramCounter = pc;
@@ -651,6 +651,7 @@ namespace Nethermind.Evm
                 state.DataStackHead = stackHead;
             }
 
+            [MethodImpl(MethodImplOptions.NoInlining)]
             void StartInstructionTrace(Instruction instruction, EvmStack stackValue)
             {
                 _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, txCtx.Header.IsPostMerge);
@@ -665,6 +666,7 @@ namespace Nethermind.Evm
                 }
             }
 
+            [MethodImpl(MethodImplOptions.NoInlining)]
             void Jump(in UInt256 jumpDest, bool isSubroutine = false)
             {
                 if (jumpDest > int.MaxValue)
@@ -1561,7 +1563,7 @@ namespace Nethermind.Evm
             }
 
             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-            // Fall through to Empty: label
+// Fall through to Empty: label
 
 // Common exit errors, goto labels to reduce in loop code duplication
 Empty:
@@ -1577,6 +1579,7 @@ StaticCallViolation:
             return CallResult.StaticCallViolationException;
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private void EndInstructionTrace(long gasAvailable, ulong memorySize)
         {
             if (_txTracer.IsTracingMemory)
@@ -1587,6 +1590,7 @@ StaticCallViolation:
             _txTracer.ReportOperationRemainingGas(gasAvailable);
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
         {
             _txTracer.ReportOperationError(evmExceptionType);
