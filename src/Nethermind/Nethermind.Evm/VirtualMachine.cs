@@ -962,82 +962,21 @@ namespace Nethermind.Evm
                             break;
                         }
                     case Instruction.MLOAD:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            stack.PopUInt256(out UInt256 memPosition);
-
-                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, 32)) goto OutOfGas;
-
-                            Span<byte> memData = vmState.Memory.LoadSpan(in memPosition);
-                            if (traceOpcodes) _txTracer.ReportMemoryChange(memPosition, memData);
-
-                            stack.PushBytes(memData);
-                            break;
-                        }
+                        if (!InstructionMLOAD(ref stack, ref gasAvailable, vmState)) goto OutOfGas;
+                        break;
                     case Instruction.MSTORE:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            stack.PopUInt256(out UInt256 memPosition);
-
-                            Span<byte> data = stack.PopBytes();
-
-                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, 32)) goto OutOfGas;
-
-                            vmState.Memory.SaveWord(in memPosition, data);
-                            if (traceOpcodes) _txTracer.ReportMemoryChange((long)memPosition, data.SliceWithZeroPadding(0, 32, PadDirection.Left));
-
-                            break;
-                        }
+                        if (!InstructionMSTORE(ref stack, ref gasAvailable, vmState)) goto OutOfGas;
+                        break;
                     case Instruction.MSTORE8:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            stack.PopUInt256(out UInt256 memPosition);
-                            byte data = stack.PopByte();
-                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, UInt256.One)) goto OutOfGas;
-                            vmState.Memory.SaveByte(in memPosition, data);
-                            if (traceOpcodes) _txTracer.ReportMemoryChange((long)memPosition, data);
-
-                            break;
-                        }
+                        if (!InstructionMSTORE8(ref stack, ref gasAvailable, vmState)) goto OutOfGas;
+                        break;
                     case Instruction.SLOAD:
-                        {
-                            Metrics.SloadOpcode++;
-                            if (!UpdateGas(spec.GetSLoadCost(), ref gasAvailable)) goto OutOfGas;
-
-                            stack.PopUInt256(out UInt256 storageIndex);
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-                            if (!ChargeStorageAccessGas(
-                                ref gasAvailable,
-                                vmState,
-                                storageCell,
-                                StorageAccessType.SLOAD,
-                                spec)) goto OutOfGas;
-
-                            byte[] value = _storage.Get(storageCell);
-                            stack.PushBytes(value);
-
-                            if (_txTracer.IsTracingOpLevelStorage)
-                            {
-                                _txTracer.LoadOperationStorage(storageCell.Address, storageIndex, value);
-                            }
-
-                            break;
-                        }
+                        if (!InstructionSLOAD(ref stack, ref gasAvailable, vmState, env.ExecutingAccount, spec)) goto OutOfGas;
+                        break;
                     case Instruction.SSTORE:
                         {
                             Metrics.SstoreOpcode++;
-
                             if (vmState.IsStatic) goto StaticCallViolation;
-                            // fail fast before the first storage read if gas is not enough even for reset
-                            if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) goto OutOfGas;
-                            if (spec.UseNetGasMeteringWithAStipendFix)
-                            {
-                                if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
-                                if (gasAvailable <= GasCostOf.CallStipend) goto OutOfGas;
-                            }
 
                             if (!InstructionSSTORE(ref stack, ref gasAvailable, env.ExecutingAccount, vmState, spec)) goto OutOfGas;
                             break;
@@ -1046,19 +985,8 @@ namespace Nethermind.Evm
                         {
                             Metrics.TloadOpcode++;
                             if (!spec.TransientStorageEnabled) goto InvalidInstruction;
-                            if (!UpdateGas(GasCostOf.TLoad, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 storageIndex);
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-
-                            byte[] value = _storage.GetTransientState(storageCell);
-                            stack.PushBytes(value);
-
-                            if (_txTracer.IsTracingOpLevelStorage)
-                            {
-                                _txTracer.LoadOperationTransientStorage(storageCell.Address, storageIndex, value);
-                            }
-
+                            if (!InstructionTLOAD(ref stack, ref gasAvailable, env.ExecutingAccount, spec)) goto OutOfGas;
                             break;
                         }
                     case Instruction.TSTORE:
@@ -1066,29 +994,8 @@ namespace Nethermind.Evm
                             Metrics.TstoreOpcode++;
                             if (!spec.TransientStorageEnabled) goto InvalidInstruction;
                             if (vmState.IsStatic) goto StaticCallViolation;
-                            if (!UpdateGas(GasCostOf.TStore, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 storageIndex);
-                            Span<byte> newValue = stack.PopBytes();
-                            bool newIsZero = newValue.IsZero();
-                            if (!newIsZero)
-                            {
-                                newValue = newValue.WithoutLeadingZeros().ToArray();
-                            }
-                            else
-                            {
-                                newValue = BytesZero;
-                            }
-
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-                            byte[] currentValue = newValue.ToArray();
-                            _storage.SetTransientState(storageCell, currentValue);
-
-                            if (_txTracer.IsTracingOpLevelStorage)
-                            {
-                                _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
-                            }
-
+                            if (!InstructionTSTORE(ref stack, ref gasAvailable, env.ExecutingAccount, spec)) goto OutOfGas;
                             break;
                         }
                     case Instruction.JUMP:

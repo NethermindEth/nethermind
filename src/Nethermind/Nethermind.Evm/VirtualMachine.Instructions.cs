@@ -32,6 +32,127 @@ public partial class VirtualMachine
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool InstructionTSTORE(ref EvmStack stack, ref long gasAvailable, Address executingAccount, IReleaseSpec spec)
+    {
+        if (!UpdateGas(GasCostOf.TStore, ref gasAvailable)) return false;
+
+        stack.PopUInt256(out UInt256 storageIndex);
+        Span<byte> newValue = stack.PopBytes();
+        bool newIsZero = newValue.IsZero();
+        if (!newIsZero)
+        {
+            newValue = newValue.WithoutLeadingZeros().ToArray();
+        }
+        else
+        {
+            newValue = BytesZero;
+        }
+
+        StorageCell storageCell = new(executingAccount, storageIndex);
+        byte[] currentValue = newValue.ToArray();
+        _storage.SetTransientState(storageCell, currentValue);
+
+        if (_txTracer.IsTracingOpLevelStorage)
+        {
+            _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
+        }
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool InstructionTLOAD(ref EvmStack stack, ref long gasAvailable, Address executingAccount, IReleaseSpec spec)
+    {
+        if (!UpdateGas(GasCostOf.TLoad, ref gasAvailable)) return false;
+
+        stack.PopUInt256(out UInt256 storageIndex);
+        StorageCell storageCell = new(executingAccount, storageIndex);
+
+        byte[] value = _storage.GetTransientState(storageCell);
+        stack.PushBytes(value);
+
+        if (_txTracer.IsTracingOpLevelStorage)
+        {
+            _txTracer.LoadOperationTransientStorage(storageCell.Address, storageIndex, value);
+        }
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool InstructionSLOAD(ref EvmStack stack, ref long gasAvailable, EvmState vmState, Address executingAccount, IReleaseSpec spec)
+    {
+        Metrics.SloadOpcode++;
+        if (!UpdateGas(spec.GetSLoadCost(), ref gasAvailable)) return false;
+
+        stack.PopUInt256(out UInt256 storageIndex);
+        StorageCell storageCell = new(executingAccount, storageIndex);
+        if (!ChargeStorageAccessGas(
+            ref gasAvailable,
+            vmState,
+            storageCell,
+            StorageAccessType.SLOAD,
+            spec)) return false;
+
+        byte[] value = _storage.Get(storageCell);
+        stack.PushBytes(value);
+
+        if (_txTracer.IsTracingOpLevelStorage)
+        {
+            _txTracer.LoadOperationStorage(storageCell.Address, storageIndex, value);
+        }
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool InstructionMSTORE8(ref EvmStack stack, ref long gasAvailable, EvmState vmState)
+    {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
+        stack.PopUInt256(out UInt256 memPosition);
+        byte data = stack.PopByte();
+        if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, UInt256.One)) return false;
+        vmState.Memory.SaveByte(in memPosition, data);
+        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, data);
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool InstructionMSTORE(ref EvmStack stack, ref long gasAvailable, EvmState vmState)
+    {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
+        stack.PopUInt256(out UInt256 memPosition);
+
+        Span<byte> data = stack.PopBytes();
+
+        if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, 32)) return false;
+
+        vmState.Memory.SaveWord(in memPosition, data);
+        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, data.SliceWithZeroPadding(0, 32, PadDirection.Left));
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool InstructionMLOAD(ref EvmStack stack, ref long gasAvailable, EvmState vmState)
+    {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
+        stack.PopUInt256(out UInt256 memPosition);
+
+        if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, 32)) return false;
+
+        Span<byte> memData = vmState.Memory.LoadSpan(in memPosition);
+        if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(memPosition, memData);
+
+        stack.PushBytes(memData);
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionEXTCODEHASH(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
     {
         if (!UpdateGas(spec.GetExtCodeHashCost(), ref gasAvailable)) return false;
@@ -289,6 +410,14 @@ public partial class VirtualMachine
     [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionSSTORE(ref EvmStack stack, ref long gasAvailable, Address executingAccount, EvmState vmState, IReleaseSpec spec)
     {
+        // fail fast before the first storage read if gas is not enough even for reset
+        if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return false;
+        if (spec.UseNetGasMeteringWithAStipendFix)
+        {
+            if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
+            if (gasAvailable <= GasCostOf.CallStipend) return false;
+        }
+
         stack.PopUInt256(out UInt256 storageIndex);
         Span<byte> newValue = stack.PopBytes();
         bool newIsZero = newValue.IsZero();
