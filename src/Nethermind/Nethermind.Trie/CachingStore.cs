@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
 {
@@ -26,25 +27,22 @@ namespace Nethermind.Trie
         public CachingStore(IKeyValueStoreWithBatching wrappedStore, int maxCapacity)
         {
             _wrappedStore = wrappedStore ?? throw new ArgumentNullException(nameof(wrappedStore));
-            _cache = new LruCache<ArraySegment<byte>, byte[]>(maxCapacity, "RLP Cache");
+            _cache = new SpanLruCache<byte, byte[]>(maxCapacity, 0, "RLP Cache", Bytes.SpanEqualityComparer);
         }
 
-        private readonly LruCache<ArraySegment<byte>, byte[]> _cache;
+        private readonly SpanLruCache<byte, byte[]> _cache;
 
         public byte[]? this[ReadOnlySpan<byte> key]
         {
             get
             {
-                ArraySegment<byte> keyAsArray = new(ArrayPool<byte>.Shared.Rent(key.Length), 0, key.Length);
-                key.CopyTo(keyAsArray);
-                if (!_cache.TryGet(keyAsArray, out byte[] value))
+                if (!_cache.TryGet(key, out byte[] value))
                 {
                     value = _wrappedStore[key];
-                    _cache.Set(keyAsArray, value);
+                    _cache.Set(key, value);
                 }
                 else
                 {
-                    ArrayPool<byte>.Shared.Return(keyAsArray.Array);
                     // TODO: a hack assuming that we cache only one thing, accepted unanimously by Lukasz, Marek, and Tomasz
                     Pruning.Metrics.LoadedFromRlpCacheNodesCount++;
                 }
@@ -53,7 +51,7 @@ namespace Nethermind.Trie
             }
             set
             {
-                _cache.Set(key.ToArray(), value);
+                _cache.Set(key, value);
                 _wrappedStore[key] = value;
             }
         }
@@ -62,10 +60,10 @@ namespace Nethermind.Trie
 
         public void PersistCache(IKeyValueStore pruningContext)
         {
-            IDictionary<ArraySegment<byte>, byte[]> clone = _cache.Clone();
+            IDictionary<byte[], byte[]> clone = _cache.Clone();
             Task.Run(() =>
             {
-                foreach (KeyValuePair<ArraySegment<byte>, byte[]> kvp in clone)
+                foreach (KeyValuePair<byte[], byte[]> kvp in clone)
                 {
                     pruningContext[kvp.Key] = kvp.Value;
                 }
