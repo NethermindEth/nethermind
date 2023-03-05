@@ -19,24 +19,24 @@ using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
+using System.Runtime.Intrinsics;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
 namespace Nethermind.Evm
 {
-    public class VirtualMachine : IVirtualMachine
+    public partial class VirtualMachine : IVirtualMachine
     {
         public const int MaxCallDepth = 1024;
 
-        private bool _simdOperationsEnabled = Vector<byte>.Count == 32;
-        private UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
-        private UInt256 P255 => P255Int;
-        private UInt256 BigInt256 = 256;
-        public UInt256 BigInt32 = 32;
+        private readonly static UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
+        private static UInt256 P255 => P255Int;
+        private readonly static UInt256 BigInt256 = 256;
+        public readonly static UInt256 BigInt32 = 32;
 
         internal byte[] BytesZero = { 0 };
 
-        internal byte[] BytesZero32 =
+        internal readonly static byte[] BytesZero32 =
         {
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -408,11 +408,6 @@ namespace Nethermind.Evm
             return cachedCodeInfo;
         }
 
-        public void DisableSimdInstructions()
-        {
-            _simdOperationsEnabled = false;
-        }
-
         private void InitializePrecompiledContracts()
         {
             _precompiles = new Dictionary<Address, CodeInfo>
@@ -691,7 +686,7 @@ namespace Nethermind.Evm
             if (previousCallResult is not null)
             {
                 stack.PushBytes(previousCallResult);
-                if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
+                if (traceOpcodes) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
             }
 
             if (previousCallOutput.Length > 0)
@@ -705,7 +700,7 @@ namespace Nethermind.Evm
                 }
 
                 vmState.Memory.Save(in localPreviousDest, previousCallOutput);
-                //                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
+                //                if(traceOpcodes) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
 
             while (programCounter < code.Length)
@@ -730,448 +725,154 @@ namespace Nethermind.Evm
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 b);
-                            stack.PopUInt256(out UInt256 a);
-                            UInt256.Add(in a, in b, out UInt256 c);
-                            stack.PushUInt256(c);
-
+                            InstructionADD(ref stack);
                             break;
                         }
                     case Instruction.MUL:
                         {
                             if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            UInt256.Multiply(in a, in b, out UInt256 res);
-                            stack.PushUInt256(in res);
+                            InstructionMUL(ref stack);
                             break;
                         }
                     case Instruction.SUB:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            UInt256.Subtract(in a, in b, out UInt256 result);
-
-                            stack.PushUInt256(in result);
+                            InstructionSUB(ref stack);
                             break;
                         }
                     case Instruction.DIV:
                         {
                             if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            if (b.IsZero)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                UInt256.Divide(in a, in b, out UInt256 res);
-                                stack.PushUInt256(in res);
-                            }
-
+                            InstructionDIV(ref stack);
                             break;
                         }
                     case Instruction.SDIV:
                         {
                             if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopSignedInt256(out Int256.Int256 b);
-                            if (b.IsZero)
-                            {
-                                stack.PushZero();
-                            }
-                            else if (b == Int256.Int256.MinusOne && a == P255)
-                            {
-                                UInt256 res = P255;
-                                stack.PushUInt256(in res);
-                            }
-                            else
-                            {
-                                Int256.Int256 signedA = new(a);
-                                Int256.Int256.Divide(in signedA, in b, out Int256.Int256 res);
-                                stack.PushSignedInt256(in res);
-                            }
-
+                            InstructionSDIV(ref stack);
                             break;
                         }
                     case Instruction.MOD:
                         {
                             if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            UInt256.Mod(in a, in b, out UInt256 result);
-                            stack.PushUInt256(in result);
+                            InstructionMOD(ref stack);
                             break;
                         }
                     case Instruction.SMOD:
                         {
                             if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopSignedInt256(out Int256.Int256 a);
-                            stack.PopSignedInt256(out Int256.Int256 b);
-                            if (b.IsZero || b.IsOne)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                a.Mod(in b, out Int256.Int256 mod);
-                                stack.PushSignedInt256(in mod);
-                            }
-
+                            InstructionSMOD(ref stack);
                             break;
                         }
                     case Instruction.ADDMOD:
                         {
                             if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            stack.PopUInt256(out UInt256 mod);
-
-                            if (mod.IsZero)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                UInt256.AddMod(a, b, mod, out UInt256 res);
-                                stack.PushUInt256(in res);
-                            }
-
+                            InstructionADDMOD(ref stack);
                             break;
                         }
                     case Instruction.MULMOD:
                         {
                             if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            stack.PopUInt256(out UInt256 mod);
-
-                            if (mod.IsZero)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                UInt256.MultiplyMod(in a, in b, in mod, out UInt256 res);
-                                stack.PushUInt256(in res);
-                            }
-
+                            InstructionMULMOD(ref stack);
                             break;
                         }
                     case Instruction.EXP:
                         {
                             if (!UpdateGas(GasCostOf.Exp, ref gasAvailable)) goto OutOfGas;
 
-                            Metrics.ModExpOpcode++;
-
-                            stack.PopUInt256(out UInt256 baseInt);
-                            Span<byte> exp = stack.PopBytes();
-
-                            int leadingZeros = exp.LeadingZerosCount();
-                            if (leadingZeros != 32)
-                            {
-                                int expSize = 32 - leadingZeros;
-                                if (!UpdateGas(spec.GetExpByteCost() * expSize, ref gasAvailable)) goto OutOfGas;
-                            }
-                            else
-                            {
-                                stack.PushOne();
-                                break;
-                            }
-
-                            if (baseInt.IsZero)
-                            {
-                                stack.PushZero();
-                            }
-                            else if (baseInt.IsOne)
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                UInt256.Exp(baseInt, new UInt256(exp, true), out UInt256 res);
-                                stack.PushUInt256(in res);
-                            }
-
+                            if (!InstructionEXP(ref stack, ref gasAvailable, spec)) goto OutOfGas;
                             break;
                         }
                     case Instruction.SIGNEXTEND:
                         {
                             if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 a);
-                            if (a >= BigInt32)
-                            {
-                                stack.EnsureDepth(1);
-                                break;
-                            }
-
-                            int position = 31 - (int)a;
-
-                            Span<byte> b = stack.PopBytes();
-                            sbyte sign = (sbyte)b[position];
-
-                            if (sign >= 0)
-                            {
-                                BytesZero32.AsSpan(0, position).CopyTo(b.Slice(0, position));
-                            }
-                            else
-                            {
-                                BytesMax32.AsSpan(0, position).CopyTo(b.Slice(0, position));
-                            }
-
-                            stack.PushBytes(b);
+                            InstructionSIGNEXTEND(ref stack);
                             break;
                         }
                     case Instruction.LT:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            if (a < b)
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
+                            InstructionLT(ref stack);
                             break;
                         }
                     case Instruction.GT:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            if (a > b)
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
+                            InstructionGT(ref stack);
                             break;
                         }
                     case Instruction.SLT:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopSignedInt256(out Int256.Int256 a);
-                            stack.PopSignedInt256(out Int256.Int256 b);
-
-                            if (a.CompareTo(b) < 0)
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
+                            InstructionSLT(ref stack);
                             break;
                         }
                     case Instruction.SGT:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopSignedInt256(out Int256.Int256 a);
-                            stack.PopSignedInt256(out Int256.Int256 b);
-                            if (a.CompareTo(b) > 0)
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
+                            InstructionSGT(ref stack);
                             break;
                         }
                     case Instruction.EQ:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            Span<byte> a = stack.PopBytes();
-                            Span<byte> b = stack.PopBytes();
-                            if (a.SequenceEqual(b))
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
+                            InstructionEQ(ref stack);
                             break;
                         }
                     case Instruction.ISZERO:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            Span<byte> a = stack.PopBytes();
-                            if (a.SequenceEqual(BytesZero32))
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
+                            InstructionISZERO(ref stack);
                             break;
                         }
                     case Instruction.AND:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            Span<byte> a = stack.PopBytes();
-                            Span<byte> b = stack.PopBytes();
-
-                            if (_simdOperationsEnabled)
-                            {
-                                Vector<byte> aVec = new(a);
-                                Vector<byte> bVec = new(b);
-
-                                Vector.BitwiseAnd(aVec, bVec).CopyTo(stack.Register);
-                            }
-                            else
-                            {
-                                ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                                ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
-                                ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                                refBuffer = refA & refB;
-                                Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) & Unsafe.Add(ref refB, 1);
-                                Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) & Unsafe.Add(ref refB, 2);
-                                Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) & Unsafe.Add(ref refB, 3);
-                            }
-
-                            stack.PushBytes(stack.Register);
+                            InstructionAND(ref stack);
                             break;
                         }
                     case Instruction.OR:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            Span<byte> a = stack.PopBytes();
-                            Span<byte> b = stack.PopBytes();
-
-                            if (_simdOperationsEnabled)
-                            {
-                                Vector<byte> aVec = new(a);
-                                Vector<byte> bVec = new(b);
-
-                                Vector.BitwiseOr(aVec, bVec).CopyTo(stack.Register);
-                            }
-                            else
-                            {
-                                ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                                ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
-                                ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                                refBuffer = refA | refB;
-                                Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) | Unsafe.Add(ref refB, 1);
-                                Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) | Unsafe.Add(ref refB, 2);
-                                Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) | Unsafe.Add(ref refB, 3);
-                            }
-
-                            stack.PushBytes(stack.Register);
+                            InstructionOR(ref stack);
                             break;
                         }
                     case Instruction.XOR:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            Span<byte> a = stack.PopBytes();
-                            Span<byte> b = stack.PopBytes();
-
-                            if (_simdOperationsEnabled)
-                            {
-                                Vector<byte> aVec = new(a);
-                                Vector<byte> bVec = new(b);
-
-                                Vector.Xor(aVec, bVec).CopyTo(stack.Register);
-                            }
-                            else
-                            {
-                                ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                                ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
-                                ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                                refBuffer = refA ^ refB;
-                                Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) ^ Unsafe.Add(ref refB, 1);
-                                Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) ^ Unsafe.Add(ref refB, 2);
-                                Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) ^ Unsafe.Add(ref refB, 3);
-                            }
-
-                            stack.PushBytes(stack.Register);
+                            InstructionXOR(ref stack);
                             break;
                         }
                     case Instruction.NOT:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            Span<byte> a = stack.PopBytes();
-
-                            if (_simdOperationsEnabled)
-                            {
-                                Vector<byte> aVec = new(a);
-                                Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
-
-                                negVec.CopyTo(stack.Register);
-                            }
-                            else
-                            {
-                                ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
-                                ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                                refBuffer = ~refA;
-                                Unsafe.Add(ref refBuffer, 1) = ~Unsafe.Add(ref refA, 1);
-                                Unsafe.Add(ref refBuffer, 2) = ~Unsafe.Add(ref refA, 2);
-                                Unsafe.Add(ref refBuffer, 3) = ~Unsafe.Add(ref refA, 3);
-                            }
-
-                            stack.PushBytes(stack.Register);
+                            InstructionNOT(ref stack);
                             break;
                         }
                     case Instruction.BYTE:
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 position);
-                            Span<byte> bytes = stack.PopBytes();
-
-                            if (position >= BigInt32)
-                            {
-                                stack.PushZero();
-                                break;
-                            }
-
-                            int adjustedPosition = bytes.Length - 32 + (int)position;
-                            if (adjustedPosition < 0)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                stack.PushByte(bytes[adjustedPosition]);
-                            }
-
+                            InstructionBYTE(ref stack);
                             break;
                         }
                     case Instruction.SHA3:
@@ -1183,8 +884,7 @@ namespace Nethermind.Evm
 
                             UpdateMemoryCost(in memSrc, memLength);
 
-                            Span<byte> memData = vmState.Memory.LoadSpan(in memSrc, memLength);
-                            stack.PushBytes(ValueKeccak.Compute(memData).BytesAsSpan);
+                            InstructionSHA3(ref stack, vmState, in memSrc, in memLength);
                             break;
                         }
                     case Instruction.ADDRESS:
@@ -1258,7 +958,7 @@ namespace Nethermind.Evm
 
                                 ZeroPaddedMemory callDataSlice = env.InputData.SliceWithZeroPadding(src, (int)length);
                                 vmState.Memory.Save(in dest, callDataSlice);
-                                if (_txTracer.IsTracingInstructions)
+                                if (traceOpcodes)
                                 {
                                     _txTracer.ReportMemoryChange((long)dest, callDataSlice);
                                 }
@@ -1287,7 +987,7 @@ namespace Nethermind.Evm
 
                                 ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int)length);
                                 vmState.Memory.Save(in dest, codeSlice);
-                                if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, codeSlice);
+                                if (traceOpcodes) _txTracer.ReportMemoryChange((long)dest, codeSlice);
                             }
 
                             break;
@@ -1331,7 +1031,7 @@ namespace Nethermind.Evm
                                 byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                                 ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
                                 vmState.Memory.Save(in dest, callDataSlice);
-                                if (_txTracer.IsTracingInstructions)
+                                if (traceOpcodes)
                                 {
                                     _txTracer.ReportMemoryChange((long)dest, callDataSlice);
                                 }
@@ -1368,7 +1068,7 @@ namespace Nethermind.Evm
 
                                 ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(src, (int)length);
                                 vmState.Memory.Save(in dest, returnDataSlice);
-                                if (_txTracer.IsTracingInstructions)
+                                if (traceOpcodes)
                                 {
                                     _txTracer.ReportMemoryChange((long)dest, returnDataSlice);
                                 }
@@ -1501,7 +1201,7 @@ namespace Nethermind.Evm
                             stack.PopUInt256(out UInt256 memPosition);
                             UpdateMemoryCost(in memPosition, 32);
                             Span<byte> memData = vmState.Memory.LoadSpan(in memPosition);
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(memPosition, memData);
+                            if (traceOpcodes) _txTracer.ReportMemoryChange(memPosition, memData);
 
                             stack.PushBytes(memData);
                             break;
@@ -1515,7 +1215,7 @@ namespace Nethermind.Evm
                             Span<byte> data = stack.PopBytes();
                             UpdateMemoryCost(in memPosition, 32);
                             vmState.Memory.SaveWord(in memPosition, data);
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, data.SliceWithZeroPadding(0, 32, PadDirection.Left));
+                            if (traceOpcodes) _txTracer.ReportMemoryChange((long)memPosition, data.SliceWithZeroPadding(0, 32, PadDirection.Left));
 
                             break;
                         }
@@ -1527,7 +1227,7 @@ namespace Nethermind.Evm
                             byte data = stack.PopByte();
                             UpdateMemoryCost(in memPosition, UInt256.One);
                             vmState.Memory.SaveByte(in memPosition, data);
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, data);
+                            if (traceOpcodes) _txTracer.ReportMemoryChange((long)memPosition, data);
 
                             break;
                         }
@@ -1686,7 +1386,7 @@ namespace Nethermind.Evm
                                 _storage.Set(storageCell, valueToStore.ToArray());
                             }
 
-                            if (_txTracer.IsTracingInstructions)
+                            if (traceOpcodes)
                             {
                                 Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
                                 Span<byte> span = new byte[32]; // do not stackalloc here
@@ -2179,7 +1879,7 @@ namespace Nethermind.Evm
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();
 
-                                if (_txTracer.IsTracingInstructions)
+                                if (traceOpcodes)
                                 {
                                     // very specific for Parity trace, need to find generalization - very peculiar 32 length...
                                     ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
@@ -2187,11 +1887,11 @@ namespace Nethermind.Evm
                                 }
 
                                 if (isTrace) _logger.Trace("FAIL - call depth");
-                                if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(gasAvailable);
-                                if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+                                if (traceOpcodes) _txTracer.ReportOperationRemainingGas(gasAvailable);
+                                if (traceOpcodes) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
 
                                 UpdateGasUp(gasLimitUl, ref gasAvailable);
-                                if (_txTracer.IsTracingInstructions) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
+                                if (traceOpcodes) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
                                 break;
                             }
 
