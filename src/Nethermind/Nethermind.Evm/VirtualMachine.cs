@@ -20,6 +20,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using System.Runtime.Intrinsics;
+using System.Diagnostics.CodeAnalysis;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -438,6 +439,30 @@ namespace Nethermind.Evm
             };
         }
 
+        private static bool UpdateMemoryCost(EvmPooledMemory? memory, ref long gasAvailable, in UInt256 position, in UInt256 length)
+        {
+            if (memory is null)
+            {
+                ThrowInvalidOperationException();
+            }
+
+            long memoryCost = memory.CalculateMemoryCost(in position, length);
+            bool result = true;
+            if (memoryCost > 0L
+                && !UpdateGas(memoryCost, ref gasAvailable))
+            {
+                result = false;
+            }
+
+            return result;
+
+            [DoesNotReturn]
+            static void ThrowInvalidOperationException()
+            {
+                throw new InvalidOperationException("EVM memory has not been initialized properly.");
+            }
+        }
+
         private static bool UpdateGas(long gasCost, ref long gasAvailable)
         {
             if (gasAvailable < gasCost)
@@ -665,24 +690,6 @@ namespace Nethermind.Evm
                 programCounter = jumpDestInt;
             }
 
-            void UpdateMemoryCost(in UInt256 position, in UInt256 length)
-            {
-                if (vmState.Memory is null)
-                {
-                    throw new InvalidOperationException("EVM memory has not been initialized properly.");
-                }
-
-                long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
-                if (memoryCost != 0L)
-                {
-                    if (!UpdateGas(memoryCost, ref gasAvailable))
-                    {
-                        Metrics.EvmExceptions++;
-                        throw new OutOfGasException();
-                    }
-                }
-            }
-
             if (previousCallResult is not null)
             {
                 stack.PushBytes(previousCallResult);
@@ -692,11 +699,9 @@ namespace Nethermind.Evm
             if (previousCallOutput.Length > 0)
             {
                 UInt256 localPreviousDest = previousCallOutputDestination;
-                UpdateMemoryCost(in localPreviousDest, (ulong)previousCallOutput.Length);
-
-                if (vmState.Memory is null)
+                if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in localPreviousDest, (ulong)previousCallOutput.Length))
                 {
-                    throw new InvalidOperationException("EVM memory has not been initialized properly.");
+                    goto OutOfGas;
                 }
 
                 vmState.Memory.Save(in localPreviousDest, previousCallOutput);
@@ -882,7 +887,7 @@ namespace Nethermind.Evm
                             if (!UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(memLength),
                                 ref gasAvailable)) goto OutOfGas;
 
-                            UpdateMemoryCost(in memSrc, memLength);
+                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memSrc, memLength)) goto OutOfGas;
 
                             InstructionSHA3(ref stack, vmState, in memSrc, in memLength);
                             break;
@@ -954,7 +959,7 @@ namespace Nethermind.Evm
 
                             if (length > UInt256.Zero)
                             {
-                                UpdateMemoryCost(in dest, length);
+                                if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in dest, length)) goto OutOfGas;
 
                                 ZeroPaddedMemory callDataSlice = env.InputData.SliceWithZeroPadding(src, (int)length);
                                 vmState.Memory.Save(in dest, callDataSlice);
@@ -983,7 +988,7 @@ namespace Nethermind.Evm
 
                             if (length > UInt256.Zero)
                             {
-                                UpdateMemoryCost(in dest, length);
+                                if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in dest, length)) goto OutOfGas;
 
                                 ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int)length);
                                 vmState.Memory.Save(in dest, codeSlice);
@@ -1026,7 +1031,7 @@ namespace Nethermind.Evm
 
                             if (length > UInt256.Zero)
                             {
-                                UpdateMemoryCost(in dest, length);
+                                if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in dest, length)) goto OutOfGas;
 
                                 byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                                 ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
@@ -1064,7 +1069,7 @@ namespace Nethermind.Evm
 
                             if (length > UInt256.Zero)
                             {
-                                UpdateMemoryCost(in dest, length);
+                                if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in dest, length)) goto OutOfGas;
 
                                 ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(src, (int)length);
                                 vmState.Memory.Save(in dest, returnDataSlice);
@@ -1199,7 +1204,9 @@ namespace Nethermind.Evm
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
                             stack.PopUInt256(out UInt256 memPosition);
-                            UpdateMemoryCost(in memPosition, 32);
+
+                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, 32)) goto OutOfGas;
+
                             Span<byte> memData = vmState.Memory.LoadSpan(in memPosition);
                             if (traceOpcodes) _txTracer.ReportMemoryChange(memPosition, memData);
 
@@ -1213,7 +1220,9 @@ namespace Nethermind.Evm
                             stack.PopUInt256(out UInt256 memPosition);
 
                             Span<byte> data = stack.PopBytes();
-                            UpdateMemoryCost(in memPosition, 32);
+
+                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, 32)) goto OutOfGas;
+
                             vmState.Memory.SaveWord(in memPosition, data);
                             if (traceOpcodes) _txTracer.ReportMemoryChange((long)memPosition, data.SliceWithZeroPadding(0, 32, PadDirection.Left));
 
@@ -1225,7 +1234,7 @@ namespace Nethermind.Evm
 
                             stack.PopUInt256(out UInt256 memPosition);
                             byte data = stack.PopByte();
-                            UpdateMemoryCost(in memPosition, UInt256.One);
+                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, UInt256.One)) goto OutOfGas;
                             vmState.Memory.SaveByte(in memPosition, data);
                             if (traceOpcodes) _txTracer.ReportMemoryChange((long)memPosition, data);
 
@@ -1624,7 +1633,7 @@ namespace Nethermind.Evm
                             stack.PopUInt256(out UInt256 memoryPos);
                             stack.PopUInt256(out UInt256 length);
                             long topicsCount = instruction - Instruction.LOG0;
-                            UpdateMemoryCost(in memoryPos, length);
+                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
                             if (!UpdateGas(
                                 GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
                                 (long)length * GasCostOf.LogData, ref gasAvailable)) goto OutOfGas;
@@ -1676,8 +1685,7 @@ namespace Nethermind.Evm
                                 (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
 
                             if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
-
-                            UpdateMemoryCost(in memoryPositionOfInitCode, initCodeLength);
+                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memoryPositionOfInitCode, initCodeLength)) goto OutOfGas;
 
                             // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
                             if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
@@ -1779,7 +1787,8 @@ namespace Nethermind.Evm
                             stack.PopUInt256(out UInt256 memoryPos);
                             stack.PopUInt256(out UInt256 length);
 
-                            UpdateMemoryCost(in memoryPos, length);
+                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
+
                             ReadOnlyMemory<byte> returnData = vmState.Memory.Load(in memoryPos, length);
 
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
@@ -1854,8 +1863,9 @@ namespace Nethermind.Evm
 
                             if (!UpdateGas(spec.GetCallCost(), ref gasAvailable)) goto OutOfGas;
 
-                            UpdateMemoryCost(in dataOffset, dataLength);
-                            UpdateMemoryCost(in outputOffset, outputLength);
+                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in dataOffset, dataLength)) goto OutOfGas;
+                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in outputOffset, outputLength)) goto OutOfGas;
+
                             if (!UpdateGas(gasExtra, ref gasAvailable)) goto OutOfGas;
 
                             if (spec.Use63Over64Rule)
@@ -1944,7 +1954,8 @@ namespace Nethermind.Evm
                             stack.PopUInt256(out UInt256 memoryPos);
                             stack.PopUInt256(out UInt256 length);
 
-                            UpdateMemoryCost(in memoryPos, length);
+                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
+
                             ReadOnlyMemory<byte> errorDetails = vmState.Memory.Load(in memoryPos, length);
 
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
