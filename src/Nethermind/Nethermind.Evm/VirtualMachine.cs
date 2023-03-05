@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Runtime.Intrinsics;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -978,30 +979,14 @@ namespace Nethermind.Evm
                         {
                             if (!spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
 
-                            var result = InstructionRETURNDATACOPY(ref stack, ref gasAvailable, vmState.Memory);
-                            if (result == resultRETURNDATACOPY.OutOfGas) goto OutOfGas;
-                            if (result == resultRETURNDATACOPY.AccessViolation) return CallResult.AccessViolationException;
+                            InstructionReturn result = InstructionRETURNDATACOPY(ref stack, ref gasAvailable, vmState.Memory);
+                            if (result == InstructionReturn.OutOfGas) goto OutOfGas;
+                            if (result == InstructionReturn.AccessViolation) return CallResult.AccessViolationException;
                             break;
                         }
                     case Instruction.BLOCKHASH:
                         {
-                            Metrics.BlockhashOpcode++;
-
-                            if (!UpdateGas(GasCostOf.BlockHash, ref gasAvailable)) goto OutOfGas;
-
-                            stack.PopUInt256(out UInt256 a);
-                            long number = a > long.MaxValue ? long.MaxValue : (long)a;
-                            Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
-                            stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
-
-                            if (isTrace)
-                            {
-                                if (_txTracer.IsTracingBlockHash && blockHash is not null)
-                                {
-                                    _txTracer.ReportBlockHash(blockHash);
-                                }
-                            }
-
+                            if (!InstructionBLOCKHASH(ref stack, ref gasAvailable, txCtx.Header)) goto OutOfGas;
                             break;
                         }
                     case Instruction.COINBASE:
@@ -1017,13 +1002,11 @@ namespace Nethermind.Evm
 
                             if (txCtx.Header.IsPostMerge)
                             {
-                                byte[] random = txCtx.Header.Random.Bytes;
-                                stack.PushBytes(random);
+                                stack.PushBytes(txCtx.Header.Random.Bytes);
                             }
                             else
                             {
-                                UInt256 diff = txCtx.Header.Difficulty;
-                                stack.PushUInt256(in diff);
+                                stack.PushUInt256(in txCtx.Header.Difficulty);
                             }
                             break;
                         }
@@ -1039,16 +1022,14 @@ namespace Nethermind.Evm
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 blockNumber = (UInt256)txCtx.Header.Number;
-                            stack.PushUInt256(in blockNumber);
+                            stack.PushUInt256(txCtx.Header.Number);
                             break;
                         }
                     case Instruction.GASLIMIT:
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 gasLimit = (UInt256)txCtx.Header.GasLimit;
-                            stack.PushUInt256(in gasLimit);
+                            stack.PushUInt256(txCtx.Header.GasLimit);
                             break;
                         }
                     case Instruction.CHAINID:
@@ -1179,137 +1160,7 @@ namespace Nethermind.Evm
                                 if (gasAvailable <= GasCostOf.CallStipend) goto OutOfGas;
                             }
 
-                            stack.PopUInt256(out UInt256 storageIndex);
-                            Span<byte> newValue = stack.PopBytes();
-                            bool newIsZero = newValue.IsZero();
-                            if (!newIsZero)
-                            {
-                                newValue = newValue.WithoutLeadingZeros().ToArray();
-                            }
-                            else
-                            {
-                                newValue = new byte[] { 0 };
-                            }
-
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-
-                            if (!ChargeStorageAccessGas(
-                                ref gasAvailable,
-                                vmState,
-                                storageCell,
-                                StorageAccessType.SSTORE,
-                                spec)) goto OutOfGas;
-
-                            Span<byte> currentValue = _storage.Get(storageCell);
-                            // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
-                            bool currentIsZero = currentValue.IsZero();
-
-                            bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
-                            long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
-
-                            if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
-                            {
-                                if (newIsZero)
-                                {
-                                    if (!newSameAsCurrent)
-                                    {
-                                        vmState.Refund += sClearRefunds;
-                                        if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
-                                    }
-                                }
-                                else if (currentIsZero)
-                                {
-                                    if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable)) goto OutOfGas;
-                                }
-                            }
-                            else // net metered
-                            {
-                                if (newSameAsCurrent)
-                                {
-                                    if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable)) goto OutOfGas;
-                                }
-                                else // net metered, C != N
-                                {
-                                    Span<byte> originalValue = _storage.GetOriginal(storageCell);
-                                    bool originalIsZero = originalValue.IsZero();
-
-                                    bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
-                                    if (currentSameAsOriginal)
-                                    {
-                                        if (currentIsZero)
-                                        {
-                                            if (!UpdateGas(GasCostOf.SSet, ref gasAvailable)) goto OutOfGas;
-                                        }
-                                        else // net metered, current == original != new, !currentIsZero
-                                        {
-                                            if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) goto OutOfGas;
-
-                                            if (newIsZero)
-                                            {
-                                                vmState.Refund += sClearRefunds;
-                                                if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
-                                            }
-                                        }
-                                    }
-                                    else // net metered, new != current != original
-                                    {
-                                        long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
-                                        if (!UpdateGas(netMeteredStoreCost, ref gasAvailable)) goto OutOfGas;
-
-                                        if (!originalIsZero) // net metered, new != current != original != 0
-                                        {
-                                            if (currentIsZero)
-                                            {
-                                                vmState.Refund -= sClearRefunds;
-                                                if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(-sClearRefunds);
-                                            }
-
-                                            if (newIsZero)
-                                            {
-                                                vmState.Refund += sClearRefunds;
-                                                if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
-                                            }
-                                        }
-
-                                        bool newSameAsOriginal = Bytes.AreEqual(originalValue, newValue);
-                                        if (newSameAsOriginal)
-                                        {
-                                            long refundFromReversal;
-                                            if (originalIsZero)
-                                            {
-                                                refundFromReversal = spec.GetSetReversalRefund();
-                                            }
-                                            else
-                                            {
-                                                refundFromReversal = spec.GetClearReversalRefund();
-                                            }
-
-                                            vmState.Refund += refundFromReversal;
-                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(refundFromReversal);
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (!newSameAsCurrent)
-                            {
-                                Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
-                                _storage.Set(storageCell, valueToStore.ToArray());
-                            }
-
-                            if (traceOpcodes)
-                            {
-                                Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
-                                Span<byte> span = new byte[32]; // do not stackalloc here
-                                storageCell.Index.ToBigEndian(span);
-                                _txTracer.ReportStorageChange(span, valueToStore);
-                            }
-
-                            if (_txTracer.IsTracingOpLevelStorage)
-                            {
-                                _txTracer.SetOperationStorage(storageCell.Address, storageIndex, newValue, currentValue);
-                            }
-
+                            if (!InstructionSSTORE(ref stack, ref gasAvailable, env.ExecutingAccount, vmState, spec)) goto OutOfGas;
                             break;
                         }
                     case Instruction.TLOAD:
@@ -1561,128 +1412,16 @@ namespace Nethermind.Evm
 
                             if (vmState.IsStatic) goto StaticCallViolation;
 
-                            // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
-                            if (!_state.AccountExists(env.ExecutingAccount))
+                            (InstructionReturn result, EvmState? callState) = InstructionCREATE(instruction, ref stack, ref gasAvailable, ref env, vmState, spec);
+                            if (result == InstructionReturn.OutOfGas) goto OutOfGas;
+                            if (result == InstructionReturn.Success)
                             {
-                                _state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
+                                Debug.Assert(callState is not null);
+                                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                                return new CallResult(callState);
                             }
-
-                            stack.PopUInt256(out UInt256 value);
-                            stack.PopUInt256(out UInt256 memoryPositionOfInitCode);
-                            stack.PopUInt256(out UInt256 initCodeLength);
-                            Span<byte> salt = null;
-                            if (instruction == Instruction.CREATE2)
-                            {
-                                salt = stack.PopBytes();
-                            }
-
-                            //EIP-3860
-                            if (spec.IsEip3860Enabled)
-                            {
-                                if (initCodeLength > spec.MaxInitCodeSize) goto OutOfGas;
-                            }
-
-                            long gasCost = GasCostOf.Create +
-                                (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
-                                (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
-
-                            if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
-                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memoryPositionOfInitCode, initCodeLength)) goto OutOfGas;
-
-                            // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
-                            if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
-                            {
-                                // TODO: need a test for this
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
-                            Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
-
-                            UInt256 balance = _state.GetBalance(env.ExecutingAccount);
-                            if (value > balance)
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
-                            UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
-                            UInt256 maxNonce = ulong.MaxValue;
-                            if (accountNonce >= maxNonce)
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
-                            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                            // todo: === below is a new call - refactor / move
-
-                            long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-                            if (!UpdateGas(callGas, ref gasAvailable)) goto OutOfGas;
-
-                            Address contractAddress = instruction == Instruction.CREATE
-                                ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
-                                : ContractAddress.From(env.ExecutingAccount, salt, initCode);
-
-                            if (spec.UseHotAndColdStorage)
-                            {
-                                // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
-                                vmState.WarmUp(contractAddress);
-                            }
-
-                            _state.IncrementNonce(env.ExecutingAccount);
-
-                            Snapshot snapshot = _worldState.TakeSnapshot();
-
-                            bool accountExists = _state.AccountExists(contractAddress);
-                            if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
-                            {
-                                /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
-                                if (isTrace) _logger.Trace($"Contract collision at {contractAddress}");
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
-                            if (accountExists)
-                            {
-                                _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
-                            }
-                            else if (_state.IsDeadAccount(contractAddress))
-                            {
-                                _storage.ClearStorage(contractAddress);
-                            }
-
-                            _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
-                            ExecutionEnvironment callEnv = new();
-                            callEnv.TxExecutionContext = env.TxExecutionContext;
-                            callEnv.CallDepth = env.CallDepth + 1;
-                            callEnv.Caller = env.ExecutingAccount;
-                            callEnv.ExecutingAccount = contractAddress;
-                            callEnv.CodeSource = null;
-                            callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
-                            callEnv.InputData = ReadOnlyMemory<byte>.Empty;
-                            callEnv.TransferValue = value;
-                            callEnv.Value = value;
-
-                            EvmState callState = new(
-                                callGas,
-                                callEnv,
-                                instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
-                                false,
-                                snapshot,
-                                0L,
-                                0L,
-                                vmState.IsStatic,
-                                vmState,
-                                false,
-                                accountExists);
-
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            return new CallResult(callState);
+                            Debug.Assert(result == InstructionReturn.Continue);
+                            break;
                         }
                     case Instruction.RETURN:
                         {

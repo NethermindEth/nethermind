@@ -49,7 +49,7 @@ public class BlockHeader
     public Keccak? TxRoot { get; set; }
     public Keccak? ReceiptsRoot { get; set; }
     public Bloom? Bloom { get; set; }
-    public UInt256 Difficulty { get; set; }
+    public UInt256 Difficulty;
     public long Number { get; set; }
     public long GasUsed { get; set; }
     public long GasLimit { get; set; }

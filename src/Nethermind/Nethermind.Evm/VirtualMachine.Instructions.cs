@@ -17,35 +17,319 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls.Shamatar;
 using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
 using Nethermind.State;
 using System.Runtime.Intrinsics;
 
 namespace Nethermind.Evm;
 public partial class VirtualMachine
 {
-    private enum resultRETURNDATACOPY
+    private enum InstructionReturn
     {
         Success,
+        Continue,
         OutOfGas,
         AccessViolation
     }
+    
+    private (InstructionReturn result, EvmState? callState) InstructionCREATE(Instruction instruction, ref EvmStack stack, ref long gasAvailable, ref ExecutionEnvironment env, EvmState vmState, IReleaseSpec spec)
+    {
+        // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
+        if (!_state.AccountExists(env.ExecutingAccount))
+        {
+            _state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
+        }
 
-    private resultRETURNDATACOPY InstructionRETURNDATACOPY(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory? memory)
+        stack.PopUInt256(out UInt256 value);
+        stack.PopUInt256(out UInt256 memoryPositionOfInitCode);
+        stack.PopUInt256(out UInt256 initCodeLength);
+        Span<byte> salt = null;
+        if (instruction == Instruction.CREATE2)
+        {
+            salt = stack.PopBytes();
+        }
+
+        //EIP-3860
+        if (spec.IsEip3860Enabled)
+        {
+            if (initCodeLength > spec.MaxInitCodeSize) return (InstructionReturn.OutOfGas, null);
+        }
+
+        long gasCost = GasCostOf.Create +
+            (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
+            (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
+
+        if (!UpdateGas(gasCost, ref gasAvailable)) return (InstructionReturn.OutOfGas, null);
+        if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memoryPositionOfInitCode, initCodeLength)) return (InstructionReturn.OutOfGas, null);
+
+        // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
+        if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
+        {
+            // TODO: need a test for this
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (InstructionReturn.Continue, null);
+        }
+
+        Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+
+        UInt256 balance = _state.GetBalance(env.ExecutingAccount);
+        if (value > balance)
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (InstructionReturn.Continue, null);
+        }
+
+        UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
+        UInt256 maxNonce = ulong.MaxValue;
+        if (accountNonce >= maxNonce)
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (InstructionReturn.Continue, null);
+        }
+
+        if (_txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+        // todo: === below is a new call - refactor / move
+
+        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+        if (!UpdateGas(callGas, ref gasAvailable)) return (InstructionReturn.OutOfGas, null);
+
+        Address contractAddress = instruction == Instruction.CREATE
+            ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
+            : ContractAddress.From(env.ExecutingAccount, salt, initCode);
+
+        if (spec.UseHotAndColdStorage)
+        {
+            // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
+            vmState.WarmUp(contractAddress);
+        }
+
+        _state.IncrementNonce(env.ExecutingAccount);
+
+        Snapshot snapshot = _worldState.TakeSnapshot();
+
+        bool accountExists = _state.AccountExists(contractAddress);
+        if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
+        {
+/* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
+            if (_logger.IsTrace) _logger.Trace($"Contract collision at {contractAddress}");
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (InstructionReturn.Continue, null);
+        }
+
+        if (accountExists)
+        {
+            _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+        }
+        else if (_state.IsDeadAccount(contractAddress))
+        {
+            _storage.ClearStorage(contractAddress);
+        }
+
+        _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+        ExecutionEnvironment callEnv = new();
+        callEnv.TxExecutionContext = env.TxExecutionContext;
+        callEnv.CallDepth = env.CallDepth + 1;
+        callEnv.Caller = env.ExecutingAccount;
+        callEnv.ExecutingAccount = contractAddress;
+        callEnv.CodeSource = null;
+        callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
+        callEnv.InputData = ReadOnlyMemory<byte>.Empty;
+        callEnv.TransferValue = value;
+        callEnv.Value = value;
+
+        EvmState callState = new(
+            callGas,
+            callEnv,
+            instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
+            false,
+            snapshot,
+            0L,
+            0L,
+            vmState.IsStatic,
+            vmState,
+            false,
+            accountExists);
+
+        return (InstructionReturn.Success, callState);
+    }
+    
+    private bool InstructionSSTORE(ref EvmStack stack, ref long gasAvailable, Address executingAccount, EvmState vmState, IReleaseSpec spec)
+    {
+        stack.PopUInt256(out UInt256 storageIndex);
+        Span<byte> newValue = stack.PopBytes();
+        bool newIsZero = newValue.IsZero();
+        if (!newIsZero)
+        {
+            newValue = newValue.WithoutLeadingZeros().ToArray();
+        }
+        else
+        {
+            newValue = new byte[] { 0 };
+        }
+
+        StorageCell storageCell = new(executingAccount, storageIndex);
+
+        if (!ChargeStorageAccessGas(
+            ref gasAvailable,
+            vmState,
+            storageCell,
+            StorageAccessType.SSTORE,
+            spec)) return false;
+
+        Span<byte> currentValue = _storage.Get(storageCell);
+        // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
+        bool currentIsZero = currentValue.IsZero();
+
+        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
+        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+
+        bool isTracingRefunds = _txTracer.IsTracingRefunds;
+        if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
+        {
+            if (newIsZero)
+            {
+                if (!newSameAsCurrent)
+                {
+                    vmState.Refund += sClearRefunds;
+                    if (isTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
+                }
+            }
+            else if (currentIsZero)
+            {
+                if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable)) return false;
+            }
+        }
+        else // net metered
+        {
+            if (newSameAsCurrent)
+            {
+                if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable)) return false;
+            }
+            else // net metered, C != N
+            {
+                Span<byte> originalValue = _storage.GetOriginal(storageCell);
+                bool originalIsZero = originalValue.IsZero();
+
+                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+                if (currentSameAsOriginal)
+                {
+                    if (currentIsZero)
+                    {
+                        if (!UpdateGas(GasCostOf.SSet, ref gasAvailable)) return false;
+                    }
+                    else // net metered, current == original != new, !currentIsZero
+                    {
+                        if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return false;
+
+                        if (newIsZero)
+                        {
+                            vmState.Refund += sClearRefunds;
+                            if (isTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
+                        }
+                    }
+                }
+                else // net metered, new != current != original
+                {
+                    long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
+                    if (!UpdateGas(netMeteredStoreCost, ref gasAvailable)) return false;
+
+                    if (!originalIsZero) // net metered, new != current != original != 0
+                    {
+                        if (currentIsZero)
+                        {
+                            vmState.Refund -= sClearRefunds;
+                            if (isTracingRefunds) _txTracer.ReportRefund(-sClearRefunds);
+                        }
+
+                        if (newIsZero)
+                        {
+                            vmState.Refund += sClearRefunds;
+                            if (isTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
+                        }
+                    }
+
+                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, newValue);
+                    if (newSameAsOriginal)
+                    {
+                        long refundFromReversal;
+                        if (originalIsZero)
+                        {
+                            refundFromReversal = spec.GetSetReversalRefund();
+                        }
+                        else
+                        {
+                            refundFromReversal = spec.GetClearReversalRefund();
+                        }
+
+                        vmState.Refund += refundFromReversal;
+                        if (isTracingRefunds) _txTracer.ReportRefund(refundFromReversal);
+                    }
+                }
+            }
+        }
+
+        if (!newSameAsCurrent)
+        {
+            Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
+            _storage.Set(storageCell, valueToStore.ToArray());
+        }
+
+        if (_txTracer.IsTracingInstructions)
+        {
+            Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
+            Span<byte> span = new byte[32]; // do not stackalloc here
+            storageCell.Index.ToBigEndian(span);
+            _txTracer.ReportStorageChange(span, valueToStore);
+        }
+
+        if (_txTracer.IsTracingOpLevelStorage)
+        {
+            _txTracer.SetOperationStorage(storageCell.Address, storageIndex, newValue, currentValue);
+        }
+
+        return true;
+    }
+    
+    private bool InstructionBLOCKHASH(ref EvmStack stack, ref long gasAvailable, BlockHeader header)
+    {
+        Metrics.BlockhashOpcode++;
+
+        if (!UpdateGas(GasCostOf.BlockHash, ref gasAvailable)) return false;
+
+        stack.PopUInt256(out UInt256 a);
+        long number = a > long.MaxValue ? long.MaxValue : (long)a;
+        Keccak blockHash = _blockhashProvider.GetBlockhash(header, number);
+        stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
+
+        if (_txTracer.IsTracingInstructions)
+        {
+            if (_txTracer.IsTracingBlockHash && blockHash is not null)
+            {
+                _txTracer.ReportBlockHash(blockHash);
+            }
+        }
+
+        return true;
+    }
+
+    private InstructionReturn InstructionRETURNDATACOPY(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory? memory)
     {
         stack.PopUInt256(out UInt256 dest);
         stack.PopUInt256(out UInt256 src);
         stack.PopUInt256(out UInt256 length);
-        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable)) return resultRETURNDATACOPY.OutOfGas;
+        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable)) return InstructionReturn.OutOfGas;
 
         if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
         {
-            return resultRETURNDATACOPY.AccessViolation;
+            return InstructionReturn.AccessViolation;
         }
 
         if (!length.IsZero)
         {
-            if (!UpdateMemoryCost(memory, ref gasAvailable, in dest, length)) return resultRETURNDATACOPY.OutOfGas;
+            if (!UpdateMemoryCost(memory, ref gasAvailable, in dest, length)) return InstructionReturn.OutOfGas;
 
             ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(src, (int)length);
             memory.Save(in dest, returnDataSlice);
@@ -55,7 +339,7 @@ public partial class VirtualMachine
             }
         }
 
-        return resultRETURNDATACOPY.Success;
+        return InstructionReturn.Success;
     }
 
     private void InstructionRETURNDATASIZE(ref EvmStack stack)

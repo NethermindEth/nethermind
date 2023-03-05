@@ -175,6 +175,12 @@ namespace Nethermind.Evm
             }
         }
 
+        internal void PushUInt256(long value)
+        {
+            UInt256 uint256 = (UInt256)value;
+            PushUInt256(in uint256);
+        }
+
         /// <summary>
         /// Pushes an Uint256 written in big endian.
         /// </summary>
