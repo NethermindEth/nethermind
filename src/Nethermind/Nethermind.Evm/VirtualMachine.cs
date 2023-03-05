@@ -894,14 +894,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.BALANCE:
                         {
-                            long gasCost = spec.GetBalanceCost();
-                            if (gasCost != 0 && !UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
-
-                            Address address = stack.PopAddress();
-                            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
-
-                            UInt256 balance = _state.GetBalance(address);
-                            stack.PushUInt256(in balance);
+                            if (!InstructionBALANCE(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
                             break;
                         }
                     case Instruction.CALLER:
@@ -915,8 +908,7 @@ namespace Nethermind.Evm
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 callValue = env.Value;
-                            stack.PushUInt256(in callValue);
+                            stack.PushUInt256(in env.Value);
                             break;
                         }
                     case Instruction.ORIGIN:
@@ -930,111 +922,48 @@ namespace Nethermind.Evm
                         {
                             if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
-                            stack.PopUInt256(out UInt256 src);
-                            stack.PushBytes(env.InputData.SliceWithZeroPadding(src, 32));
+                            InstructionCALLDATALOAD(ref stack, in env.InputData);
                             break;
                         }
                     case Instruction.CALLDATASIZE:
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 callDataSize = (UInt256)env.InputData.Length;
-                            stack.PushUInt256(in callDataSize);
+                            InstructionCALLDATASIZE(ref stack, in env.InputData);
                             break;
                         }
                     case Instruction.CALLDATACOPY:
                         {
-                            stack.PopUInt256(out UInt256 dest);
-                            stack.PopUInt256(out UInt256 src);
-                            stack.PopUInt256(out UInt256 length);
-                            if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
-                                ref gasAvailable)) goto OutOfGas;
-
-                            if (length > UInt256.Zero)
-                            {
-                                if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in dest, length)) goto OutOfGas;
-
-                                ZeroPaddedMemory callDataSlice = env.InputData.SliceWithZeroPadding(src, (int)length);
-                                vmState.Memory.Save(in dest, callDataSlice);
-                                if (traceOpcodes)
-                                {
-                                    _txTracer.ReportMemoryChange((long)dest, callDataSlice);
-                                }
-                            }
-
+                            if (!InstructionCALLDATACOPY(ref stack, ref gasAvailable, vmState.Memory, in env.InputData)) goto OutOfGas;
                             break;
                         }
                     case Instruction.CODESIZE:
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 codeLength = (UInt256)code.Length;
-                            stack.PushUInt256(in codeLength);
+                            InstructionCODESIZE(ref stack, code.Length);
                             break;
                         }
                     case Instruction.CODECOPY:
                         {
-                            stack.PopUInt256(out UInt256 dest);
-                            stack.PopUInt256(out UInt256 src);
-                            stack.PopUInt256(out UInt256 length);
-                            if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable)) goto OutOfGas;
-
-                            if (length > UInt256.Zero)
-                            {
-                                if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in dest, length)) goto OutOfGas;
-
-                                ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int)length);
-                                vmState.Memory.Save(in dest, codeSlice);
-                                if (traceOpcodes) _txTracer.ReportMemoryChange((long)dest, codeSlice);
-                            }
-
+                            if (!InstructionCODECOPY(ref stack, ref gasAvailable, vmState.Memory, in code)) goto OutOfGas;
                             break;
                         }
                     case Instruction.GASPRICE:
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 gasPrice = txCtx.GasPrice;
-                            stack.PushUInt256(in gasPrice);
+                            stack.PushUInt256(in txCtx.GasPrice);
                             break;
                         }
                     case Instruction.EXTCODESIZE:
                         {
-                            if (!UpdateGas(spec.GetExtCodeCost(), ref gasAvailable)) goto OutOfGas;
-
-                            Address address = stack.PopAddress();
-                            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
-
-                            byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                            UInt256 codeSize = (UInt256)accountCode.Length;
-                            stack.PushUInt256(in codeSize);
+                            if (!InstructionEXTCODESIZE(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
                             break;
                         }
                     case Instruction.EXTCODECOPY:
                         {
-                            Address address = stack.PopAddress();
-                            stack.PopUInt256(out UInt256 dest);
-                            stack.PopUInt256(out UInt256 src);
-                            stack.PopUInt256(out UInt256 length);
-
-                            long gasCost = spec.GetExtCodeCost();
-                            if (!UpdateGas(gasCost + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
-                                ref gasAvailable)) goto OutOfGas;
-                            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
-
-                            if (length > UInt256.Zero)
-                            {
-                                if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in dest, length)) goto OutOfGas;
-
-                                byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                                ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
-                                vmState.Memory.Save(in dest, callDataSlice);
-                                if (traceOpcodes)
-                                {
-                                    _txTracer.ReportMemoryChange((long)dest, callDataSlice);
-                                }
-                            }
-
+                            if (!InstructionEXTCODECOPY(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
                             break;
                         }
                     case Instruction.RETURNDATASIZE:
@@ -1042,36 +971,16 @@ namespace Nethermind.Evm
                             if (!spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 res = (UInt256)_returnDataBuffer.Length;
-                            stack.PushUInt256(in res);
+                            InstructionRETURNDATASIZE(ref stack);
                             break;
                         }
                     case Instruction.RETURNDATACOPY:
                         {
                             if (!spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
 
-                            stack.PopUInt256(out UInt256 dest);
-                            stack.PopUInt256(out UInt256 src);
-                            stack.PopUInt256(out UInt256 length);
-                            if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable)) goto OutOfGas;
-
-                            if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
-                            {
-                                return CallResult.AccessViolationException;
-                            }
-
-                            if (length > UInt256.Zero)
-                            {
-                                if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in dest, length)) goto OutOfGas;
-
-                                ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(src, (int)length);
-                                vmState.Memory.Save(in dest, returnDataSlice);
-                                if (traceOpcodes)
-                                {
-                                    _txTracer.ReportMemoryChange((long)dest, returnDataSlice);
-                                }
-                            }
-
+                            var result = InstructionRETURNDATACOPY(ref stack, ref gasAvailable, vmState.Memory);
+                            if (result == resultRETURNDATACOPY.OutOfGas) goto OutOfGas;
+                            if (result == resultRETURNDATACOPY.AccessViolation) return CallResult.AccessViolationException;
                             break;
                         }
                     case Instruction.BLOCKHASH:

@@ -24,6 +24,161 @@ using System.Runtime.Intrinsics;
 namespace Nethermind.Evm;
 public partial class VirtualMachine
 {
+    private enum resultRETURNDATACOPY
+    {
+        Success,
+        OutOfGas,
+        AccessViolation
+    }
+
+    private resultRETURNDATACOPY InstructionRETURNDATACOPY(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory? memory)
+    {
+        stack.PopUInt256(out UInt256 dest);
+        stack.PopUInt256(out UInt256 src);
+        stack.PopUInt256(out UInt256 length);
+        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable)) return resultRETURNDATACOPY.OutOfGas;
+
+        if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
+        {
+            return resultRETURNDATACOPY.AccessViolation;
+        }
+
+        if (!length.IsZero)
+        {
+            if (!UpdateMemoryCost(memory, ref gasAvailable, in dest, length)) return resultRETURNDATACOPY.OutOfGas;
+
+            ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(src, (int)length);
+            memory.Save(in dest, returnDataSlice);
+            if (_txTracer.IsTracingInstructions)
+            {
+                _txTracer.ReportMemoryChange((long)dest, returnDataSlice);
+            }
+        }
+
+        return resultRETURNDATACOPY.Success;
+    }
+
+    private void InstructionRETURNDATASIZE(ref EvmStack stack)
+    {
+        UInt256 res = (UInt256)_returnDataBuffer.Length;
+        stack.PushUInt256(in res);
+    }
+
+    private bool InstructionEXTCODECOPY(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
+    {
+        Address address = stack.PopAddress();
+        stack.PopUInt256(out UInt256 dest);
+        stack.PopUInt256(out UInt256 src);
+        stack.PopUInt256(out UInt256 length);
+
+        long gasCost = spec.GetExtCodeCost();
+        if (!UpdateGas(gasCost + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
+            ref gasAvailable)) return false;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) return false;
+
+        if (!length.IsZero)
+        {
+            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in dest, length)) return false;
+
+            byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+            ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
+            vmState.Memory.Save(in dest, callDataSlice);
+            if (_txTracer.IsTracingInstructions)
+            {
+                _txTracer.ReportMemoryChange((long)dest, callDataSlice);
+            }
+        }
+
+        return true;
+    }
+
+    private bool InstructionEXTCODESIZE(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
+    {
+        if (!UpdateGas(spec.GetExtCodeCost(), ref gasAvailable)) return false;
+
+        Address address = stack.PopAddress();
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) return false;
+
+        byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+        UInt256 codeSize = (UInt256)accountCode.Length;
+        stack.PushUInt256(in codeSize);
+
+        return true;
+    }
+
+    private bool InstructionCODECOPY(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory? memory, in Span<byte> code)
+    {
+        stack.PopUInt256(out UInt256 dest);
+        stack.PopUInt256(out UInt256 src);
+        stack.PopUInt256(out UInt256 length);
+        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable)) return false;
+
+        if (!length.IsZero)
+        {
+            if (!UpdateMemoryCost(memory, ref gasAvailable, in dest, length)) return false;
+
+            ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int)length);
+            memory.Save(in dest, codeSlice);
+            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, codeSlice);
+        }
+
+        return true;
+    }
+
+    private static void InstructionCODESIZE(ref EvmStack stack, int codeLength)
+    {
+        UInt256 length = (UInt256)codeLength;
+        stack.PushUInt256(in length);
+    }
+
+    private bool InstructionCALLDATACOPY(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory? memory, in ReadOnlyMemory<byte> inputData)
+    {
+        stack.PopUInt256(out UInt256 dest);
+        stack.PopUInt256(out UInt256 src);
+        stack.PopUInt256(out UInt256 length);
+        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
+            ref gasAvailable)) return true;
+
+        if (!length.IsZero)
+        {
+            if (!UpdateMemoryCost(memory, ref gasAvailable, in dest, length)) return true;
+
+            ZeroPaddedMemory callDataSlice = inputData.SliceWithZeroPadding(src, (int)length);
+            memory.Save(in dest, callDataSlice);
+            if (_txTracer.IsTracingInstructions)
+            {
+                _txTracer.ReportMemoryChange((long)dest, callDataSlice);
+            }
+        }
+
+        return true;
+    }
+
+    private static void InstructionCALLDATASIZE(ref EvmStack stack, in ReadOnlyMemory<byte> inputData)
+    {
+        UInt256 callDataSize = (UInt256)inputData.Length;
+        stack.PushUInt256(in callDataSize);
+    }
+
+    private static void InstructionCALLDATALOAD(ref EvmStack stack, in ReadOnlyMemory<byte> inputData)
+    {
+        stack.PopUInt256(out UInt256 src);
+        stack.PushBytes(inputData.SliceWithZeroPadding(src, 32));
+    }
+
+    private bool InstructionBALANCE(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = spec.GetBalanceCost();
+        if (gasCost != 0 && !UpdateGas(gasCost, ref gasAvailable)) return false;
+
+        Address address = stack.PopAddress();
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) return false;
+
+        UInt256 balance = _state.GetBalance(address);
+        stack.PushUInt256(in balance);
+
+        return true;
+    }
     private static bool InstructionSHA3(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory memory)
     {
         stack.PopUInt256(out UInt256 memSrc);

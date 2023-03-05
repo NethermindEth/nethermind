@@ -33,7 +33,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Parameters / arguments of the current call.
         /// </summary>
-        public ReadOnlyMemory<byte> InputData { get; set; }
+        public ReadOnlyMemory<byte> InputData;
 
         /// <summary>
         /// ETH value transferred in this call.
@@ -45,7 +45,7 @@ namespace Nethermind.Evm
         /// DELEGATECALL behaves like a library call and it uses the value information from the caller even
         /// as no transfer happens.
         /// </summary>
-        public UInt256 Value { get; set; }
+        public UInt256 Value;
 
         /// <summary>
         /// Parsed bytecode for the current call.

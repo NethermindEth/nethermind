@@ -10,7 +10,7 @@ namespace Nethermind.Evm
     {
         public BlockHeader Header { get; }
         public Address Origin { get; }
-        public UInt256 GasPrice { get; }
+        public readonly UInt256 GasPrice;
         public byte[][]? BlobVersionedHashes { get; }
 
         public TxExecutionContext(BlockHeader blockHeader, Address origin, in UInt256 gasPrice, byte[][] blobVersionedHashes)
