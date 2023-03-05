@@ -35,6 +35,20 @@ public partial class VirtualMachine
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
+    private (InstructionReturn result, byte[]? message) InstructionREVERT(ref EvmStack stack, ref long gasAvailable, EvmState vmState)
+    {
+        stack.PopUInt256(out UInt256 memoryPos);
+        stack.PopUInt256(out UInt256 length);
+
+        if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memoryPos, length)) return (InstructionReturn.OutOfGas, null);
+
+        ReadOnlyMemory<byte> errorDetails = vmState.Memory.Load(in memoryPos, length);
+
+        if (_txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+        return (InstructionReturn.Success, errorDetails.ToArray());
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private (InstructionReturn result, EvmState? callState) InstructionCALL(Instruction instruction, ref EvmStack stack, ref long gasAvailable, ref ExecutionEnvironment env, EvmState vmState, bool isPostMerge, IReleaseSpec spec)
     {
         Metrics.Calls++;
@@ -141,7 +155,7 @@ public partial class VirtualMachine
 
             UpdateGasUp(gasLimitUl, ref gasAvailable);
             if (traceOpcodes) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
-            
+
             return (InstructionReturn.Continue, null);
         }
 
@@ -183,6 +197,7 @@ public partial class VirtualMachine
             false,
             false);
 
+        if (_txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
         return (InstructionReturn.Success, callState);
     }
 
