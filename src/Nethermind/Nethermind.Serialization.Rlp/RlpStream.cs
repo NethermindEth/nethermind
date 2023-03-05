@@ -713,9 +713,16 @@ namespace Nethermind.Serialization.Rlp
             }
             else if (lengthOfLength == 3)
             {
-                result = Unsafe.ReadUnaligned<byte>(ref Unsafe.Add(ref firstElement, 2)) |
-                        (Unsafe.ReadUnaligned<byte>(ref Unsafe.Add(ref firstElement, 1)) << 8) |
-                        (Unsafe.ReadUnaligned<byte>(ref firstElement) << 16);
+                if (BitConverter.IsLittleEndian)
+                {
+                    result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1)))
+                        | (result << 16);
+                }
+                else
+                {
+                    result = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1))
+                        | (result << 16);
+                }
             }
             else
             {
