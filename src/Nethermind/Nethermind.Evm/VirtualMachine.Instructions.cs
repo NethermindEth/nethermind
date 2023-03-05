@@ -764,7 +764,7 @@ public partial class VirtualMachine
         Keccak blockHash = _blockhashProvider.GetBlockhash(header, number);
         stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
 
-        if (_txTracer.IsTracingInstructions)
+        if (_logger.IsTrace)
         {
             if (_txTracer.IsTracingBlockHash && blockHash is not null)
             {
