@@ -27,9 +27,7 @@ namespace Nethermind.Core.Caching
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : (typeof(TKey) == typeof(ArraySegment<byte>)
-                    ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.ArraySegmentEqualityComparer)
-                    : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity)); // do not initialize it at the full capacity
+                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
         }
 
         public LruCache(int maxCapacity, string name)

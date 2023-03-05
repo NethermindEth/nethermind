@@ -19,7 +19,6 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
-        [Todo("Figureout a way to index this with a span")]
         private readonly SpanConcurrentDictionary<byte, byte[]?> _db;
 
         public MemDb(string name)
@@ -109,7 +108,7 @@ namespace Nethermind.Db
             return this.LikeABatch();
         }
 
-        public ICollection<byte[]> Keys => _db.Keys.Select(key => key.ToArray()).ToArray();
+        public ICollection<byte[]> Keys => _db.Keys;
         public ICollection<byte[]> Values => _db.Values;
 
         public int Count => _db.Count;

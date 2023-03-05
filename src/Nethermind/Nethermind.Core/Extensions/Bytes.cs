@@ -24,7 +24,6 @@ namespace Nethermind.Core.Extensions
     public static unsafe partial class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
-        public static readonly IEqualityComparer<ArraySegment<byte>> ArraySegmentEqualityComparer = new ArraySegmentBytesEqualityComparer();
         public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
 
@@ -46,19 +45,6 @@ namespace Nethermind.Core.Extensions
             public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
 
             public int GetHashCode(ReadOnlySpan<byte> obj) => GetSimplifiedHashCode(obj);
-        }
-
-        private class ArraySegmentBytesEqualityComparer : EqualityComparer<ArraySegment<byte>>
-        {
-            public override bool Equals(ArraySegment<byte> x, ArraySegment<byte> y)
-            {
-                return AreEqual(x, y);
-            }
-
-            public override int GetHashCode(ArraySegment<byte> obj)
-            {
-                return GetSimplifiedHashCode(obj);
-            }
         }
 
         public class BytesComparer : Comparer<byte[]>
