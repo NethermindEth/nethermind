@@ -882,14 +882,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.SHA3:
                         {
-                            stack.PopUInt256(out UInt256 memSrc);
-                            stack.PopUInt256(out UInt256 memLength);
-                            if (!UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(memLength),
-                                ref gasAvailable)) goto OutOfGas;
-
-                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memSrc, memLength)) goto OutOfGas;
-
-                            InstructionSHA3(ref stack, vmState, in memSrc, in memLength);
+                            if (!InstructionSHA3(ref stack, ref gasAvailable, vmState.Memory)) goto OutOfGas;
                             break;
                         }
                     case Instruction.ADDRESS:

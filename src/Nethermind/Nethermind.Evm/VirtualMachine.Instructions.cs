@@ -24,10 +24,20 @@ using System.Runtime.Intrinsics;
 namespace Nethermind.Evm;
 public partial class VirtualMachine
 {
-    private static void InstructionSHA3(ref EvmStack stack, EvmState vmState, in UInt256 memSrc, in UInt256 memLength)
+    private static bool InstructionSHA3(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory memory)
     {
-        Span<byte> memData = vmState.Memory.LoadSpan(in memSrc, memLength);
+        stack.PopUInt256(out UInt256 memSrc);
+        stack.PopUInt256(out UInt256 memLength);
+
+        if (!UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(memLength),
+            ref gasAvailable)) return false;
+
+        if (!UpdateMemoryCost(memory, ref gasAvailable, in memSrc, memLength)) return false;
+
+        Span<byte> memData = memory.LoadSpan(in memSrc, memLength);
         stack.PushBytes(ValueKeccak.Compute(memData).BytesAsSpan);
+
+        return true;
     }
 
     private static void InstructionBYTE(ref EvmStack stack)
