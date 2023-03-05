@@ -725,228 +725,114 @@ namespace Nethermind.Evm
                             goto Empty;
                         }
                     case Instruction.ADD:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionADD(ref stack);
-                            break;
-                        }
+                        if (!InstructionADD(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.MUL:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionMUL(ref stack);
-                            break;
-                        }
+                        if (!InstructionMUL(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.SUB:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionSUB(ref stack);
-                            break;
-                        }
+                        if (!InstructionSUB(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.DIV:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionDIV(ref stack);
-                            break;
-                        }
+                        if (!InstructionDIV(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.SDIV:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionSDIV(ref stack);
-                            break;
-                        }
+                        if (!InstructionSDIV(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.MOD:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionMOD(ref stack);
-                            break;
-                        }
+                        if (!InstructionMOD(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.SMOD:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionSMOD(ref stack);
-                            break;
-                        }
+                        if (!InstructionSMOD(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.ADDMOD:
-                        {
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionADDMOD(ref stack);
-                            break;
-                        }
+                        if (!InstructionADDMOD(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.MULMOD:
-                        {
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionMULMOD(ref stack);
-                            break;
-                        }
+                        if (!InstructionMULMOD(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.EXP:
-                        {
-                            if (!UpdateGas(GasCostOf.Exp, ref gasAvailable)) goto OutOfGas;
-
-                            if (!InstructionEXP(ref stack, ref gasAvailable, spec)) goto OutOfGas;
-                            break;
-                        }
+                        if (!InstructionEXP(ref stack, ref gasAvailable, spec)) goto OutOfGas;
+                        break;
                     case Instruction.SIGNEXTEND:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionSIGNEXTEND(ref stack);
-                            break;
-                        }
+                        if (!InstructionSIGNEXTEND(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.LT:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionLT(ref stack);
-                            break;
-                        }
+                        if (!InstructionLT(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.GT:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionGT(ref stack);
-                            break;
-                        }
+                        if (!InstructionGT(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.SLT:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionSLT(ref stack);
-                            break;
-                        }
+                        if (!InstructionSLT(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.SGT:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionSGT(ref stack);
-                            break;
-                        }
+                        if (!InstructionSGT(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.EQ:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionEQ(ref stack);
-                            break;
-                        }
+                        if (!InstructionEQ(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.ISZERO:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionISZERO(ref stack);
-                            break;
-                        }
+                        if (!InstructionISZERO(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.AND:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionAND(ref stack);
-                            break;
-                        }
+                        if (!InstructionAND(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.OR:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionOR(ref stack);
-                            break;
-                        }
+                        if (!InstructionOR(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.XOR:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionXOR(ref stack);
-                            break;
-                        }
+                        if (!InstructionXOR(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.NOT:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionNOT(ref stack);
-                            break;
-                        }
+                        if (!InstructionNOT(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.BYTE:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionBYTE(ref stack);
-                            break;
-                        }
+                        if (!InstructionBYTE(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.SHA3:
-                        {
-                            if (!InstructionSHA3(ref stack, ref gasAvailable, vmState.Memory)) goto OutOfGas;
-                            break;
-                        }
+                        if (!InstructionSHA3(ref stack, ref gasAvailable, vmState.Memory)) goto OutOfGas;
+                        break;
                     case Instruction.ADDRESS:
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
-
                             stack.PushBytes(env.ExecutingAccount.Bytes);
-                            break;
                         }
+                        break;
                     case Instruction.BALANCE:
-                        {
-                            if (!InstructionBALANCE(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
-                            break;
-                        }
+                        if (!InstructionBALANCE(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
+                        break;
                     case Instruction.CALLER:
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
-
                             stack.PushBytes(env.Caller.Bytes);
-                            break;
                         }
+                        break;
                     case Instruction.CALLVALUE:
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
-
                             stack.PushUInt256(in env.Value);
-                            break;
                         }
+                        break;
                     case Instruction.ORIGIN:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
-
-                            stack.PushBytes(txCtx.Origin.Bytes);
-                            break;
-                        }
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
+                        stack.PushBytes(txCtx.Origin.Bytes);
+                        break;
                     case Instruction.CALLDATALOAD:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionCALLDATALOAD(ref stack, in env.InputData);
-                            break;
-                        }
+                        if (!InstructionCALLDATALOAD(ref stack, ref gasAvailable, in env.InputData)) goto OutOfGas;
+                        break;
                     case Instruction.CALLDATASIZE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionCALLDATASIZE(ref stack, in env.InputData);
-                            break;
-                        }
+                        if (!InstructionCALLDATASIZE(ref stack, ref gasAvailable, in env.InputData)) goto OutOfGas;
+                        break;
                     case Instruction.CALLDATACOPY:
-                        {
-                            if (!InstructionCALLDATACOPY(ref stack, ref gasAvailable, vmState.Memory, in env.InputData)) goto OutOfGas;
-                            break;
-                        }
+                        if (!InstructionCALLDATACOPY(ref stack, ref gasAvailable, vmState.Memory, in env.InputData)) goto OutOfGas;
+                        break;
                     case Instruction.CODESIZE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionCODESIZE(ref stack, code.Length);
-                            break;
-                        }
+                        if (!InstructionCODESIZE(ref stack, ref gasAvailable, code.Length)) goto OutOfGas;
+                        break;
                     case Instruction.CODECOPY:
-                        {
-                            if (!InstructionCODECOPY(ref stack, ref gasAvailable, vmState.Memory, in code)) goto OutOfGas;
-                            break;
-                        }
+                        if (!InstructionCODECOPY(ref stack, ref gasAvailable, vmState.Memory, in code)) goto OutOfGas;
+                        break;
                     case Instruction.GASPRICE:
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
@@ -955,15 +841,11 @@ namespace Nethermind.Evm
                             break;
                         }
                     case Instruction.EXTCODESIZE:
-                        {
-                            if (!InstructionEXTCODESIZE(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
-                            break;
-                        }
+                        if (!InstructionEXTCODESIZE(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
+                        break;
                     case Instruction.EXTCODECOPY:
-                        {
-                            if (!InstructionEXTCODECOPY(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
-                            break;
-                        }
+                        if (!InstructionEXTCODECOPY(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
+                        break;
                     case Instruction.RETURNDATASIZE:
                         {
                             if (!spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
@@ -982,10 +864,8 @@ namespace Nethermind.Evm
                             break;
                         }
                     case Instruction.BLOCKHASH:
-                        {
-                            if (!InstructionBLOCKHASH(ref stack, ref gasAvailable, txCtx.Header)) goto OutOfGas;
-                            break;
-                        }
+                        if (!InstructionBLOCKHASH(ref stack, ref gasAvailable, txCtx.Header)) goto OutOfGas;
+                        break;
                     case Instruction.COINBASE:
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
@@ -1249,8 +1129,7 @@ namespace Nethermind.Evm
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 gas = (UInt256)gasAvailable;
-                            stack.PushUInt256(in gas);
+                            stack.PushUInt256(gasAvailable);
                             break;
                         }
                     case Instruction.JUMPDEST:
@@ -1406,7 +1285,6 @@ namespace Nethermind.Evm
                     case Instruction.CREATE2:
                         {
                             if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
-
                             if (vmState.IsStatic) goto StaticCallViolation;
 
                             (InstructionReturn result, EvmState? callState) = InstructionCREATE(instruction, ref stack, ref gasAvailable, ref env, vmState, spec);
@@ -1617,37 +1495,21 @@ namespace Nethermind.Evm
                             goto Empty;
                         }
                     case Instruction.SHL:
-                        {
-                            if (!spec.ShiftOpcodesEnabled) goto InvalidInstruction;
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionSHL(ref stack);
-                            break;
-                        }
+                        if (!spec.ShiftOpcodesEnabled) goto InvalidInstruction;
+                        if (!InstructionSHL(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.SHR:
-                        {
-                            if (!spec.ShiftOpcodesEnabled) goto InvalidInstruction;
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionSHR(ref stack);
-                            break;
-                        }
+                        if (!spec.ShiftOpcodesEnabled) goto InvalidInstruction;
+                        if (!InstructionSHR(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.SAR:
-                        {
-                            if (!spec.ShiftOpcodesEnabled) goto InvalidInstruction;
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionSAR(ref stack);
-                            break;
-                        }
+                        if (!spec.ShiftOpcodesEnabled) goto InvalidInstruction;
+                        if (!InstructionSAR(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.EXTCODEHASH:
-                        {
-                            if (!spec.ExtCodeHashOpcodeEnabled) goto InvalidInstruction;
-                            if (!UpdateGas(spec.GetExtCodeHashCost(), ref gasAvailable)) goto OutOfGas;
-
-                            if (!InstructionEXTCODEHASH(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
-                            break;
-                        }
+                        if (!spec.ExtCodeHashOpcodeEnabled) goto InvalidInstruction;
+                        if (!InstructionEXTCODEHASH(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
+                        break;
                     case Instruction.BEGINSUB:
                         {
                             if (!spec.SubroutinesEnabled) goto InvalidInstruction;

@@ -33,6 +33,8 @@ public partial class VirtualMachine
 
     private bool InstructionEXTCODEHASH(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
     {
+        if (!UpdateGas(spec.GetExtCodeHashCost(), ref gasAvailable)) return false;
+
         Address address = stack.PopAddress();
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) return false;
 
@@ -86,8 +88,10 @@ public partial class VirtualMachine
         return true;
     }
 
-    private static void InstructionSHL(ref EvmStack stack)
+    private static bool InstructionSHL(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         if (a >= 256UL)
         {
@@ -100,10 +104,14 @@ public partial class VirtualMachine
             UInt256 res = b << (int)a.u0;
             stack.PushUInt256(in res);
         }
+
+        return true;
     }
 
-    private static void InstructionSHR(ref EvmStack stack)
+    private static bool InstructionSHR(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         if (a >= 256)
         {
@@ -116,10 +124,14 @@ public partial class VirtualMachine
             UInt256 res = b >> (int)a.u0;
             stack.PushUInt256(in res);
         }
+
+        return true;
     }
 
-    private static void InstructionSAR(ref EvmStack stack)
+    private static bool InstructionSAR(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         stack.PopSignedInt256(out Int256.Int256 b);
         if (a >= BigInt256)
@@ -139,6 +151,8 @@ public partial class VirtualMachine
             b.RightShift((int)a, out Int256.Int256 res);
             stack.PushSignedInt256(in res);
         }
+
+        return true;
     }
 
     private (InstructionReturn result, EvmState? callState) InstructionCREATE(Instruction instruction, ref EvmStack stack, ref long gasAvailable, ref ExecutionEnvironment env, EvmState vmState, IReleaseSpec spec)
@@ -519,10 +533,14 @@ public partial class VirtualMachine
         return true;
     }
 
-    private static void InstructionCODESIZE(ref EvmStack stack, int codeLength)
+    private static bool InstructionCODESIZE(ref EvmStack stack, ref long gasAvailable, int codeLength)
     {
+        if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return false;
+
         UInt256 length = (UInt256)codeLength;
         stack.PushUInt256(in length);
+
+        return true;
     }
 
     private bool InstructionCALLDATACOPY(ref EvmStack stack, ref long gasAvailable, EvmPooledMemory? memory, in ReadOnlyMemory<byte> inputData)
@@ -548,16 +566,24 @@ public partial class VirtualMachine
         return true;
     }
 
-    private static void InstructionCALLDATASIZE(ref EvmStack stack, in ReadOnlyMemory<byte> inputData)
+    private static bool InstructionCALLDATASIZE(ref EvmStack stack, ref long gasAvailable, in ReadOnlyMemory<byte> inputData)
     {
+        if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return false;
+
         UInt256 callDataSize = (UInt256)inputData.Length;
         stack.PushUInt256(in callDataSize);
+
+        return true;
     }
 
-    private static void InstructionCALLDATALOAD(ref EvmStack stack, in ReadOnlyMemory<byte> inputData)
+    private static bool InstructionCALLDATALOAD(ref EvmStack stack, ref long gasAvailable, in ReadOnlyMemory<byte> inputData)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 src);
         stack.PushBytes(inputData.SliceWithZeroPadding(src, 32));
+
+        return true;
     }
 
     private bool InstructionBALANCE(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
@@ -589,15 +615,17 @@ public partial class VirtualMachine
         return true;
     }
 
-    private static void InstructionBYTE(ref EvmStack stack)
+    private static bool InstructionBYTE(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 position);
         Span<byte> bytes = stack.PopBytes();
 
         if (position >= BigInt32)
         {
             stack.PushZero();
-            return;
+            return true;
         }
 
         int adjustedPosition = bytes.Length - 32 + (int)position;
@@ -609,20 +637,28 @@ public partial class VirtualMachine
         {
             stack.PushByte(bytes[adjustedPosition]);
         }
+
+        return true;
     }
 
-    private static void InstructionNOT(ref EvmStack stack)
+    private static bool InstructionNOT(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         Span<byte> a = stack.PopBytes();
 
         Vector256<byte> aVec = MemoryMarshal.Read<Vector256<byte>>(a);
         MemoryMarshal.AsRef<Vector256<byte>>(stack.Register) = ~aVec;
 
         stack.PushBytes(stack.Register);
+
+        return true;
     }
 
-    private static void InstructionXOR(ref EvmStack stack)
+    private static bool InstructionXOR(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         Span<byte> a = stack.PopBytes();
         Span<byte> b = stack.PopBytes();
 
@@ -631,10 +667,14 @@ public partial class VirtualMachine
         MemoryMarshal.AsRef<Vector256<byte>>(stack.Register) = aVec ^ bVec;
 
         stack.PushBytes(stack.Register);
+
+        return true;
     }
 
-    private static void InstructionOR(ref EvmStack stack)
+    private static bool InstructionOR(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         Span<byte> a = stack.PopBytes();
         Span<byte> b = stack.PopBytes();
 
@@ -643,10 +683,14 @@ public partial class VirtualMachine
         MemoryMarshal.AsRef<Vector256<byte>>(stack.Register) = aVec | bVec;
 
         stack.PushBytes(stack.Register);
+
+        return true;
     }
 
-    private static void InstructionAND(ref EvmStack stack)
+    private static bool InstructionAND(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         Span<byte> a = stack.PopBytes();
         Span<byte> b = stack.PopBytes();
 
@@ -655,10 +699,14 @@ public partial class VirtualMachine
         MemoryMarshal.AsRef<Vector256<byte>>(stack.Register) = aVec & bVec;
 
         stack.PushBytes(stack.Register);
+
+        return true;
     }
 
-    private static void InstructionISZERO(ref EvmStack stack)
+    private static bool InstructionISZERO(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         Span<byte> a = stack.PopBytes();
         if (a.SequenceEqual(BytesZero32))
         {
@@ -668,10 +716,14 @@ public partial class VirtualMachine
         {
             stack.PushZero();
         }
+
+        return true;
     }
 
-    private static void InstructionEQ(ref EvmStack stack)
+    private static bool InstructionEQ(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         Span<byte> a = stack.PopBytes();
         Span<byte> b = stack.PopBytes();
         if (a.SequenceEqual(b))
@@ -682,10 +734,14 @@ public partial class VirtualMachine
         {
             stack.PushZero();
         }
+
+        return true;
     }
 
-    private static void InstructionSGT(ref EvmStack stack)
+    private static bool InstructionSGT(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         stack.PopSignedInt256(out Int256.Int256 a);
         stack.PopSignedInt256(out Int256.Int256 b);
         if (a.CompareTo(b) > 0)
@@ -696,10 +752,14 @@ public partial class VirtualMachine
         {
             stack.PushZero();
         }
+
+        return true;
     }
 
-    private static void InstructionSLT(ref EvmStack stack)
+    private static bool InstructionSLT(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         stack.PopSignedInt256(out Int256.Int256 a);
         stack.PopSignedInt256(out Int256.Int256 b);
 
@@ -711,10 +771,14 @@ public partial class VirtualMachine
         {
             stack.PushZero();
         }
+
+        return true;
     }
 
-    private static void InstructionGT(ref EvmStack stack)
+    private static bool InstructionGT(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);
         if (a > b)
@@ -725,10 +789,14 @@ public partial class VirtualMachine
         {
             stack.PushZero();
         }
+
+        return true;
     }
 
-    private static void InstructionLT(ref EvmStack stack)
+    private static bool InstructionLT(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);
         if (a < b)
@@ -739,15 +807,19 @@ public partial class VirtualMachine
         {
             stack.PushZero();
         }
+
+        return true;
     }
 
-    private static void InstructionSIGNEXTEND(ref EvmStack stack)
+    private static bool InstructionSIGNEXTEND(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         if (a >= BigInt32)
         {
             stack.EnsureDepth(1);
-            return;
+            return true;
         }
         int position = 31 - (int)a;
 
@@ -764,11 +836,15 @@ public partial class VirtualMachine
         }
 
         stack.PushBytes(b);
+
+        return true;
     }
 
     private static bool InstructionEXP(ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
     {
         Metrics.ModExpOpcode++;
+        
+        if (!UpdateGas(GasCostOf.Exp, ref gasAvailable)) return false;
 
         stack.PopUInt256(out UInt256 baseInt);
         Span<byte> exp = stack.PopBytes();
@@ -802,8 +878,10 @@ public partial class VirtualMachine
         return true;
     }
 
-    private static void InstructionMULMOD(ref EvmStack stack)
+    private static bool InstructionMULMOD(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);
         stack.PopUInt256(out UInt256 mod);
@@ -817,10 +895,14 @@ public partial class VirtualMachine
             UInt256.MultiplyMod(in a, in b, in mod, out UInt256 res);
             stack.PushUInt256(in res);
         }
+
+        return true;
     }
 
-    private static void InstructionADDMOD(ref EvmStack stack)
+    private static bool InstructionADDMOD(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);
         stack.PopUInt256(out UInt256 mod);
@@ -834,10 +916,14 @@ public partial class VirtualMachine
             UInt256.AddMod(a, b, mod, out UInt256 res);
             stack.PushUInt256(in res);
         }
+
+        return true;
     }
 
-    private static void InstructionSMOD(ref EvmStack stack)
+    private static bool InstructionSMOD(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
+
         stack.PopSignedInt256(out Int256.Int256 a);
         stack.PopSignedInt256(out Int256.Int256 b);
         if (b.IsZero || b.IsOne)
@@ -849,18 +935,26 @@ public partial class VirtualMachine
             a.Mod(in b, out Int256.Int256 mod);
             stack.PushSignedInt256(in mod);
         }
+
+        return true;
     }
 
-    private static void InstructionMOD(ref EvmStack stack)
+    private static bool InstructionMOD(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);
         UInt256.Mod(in a, in b, out UInt256 result);
         stack.PushUInt256(in result);
+
+        return true;
     }
 
-    private static void InstructionDIV(ref EvmStack stack)
+    private static bool InstructionDIV(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);
         if (b.IsZero)
@@ -872,10 +966,14 @@ public partial class VirtualMachine
             UInt256.Divide(in a, in b, out UInt256 res);
             stack.PushUInt256(in res);
         }
+
+        return true;
     }
 
-    private static void InstructionSDIV(ref EvmStack stack)
+    private static bool InstructionSDIV(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         stack.PopSignedInt256(out Int256.Int256 b);
         if (b.IsZero)
@@ -893,30 +991,44 @@ public partial class VirtualMachine
             Int256.Int256.Divide(in signedA, in b, out Int256.Int256 res);
             stack.PushSignedInt256(in res);
         }
+
+        return true;
     }
 
-    private static void InstructionSUB(ref EvmStack stack)
+    private static bool InstructionSUB(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);
         UInt256.Subtract(in a, in b, out UInt256 result);
 
         stack.PushUInt256(in result);
+
+        return true;
     }
 
-    private static void InstructionMUL(ref EvmStack stack)
+    private static bool InstructionMUL(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 a);
         stack.PopUInt256(out UInt256 b);
         UInt256.Multiply(in a, in b, out UInt256 res);
         stack.PushUInt256(in res);
+
+        return true;
     }
 
-    private static void InstructionADD(ref EvmStack stack)
+    private static bool InstructionADD(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
         stack.PopUInt256(out UInt256 b);
         stack.PopUInt256(out UInt256 a);
         UInt256.Add(in a, in b, out UInt256 c);
         stack.PushUInt256(c);
+
+        return true;
     }
 }
