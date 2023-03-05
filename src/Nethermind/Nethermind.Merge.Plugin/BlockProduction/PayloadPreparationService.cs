@@ -52,6 +52,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
+        private IBlockImprovementContext? _currentBuildingContext;
 
         public PayloadPreparationService(
             PostMergeBlockProducer blockProducer,
@@ -119,7 +120,9 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
         {
             if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
+            _currentBuildingContext?.Dispose();
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
+            _currentBuildingContext = blockImprovementContext;
             blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
             blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
             {
