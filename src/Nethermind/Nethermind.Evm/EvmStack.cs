@@ -124,6 +124,7 @@ namespace Nethermind.Evm
 
         private static readonly byte[] OneStackItem = { 1 };
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void PushOne()
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(OneStackItem);
@@ -142,6 +143,7 @@ namespace Nethermind.Evm
 
         private static readonly byte[] ZeroStackItem = { 0 };
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public void PushZero()
         {
             if (_tracer.IsTracingInstructions)
@@ -175,6 +177,14 @@ namespace Nethermind.Evm
             }
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void PushUInt256(ulong value)
+        {
+            UInt256 uint256 = value;
+            PushUInt256(in uint256);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
         internal void PushUInt256(long value)
         {
             UInt256 uint256 = (UInt256)value;

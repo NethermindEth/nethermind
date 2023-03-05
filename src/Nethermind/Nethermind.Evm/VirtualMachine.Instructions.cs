@@ -1062,7 +1062,7 @@ public partial class VirtualMachine
         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
 
         Span<byte> a = stack.PopBytes();
-        if (a.SequenceEqual(BytesZero32))
+        if (a.IsZero())
         {
             stack.PushOne();
         }

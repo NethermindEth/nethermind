@@ -893,8 +893,7 @@ namespace Nethermind.Evm
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 timestamp = txCtx.Header.Timestamp;
-                            stack.PushUInt256(in timestamp);
+                            stack.PushUInt256(txCtx.Header.Timestamp);
                             break;
                         }
                     case Instruction.NUMBER:
@@ -933,8 +932,7 @@ namespace Nethermind.Evm
                             if (!spec.BaseFeeEnabled) goto InvalidInstruction;
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 baseFee = txCtx.Header.BaseFeePerGas;
-                            stack.PushUInt256(in baseFee);
+                            stack.PushUInt256(in txCtx.Header.BaseFeePerGas);
                             break;
                         }
                     case Instruction.DATAHASH:
@@ -1011,8 +1009,7 @@ namespace Nethermind.Evm
                             if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
 
                             stack.PopUInt256(out UInt256 jumpDest);
-                            Span<byte> condition = stack.PopBytes();
-                            if (!condition.SequenceEqual(BytesZero32))
+                            if (!stack.PopBytes().IsZero())
                             {
                                 Jump(jumpDest);
                             }
@@ -1030,8 +1027,7 @@ namespace Nethermind.Evm
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 size = vmState.Memory.Size;
-                            stack.PushUInt256(in size);
+                            stack.PushUInt256(vmState.Memory.Size);
                             break;
                         }
                     case Instruction.GAS:
