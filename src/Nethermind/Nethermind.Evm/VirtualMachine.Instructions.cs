@@ -30,7 +30,117 @@ public partial class VirtualMachine
         OutOfGas,
         AccessViolation
     }
-    
+
+    private bool InstructionEXTCODEHASH(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
+    {
+        Address address = stack.PopAddress();
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) return false;
+
+        if (!_state.AccountExists(address) || _state.IsDeadAccount(address))
+        {
+            stack.PushZero();
+        }
+        else
+        {
+            stack.PushBytes(_state.GetCodeHash(address).Bytes);
+        }
+
+        return true;
+    }
+
+    private bool InstructionSELFDESTRUCT(ref EvmStack stack, ref long gasAvailable, EvmState vmState, Address executingAccount, IReleaseSpec spec)
+    {
+        Metrics.SelfDestructs++;
+
+        Address inheritor = stack.PopAddress();
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) return false;
+
+        vmState.DestroyList.Add(executingAccount);
+
+        UInt256 ownerBalance = _state.GetBalance(executingAccount);
+        if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, ownerBalance, inheritor);
+        if (spec.ClearEmptyAccountWhenTouched && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
+        {
+            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return false;
+        }
+
+        bool inheritorAccountExists = _state.AccountExists(inheritor);
+        if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
+        {
+            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return false;
+        }
+
+        if (!inheritorAccountExists)
+        {
+            _state.CreateAccount(inheritor, ownerBalance);
+        }
+        else if (!inheritor.Equals(executingAccount))
+        {
+            _state.AddToBalance(inheritor, ownerBalance, spec);
+        }
+
+        _state.SubtractFromBalance(executingAccount, ownerBalance, spec);
+
+        if (_txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+
+        return true;
+    }
+
+    private static void InstructionSHL(ref EvmStack stack)
+    {
+        stack.PopUInt256(out UInt256 a);
+        if (a >= 256UL)
+        {
+            stack.PopLimbo();
+            stack.PushZero();
+        }
+        else
+        {
+            stack.PopUInt256(out UInt256 b);
+            UInt256 res = b << (int)a.u0;
+            stack.PushUInt256(in res);
+        }
+    }
+
+    private static void InstructionSHR(ref EvmStack stack)
+    {
+        stack.PopUInt256(out UInt256 a);
+        if (a >= 256)
+        {
+            stack.PopLimbo();
+            stack.PushZero();
+        }
+        else
+        {
+            stack.PopUInt256(out UInt256 b);
+            UInt256 res = b >> (int)a.u0;
+            stack.PushUInt256(in res);
+        }
+    }
+
+    private static void InstructionSAR(ref EvmStack stack)
+    {
+        stack.PopUInt256(out UInt256 a);
+        stack.PopSignedInt256(out Int256.Int256 b);
+        if (a >= BigInt256)
+        {
+            if (b.Sign >= 0)
+            {
+                stack.PushZero();
+            }
+            else
+            {
+                Int256.Int256 res = Int256.Int256.MinusOne;
+                stack.PushSignedInt256(in res);
+            }
+        }
+        else
+        {
+            b.RightShift((int)a, out Int256.Int256 res);
+            stack.PushSignedInt256(in res);
+        }
+    }
+
     private (InstructionReturn result, EvmState? callState) InstructionCREATE(Instruction instruction, ref EvmStack stack, ref long gasAvailable, ref ExecutionEnvironment env, EvmState vmState, IReleaseSpec spec)
     {
         // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
