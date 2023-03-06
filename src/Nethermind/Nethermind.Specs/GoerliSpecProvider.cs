@@ -57,7 +57,6 @@ namespace Nethermind.Specs
         public const long BerlinBlockNumber = 4_460_644;
         public const long LondonBlockNumber = 5_062_605;
         public const ulong ShanghaiTimestamp = 1678832736;
-        public static ForkActivation ShanghaiActivation = (LondonBlockNumber, ShanghaiTimestamp);
         public ulong NetworkId => BlockchainIds.Goerli;
         public ulong ChainId => NetworkId;
 
@@ -66,7 +65,7 @@ namespace Nethermind.Specs
             (ForkActivation)IstanbulBlockNumber,
             (ForkActivation)BerlinBlockNumber,
             (ForkActivation)LondonBlockNumber,
-            ShanghaiActivation
+            (LondonBlockNumber, ShanghaiTimestamp)
         };
     }
 }
