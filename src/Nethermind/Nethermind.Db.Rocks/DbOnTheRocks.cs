@@ -781,20 +781,20 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 // The default l1SizeTarget is 256MB, so the compaction is fairly light. But the default options is not very
                 // efficient for write amplification to conserve memory, so the write amplification reduction is noticeable.
                 // Does not seems to impact sync performance, might improve sync time slightly if user is IO limited.
-                ApplyOptions(GetHeavyWriteOptions(64, (ulong) 1.GiB()));
+                ApplyOptions(GetHeavyWriteOptions(64));
                 break;
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
                 // Its unclear if it improve or slow down sync time. Seems to be the sweet spot.
-                ApplyOptions(GetHeavyWriteOptions(256, (ulong) 5.GiB()));
+                ApplyOptions(GetHeavyWriteOptions(256));
                 break;
             case ITunableDb.TuneType.AggressiveHeavyWrite:
                 // Large, 1 minute long compaction every 7 minute or so. If you don't specify a ratelimiter, snap sync
                 // effectively hang during this 1 minute and snap pivot change every time. Likely slow down sync time.
-                ApplyOptions(GetHeavyWriteOptions(512, (ulong) 20.GiB()));
+                ApplyOptions(GetHeavyWriteOptions(512));
                 break;
             case ITunableDb.TuneType.VeryAggressiveHeavyWrite:
-                ApplyOptions(GetHeavyWriteOptions(1024, (ulong) 50.GiB()));
+                ApplyOptions(GetHeavyWriteOptions(1024));
                 break;
             case ITunableDb.TuneType.DisableCompaction:
                 // Completely disable compaction. On mainnet, max num of l0 files for state seems to be about 5400.
@@ -804,7 +804,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 // the network stack to hang and triggers a large peer drops. Also happens on lesser tune, but weaker.
                 // With all those cons, this result in the minimum write amplification possible via tweaking compaction.
                 // Not recommended for mainnet, unless you are desperate.
-                IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(10000, (ulong) 100.GiB());
+                IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(10000);
                 heavyWriteOption["disable_auto_compactions"] = "true";
                 ApplyOptions(heavyWriteOption);
                 break;
@@ -846,19 +846,16 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     /// </summary>
     /// <param name="l0FileNumTarget">
     ///  This caps the maximum allowed number of l0 files, which is also the read response time amplification.
-    ///  Sometimes, l1SizeTarget will take into effect first, but for some db, like code, this limit
-    ///  will be reached first. It depends on the size of l0 files which seems to be its write buffer size * 2.
-    /// </param>
-    /// <param name="l1SizeTarget">
-    ///  Specify a target size for l1. This target how much the l0->l1 will need to compact, which control
-    ///  how often and how long do each compaction take, and also effect write amplification.
-    ///
-    ///  Contrary to the doc, l0->l1 compaction still seems to get triggered at l1 size even if l0 file num is not triggered.
-    ///  Anyway, its recommended to set this the same size as l0 anyway.
     /// </param>
     /// <returns></returns>
-    private IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget, ulong l1SizeTarget)
+    private IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget)
     {
+        // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,
+        // the extra size in l1 is basically extra rewrites. If l0 is larger... then I don't know why not. Even so, it seems to
+        // always get triggered when l0 size exceed max_bytes_for_level_base even if file num is less than l0FileNumTarget.
+        // The 2 here is min write buffer to merge.
+        ulong l1SizeTarget = l0FileNumTarget * _perTableDbConfig.WriteBufferSize * 2;
+
         return new Dictionary<string, string>()
         {
             { "max_bytes_for_level_base", l1SizeTarget.ToString() },
