@@ -383,6 +383,24 @@ internal static class EvmObjectFormat
                     }
                 }
 
+                if (opcode is Instruction.JUMPF)
+                {
+                    if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-6206 : JUMPF Argument underflow");
+                        return false;
+                    }
+
+                    var targetSectionId = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
+
+                    BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, ref codeBitmap, ref postInstructionByte);
+                    if (targetSectionId < header.CodeSectionsSize)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-6206 : JUMPF to unknown code section");
+                        return false;
+                    }
+                }
+
                 if (opcode is Instruction.RJUMPV)
                 {
                     if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
@@ -532,7 +550,7 @@ internal static class EvmObjectFormat
                     }
 
                     int posPostOpcode = pos + 1;
-                    if (opcode is Instruction.CALLF)
+                    if (opcode is Instruction.CALLF or Instruction.JUMPF)
                     {
                         ushort sectionIndex = code.Slice(posPostOpcode, TWO_BYTE_LENGTH).ReadEthUInt16();
                         inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
@@ -550,6 +568,18 @@ internal static class EvmObjectFormat
 
                     switch (opcode)
                     {
+                        case Instruction.JUMPF:
+                            {
+                                int curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+
+                                if (curr_outputs < outputs)
+                                {
+                                    if (Logger.IsTrace) Logger.Trace($"EIP-6206 : Output Count {outputs} must be less or equal than sectionId {sectionId} output count {curr_outputs}");
+                                    return false;
+                                }
+
+                                break;
+                            }
                         case Instruction.RJUMP:
                             {
                                 short offset = code.Slice(posPostOpcode, TWO_BYTE_LENGTH).ReadEthInt16();
@@ -592,7 +622,14 @@ internal static class EvmObjectFormat
 
                     if (opcode.IsTerminating())
                     {
-                        var expectedHeight = opcode is Instruction.RETF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + 1] : stackHeight;
+                        int curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                        var expectedHeight = opcode switch
+                        {
+                            Instruction.RETF => typesection[sectionId * MINIMUM_TYPESECTION_SIZE + 1],
+                            Instruction.JUMPF => curr_outputs + inputs - outputs,
+                            _ => stackHeight
+                        };
+
                         if (expectedHeight != stackHeight)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {stackHeight}");

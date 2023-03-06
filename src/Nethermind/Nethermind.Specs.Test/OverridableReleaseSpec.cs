@@ -213,6 +213,19 @@ namespace Nethermind.Specs.Test
             }
         }
         public bool IsEip4895Enabled => _spec.IsEip4895Enabled;
+        private bool? _overridenIsEip6206Enabled;
+        public bool IsEip6206Enabled
+        {
+            get
+            {
+                return _overridenIsEip6206Enabled ?? _spec.IsEip6206Enabled;
+            }
+            set
+            {
+                _overridenIsEip6206Enabled = value;
+            }
+        }
+
         public ulong WithdrawalTimestamp => _spec.WithdrawalTimestamp;
     }
 }

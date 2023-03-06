@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Evm
@@ -20,6 +20,7 @@ namespace Nethermind.Evm
         public const long RJumpi = 4;
         public const long RJumpv = 4;
         public const long Callf = 5;
+        public const long Jumpf = 5;
         public const long Retf = 3;
         public const long SLoadEip150 = 200;
         public const long SLoadEip1884 = 800;

@@ -90,6 +90,8 @@ namespace Nethermind.Evm
         BEGINSUB = 0x5c, // SubroutinesEnabled
         RETURNSUB = 0x5d, // SubroutinesEnabled
         JUMPSUB = 0x5e, // SubroutinesEnabled
+        JUMPF = 0xb2,
+
 
         PUSH0 = 0x5f, // IncludePush0Instruction
         PUSH1 = 0x60,
@@ -196,6 +198,7 @@ namespace Nethermind.Evm
         public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
             Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
+            Instruction.JUMPF => true,
             // Instruction.SELFDESTRUCT => true
             _ => false
         };

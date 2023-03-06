@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -3079,7 +3080,7 @@ namespace Nethermind.Evm
                             }
 
                             var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
-                            var inputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE];
+                            env.CodeInfo.GetSectionMetadata(index, out int inputCount, out int outputCount, out int maxStack);
 
                             if (vmState.ReturnStackHead > EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT)
                             {
@@ -3112,8 +3113,6 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
 
-                            var index = sectionIndex;
-                            var outputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + 1];
                             if (vmState.ReturnStackHead-- == 0)
                             {
                                 break;
@@ -3122,6 +3121,33 @@ namespace Nethermind.Evm
                             var stackFrame = vmState.ReturnStack[vmState.ReturnStackHead];
                             sectionIndex = stackFrame.Index;
                             programCounter = stackFrame.Offset;
+                            break;
+                        }
+                    case Instruction.JUMPF:
+                        {
+                            if (!spec.JumpfOpcodeEnabled || env.CodeInfo.EofVersion() == 0)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                                return CallResult.InvalidInstructionException;
+                            }
+
+                            if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) // still undecided in EIP
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
+                            env.CodeInfo.GetSectionMetadata(index, out int targetInputCount, out int targetOutputCount, out int maxStackHeight);
+                            env.CodeInfo.GetSectionMetadata(sectionIndex, out int currentInputCount, out int currentOutputCount, out _);
+                            if (stack.Head > maxStackHeight - MaxCallDepth)
+                            {
+                                return CallResult.StackOverflowException;
+                            }
+
+                            sectionIndex = index;
+                            programCounter = 0;
+
                             break;
                         }
                     default:

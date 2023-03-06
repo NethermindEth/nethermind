@@ -275,6 +275,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip5450Enabled { get; }
 
+        /// <summary>
+        /// Jumpf Inclusion
+        /// </summary>
+        bool IsEip6206Enabled { get; }
+
 
         /// <summary>
         /// Gets or sets a value indicating whether the
@@ -341,7 +346,10 @@ namespace Nethermind.Core.Specs
         public bool ShiftOpcodesEnabled => IsEip145Enabled;
 
         public bool SubroutinesEnabled => IsEip2315Enabled;
+
         public bool StaticRelativeJumpsEnabled => IsEip4200Enabled;
+
+        public bool JumpfOpcodeEnabled => IsEip6206Enabled;
 
         public bool FunctionSections => IsEip4750Enabled;
 
