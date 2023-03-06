@@ -946,11 +946,11 @@ public partial class VirtualMachine
         stack.PopUInt256(out UInt256 src);
         stack.PopUInt256(out UInt256 length);
         if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
-            ref gasAvailable)) return true;
+            ref gasAvailable)) return false;
 
         if (!length.IsZero)
         {
-            if (!UpdateMemoryCost(memory, ref gasAvailable, in dest, length)) return true;
+            if (!UpdateMemoryCost(memory, ref gasAvailable, in dest, length)) return false;
 
             ZeroPaddedMemory callDataSlice = inputData.SliceWithZeroPadding(src, (int)length);
             memory.Save(in dest, callDataSlice);
