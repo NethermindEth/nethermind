@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto
 {
+    [DebuggerDisplay("Value = {BytesAsSpan.ToHexString(true)}")]
     public unsafe struct ValueKeccak
     {
         internal const int Size = 32;
@@ -50,6 +51,7 @@ namespace Nethermind.Core.Crypto
     /// <summary>
     /// Used as dictionary key with implicit conversion to devirtualize comparisions
     /// </summary>
+    [DebuggerDisplay("Keccak:{Bytes.ToHexString(true)}")]
     [DebuggerStepThrough]
     public readonly struct KeccakKey : IEquatable<KeccakKey>, IComparable<KeccakKey>
     {
@@ -109,6 +111,7 @@ namespace Nethermind.Core.Crypto
         }
     }
 
+    [DebuggerDisplay("Keccak:{ToString()}")]
     [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>, IComparable<Keccak>
     {

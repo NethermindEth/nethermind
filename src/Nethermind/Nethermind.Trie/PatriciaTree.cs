@@ -284,16 +284,21 @@ namespace Nethermind.Trie
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
+        public object StateRootLock { get; } = new object();
+
         private void SetRootHash(Keccak? value, bool resetObjects)
         {
-            _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
-            if (_rootHash == Keccak.EmptyTreeHash)
+            lock (StateRootLock)
             {
-                RootRef = null;
-            }
-            else if (resetObjects)
-            {
-                RootRef = TrieStore.FindCachedOrUnknown(_rootHash);
+                _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
+                if (_rootHash == Keccak.EmptyTreeHash)
+                {
+                    RootRef = null;
+                }
+                else if (resetObjects)
+                {
+                    RootRef = TrieStore.FindCachedOrUnknown(_rootHash);
+                }
             }
         }
 

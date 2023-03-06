@@ -75,6 +75,8 @@ namespace Nethermind.State
             set => _tree.RootHash = value;
         }
 
+        public object StateRootLock => _tree.StateRootLock;
+
         private readonly StateTree _tree;
 
         public bool AccountExists(Address address)

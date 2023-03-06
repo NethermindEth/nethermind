@@ -40,7 +40,11 @@ namespace Nethermind.Core.Test.Blockchain;
 
 public class TestBlockchain : IDisposable
 {
+#if DEBUG
+    public const int DefaultTimeout = 600_000;
+#else
     public const int DefaultTimeout = 4000;
+#endif
     public IStateReader StateReader { get; private set; } = null!;
     public IEthereumEcdsa EthereumEcdsa { get; private set; } = null!;
     public INonceManager NonceManager { get; private set; } = null!;

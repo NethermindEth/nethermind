@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core;
 
-[DebuggerDisplay("{Hash} ({Number})")]
+[DebuggerDisplay("{Hash}|{Number}|Root{StateRoot}")]
 public class Block
 {
     public Block(BlockHeader blockHeader, BlockBody body)
