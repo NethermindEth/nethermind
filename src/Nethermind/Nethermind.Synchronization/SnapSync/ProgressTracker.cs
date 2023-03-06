@@ -62,6 +62,9 @@ namespace Nethermind.Synchronization.SnapSync
 
             _pivot = new Pivot(blockTree, logManager);
 
+            if (accountRangePartitionCount < 1 || accountRangePartitionCount > 256)
+                throw new ArgumentException("Account range partition must be between 1 to 256.");
+
             _accountRangePartitionCount = accountRangePartitionCount;
             SetupAccountRangePartition();
 
@@ -76,7 +79,6 @@ namespace Nethermind.Synchronization.SnapSync
             // either on proof generation or validation.
             byte curStartingPath = 0;
             int partitionSize = (256 / _accountRangePartitionCount);
-            if (partitionSize == 0) throw new ArgumentException("Too many snap partition");
 
             for (var i = 0; i < _accountRangePartitionCount; i++)
             {
