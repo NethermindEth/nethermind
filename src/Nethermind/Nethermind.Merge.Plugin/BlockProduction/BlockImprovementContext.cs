@@ -22,11 +22,11 @@ public class BlockImprovementContext : IBlockImprovementContext
         TimeSpan timeout,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime)
+        TimeSpan startTimeStamp)
     {
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
-        StartDateTime = startDateTime;
+        StartTimeStamp = startTimeStamp;
         ImprovementTask = blockProductionTrigger
             .BuildBlock(parentHeader, _cancellationTokenSource.Token, _feesTracer, payloadAttributes)
             .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
@@ -52,7 +52,7 @@ public class BlockImprovementContext : IBlockImprovementContext
     }
 
     public bool Disposed { get; private set; }
-    public DateTimeOffset StartDateTime { get; }
+    public TimeSpan StartTimeStamp { get; }
 
     public void Dispose()
     {
