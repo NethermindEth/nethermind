@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -18,7 +18,7 @@ public class EofCodeInfo : ICodeInfo
     public ReadOnlyMemory<byte> TypeSection { get; }
     public ReadOnlyMemory<byte> CodeSection { get; }
     public ReadOnlyMemory<byte> DataSection { get; }
-    public int SectionOffset(int sectionId) => _header.CodeSections[sectionId].Start;
+    public int SectionOffset(int sectionId) => _header.CodeSections[sectionId].Start - _header.TypeSection.EndOffset;
 
     public bool ValidateJump(int destination, bool isSubroutine)
     {

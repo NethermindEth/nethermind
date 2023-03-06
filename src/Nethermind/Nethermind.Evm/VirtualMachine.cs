@@ -3114,7 +3114,7 @@ namespace Nethermind.Evm
 
                             var index = sectionIndex;
                             var outputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + 1];
-                            if (--vmState.ReturnStackHead == 0)
+                            if (vmState.ReturnStackHead-- == 0)
                             {
                                 break;
                             }
