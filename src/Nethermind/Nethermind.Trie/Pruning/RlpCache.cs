@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Logging;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -12,6 +13,7 @@ namespace Nethermind.Trie.Pruning;
 
 public class RlpCache
 {
+    private readonly ILogger _logger;
     private readonly int _size;
     private const int DefaultRlpCacheSize = 4096;
     private readonly RlpCacheItem[] _items;
@@ -19,8 +21,9 @@ public class RlpCache
 
     private const bool IsSet = true;
 
-    public RlpCache(int size = DefaultRlpCacheSize)
+    public RlpCache(ILogger logger, int size = DefaultRlpCacheSize)
     {
+        _logger = logger;
         _size = size;
         _items = new RlpCacheItem[size];
         _rlpCacheSet = new BitArray(size);
@@ -91,13 +94,21 @@ public class RlpCache
         (int)(MemoryMarshal.Read<uint>(keccak.Bytes.Slice(Keccak.Size - sizeof(uint))) % _size);
 
     /// <summary>
-    /// Clears the set flags, so that all the cache items can be written again.
+    /// Prepares the next round of writes.
     /// </summary>
-    public void ClearSetFlags() => _rlpCacheSet.SetAll(!IsSet);
+    public void PrepareNextRound()
+    {
+        if (_logger.IsInfo)
+        {
+            _logger.Info($"RlpCache metrics | Write Attempts: ${Metrics.RlpCacheWriteAttempts,15} | Actual Writes: ${Metrics.RlpCacheWrites,15} | Cache Hits: ${Metrics.RlpCacheHits,15}");
+        }
+
+        _rlpCacheSet.SetAll(!IsSet);
+    }
 
     public void Clear()
     {
         Array.Clear(_items);
-        ClearSetFlags();
+        PrepareNextRound();
     }
 }

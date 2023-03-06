@@ -149,13 +149,13 @@ namespace Nethermind.Trie.Pruning
             IPersistenceStrategy? persistenceStrategy,
             ILogManager? logManager)
         {
-            _rlpCache = new RlpCache();
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
+            _rlpCache = new RlpCache(_logger);
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
-            _rlpCache = new RlpCache();
+
         }
 
         public long LastPersistedBlockNumber
@@ -504,7 +504,7 @@ namespace Nethermind.Trie.Pruning
                 long newMemory = 0;
 
                 // clear the write set before starting the walk
-                _rlpCache.ClearSetFlags();
+                _rlpCache.PrepareNextRound();
 
                 foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
                 {
