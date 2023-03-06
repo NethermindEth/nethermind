@@ -16,6 +16,8 @@ using System.Runtime.Intrinsics;
 namespace Nethermind.Evm;
 public partial class VirtualMachine
 {
+    private static readonly UInt256 UInt256ThirtyTwo = 32;
+
     private enum InstructionReturn
     {
         Success,
@@ -207,7 +209,7 @@ public partial class VirtualMachine
             if (traceOpcodes)
             {
                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
+                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, in UInt256ThirtyTwo);
                 _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
             }
 
@@ -379,7 +381,7 @@ public partial class VirtualMachine
 
         Span<byte> data = stack.PopBytes();
 
-        if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, 32)) return false;
+        if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, in UInt256ThirtyTwo)) return false;
 
         vmState.Memory.SaveWord(in memPosition, data);
         if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, data.SliceWithZeroPadding(0, 32, PadDirection.Left));
@@ -394,7 +396,7 @@ public partial class VirtualMachine
 
         stack.PopUInt256(out UInt256 memPosition);
 
-        if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, 32)) return false;
+        if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memPosition, in UInt256ThirtyTwo)) return false;
 
         Span<byte> memData = vmState.Memory.LoadSpan(in memPosition);
         if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(memPosition, memData);
