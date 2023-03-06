@@ -51,44 +51,13 @@ namespace Nethermind.Trie
 
         public byte[]? FullRlp => _rlpStream?.Data;
 
-        private long _value;
+        public NodeType NodeType { get; set; }
 
-        private const long NodeTypeMask = 0b11;
-        private const long DirtyMask = 0b100;
-        private const int DirtyShift = 2;
-        private const long PersistedMask = 0b1000;
-        private const int PersistedShift = 3;
+        public bool IsDirty { get; private set; }
 
-        private const int LastSeenShift = 8;
+        public bool IsPersisted { get; set; }
 
-        private const long IsBoundaryProofNodeMask = 0b10_0000;
-        private const int IsBoundaryProofNodeShift = 5;
-
-        // 6, 7 bits are free to use
-
-        public NodeType NodeType
-        {
-            get => (NodeType)(_value & NodeTypeMask);
-            private set => _value = (_value & ~NodeTypeMask) | (long)value;
-        }
-
-        public bool IsDirty
-        {
-            get => (_value & DirtyMask) > 0;
-            private set => _value = (_value & ~DirtyMask) | (value ? 1L << DirtyShift : 0L);
-        }
-
-        public bool IsPersisted
-        {
-            get => (_value & PersistedMask) > 0;
-            set => _value = (_value & ~PersistedMask) | (value ? (1L << PersistedShift) : 0L);
-        }
-
-        public bool IsBoundaryProofNode
-        {
-            get => (_value & IsBoundaryProofNodeMask) > 0;
-            set => _value = (_value & ~IsBoundaryProofNodeMask) | (value ? (1L << IsBoundaryProofNodeShift) : 0L);
-        }
+        public bool IsBoundaryProofNode { get; set; }
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
@@ -96,11 +65,7 @@ namespace Nethermind.Trie
 
         public const long LastSeenNotSet = 0L;
 
-        public long LastSeen
-        {
-            get => _value >> LastSeenShift;
-            set => _value = (_value & ((1L << LastSeenShift) - 1)) | (value << LastSeenShift);
-        }
+        public long LastSeen { get; set; }
 
         private TrieNode? StorageRoot
         {
