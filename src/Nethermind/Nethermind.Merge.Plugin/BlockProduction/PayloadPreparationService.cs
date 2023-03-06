@@ -126,7 +126,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
         {
             if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
-            IBlockImprovementContext blockImprovementContext =_currentBuildingContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
+            IBlockImprovementContext blockImprovementContext = _currentBuildingContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
             blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
             blockImprovementContext.ImprovementTask.ContinueWith(async t =>
             {
@@ -137,10 +137,14 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 {
                     if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
                     await Task.Delay(_improvementDelay);
-                    if (!blockImprovementContext.Disposed && t.IsCanceled == false) // if GetPayload wasn't called for this item or it wasn't cleared
+                    if (!blockImprovementContext.Disposed && t.IsCompletedSuccessfully) // if GetPayload wasn't called for this item or it wasn't cleared
                     {
                         Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
                         ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
+                    }
+                    else if (t.IsFaulted)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved as improvement failed");
                     }
                     else
                     {
