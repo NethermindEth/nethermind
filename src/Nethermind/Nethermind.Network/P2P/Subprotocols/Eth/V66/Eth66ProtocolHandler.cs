@@ -192,7 +192,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
 
-            _pooledTxsRequestor.RequestTransactionsEth66(Send, msg.Hashes.ToArray());
+            _pooledTxsRequestor.RequestTransactionsEth66(Send, msg.Hashes);
 
             stopwatch.Stop();
             if (Logger.IsTrace)
