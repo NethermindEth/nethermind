@@ -23,7 +23,62 @@ public partial class VirtualMachine
         OutOfGas,
         AccessViolation,
         InvalidInstruction,
-        StaticCallViolation
+        StaticCallViolation,
+        StackOverflow,
+        InvalidJumpDestination
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private InstructionReturn InstructionJUMPSUB(ref EvmStack stack, ref long gasAvailable, EvmState vmState, ref int programCounter, in ExecutionEnvironment env)
+    {
+        if (!UpdateGas(GasCostOf.High, ref gasAvailable)) return InstructionReturn.OutOfGas;
+
+        if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
+        {
+            return InstructionReturn.StackOverflow;
+        }
+
+        vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
+
+        stack.PopUInt256(out UInt256 jumpDest);
+        if (!Jump(jumpDest, ref programCounter, in env, true))
+        {
+            return InstructionReturn.InvalidJumpDestination;
+        }
+
+        programCounter++;
+
+        return InstructionReturn.Success;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private InstructionReturn InstructionJUMPI(ref EvmStack stack, ref long gasAvailable, ref int programCounter, in ExecutionEnvironment env)
+    {
+        if (!UpdateGas(GasCostOf.High, ref gasAvailable)) return InstructionReturn.OutOfGas;
+
+        stack.PopUInt256(out UInt256 jumpDest);
+        if (!stack.PopBytes().IsZero())
+        {
+            if (!Jump(jumpDest, ref programCounter, in env))
+            {
+                return InstructionReturn.InvalidJumpDestination;
+            }
+        }
+
+        return InstructionReturn.Success;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private InstructionReturn InstructionJUMP(ref EvmStack stack, ref long gasAvailable, ref int programCounter, in ExecutionEnvironment env)
+    {
+        if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) return InstructionReturn.OutOfGas;
+
+        stack.PopUInt256(out UInt256 jumpDest);
+        if (!Jump(jumpDest, ref programCounter, in env))
+        {
+            return InstructionReturn.InvalidJumpDestination;
+        }
+        return InstructionReturn.Success;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -204,8 +259,6 @@ public partial class VirtualMachine
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool InstructionLOG(ref EvmStack stack, ref long gasAvailable, EvmState vmState, Instruction instruction, Address executingAccount)
     {
-        if (!UpdateGas(GasCostOf.TStore, ref gasAvailable)) return false;
-
         stack.PopUInt256(out UInt256 memoryPos);
         stack.PopUInt256(out UInt256 length);
         long topicsCount = instruction - Instruction.LOG0;

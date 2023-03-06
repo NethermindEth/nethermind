@@ -405,7 +405,7 @@ namespace Nethermind.Evm
             }
         }
 
-        public List<string> GetStackTrace()
+        public readonly List<string> GetStackTrace()
         {
             List<string> stackTrace = new();
             for (int i = 0; i < Head; i++)

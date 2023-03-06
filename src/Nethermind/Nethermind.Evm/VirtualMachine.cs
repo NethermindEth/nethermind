@@ -642,51 +642,11 @@ namespace Nethermind.Evm
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
+            static void UpdateCurrentState(EvmState state, int pc, long gas, int stackHead)
             {
                 state.ProgramCounter = pc;
                 state.GasAvailable = gas;
                 state.DataStackHead = stackHead;
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void StartInstructionTrace(Instruction instruction, EvmStack stackValue, in ExecutionEnvironment env)
-            {
-                _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, env.TxExecutionContext.Header.IsPostMerge);
-                if (_txTracer.IsTracingMemory)
-                {
-                    _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new List<string>());
-                }
-
-                if (_txTracer.IsTracingStack)
-                {
-                    _txTracer.SetOperationStack(stackValue.GetStackTrace());
-                }
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void Jump(in UInt256 jumpDest, in ExecutionEnvironment env, bool isSubroutine = false)
-            {
-                if (jumpDest > int.MaxValue)
-                {
-                    Metrics.EvmExceptions++;
-                    if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.InvalidJumpDestination);
-                    // https://github.com/NethermindEth/nethermind/issues/140
-                    throw new InvalidJumpDestinationException();
-                    //                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
-                }
-
-                int jumpDestInt = (int)jumpDest;
-
-                if (!env.CodeInfo.ValidateJump(jumpDestInt, isSubroutine))
-                {
-                    if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.InvalidJumpDestination);
-                    // https://github.com/NethermindEth/nethermind/issues/140
-                    throw new InvalidJumpDestinationException();
-                    //                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
-                }
-
-                programCounter = jumpDestInt;
             }
 
             if (previousCallResult is not null)
@@ -705,7 +665,7 @@ namespace Nethermind.Evm
                 vmState.Memory.Save(in previousCallOutputDestination, previousCallOutput);
                 //                if(traceOpcodes) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
-            
+
             ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
             while (programCounter < code.Length)
             {
@@ -713,7 +673,7 @@ namespace Nethermind.Evm
                 // Console.WriteLine(instruction);
                 if (traceOpcodes)
                 {
-                    StartInstructionTrace(instruction, stack, in env);
+                    StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack, in env);
                 }
 
                 programCounter++;
@@ -995,24 +955,18 @@ namespace Nethermind.Evm
                         }
                     case Instruction.JUMP:
                         {
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) goto OutOfGas;
-
-                            stack.PopUInt256(out UInt256 jumpDest);
-                            Jump(jumpDest, in env);
-                            break;
+                            InstructionReturn result = InstructionJUMP(ref stack, ref gasAvailable, ref programCounter, in env);
+                            if (result == InstructionReturn.OutOfGas) goto OutOfGas;
+                            if (result == InstructionReturn.InvalidJumpDestination) goto InvalidJumpDestination;
                         }
+                        break;
                     case Instruction.JUMPI:
                         {
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
-
-                            stack.PopUInt256(out UInt256 jumpDest);
-                            if (!stack.PopBytes().IsZero())
-                            {
-                                Jump(jumpDest, in env);
-                            }
-
-                            break;
+                            InstructionReturn result = InstructionJUMPI(ref stack, ref gasAvailable, ref programCounter, in env);
+                            if (result == InstructionReturn.OutOfGas) goto OutOfGas;
+                            if (result == InstructionReturn.InvalidJumpDestination) goto InvalidJumpDestination;
                         }
+                        break;
                     case Instruction.PC:
                         {
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
@@ -1145,7 +1099,7 @@ namespace Nethermind.Evm
                         {
                             (InstructionReturn result, byte[]? returnData) = InstructionRETURN(ref stack, ref gasAvailable, vmState);
                             if (result == InstructionReturn.OutOfGas) goto OutOfGas;
-                            
+
                             Debug.Assert(result == InstructionReturn.Success);
                             Debug.Assert(returnData is not null);
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
@@ -1236,19 +1190,10 @@ namespace Nethermind.Evm
                     case Instruction.JUMPSUB:
                         {
                             if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
-
-                            if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
-                            {
-                                goto StackOverflowException;
-                            }
-
-                            vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
-
-                            stack.PopUInt256(out UInt256 jumpDest);
-                            Jump(jumpDest, in env, true);
-                            programCounter++;
-
+                            InstructionReturn result = InstructionJUMPSUB(ref stack, ref gasAvailable, vmState, ref programCounter, in env);
+                            if (result == InstructionReturn.OutOfGas) goto OutOfGas;
+                            if (result == InstructionReturn.StackOverflow) goto StackOverflowException;
+                            if (result == InstructionReturn.InvalidJumpDestination) goto InvalidJumpDestination;
                             break;
                         }
                     default:
@@ -1284,6 +1229,45 @@ InvalidSubroutineReturn:
 StackOverflowException:
             if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.StackOverflow);
             return CallResult.StackOverflowException;
+InvalidJumpDestination:
+            if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.InvalidJumpDestination);
+            return CallResult.InvalidJumpDestination;
+        }
+
+        private static bool Jump(in UInt256 jumpDest, ref int programCounter, in ExecutionEnvironment env, bool isSubroutine = false)
+        {
+            if (jumpDest > int.MaxValue)
+            {
+                // https://github.com/NethermindEth/nethermind/issues/140
+                // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
+                return false;
+            }
+
+            int jumpDestInt = (int)jumpDest;
+            if (!env.CodeInfo.ValidateJump(jumpDestInt, isSubroutine))
+            {
+                // https://github.com/NethermindEth/nethermind/issues/140
+                // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
+                return false;
+            }
+
+            programCounter = jumpDestInt;
+            return true;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void StartInstructionTrace(Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, in EvmStack stackValue, in ExecutionEnvironment env)
+        {
+            _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, env.TxExecutionContext.Header.IsPostMerge);
+            if (_txTracer.IsTracingMemory)
+            {
+                _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new List<string>());
+            }
+
+            if (_txTracer.IsTracingStack)
+            {
+                _txTracer.SetOperationStack(stackValue.GetStackTrace());
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
