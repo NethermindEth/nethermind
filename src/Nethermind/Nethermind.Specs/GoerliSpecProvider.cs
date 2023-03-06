@@ -39,15 +39,16 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GetSpec(ForkActivation forkActivation)
         {
-            if (forkActivation.Timestamp >= ShanghaiTimestamp)
-                return Shanghai.Instance;
-
             return forkActivation.BlockNumber switch
             {
                 < IstanbulBlockNumber => GenesisSpec,
                 < BerlinBlockNumber => IstanbulNoBomb,
                 < LondonBlockNumber => Berlin.Instance,
-                _ => London.Instance
+                _ => forkActivation.Timestamp switch
+                {
+                    null or < ShanghaiTimestamp => London.Instance,
+                    _ => Shanghai.Instance
+                }
             };
         }
 
@@ -56,7 +57,8 @@ namespace Nethermind.Specs
         public const long BerlinBlockNumber = 4_460_644;
         public const long LondonBlockNumber = 5_062_605;
         public const ulong ShanghaiTimestamp = 1678832736;
-        public ulong NetworkId => Core.BlockchainIds.Goerli;
+        public static ForkActivation ShanghaiActivation = (LondonBlockNumber, ShanghaiTimestamp);
+        public ulong NetworkId => BlockchainIds.Goerli;
         public ulong ChainId => NetworkId;
 
         public ForkActivation[] TransitionActivations { get; } =
@@ -64,7 +66,7 @@ namespace Nethermind.Specs
             (ForkActivation)IstanbulBlockNumber,
             (ForkActivation)BerlinBlockNumber,
             (ForkActivation)LondonBlockNumber,
-            new(LondonBlockNumber, ShanghaiTimestamp)
+            ShanghaiActivation
         };
     }
 }
