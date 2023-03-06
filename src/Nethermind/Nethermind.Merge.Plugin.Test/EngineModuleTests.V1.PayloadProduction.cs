@@ -375,7 +375,7 @@ public partial class EngineModuleTests
 
         Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV2(getPayloadResult);
         result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
-       
+
         // starting building on block X
         await rpc.engine_forkchoiceUpdatedV1(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
