@@ -88,60 +88,64 @@ namespace Nethermind.Consensus.Processing
             /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
                In case of invalid blocks on the new branch we will discard the entire branch and come back to
                the previous head state.*/
-            Keccak previousBranchStateRoot = CreateCheckpoint();
-            InitBranch(newBranchStateRoot);
-
-            bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-            int blocksCount = suggestedBlocks.Count;
-            Block[] processedBlocks = new Block[blocksCount];
-            using IDisposable tracker = _witnessCollector.TrackOnThisThread();
-            try
+            lock (_stateProvider.StateRootLock)
             {
-                for (int i = 0; i < blocksCount; i++)
+                Keccak previousBranchStateRoot = CreateCheckpoint();
+
+                InitBranch(newBranchStateRoot);
+
+                bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+                int blocksCount = suggestedBlocks.Count;
+                Block[] processedBlocks = new Block[blocksCount];
+                using IDisposable tracker = _witnessCollector.TrackOnThisThread();
+                try
                 {
-                    if (blocksCount > 64 && i % 8 == 0)
+                    for (int i = 0; i < blocksCount; i++)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
+                        if (blocksCount > 64 && i % 8 == 0)
+                        {
+                            if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
+                        }
+
+                        _witnessCollector.Reset();
+                        (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
+                        processedBlocks[i] = processedBlock;
+
+                        // be cautious here as AuRa depends on processing
+                        PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
+                        if (notReadOnly)
+                        {
+                            _witnessCollector.Persist(processedBlock.Hash!);
+                            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
+                        }
+
+                        // CommitBranch in parts if we have long running branch
+                        bool isFirstInBatch = i == 0;
+                        bool isLastInBatch = i == blocksCount - 1;
+                        bool isNotAtTheEdge = !isFirstInBatch && !isLastInBatch;
+                        bool isCommitPoint = i % MaxUncommittedBlocks == 0 && isNotAtTheEdge;
+                        if (isCommitPoint && notReadOnly)
+                        {
+                            if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
+                            previousBranchStateRoot = CreateCheckpoint();
+                            Keccak? newStateRoot = suggestedBlocks[i].StateRoot;
+                            InitBranch(newStateRoot, false);
+                        }
                     }
 
-                    _witnessCollector.Reset();
-                    (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
-                    processedBlocks[i] = processedBlock;
-
-                    // be cautious here as AuRa depends on processing
-                    PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
-                    if (notReadOnly)
+                    if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
                     {
-                        _witnessCollector.Persist(processedBlock.Hash!);
-                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
+                        RestoreBranch(previousBranchStateRoot);
                     }
 
-                    // CommitBranch in parts if we have long running branch
-                    bool isFirstInBatch = i == 0;
-                    bool isLastInBatch = i == blocksCount - 1;
-                    bool isNotAtTheEdge = !isFirstInBatch && !isLastInBatch;
-                    bool isCommitPoint = i % MaxUncommittedBlocks == 0 && isNotAtTheEdge;
-                    if (isCommitPoint && notReadOnly)
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                        previousBranchStateRoot = CreateCheckpoint();
-                        Keccak? newStateRoot = suggestedBlocks[i].StateRoot;
-                        InitBranch(newStateRoot, false);
-                    }
+                    return processedBlocks;
                 }
-
-                if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
+                catch (Exception ex) // try to restore for all cost
                 {
+                    _logger.Trace($"Encountered exception {ex} while processing blocks.");
                     RestoreBranch(previousBranchStateRoot);
+                    throw;
                 }
-
-                return processedBlocks;
-            }
-            catch (Exception ex) // try to restore for all cost
-            {
-                _logger.Trace($"Encountered exception {ex} while processing blocks.");
-                RestoreBranch(previousBranchStateRoot);
-                throw;
             }
         }
 
