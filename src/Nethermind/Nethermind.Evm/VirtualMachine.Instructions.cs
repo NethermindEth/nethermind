@@ -799,10 +799,14 @@ public partial class VirtualMachine
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void InstructionRETURNDATASIZE(ref EvmStack stack)
+    private bool InstructionRETURNDATASIZE(ref EvmStack stack, ref long gasAvailable)
     {
+        if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return false;
+
         UInt256 res = (UInt256)_returnDataBuffer.Length;
         stack.PushUInt256(in res);
+
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

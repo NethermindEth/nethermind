@@ -850,9 +850,7 @@ namespace Nethermind.Evm
                     case Instruction.RETURNDATASIZE:
                         {
                             if (!spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
-
-                            InstructionRETURNDATASIZE(ref stack);
+                            if (!InstructionRETURNDATASIZE(ref stack, ref gasAvailable)) goto OutOfGas;
                             break;
                         }
                     case Instruction.RETURNDATACOPY:
