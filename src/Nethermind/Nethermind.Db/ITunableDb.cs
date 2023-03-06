@@ -3,7 +3,7 @@
 
 namespace Nethermind.Db;
 
-public interface ITunableDb
+public interface ITunableDb: IDb
 {
     public void Tune(TuneType type);
 

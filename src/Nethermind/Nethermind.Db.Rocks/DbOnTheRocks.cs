@@ -763,19 +763,20 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // machine. Specifying a rate limit smoothens this spike somewhat by not blocking writes while allowing
             // compaction to happen in background at 1/10th the specified speed (if rate limited).
             //
-            // Read and writes written on different tune during sync:
+            // Read and writes written on different tune during sync in TB. StateSync omitted but included in total:
             // +---------------------------+---------+----------+-----------+-------------+
-            // | Tune                      | Total   | SnapSync | OldBodies | OldReceipts |
+            // | Tune                      | Total (R/W) |     SnapSync |   OldBodies | OldReceipts |
             // +---------------------------+---------+----------+-----------+-------------+
-            // | Default                   | 12.5 |  3.20 TB |   ?.?0 TB |             |
-            // | WriteBias                 | 10.B |  5.68 TB / 2.60 TB |   4.00 TB |     4.00 TB |
-            // | HeavyWrite                |  24.2 / 8.4 |  8.7 / 1.85 TB |   5.95 / 3.12 | 5.9 / 3.4 TB |
-            // | AggressiveHeavyWrite      |  6.0 |  1.20 TB |   2.50 TB |     2.25 TB |
-            // | VeryAggressiveHeavyWrite  |  ?.? |  ?.?? TB |           |             |
-            // | DisableCompaction         |  2.9 |  0.67 TB |           |             |
+            // | Default                   |        12.5 |      3.20 TB |     ?.?0 TB |             |
+            // | WriteBias                 |        10.B |  5.68 / 2.60 | 6.90 / 3.80 |       4.00  |
+            // | HeavyWrite                |  24.2 / 8.4 |   8.7 / 1.85 | 5.95 / 3.12 |   5.9 / 3.4 |
+            // | AggressiveHeavyWrite      |  32.7 / 6.0 |  15.2 / 1.20 | 7.00 / 2.50 |  6.0 / 2.30 |
+            // | VeryAggressiveHeavyWrite  |         ?.? |      ?.?? TB |             |             |
+            // | DisableCompaction         |         2.9 |      0.67 TB |             |             |
             // +---------------------------+---------+----------+-----------+-------------+
-            // Note, in practice on my system, the reads does not reach the SSD. Read measured from SSD is much lower
+            // Note, in practice on my machine, the reads does not reach the SSD. Read measured from SSD is much lower
             // than read measured from process. It is likely that most files are cached as I have 128GB of RAM.
+            // Also notice that the heavier the tune, the higher the reads.
             case ITunableDb.TuneType.WriteBias:
                 // The default l1SizeTarget is 256MB, so the compaction is fairly light. But the default options is not very
                 // efficient for write amplification to conserve memory, so the write amplification reduction is noticeable.

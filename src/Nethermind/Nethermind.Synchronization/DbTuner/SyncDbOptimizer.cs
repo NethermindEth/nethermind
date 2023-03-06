@@ -7,9 +7,9 @@ using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
 
-namespace Nethermind.Synchronization;
+namespace Nethermind.Synchronization.DbTuner;
 
-public class DbSyncOptimizer
+public class SyncDbTuner
 {
     private readonly IDb _stateDb;
     private readonly IDb _codeDb;
@@ -18,7 +18,7 @@ public class DbSyncOptimizer
 
     private ITunableDb.TuneType _tuneType;
 
-    public DbSyncOptimizer(
+    public SyncDbTuner(
         ISyncConfig syncConfig,
         ISyncFeed<SnapSyncBatch>? snapSyncFeed,
         ISyncFeed<BodiesSyncBatch>? bodiesSyncFeed,
