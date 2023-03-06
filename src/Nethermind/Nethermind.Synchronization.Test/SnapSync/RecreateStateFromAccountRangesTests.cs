@@ -234,6 +234,41 @@ namespace Nethermind.Synchronization.Test.SnapSync
         }
 
         [Test]
+        public void RecreateAccountStateFromMultipleRange_OutOfOrder()
+        {
+            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+
+            // output state
+            MemDb db = new();
+            DbProvider dbProvider = new(DbModeHint.Mem);
+            dbProvider.RegisterDb(DbNames.State, db);
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+
+            byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
+            byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
+            var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
+
+            Assert.AreEqual(4, db.Keys.Count);
+
+            firstProof = CreateProofForPath(Keccak.Zero.Bytes);
+            lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+
+            Assert.AreEqual(6, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+
+            firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
+            lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
+            var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
+
+            Assert.AreEqual(AddRangeResult.OK, result1);
+            Assert.AreEqual(AddRangeResult.OK, result2);
+            Assert.AreEqual(AddRangeResult.OK, result3);
+            Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
+            Assert.IsFalse(db.KeyExists(rootHash));
+        }
+
+        [Test]
         public void RecreateAccountStateFromMultipleOverlappingRange()
         {
             Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
