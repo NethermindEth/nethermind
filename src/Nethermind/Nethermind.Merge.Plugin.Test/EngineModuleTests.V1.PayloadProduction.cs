@@ -343,6 +343,8 @@ public partial class EngineModuleTests
     [Test, Repeat(100)]
     public async Task Cannot_produce_bad_blocks()
     {
+        // this test sends two payloadAttributes on block X and X + 1 to start many block improvements
+        // as the result we want to check if we are not able to produce invalid block by repeating this test many times
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockChain();
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
@@ -358,40 +360,41 @@ public partial class EngineModuleTests
             minTimeForProduction: delay);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
-        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
+        Keccak blockX = chain.BlockTree.HeadHash;
+        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
         chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
-                new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+                new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
                 new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
-        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
+        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
         await blockImprovementLock.WaitAsync(100 * TestContext.CurrentContext.CurrentRepeatCount);
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
-        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
+        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
 
         Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV2(getPayloadResult);
         result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
-        string? payloadId2 = rpc.engine_forkchoiceUpdatedV1(
-                new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes { Timestamp = 101, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
-            .Result.Data.PayloadId!;
+       
+        // starting building on block X
+        await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
+            new PayloadAttributes { Timestamp = 101, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
 
-        Random waitTime = new Random();
-        int miliseconds = waitTime.Next(3 * 10, 1 * 1000);
-        await Task.Delay(miliseconds);
+        Random waitTime = new();
+        int milliseconds = waitTime.Next(3 * 10, 1 * 1000);
+        await Task.Delay(milliseconds);
 
-        string? payloadId3 = rpc.engine_forkchoiceUpdatedV1(
+        // starting building on block X + 1
+        string? secondNewPayload = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(getPayloadResult.BlockHash, Keccak.Zero, getPayloadResult.BlockHash),
                 new PayloadAttributes { Timestamp = 102, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
-        ExecutionPayload getPayloadResult2 = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId3))).Data!;
+        ExecutionPayload getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload))).Data!;
 
-        Task<ResultWrapper<PayloadStatusV1>> result2 = rpc.engine_newPayloadV2(getPayloadResult2);
-        result2.Result.Data.Status.Should().Be(PayloadStatus.Valid);
-
+        Task<ResultWrapper<PayloadStatusV1>> secondBlock = rpc.engine_newPayloadV2(getSecondBlockPayload);
+        secondBlock.Result.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 
     [Test]
