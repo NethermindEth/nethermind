@@ -8,7 +8,7 @@ using DotNetty.Common.Utilities;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class NettyRlpStream : RlpStream, IDisposable
+    public sealed class NettyRlpStream : RlpStream, IDisposable
     {
         private readonly IByteBuffer _buffer;
 
