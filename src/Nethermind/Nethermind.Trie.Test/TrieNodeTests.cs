@@ -794,7 +794,7 @@ namespace Nethermind.Trie.Test
 
             trieNode.PrunePersistedRecursively(1);
             var trieStore = Substitute.For<ITrieNodeResolver>();
-            trieStore.FindCachedOrUnknown(Arg.Any<Keccak>(), SearchHint.None).Returns(child);
+            trieStore.FindCachedOrUnknown(Arg.Any<Keccak>()).Returns(child);
             trieNode.GetChild(trieStore, 0).Should().Be(child);
             trieNode.GetChild(trieStore, 1).Should().BeNull();
             trieNode.GetChild(trieStore, 4).Should().Be(child);
@@ -809,7 +809,7 @@ namespace Nethermind.Trie.Test
 
             trieNode.PrunePersistedRecursively(1);
             var trieStore = Substitute.For<ITrieNodeResolver>();
-            trieStore.FindCachedOrUnknown(Arg.Any<Keccak>(), SearchHint.None).Returns(child);
+            trieStore.FindCachedOrUnknown(Arg.Any<Keccak>()).Returns(child);
             trieNode.GetChild(trieStore, 0).Should().Be(child);
         }
 
@@ -830,7 +830,7 @@ namespace Nethermind.Trie.Test
             child.ResolveKey(trieStore, false);
             child.IsPersisted = true;
 
-            trieStore.FindCachedOrUnknown(Arg.Any<Keccak>(), SearchHint.None).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
+            trieStore.FindCachedOrUnknown(Arg.Any<Keccak>()).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
             trieNode.GetChild(trieStore, 0);
             Assert.Throws<TrieException>(() => trieNode.GetChild(trieStore, 0).ResolveNode(trieStore));
         }

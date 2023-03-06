@@ -12,7 +12,7 @@ namespace Nethermind.Trie.Pruning
 
         public static readonly NullTrieNodeResolver Instance = new();
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, SearchHint hint) => new(NodeType.Unknown, hash);
+        public TrieNode FindCachedOrUnknown(Keccak hash) => new(NodeType.Unknown, hash);
 
         public byte[]? LoadRlp(Keccak hash) => null;
     }

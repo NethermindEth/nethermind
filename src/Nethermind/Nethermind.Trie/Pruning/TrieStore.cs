@@ -44,7 +44,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            public TrieNode FindCachedOrUnknown(Keccak hash, SearchHint hint)
+            public TrieNode FindCachedOrUnknown(Keccak hash)
             {
                 if (_objectsCache.TryGetValue(hash, out TrieNode trieNode))
                 {
@@ -53,7 +53,7 @@ namespace Nethermind.Trie.Pruning
                 else
                 {
                     if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
-                    trieNode = new TrieNode(NodeType.Unknown, hash) { CacheHint = hint };
+                    trieNode = new TrieNode(NodeType.Unknown, hash);
 
                     SaveInCache(trieNode);
                 }
@@ -254,7 +254,7 @@ namespace Nethermind.Trie.Pruning
             {
                 if (IsNodeCached(node.Keccak))
                 {
-                    TrieNode cachedNodeCopy = FindCachedOrUnknown(node.Keccak, node.CacheHint);
+                    TrieNode cachedNodeCopy = FindCachedOrUnknown(node.Keccak);
                     if (!ReferenceEquals(cachedNodeCopy, node))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
@@ -361,12 +361,12 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsNodeCached(Keccak hash) => _dirtyNodes.IsNodeCached(hash);
 
-        public TrieNode FindCachedOrUnknown(Keccak? hash, SearchHint hint)
+        public TrieNode FindCachedOrUnknown(Keccak? hash)
         {
-            return FindCachedOrUnknown(hash, false, hint);
+            return FindCachedOrUnknown(hash, false);
         }
 
-        internal TrieNode FindCachedOrUnknown(Keccak? hash, bool isReadOnly, SearchHint hint)
+        internal TrieNode FindCachedOrUnknown(Keccak? hash, bool isReadOnly)
         {
             if (hash is null)
             {
@@ -378,7 +378,7 @@ namespace Nethermind.Trie.Pruning
                 return new TrieNode(NodeType.Unknown, hash);
             }
 
-            return isReadOnly ? _dirtyNodes.FromCachedRlpOrUnknown(hash) : _dirtyNodes.FindCachedOrUnknown(hash, hint);
+            return isReadOnly ? _dirtyNodes.FromCachedRlpOrUnknown(hash) : _dirtyNodes.FindCachedOrUnknown(hash);
         }
 
         public void Dump() => _dirtyNodes.Dump();

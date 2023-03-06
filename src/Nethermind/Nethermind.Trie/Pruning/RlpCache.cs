@@ -62,8 +62,8 @@ public class RlpCache
     {
         // cache only a storage branch that has 3+ children
         return node.IsBranch
-               && (node.CacheHint == SearchHint.StorageRoot ||
-                   node.CacheHint == SearchHint.StorageChildNode)
+               && (node.CacheHint == LoadHint.StorageRoot ||
+                   node.CacheHint == LoadHint.StorageChildNode)
                && node.IsValidWithOneNodeLess;
     }
 

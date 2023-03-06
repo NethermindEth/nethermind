@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
+using LoadHint = Nethermind.Trie.Pruning.LoadHint;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -91,9 +92,9 @@ namespace Nethermind.Trie
             set => _value = (_value & ~IsBoundaryProofNodeMask) | (value ? (1L << IsBoundaryProofNodeShift) : 0L);
         }
 
-        public SearchHint CacheHint
+        public LoadHint CacheHint
         {
-            get => (SearchHint)((_value & NodeHintMask) >> NodeHintShift);
+            get => (LoadHint)((_value & NodeHintMask) >> NodeHintShift);
             set => _value = (_value & ~NodeHintMask) | (((long)value) << NodeHintShift);
         }
 
@@ -283,7 +284,7 @@ namespace Nethermind.Trie
         /// <summary>
         /// Highly optimized
         /// </summary>
-        public void ResolveNode(ITrieNodeResolver tree)
+        public void ResolveNode(ITrieNodeResolver tree, LoadHint hint = LoadHint.None)
         {
             try
             {
@@ -298,6 +299,7 @@ namespace Nethermind.Trie
                         }
 
                         fullRlp = tree.LoadRlp(Keccak);
+                        CacheHint = hint;
                         IsPersisted = true;
 
                         if (fullRlp is null)
@@ -515,7 +517,7 @@ namespace Nethermind.Trie
             }
             else if (childOrRef is Keccak reference)
             {
-                child = tree.FindCachedOrUnknown(reference, ChildSearchHint);
+                child = tree.FindCachedOrUnknown(reference);
             }
             else
             {
@@ -558,15 +560,7 @@ namespace Nethermind.Trie
 
             InitData();
             int index = IsExtension ? i + 1 : i;
-            if (node != null)
-            {
-                node.CacheHint = ChildSearchHint;
-                _data![index] = node;
-            }
-            else
-            {
-                _data![index] = _nullNode;
-            }
+            _data![index] = node ?? _nullNode;
             Keccak = null;
         }
 
@@ -796,7 +790,7 @@ namespace Nethermind.Trie
                     if (storageRootKey != Keccak.EmptyTreeHash)
                     {
                         hasStorage = true;
-                        StorageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey, SearchHint.StorageRoot);
+                        StorageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey);
                     }
                 }
             }
@@ -884,7 +878,7 @@ namespace Nethermind.Trie
                             {
                                 rlpStream.Position--;
                                 Keccak keccak = rlpStream.DecodeKeccak();
-                                TrieNode child = tree.FindCachedOrUnknown(keccak, ChildSearchHint);
+                                TrieNode child = tree.FindCachedOrUnknown(keccak);
                                 _data![i] = childOrRef = child;
 
                                 if (IsPersisted && !child.IsPersisted)
@@ -912,12 +906,6 @@ namespace Nethermind.Trie
 
             return childOrRef;
         }
-
-        /// <summary>
-        /// Provides a hint for searching for the child of this node. <see cref="RlpCache"/> for more.
-        /// </summary>
-        private SearchHint ChildSearchHint =>
-            CacheHint == SearchHint.StorageRoot ? SearchHint.StorageChildNode : SearchHint.None;
 
         private void UnresolveChild(int i)
         {

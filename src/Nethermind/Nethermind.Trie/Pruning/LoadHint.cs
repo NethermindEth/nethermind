@@ -7,7 +7,7 @@ namespace Nethermind.Trie.Pruning;
 /// Provides a hint for the purpose of <see cref="ITrieNodeResolver.FindCachedOrUnknown"/> getting found that
 /// can be memoized further as a hint for caching the node or not.
 /// </summary>
-public enum SearchHint : byte
+public enum LoadHint : byte
 {
     /// <summary>
     /// No meaningful hint can be provided about the node.

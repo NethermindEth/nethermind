@@ -15,9 +15,8 @@ namespace Nethermind.Trie.Pruning
         /// its RLP data from the state database.
         /// </summary>
         /// <param name="hash">Keccak hash of the RLP of the node.</param>
-        /// <param name="hint">The additional context that can be used for searching the node.</param>
         /// <returns></returns>
-        TrieNode FindCachedOrUnknown(Keccak hash, SearchHint hint);
+        TrieNode FindCachedOrUnknown(Keccak hash);
 
         /// <summary>
         /// Loads RLP of the node.

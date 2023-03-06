@@ -147,7 +147,8 @@ namespace Nethermind.Trie.Test
         public void Single_leaf_and_keep_for_multiple_dispatches_then_delete()
         {
             MemDb memDb = new();
-            using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), new ConstantInterval(4), LimboLogs.Instance);
+            using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), new ConstantInterval(4),
+                LimboLogs.Instance);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Commit(0);
             patriciaTree.Commit(1);
@@ -705,7 +706,8 @@ namespace Nethermind.Trie.Test
 
             MemDb memDb = new();
 
-            using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.IfBlockOlderThan(lookupLimit), _logManager);
+            using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()),
+                Persist.IfBlockOlderThan(lookupLimit), _logManager);
             StateTree patriciaTree = new(trieStore, _logManager);
 
             byte[][] accounts = new byte[accountsCount][];
@@ -823,7 +825,8 @@ namespace Nethermind.Trie.Test
 
             MemDb memDb = new();
 
-            using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.IfBlockOlderThan(lookupLimit), _logManager);
+            using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()),
+                Persist.IfBlockOlderThan(lookupLimit), _logManager);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
 
             byte[][] accounts = new byte[accountsCount][];
@@ -977,7 +980,10 @@ namespace Nethermind.Trie.Test
 
             MemDb memDb = new();
 
-            using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.IfBlockOlderThan(lookupLimit), _logManager);
+            using RlpCacheMonitor monitor = new();
+
+            using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()),
+                Persist.IfBlockOlderThan(lookupLimit), _logManager);
             StateProvider stateProvider = new(trieStore, new MemDb(), _logManager);
             StorageProvider storageProvider = new(trieStore, stateProvider, _logManager);
 
@@ -1034,14 +1040,21 @@ namespace Nethermind.Trie.Test
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
                             storageProvider.Set(new StorageCell(address, 1), storage);
+                            storageProvider.Set(new StorageCell(address, 2), storage);
+                            storageProvider.Set(new StorageCell(address, 3), storage);
                         }
                         else if (!account.IsTotallyEmpty)
                         {
                             stateProvider.CreateAccount(address, account.Balance);
 
+                            // multiple cells to make the tree bigger for caching test
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
                             storageProvider.Set(new StorageCell(address, 1), storage);
+
+                            storageProvider.Set(new StorageCell(address, 2), storage);
+
+                            storageProvider.Set(new StorageCell(address, 3), storage);
                         }
                     }
                 }
@@ -1097,6 +1110,29 @@ namespace Nethermind.Trie.Test
 
                 verifiedBlocks++;
             }
+        }
+    }
+
+    class RlpCacheMonitor : IDisposable
+    {
+        private readonly long _attempts;
+        private readonly long _writes;
+        private readonly long _hits;
+
+        public RlpCacheMonitor()
+        {
+            _attempts = Trie.Pruning.Metrics.RlpCacheWriteAttempts;
+            _writes = Trie.Pruning.Metrics.RlpCacheWrites;
+            _hits = Trie.Pruning.Metrics.RlpCacheHits;
+        }
+
+        public void Dispose()
+        {
+            long attempts = Trie.Pruning.Metrics.RlpCacheWriteAttempts - _attempts;
+            long writes = Trie.Pruning.Metrics.RlpCacheWrites - _writes;
+            long hits = Trie.Pruning.Metrics.RlpCacheHits - _hits;
+
+            Console.WriteLine($"Rlp cache stats: attempts: {attempts}, writes: {writes}, hits: {hits}");
         }
     }
 }
