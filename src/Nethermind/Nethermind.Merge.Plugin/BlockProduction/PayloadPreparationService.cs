@@ -101,7 +101,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         }
 
         private void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime) =>
-            _payloadStorage.AddOrUpdate(payloadId,
+            _currentBuildingContext = _payloadStorage.AddOrUpdate(payloadId,
                 id =>
                 {
                     _currentBuildingContext?.Dispose();
@@ -116,17 +116,17 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                         return currentContext;
                     }
 
-                    IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
                     currentContext.Dispose();
-                    return newContext;
+                    _currentBuildingContext?.Dispose();
+
+                    return CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
                 });
 
 
         private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
         {
             if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
-            IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
-            _currentBuildingContext = blockImprovementContext;
+            IBlockImprovementContext blockImprovementContext =_currentBuildingContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
             blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
             blockImprovementContext.ImprovementTask.ContinueWith(async t =>
             {
