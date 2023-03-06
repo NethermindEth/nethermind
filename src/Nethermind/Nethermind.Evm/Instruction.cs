@@ -209,6 +209,10 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
+                Instruction.CREATE2 or Instruction.CREATE => !IsEofContext,
+                Instruction.EXTCODEHASH or Instruction.EXTCODECOPY or Instruction.EXTCODESIZE => !IsEofContext,
+                Instruction.CODECOPY or Instruction.CODESIZE => !IsEofContext,
+                Instruction.GAS => !IsEofContext,
                 Instruction.PC => !IsEofContext,
                 Instruction.CALLCODE or Instruction.SELFDESTRUCT => !IsEofContext,
                 Instruction.JUMPI or Instruction.JUMP => !IsEofContext,
@@ -297,11 +301,11 @@ namespace Nethermind.Evm
             Instruction.CALLF => (0, 0, 2),
             Instruction.RETF => (0, 0, 0),
             Instruction.CREATE => (3, 1, 0),
-            Instruction.CALL => (7, 1, 0),
+            Instruction.CALL => (6, 1, 0),
             Instruction.RETURN => (2, 0, 0),
-            Instruction.DELEGATECALL => (6, 1, 0),
+            Instruction.DELEGATECALL => (5, 1, 0),
             Instruction.CREATE2 => (4, 1, 0),
-            Instruction.STATICCALL => (6, 1, 0),
+            Instruction.STATICCALL => (5, 1, 0),
             Instruction.REVERT => (2, 0, 0),
             Instruction.INVALID => (0, 0, 0),
             _ => throw new NotImplementedException($"Instruction {instruction} not implemented")

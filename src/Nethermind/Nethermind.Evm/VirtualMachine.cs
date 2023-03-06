@@ -749,7 +749,12 @@ namespace Nethermind.Evm
 
             while (programCounter < codeSection.Length)
             {
-                Instruction instruction = (Instruction)codeSection[programCounter];
+                Instruction instruction = (Instruction)codeSection[programCounter] switch
+                {
+                    Instruction.CALLDATACOPY when env.CodeInfo.IsEof() => Instruction.CODECOPY,
+                    _ => (Instruction)codeSection[programCounter]
+                };
+
                 // Console.WriteLine(instruction);
                 if (traceOpcodes)
                 {
@@ -1531,6 +1536,15 @@ namespace Nethermind.Evm
                                 UpdateMemoryCost(in dest, length);
 
                                 byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+
+                                if (spec.IsEip3540Enabled)
+                                {
+                                    if (EvmObjectFormat.IsValidEof(externalCode, out _))
+                                    {
+                                        externalCode = Array.Empty<byte>();
+                                    }
+                                }
+
                                 ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
                                 vmState.Memory.Save(in dest, callDataSlice);
                                 if (_txTracer.IsTracingInstructions)
@@ -2434,8 +2448,16 @@ namespace Nethermind.Evm
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
                             // if container is EOF init code must be EOF
 
-                            if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
+                            // if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
+                            // {
+                            //      _returnDataBuffer = Array.Empty<byte>();
+                            //      stack.PushZero();
+                            //      break;
+                            // }
+
+                            if (EvmObjectFormat.IsEof(initCode))
                             {
+                                // return exception maybe ?
                                 _returnDataBuffer = Array.Empty<byte>();
                                 stack.PushZero();
                                 break;
@@ -2554,7 +2576,7 @@ namespace Nethermind.Evm
                                 return CallResult.InvalidInstructionException;
                             }
 
-                            stack.PopUInt256(out UInt256 gasLimit);
+
                             Address codeSource = stack.PopAddress();
 
                             // Console.WriteLine($"CALLIN {codeSource}");
@@ -2562,6 +2584,17 @@ namespace Nethermind.Evm
                             {
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
+                            }
+
+                            UInt256 gasLimit;
+
+                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
+                            {
+                                gasLimit = (UInt256)gasAvailable;
+                            }
+                            else
+                            {
+                                stack.PopUInt256(out gasLimit);
                             }
 
                             UInt256 callValue;
