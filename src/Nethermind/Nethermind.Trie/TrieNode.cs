@@ -69,25 +69,81 @@ namespace Nethermind.Trie
         public NodeType NodeType
         {
             get => (NodeType)(_value & NodeTypeMask);
-            private set => _value = (_value & ~NodeTypeMask) | (long)value;
+            private set
+            {
+                // Perform an atomic set
+                long current = Volatile.Read(ref _value);
+                do
+                {
+                    long newValue = (current & ~NodeTypeMask) | (long)value;
+                    long previous = Interlocked.CompareExchange(ref _value, newValue, current);
+                    if (previous == current)
+                    {
+                        return; // Value set
+                    }
+                    current = previous;
+                } while (true);
+            }
         }
 
         public bool IsDirty
         {
             get => (_value & DirtyMask) > 0;
-            private set => _value = (_value & ~DirtyMask) | (value ? 1L << DirtyShift : 0L);
+            private set
+            {
+                // Perform an atomic set
+                long current = Volatile.Read(ref _value);
+                do
+                {
+                    long newValue = (current & ~DirtyMask) | (value ? 1L << DirtyShift : 0L);
+                    long previous = Interlocked.CompareExchange(ref _value, newValue, current);
+                    if (previous == current)
+                    {
+                        return; // Value set
+                    }
+                    current = previous;
+                } while (true);
+            }
         }
 
         public bool IsPersisted
         {
             get => (_value & PersistedMask) > 0;
-            set => _value = (_value & ~PersistedMask) | (value ? (1L << PersistedShift) : 0L);
+            set
+            {
+                // Perform an atomic set
+                long current = Volatile.Read(ref _value);
+                do
+                {
+                    long newValue = (current & ~PersistedMask) | (value ? (1L << PersistedShift) : 0L);
+                    long previous = Interlocked.CompareExchange(ref _value, newValue, current);
+                    if (previous == current)
+                    {
+                        return; // Value set
+                    }
+                    current = previous;
+                } while (true);
+            }
         }
 
         public bool IsBoundaryProofNode
         {
             get => (_value & IsBoundaryProofNodeMask) > 0;
-            set => _value = (_value & ~IsBoundaryProofNodeMask) | (value ? (1L << IsBoundaryProofNodeShift) : 0L);
+            set
+            {
+                // Perform an atomic set
+                long current = Volatile.Read(ref _value);
+                do
+                {
+                    long newValue = (current & ~IsBoundaryProofNodeMask) | (value ? (1L << IsBoundaryProofNodeShift) : 0L);
+                    long previous = Interlocked.CompareExchange(ref _value, newValue, current);
+                    if (previous == current)
+                    {
+                        return; // Value set
+                    }
+                    current = previous;
+                } while (true);
+            }
         }
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
@@ -99,7 +155,21 @@ namespace Nethermind.Trie
         public long LastSeen
         {
             get => _value >> LastSeenShift;
-            set => _value = (_value & ((1L << LastSeenShift) - 1)) | (value << LastSeenShift);
+            set
+            {
+                // Perform an atomic set
+                long current = Volatile.Read(ref _value);
+                do
+                {
+                    long newValue = (current & ((1L << LastSeenShift) - 1)) | (value << LastSeenShift);
+                    long previous = Interlocked.CompareExchange(ref _value, newValue, current);
+                    if (previous == current)
+                    {
+                        return; // Value set
+                    }
+                    current = previous;
+                } while (true);
+            }
         }
 
         private TrieNode? StorageRoot
