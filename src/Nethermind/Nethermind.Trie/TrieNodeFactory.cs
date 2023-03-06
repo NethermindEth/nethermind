@@ -32,13 +32,13 @@ namespace Nethermind.Trie
 
         public static TrieNode CreateLeaf(byte[] path, byte[]? value, Span<byte> pathToNode)
         {
-            TrieNode node = new(NodeType.Leaf);
-            node.Key = path;
-            node.Value = value;
-            node.PathToNode = pathToNode.ToArray();
-            if (node.Key.Length + node.PathToNode.Length != 64)
-                throw new Exception("what?");
-            return node;
+            Debug.Assert(path.Length + pathToNode.Length == 64);
+            return new(NodeType.Leaf)
+            {
+                Key = path,
+                Value = value,
+                PathToNode = pathToNode.ToArray()
+            };
         }
 
         public static TrieNode CreateExtension(byte[] path)

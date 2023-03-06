@@ -3,6 +3,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -107,8 +108,9 @@ namespace Nethermind.Trie
         {
             get
             {
-                if (IsLeaf)
+                if (IsLeaf && PathToNode is not null)
                 {
+                    Debug.Assert(PathToNode.Length + Key.Length == 64);
                     byte[] full = new byte[64];
                     PathToNode.CopyTo(full, 0);
                     Array.Copy(Key, 0, full, PathToNode.Length, 64 - PathToNode.Length);

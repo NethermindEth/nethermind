@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -92,6 +93,7 @@ namespace Nethermind.Synchronization.FastSync
             _branchProgress = new BranchProgress(0, _logger);
 
             _stateStore = new TrieStoreByPath(stateDb, logManager);
+            //_stateStore = new TrieStore(stateDb, logManager);
             _additionalLeafNibbles = new ConcurrentDictionary<Keccak, List<byte>>();
         }
 
@@ -533,8 +535,20 @@ namespace Nethermind.Synchronization.FastSync
                     bool keyExists;
                     if (syncItem.NodeDataType == NodeDataType.State && _stateStore.Capability == TrieNodeResolverCapability.Path)
                     {
-                        byte[] pathBytes = Nibbles.ToEncodedStorageBytes(syncItem.PathNibbles);
-                        keyExists = dbToCheck.KeyExists(pathBytes);
+                        byte[] pathBytes = syncItem.PathNibbles.Length < 64 ?
+                            Nibbles.ToEncodedStorageBytes(syncItem.PathNibbles) : Nibbles.ToBytes(syncItem.PathNibbles);
+
+                        byte[] rlp = dbToCheck.Get(pathBytes);
+                        if (rlp is not null)
+                        {
+                            TrieNode node = new(NodeType.Unknown, rlp);
+                            node.ResolveKey(_stateStore, false);
+                            keyExists = node.Keccak == syncItem.Hash;
+                        }
+                        else
+                        {
+                            keyExists = false;
+                        }
                     }
                     else
                     {
@@ -638,15 +652,22 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStateTrieNodes);
-                            _stateStore.SaveNodeDirectly(0, node);
-                            if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
+                            if (_stateStore.Capability == TrieNodeResolverCapability.Path)
                             {
-                                foreach (var nibble in additionalNibbles)
+                                _stateStore.SaveNodeDirectly(0, node);
+                                if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
                                 {
-                                    var clone = node.Clone();
-                                    clone.PathToNode[^1] = nibble;
-                                    _stateStore.SaveNodeDirectly(0, clone);
+                                    foreach (byte nibble in additionalNibbles)
+                                    {
+                                        TrieNode clone = node.Clone();
+                                        clone.PathToNode[^1] = nibble;
+                                        _stateStore.SaveNodeDirectly(0, clone);
+                                    }
                                 }
+                            }
+                            else
+                            {
+                                _stateDb.Set(syncItem.Hash, data);
                             }
                         }
                         finally
@@ -789,7 +810,6 @@ namespace Nethermind.Synchronization.FastSync
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
             TrieNode trieNode = new(NodeType.Unknown, currentStateSyncItem.PathNibbles, currentStateSyncItem.Hash, currentResponseItem);
             trieNode.ResolveNode(NullTrieNodeResolver.Instance); // TODO: will this work now?
-
 
             switch (trieNode.NodeType)
             {

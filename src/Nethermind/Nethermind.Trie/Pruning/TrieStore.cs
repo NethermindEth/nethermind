@@ -835,7 +835,7 @@ namespace Nethermind.Trie.Pruning
 
         public void SaveNodeDirectly(long blockNumber, TrieNode trieNode)
         {
-            throw new NotImplementedException();
+            _keyValueStore[trieNode.Keccak.Bytes] = trieNode.Value;
         }
 
         public byte[]? this[byte[] key]
