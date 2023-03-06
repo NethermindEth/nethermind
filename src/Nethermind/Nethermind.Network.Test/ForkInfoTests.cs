@@ -105,8 +105,10 @@ namespace Nethermind.Network.Test
         [TestCase(1_561_651L, 0ul, "0xc25efa5c", 4_460_644ul, "First Istanbul block")]
         [TestCase(4_460_644L, 0ul, "0x757a1c47", 5_062_605ul, "First Berlin block")]
         [TestCase(4_600_000L, 0ul, "0x757a1c47", 5_062_605ul, "Future Berlin block")]
-        [TestCase(5_062_605L, 0ul, "0xB8C6299D", 0ul, "First London block")]
-        [TestCase(6_000_000, 0ul, "0xB8C6299D", 0ul, "Future London block")]
+        [TestCase(5_062_605L, 0ul, "0xB8C6299D", 1678832736ul, "First London block")]
+        [TestCase(6_000_000, 0ul, "0xB8C6299D", 1678832736ul, "Future London block")]
+        [TestCase(6_000_001, 1678832736ul, "0xf9843abf", 0ul, "First Shanghai timestamp")]
+        [TestCase(6_000_001, 2678832736ul, "0xf9843abf", 0ul, "Future Shanghai timestamp")]
         public void Fork_id_and_hash_as_expected_on_goerli(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
         {
             Test(head, headTimestamp, KnownHashes.GoerliGenesis, forkHashHex, next, description, GoerliSpecProvider.Instance, "goerli.json");
