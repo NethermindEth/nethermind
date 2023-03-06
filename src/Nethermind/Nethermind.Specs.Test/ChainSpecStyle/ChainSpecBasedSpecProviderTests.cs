@@ -243,7 +243,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)GoerliSpecProvider.BerlinBlockNumber,
                 (ForkActivation)(GoerliSpecProvider.LondonBlockNumber - 1),
                 (ForkActivation)GoerliSpecProvider.LondonBlockNumber,
-                (ForkActivation)100000000, // far in the future
+                new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp),
+                new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp + 100000000) // far in future
             };
 
             CompareSpecProviders(goerli, provider, forkActivationsToTest);
