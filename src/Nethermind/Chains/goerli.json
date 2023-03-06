@@ -49,7 +49,7 @@
 		"maxCodeSizeTransition": "0x0",
 		"maximumExtraDataSize": "0xffff",
 		"minGasLimit": "0x1388",
-		"networkID": "0x5"		
+		"networkID": "0x5"
 	},
 	"genesis": {
 		"author": "0x0000000000000000000000000000000000000000",
