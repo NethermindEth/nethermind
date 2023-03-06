@@ -610,10 +610,8 @@ namespace Nethermind.Evm
         [SkipLocalsInit]
         private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
-            bool isTrace = _logger.IsTrace;
             bool traceOpcodes = _txTracer.IsTracingInstructions;
-            ExecutionEnvironment env = vmState.Env;
-            TxExecutionContext txCtx = env.TxExecutionContext;
+            ref readonly ExecutionEnvironment env = ref vmState.Env;
 
             if (!vmState.IsContinuation)
             {
@@ -652,9 +650,9 @@ namespace Nethermind.Evm
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void StartInstructionTrace(Instruction instruction, EvmStack stackValue)
+            void StartInstructionTrace(Instruction instruction, EvmStack stackValue, in ExecutionEnvironment env)
             {
-                _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, txCtx.Header.IsPostMerge);
+                _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, env.TxExecutionContext.Header.IsPostMerge);
                 if (_txTracer.IsTracingMemory)
                 {
                     _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new List<string>());
@@ -667,7 +665,7 @@ namespace Nethermind.Evm
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void Jump(in UInt256 jumpDest, bool isSubroutine = false)
+            void Jump(in UInt256 jumpDest, in ExecutionEnvironment env, bool isSubroutine = false)
             {
                 if (jumpDest > int.MaxValue)
                 {
@@ -707,14 +705,15 @@ namespace Nethermind.Evm
                 vmState.Memory.Save(in previousCallOutputDestination, previousCallOutput);
                 //                if(traceOpcodes) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
-
+            
+            ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
             while (programCounter < code.Length)
             {
                 Instruction instruction = (Instruction)code[programCounter];
                 // Console.WriteLine(instruction);
                 if (traceOpcodes)
                 {
-                    StartInstructionTrace(instruction, stack);
+                    StartInstructionTrace(instruction, stack, in env);
                 }
 
                 programCounter++;
@@ -1001,7 +1000,7 @@ namespace Nethermind.Evm
                             if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) goto OutOfGas;
 
                             stack.PopUInt256(out UInt256 jumpDest);
-                            Jump(jumpDest);
+                            Jump(jumpDest, in env);
                             break;
                         }
                     case Instruction.JUMPI:
@@ -1011,7 +1010,7 @@ namespace Nethermind.Evm
                             stack.PopUInt256(out UInt256 jumpDest);
                             if (!stack.PopBytes().IsZero())
                             {
-                                Jump(jumpDest);
+                                Jump(jumpDest, in env);
                             }
 
                             break;
@@ -1133,7 +1132,7 @@ namespace Nethermind.Evm
                             if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
                             if (vmState.IsStatic) goto StaticCallViolation;
 
-                            (InstructionReturn result, EvmState? callState) = InstructionCREATE(instruction, ref stack, ref gasAvailable, ref env, vmState, spec);
+                            (InstructionReturn result, EvmState? callState) = InstructionCREATE(instruction, ref stack, ref gasAvailable, in env, vmState, spec);
                             if (result == InstructionReturn.OutOfGas) goto OutOfGas;
                             if (result == InstructionReturn.Success)
                             {
@@ -1146,23 +1145,20 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RETURN:
                         {
-                            stack.PopUInt256(out UInt256 memoryPos);
-                            stack.PopUInt256(out UInt256 length);
-
-                            if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memoryPos, length)) goto OutOfGas;
-
-                            ReadOnlyMemory<byte> returnData = vmState.Memory.Load(in memoryPos, length);
-
+                            (InstructionReturn result, byte[]? returnData) = InstructionRETURN(ref stack, ref gasAvailable, vmState);
+                            if (result == InstructionReturn.OutOfGas) goto OutOfGas;
+                            
+                            Debug.Assert(result == InstructionReturn.Success);
+                            Debug.Assert(returnData is not null);
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                            return new CallResult(returnData.ToArray(), null);
+                            return new CallResult(returnData, null);
                         }
                     case Instruction.CALL:
                     case Instruction.CALLCODE:
                     case Instruction.DELEGATECALL:
                     case Instruction.STATICCALL:
                         {
-                            (InstructionReturn result, EvmState? callState) = InstructionCALL(instruction, ref stack, ref gasAvailable, ref env, vmState, txCtx.Header.IsPostMerge, spec);
+                            (InstructionReturn result, EvmState? callState) = InstructionCALL(instruction, ref stack, ref gasAvailable, in env, vmState, txCtx.Header.IsPostMerge, spec);
                             if (result == InstructionReturn.OutOfGas) goto OutOfGas;
                             if (result == InstructionReturn.InvalidInstruction) goto InvalidInstruction;
                             if (result == InstructionReturn.StaticCallViolation) goto StaticCallViolation;
@@ -1183,6 +1179,7 @@ namespace Nethermind.Evm
                             if (result == InstructionReturn.OutOfGas) goto OutOfGas;
 
                             Debug.Assert(result == InstructionReturn.Success);
+                            Debug.Assert(message is not null);
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                             return new CallResult(message, null, true);
                         }
@@ -1251,7 +1248,7 @@ namespace Nethermind.Evm
                             vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
 
                             stack.PopUInt256(out UInt256 jumpDest);
-                            Jump(jumpDest, true);
+                            Jump(jumpDest, in env, true);
                             programCounter++;
 
                             break;

@@ -320,18 +320,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 recipientOrNull = recipient;
 
-                ExecutionEnvironment env = new();
-                env.TxExecutionContext = new TxExecutionContext(block, caller, effectiveGasPrice, transaction.BlobVersionedHashes);
-                env.Value = value;
-                env.TransferValue = value;
-                env.Caller = caller;
-                env.CodeSource = recipient;
-                env.ExecutingAccount = recipient;
-                env.InputData = data ?? Array.Empty<byte>();
-                env.CodeInfo = machineCode is null
-                    ? _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec)
-                    : new CodeInfo(machineCode);
-
+                ExecutionEnvironment env = new
+                (codeInfo: machineCode is null
+                        ? _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec)
+                        : new CodeInfo(machineCode),
+                    executingAccount: recipient, caller: caller, codeSource: recipient, inputData: data ?? Array.Empty<byte>(), txExecutionContext: new TxExecutionContext(block, caller, transaction.BlobVersionedHashes, effectiveGasPrice), transferValue: value, value: value, callDepth: 0);
                 ExecutionType executionType =
                     transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Transaction;
                 using (EvmState state =

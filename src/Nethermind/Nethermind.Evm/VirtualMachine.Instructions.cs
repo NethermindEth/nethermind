@@ -2,24 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
-using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls.Shamatar;
-using Nethermind.Evm.Precompiles.Snarks.Shamatar;
-using Nethermind.Evm.Tracing;
 using Nethermind.State;
 using System.Runtime.Intrinsics;
-using System.Diagnostics;
 
 namespace Nethermind.Evm;
 public partial class VirtualMachine
@@ -32,6 +24,21 @@ public partial class VirtualMachine
         AccessViolation,
         InvalidInstruction,
         StaticCallViolation
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private (InstructionReturn result, byte[]? data) InstructionRETURN(ref EvmStack stack, ref long gasAvailable, EvmState vmState)
+    {
+        stack.PopUInt256(out UInt256 memoryPos);
+        stack.PopUInt256(out UInt256 length);
+
+        if (!UpdateMemoryCost(vmState.Memory, ref gasAvailable, in memoryPos, length)) return (InstructionReturn.OutOfGas, null);
+
+        ReadOnlyMemory<byte> returnData = vmState.Memory.Load(in memoryPos, length);
+
+        if (_txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+
+        return (InstructionReturn.Success, returnData.ToArray());
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -49,7 +56,7 @@ public partial class VirtualMachine
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private (InstructionReturn result, EvmState? callState) InstructionCALL(Instruction instruction, ref EvmStack stack, ref long gasAvailable, ref ExecutionEnvironment env, EvmState vmState, bool isPostMerge, IReleaseSpec spec)
+    private (InstructionReturn result, EvmState? callState) InstructionCALL(Instruction instruction, ref EvmStack stack, ref long gasAvailable, in ExecutionEnvironment env, EvmState vmState, bool isPostMerge, IReleaseSpec spec)
     {
         Metrics.Calls++;
 
@@ -164,16 +171,9 @@ public partial class VirtualMachine
         Snapshot snapshot = _worldState.TakeSnapshot();
         _state.SubtractFromBalance(caller, transferValue, spec);
 
-        ExecutionEnvironment callEnv = new();
-        callEnv.TxExecutionContext = env.TxExecutionContext;
-        callEnv.CallDepth = env.CallDepth + 1;
-        callEnv.Caller = caller;
-        callEnv.CodeSource = codeSource;
-        callEnv.ExecutingAccount = target;
-        callEnv.TransferValue = transferValue;
-        callEnv.Value = callValue;
-        callEnv.InputData = callData;
-        callEnv.CodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+        ExecutionEnvironment callEnv = new
+        (codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec),
+            executingAccount: target, caller: caller, codeSource: codeSource, inputData: callData, txExecutionContext: env.TxExecutionContext, transferValue: transferValue, value: callValue, callDepth: env.CallDepth + 1);
 
         if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
         if (outputLength == 0)
@@ -481,7 +481,7 @@ public partial class VirtualMachine
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private (InstructionReturn result, EvmState? callState) InstructionCREATE(Instruction instruction, ref EvmStack stack, ref long gasAvailable, ref ExecutionEnvironment env, EvmState vmState, IReleaseSpec spec)
+    private (InstructionReturn result, EvmState? callState) InstructionCREATE(Instruction instruction, ref EvmStack stack, ref long gasAvailable, in ExecutionEnvironment env, EvmState vmState, IReleaseSpec spec)
     {
         // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
         if (!_state.AccountExists(env.ExecutingAccount))
@@ -579,16 +579,11 @@ public partial class VirtualMachine
         }
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
-        ExecutionEnvironment callEnv = new();
-        callEnv.TxExecutionContext = env.TxExecutionContext;
-        callEnv.CallDepth = env.CallDepth + 1;
-        callEnv.Caller = env.ExecutingAccount;
-        callEnv.ExecutingAccount = contractAddress;
-        callEnv.CodeSource = null;
-        callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
-        callEnv.InputData = ReadOnlyMemory<byte>.Empty;
-        callEnv.TransferValue = value;
-        callEnv.Value = value;
+        ExecutionEnvironment callEnv = new
+        (codeInfo: new CodeInfo(initCode.ToArray()),
+            executingAccount: contractAddress,
+            caller: env.ExecutingAccount,
+            codeSource: null, inputData: ReadOnlyMemory<byte>.Empty, txExecutionContext: env.TxExecutionContext, transferValue: value, value: value, callDepth: env.CallDepth + 1);
 
         EvmState callState = new(
             callGas,
