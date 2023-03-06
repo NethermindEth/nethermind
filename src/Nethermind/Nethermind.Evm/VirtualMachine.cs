@@ -1044,31 +1044,12 @@ namespace Nethermind.Evm
                             break;
                         }
                     case Instruction.PUSH0:
-                        {
-                            if (!spec.IncludePush0Instruction) goto InvalidInstruction;
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
-
-                            stack.PushZero();
-
-                            break;
-                        }
+                        if (!spec.IncludePush0Instruction) goto InvalidInstruction;
+                        if (!InstructionPUSH0(ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.PUSH1:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            int programCounterInt = programCounter;
-                            if (programCounterInt >= code.Length)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                stack.PushByte(code[programCounterInt]);
-                            }
-
-                            programCounter++;
-                            break;
-                        }
+                        if (!InstructionPUSH1(ref stack, ref gasAvailable, ref programCounter, in code)) goto OutOfGas;
+                        break;
                     case Instruction.PUSH2:
                     case Instruction.PUSH3:
                     case Instruction.PUSH4:
@@ -1100,18 +1081,8 @@ namespace Nethermind.Evm
                     case Instruction.PUSH30:
                     case Instruction.PUSH31:
                     case Instruction.PUSH32:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            int length = instruction - Instruction.PUSH1 + 1;
-                            int programCounterInt = programCounter;
-                            int usedFromCode = Math.Min(code.Length - programCounterInt, length);
-
-                            stack.PushLeftPaddedBytes(code.Slice(programCounterInt, usedFromCode), length);
-
-                            programCounter += length;
-                            break;
-                        }
+                        if (!InstructionPUSH(instruction, ref stack, ref gasAvailable, ref programCounter, in code)) goto OutOfGas;
+                        break;
                     case Instruction.DUP1:
                     case Instruction.DUP2:
                     case Instruction.DUP3:
@@ -1128,12 +1099,8 @@ namespace Nethermind.Evm
                     case Instruction.DUP14:
                     case Instruction.DUP15:
                     case Instruction.DUP16:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            stack.Dup(instruction - Instruction.DUP1 + 1);
-                            break;
-                        }
+                        if (!InstructionDUP(instruction, ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.SWAP1:
                     case Instruction.SWAP2:
                     case Instruction.SWAP3:
@@ -1150,12 +1117,8 @@ namespace Nethermind.Evm
                     case Instruction.SWAP14:
                     case Instruction.SWAP15:
                     case Instruction.SWAP16:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
-
-                            stack.Swap(instruction - Instruction.SWAP1 + 2);
-                            break;
-                        }
+                        if (!InstructionSWAP(instruction, ref stack, ref gasAvailable)) goto OutOfGas;
+                        break;
                     case Instruction.LOG0:
                     case Instruction.LOG1:
                     case Instruction.LOG2:

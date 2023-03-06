@@ -124,7 +124,6 @@ namespace Nethermind.Evm
 
         private static readonly byte[] OneStackItem = { 1 };
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
         public void PushOne()
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(OneStackItem);
@@ -143,7 +142,6 @@ namespace Nethermind.Evm
 
         private static readonly byte[] ZeroStackItem = { 0 };
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
         public void PushZero()
         {
             if (_tracer.IsTracingInstructions)

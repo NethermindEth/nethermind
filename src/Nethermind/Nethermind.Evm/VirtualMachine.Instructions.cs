@@ -1401,4 +1401,70 @@ public partial class VirtualMachine
 
         return true;
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool InstructionPUSH0(ref EvmStack stack, ref long gasAvailable)
+    {
+        if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return false;
+
+        stack.PushZero();
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool InstructionPUSH1(ref EvmStack stack, ref long gasAvailable, ref int programCounter, in Span<byte> code)
+    {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
+        int programCounterInt = programCounter;
+        if (programCounterInt >= code.Length)
+        {
+            stack.PushZero();
+        }
+        else
+        {
+            stack.PushByte(code[programCounterInt]);
+        }
+
+        programCounter = programCounterInt + 1;
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool InstructionPUSH(Instruction instruction, ref EvmStack stack, ref long gasAvailable, ref int programCounter, in Span<byte> code)
+    {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
+        int length = instruction - Instruction.PUSH1 + 1;
+        int programCounterInt = programCounter;
+        int usedFromCode = Math.Min(code.Length - programCounterInt, length);
+
+        stack.PushLeftPaddedBytes(code.Slice(programCounterInt, usedFromCode), length);
+
+        programCounter = programCounterInt + length;
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool InstructionDUP(Instruction instruction, ref EvmStack stack, ref long gasAvailable)
+    {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
+        stack.Dup(instruction - Instruction.DUP1 + 1);
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool InstructionSWAP(Instruction instruction, ref EvmStack stack, ref long gasAvailable)
+    {
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
+        stack.Swap(instruction - Instruction.SWAP1 + 2);
+
+        return true;
+    }
 }
