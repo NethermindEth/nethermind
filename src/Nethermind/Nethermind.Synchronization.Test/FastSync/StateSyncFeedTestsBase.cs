@@ -22,6 +22,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;

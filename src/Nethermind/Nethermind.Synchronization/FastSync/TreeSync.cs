@@ -19,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -995,6 +996,11 @@ namespace Nethermind.Synchronization.FastSync
                     _logger.Trace($"Requesting {stateSyncItem.Hash}");
                 }
             }
+        }
+
+        public void SetSnapSyncData(bool stateRangesFinished, long stateRangesSyncedBytes)
+        {
+            _data.SetSnapSyncData(stateRangesFinished, stateRangesSyncedBytes);
         }
 
         private enum AddNodeResult

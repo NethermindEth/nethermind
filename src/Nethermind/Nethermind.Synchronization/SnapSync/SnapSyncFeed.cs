@@ -210,6 +210,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     if (_snapProvider.CanSync())
                     {
+                        _snapProvider.SetSyncStart();
                         Activate();
                     }
                 }

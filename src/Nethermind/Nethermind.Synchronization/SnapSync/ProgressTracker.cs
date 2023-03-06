@@ -9,6 +9,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -28,6 +29,10 @@ namespace Nethermind.Synchronization.SnapSync
         private int _activeStorageRequests;
         private int _activeCodeRequests;
         private int _activeAccRefreshRequests;
+        private DateTime _syncStart;
+        private long _secondsInSync;
+
+        internal long StateDbSavedBytes;
 
         private readonly ILogger _logger;
         private readonly IDb _db;
@@ -41,6 +46,8 @@ namespace Nethermind.Synchronization.SnapSync
         public bool MoreAccountsToRight { get; set; } = true;
 
         private readonly Pivot _pivot;
+
+        public event EventHandler<SnapSyncEventArgs>? StateRangesFinished;
 
         public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager)
         {
@@ -76,6 +83,7 @@ namespace Nethermind.Synchronization.SnapSync
         public (SnapSyncBatch request, bool finished) GetNextRequest()
         {
             Interlocked.Increment(ref _reqCount);
+            Interlocked.Exchange(ref _secondsInSync, (long)(DateTime.UtcNow - _syncStart).TotalSeconds);
 
             var pivotHeader = _pivot.GetPivotHeader();
             var rootHash = pivotHeader.StateRoot;
@@ -171,7 +179,7 @@ namespace Nethermind.Synchronization.SnapSync
             bool rangePhaseFinished = IsSnapGetRangesFinished();
             if (rangePhaseFinished)
             {
-                _logger.Info($"SNAP - State Ranges (Phase 1) finished.");
+                _logger.Info($"SNAP - State Ranges (Phase 1 of 2) finished.");
                 FinishRangePhase();
             }
 
@@ -267,6 +275,16 @@ namespace Nethermind.Synchronization.SnapSync
                 && _activeAccRefreshRequests == 0;
         }
 
+        public void UpdateStateDbSavedBytes(long dbData = 0)
+        {
+            Interlocked.Add(ref StateDbSavedBytes, dbData);
+        }
+
+        public void SetSyncStart()
+        {
+            _syncStart = DateTime.UtcNow;
+        }
+
         private void GetSyncProgress()
         {
             byte[] progress = _db.Get(ACC_PROGRESS_KEY);
@@ -276,7 +294,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (NextAccountPath == Keccak.MaxValue)
                 {
-                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished.");
+                    _logger.Info($"SNAP - State Ranges (Phase 1 of 2) is finished.");
                     MoreAccountsToRight = false;
                 }
                 else
@@ -291,6 +309,8 @@ namespace Nethermind.Synchronization.SnapSync
             MoreAccountsToRight = false;
             NextAccountPath = Keccak.MaxValue;
             _db.Set(ACC_PROGRESS_KEY, NextAccountPath.Bytes);
+
+            StateRangesFinished?.Invoke(this, new SnapSyncEventArgs(true, StateDbSavedBytes));
         }
 
         private void LogRequest(string reqType)
@@ -299,7 +319,9 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 double progress = 100 * NextAccountPath.Bytes[0] / (double)256;
 
-                if (_logger.IsInfo) _logger.Info($"SNAP - progress of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
+                if (_logger.IsInfo)
+                    _logger.Info($"SNAP - progress of State Ranges (Phase 1 of 2): {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {progress:F2}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}] " +
+                        $"| SavedToDb: {(double)(StateDbSavedBytes / 1.MiB()):F2} MB");
             }
 
             if (_logger.IsTrace || _reqCount % 1000 == 0)

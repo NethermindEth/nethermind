@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 
@@ -13,6 +9,8 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public interface ISnapProvider
     {
+        public event EventHandler<SnapSyncEventArgs>? StateRangesFinished;
+
         (SnapSyncBatch request, bool finished) GetNextRequest();
 
         bool CanSync();
@@ -31,5 +29,6 @@ namespace Nethermind.Synchronization.SnapSync
 
         bool IsSnapGetRangesFinished();
         void UpdatePivot();
+        void SetSyncStart();
     }
 }

@@ -2,21 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -27,18 +20,18 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private static object _syncCommit = new();
 
-        public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes)
-            AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
+        public static AddAccountRangeResult AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
 
             Keccak lastHash = accounts[^1].Path;
+            long syncedAcountBytes = 0;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
             {
-                return (result, true, null, null);
+                return new AddAccountRangeResult(result, true, null, null);
             }
 
             IList<PathWithAccount> accountsWithStorage = new List<PathWithAccount>();
@@ -61,6 +54,7 @@ namespace Nethermind.Synchronization.SnapSync
                 if (rlp is not null)
                 {
                     Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
+                    syncedAcountBytes += rlp.Bytes.Length;
                 }
             }
 
@@ -68,7 +62,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (tree.RootHash != expectedRootHash)
             {
-                return (AddRangeResult.DifferentRootHash, true, null, null);
+                return new AddAccountRangeResult(AddRangeResult.DifferentRootHash, true, null, null);
             }
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
@@ -78,26 +72,29 @@ namespace Nethermind.Synchronization.SnapSync
                 tree.Commit(blockNumber, skipRoot: true);
             }
 
-            return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
+            return new AddAccountRangeResult(AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
-        public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(StorageTree tree, long blockNumber, Keccak? startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash, byte[][]? proofs = null)
+        public static AddStorageRangeResult
+            AddStorageRange(StorageTree tree, long blockNumber, Keccak? startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash, byte[][]? proofs = null)
         {
             // TODO: Check the slots boundaries and sorting
 
             Keccak lastHash = slots.Last().Path;
+            long syncedBytes = 0;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
             {
-                return (result, true);
+                return new(result, true);
             }
 
             for (var index = 0; index < slots.Length; index++)
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
+                syncedBytes += slot.SlotRlpValue.Length;
                 tree.Set(slot.Path, slot.SlotRlpValue, false);
             }
 
@@ -105,7 +102,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (tree.RootHash != expectedRootHash)
             {
-                return (AddRangeResult.DifferentRootHash, true);
+                return new(AddRangeResult.DifferentRootHash, true);
             }
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
@@ -115,7 +112,7 @@ namespace Nethermind.Synchronization.SnapSync
                 tree.Commit(blockNumber);
             }
 
-            return (AddRangeResult.OK, moreChildrenToRight);
+            return new(AddRangeResult.OK, moreChildrenToRight);
         }
 
         private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak? startingHash, Keccak endHash, Keccak expectedRootHash, byte[][]? proofs = null)

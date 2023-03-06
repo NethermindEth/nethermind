@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -45,6 +46,7 @@ namespace Nethermind.Synchronization.FastSync
         internal (DateTime small, DateTime full) LastReportTime = (DateTime.MinValue, DateTime.MinValue);
 
         private Known.SizeInfo? _chainSizeInfo;
+        private bool _snapSyncFinished;
 
         public DetailedProgress(ulong chainId, byte[] serializedInitialState)
         {
@@ -81,8 +83,12 @@ namespace Nethermind.Synchronization.FastSync
                         $" / ~{(decimal)_chainSizeInfo.Value.Current / 1000 / 1000,6:F2}MB");
                 }
 
-                if (logger.IsInfo) logger.Info(
-                    $"State Sync {TimeSpan.FromSeconds(SecondsInSync):dd\\.hh\\:mm\\:ss} | {dataSizeInfo} | branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | diagnostics: {pendingRequestsCount}.{AverageTimeInHandler:f2}ms");
+                if (logger.IsInfo)
+                {
+                    string infoMsg = _snapSyncFinished ? "State Sync (Phase 2 of 2)" : "State Sync";
+                    logger.Info(
+                    $"{infoMsg} {TimeSpan.FromSeconds(SecondsInSync):dd\\.hh\\:mm\\:ss} | {dataSizeInfo} | branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | diagnostics: {pendingRequestsCount}.{AverageTimeInHandler:f2}ms");
+                }
                 if (logger.IsDebug && DateTime.UtcNow - LastReportTime.full > TimeSpan.FromSeconds(10))
                 {
                     long allChecks = CheckWasInDependencies + CheckWasCached + StateWasThere + StateWasNotThere;
@@ -165,6 +171,15 @@ namespace Nethermind.Synchronization.FastSync
             contentLength += Rlp.LengthOf(DataSize);
             contentLength += Rlp.LengthOf(SecondsInSync);
             return contentLength;
+        }
+
+        public void SetSnapSyncData(bool stateRangesFinished, long stateRangesSyncedBytes)
+        {
+            _snapSyncFinished = stateRangesFinished;
+            //dirty check not to exceed 100% when starting healing phase
+            if (stateRangesSyncedBytes > _chainSizeInfo?.Current)
+                stateRangesSyncedBytes = (long)(0.99 * _chainSizeInfo?.Current);
+            Interlocked.CompareExchange(ref DataSize, stateRangesSyncedBytes, 0L);
         }
     }
 }
