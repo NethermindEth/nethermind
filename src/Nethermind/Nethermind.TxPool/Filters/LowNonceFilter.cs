@@ -33,12 +33,12 @@ namespace Nethermind.TxPool.Filters
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
-                    return AcceptTxResult.OldNonce.WithMessage($"Current nonce: {currentNonce}, nonce of rejected tx: {tx.Nonce}");
                 }
-                else
-                {
-                    return AcceptTxResult.OldNonce;
-                }
+
+                bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
+                return isNotLocal ?
+                    AcceptTxResult.OldNonce :
+                    AcceptTxResult.OldNonce.WithMessage($"Current nonce: {currentNonce}, nonce of rejected tx: {tx.Nonce}");
             }
 
             return AcceptTxResult.Accepted;

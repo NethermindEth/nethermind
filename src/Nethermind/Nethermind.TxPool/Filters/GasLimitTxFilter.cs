@@ -34,12 +34,12 @@ namespace Nethermind.TxPool.Filters
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
-                    return AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {tx.GasLimit}");
                 }
-                else
-                {
-                    return AcceptTxResult.GasLimitExceeded;
-                }
+
+                bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
+                return isNotLocal ?
+                    AcceptTxResult.GasLimitExceeded :
+                    AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {tx.GasLimit}");
             }
 
             return AcceptTxResult.Accepted;

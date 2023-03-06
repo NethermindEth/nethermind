@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
@@ -74,12 +73,12 @@ namespace Nethermind.TxPool.Filters
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
-                    return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, cumulative cost: {cumulativeCost}");
                 }
-                else
-                {
-                    return AcceptTxResult.InsufficientFunds;
-                }
+
+                bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
+                return isNotLocal ?
+                    AcceptTxResult.InsufficientFunds :
+                    AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, cumulative cost: {cumulativeCost}");
             }
 
             return AcceptTxResult.Accepted;

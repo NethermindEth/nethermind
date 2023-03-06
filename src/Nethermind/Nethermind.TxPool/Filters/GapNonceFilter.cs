@@ -41,12 +41,11 @@ namespace Nethermind.TxPool.Filters
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
-                    return AcceptTxResult.NonceGap.WithMessage($"Future nonce. Expected nonce: {nextNonceInOrder}");
                 }
-                else
-                {
-                    return AcceptTxResult.NonceGap;
-                }
+
+                return !isLocal ?
+                    AcceptTxResult.NonceGap :
+                    AcceptTxResult.NonceGap.WithMessage($"Future nonce. Expected nonce: {nextNonceInOrder}");
             }
 
             return AcceptTxResult.Accepted;
