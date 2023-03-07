@@ -12,6 +12,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Core.Extensions;
+using System.Threading;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -55,13 +57,23 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             blockHeader.TxRoot = Keccak.EmptyTreeHash;
             blockHeader.Bloom = Bloom.Empty;
             var block = new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
-            // ToDo add lock
-            if (TrySetState(parent.StateRoot))
+
+            if (_producingBlockLock.Wait(BlockProductionTimeout))
             {
-                block = ProcessPreparedBlock(block, null) ?? block;
+                try
+                {
+                    if (TrySetState(parent.StateRoot))
+                    {
+                        return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
+                    }
+                }
+                finally
+                {
+                    _producingBlockLock.Release();
+                }
             }
 
-            return block;
+            throw new EmptyBlockProductionException("Setting state for processing block failed");
         }
 
         protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
