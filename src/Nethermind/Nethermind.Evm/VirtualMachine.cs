@@ -2578,6 +2578,12 @@ namespace Nethermind.Evm
 
 
                             Address codeSource = stack.PopAddress();
+                            ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+
+                            if ((instruction is Instruction.DELEGATECALL) && (targetCodeInfo.IsEof() != env.CodeInfo.IsEof()))
+                            {
+                                return CallResult.InvalidInstructionException;
+                            }
 
                             // Console.WriteLine($"CALLIN {codeSource}");
                             if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec))
@@ -2724,7 +2730,7 @@ namespace Nethermind.Evm
                             callEnv.TransferValue = transferValue;
                             callEnv.Value = callValue;
                             callEnv.InputData = callData;
-                            callEnv.CodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+                            callEnv.CodeInfo = targetCodeInfo;
 
                             if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
                             if (outputLength == 0)
