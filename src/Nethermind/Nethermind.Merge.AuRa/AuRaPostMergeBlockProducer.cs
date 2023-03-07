@@ -48,8 +48,20 @@ namespace Nethermind.Merge.AuRa
         {
             var block = base.PrepareEmptyBlock(parent, payloadAttributes);
 
-            if (TrySetState(parent.StateRoot))
-                return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
+            if (_producingBlockLock.Wait(BlockProductionTimeout))
+            {
+                try
+                {
+                    if (TrySetState(parent.StateRoot))
+                    {
+                        return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
+                    }
+                }
+                finally
+                {
+                    _producingBlockLock.Release();
+                }
+            }
 
             throw new EmptyBlockProductionException("Setting state for processing block failed");
         }

@@ -29,7 +29,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private readonly PostMergeBlockProducer _blockProducer;
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
         private readonly ILogger _logger;
-        private readonly List<string> _payloadsToRemove = new();
 
         // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
         public const int SlotsPerOldPayloadCleanup = 6;
@@ -52,6 +51,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
+        private string _latestPayloadId = string.Empty;
 
         public PayloadPreparationService(
             PostMergeBlockProducer blockProducer,
@@ -80,6 +80,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             string payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
+            _latestPayloadId = payloadId;
             if (!_payloadStorage.ContainsKey(payloadId))
             {
                 Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
@@ -130,7 +131,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 {
                     if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
                     await Task.Delay(_improvementDelay);
-                    if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
+                    if (!blockImprovementContext.Disposed // if GetPayload wasn't called for this item or it wasn't cleared
+                        && payloadId == _latestPayloadId) // we only improve on latest block payload
                     {
                         Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
                         ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
@@ -158,20 +160,14 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
                 {
                     if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
-                    _payloadsToRemove.Add(payload.Key);
+                    if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
+                    {
+                        context.Dispose();
+                        if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
+                    }
                 }
             }
 
-            foreach (string payloadToRemove in _payloadsToRemove)
-            {
-                if (_payloadStorage.TryRemove(payloadToRemove, out IBlockImprovementContext? context))
-                {
-                    context.Dispose();
-                    if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
-                }
-            }
-
-            _payloadsToRemove.Clear();
             if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");
         }
 
