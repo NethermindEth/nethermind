@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -8,6 +9,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -48,7 +50,7 @@ namespace Nethermind.Merge.AuRa
         {
             var block = base.PrepareEmptyBlock(parent, payloadAttributes);
 
-            if (_producingBlockLock.Wait(BlockProductionTimeout))
+            if (_producingBlockLock.WaitOne(BlockProductionTimeout))
             {
                 try
                 {
@@ -59,7 +61,7 @@ namespace Nethermind.Merge.AuRa
                 }
                 finally
                 {
-                    _producingBlockLock.Release();
+                    _producingBlockLock.Set();
                 }
             }
 

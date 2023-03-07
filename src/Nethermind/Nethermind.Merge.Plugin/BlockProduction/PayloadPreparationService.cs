@@ -29,6 +29,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private readonly PostMergeBlockProducer _blockProducer;
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
         private readonly ILogger _logger;
+        private readonly List<string> _payloadsToRemove = new();
 
         // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
         public const int SlotsPerOldPayloadCleanup = 6;
@@ -162,10 +163,20 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                     if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
                     if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
                     {
-                        context.Dispose();
-                        if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
+                        _payloadsToRemove.Add(payload.Key);
                     }
                 }
+
+                foreach (string payloadToRemove in _payloadsToRemove)
+                {
+                    if (_payloadStorage.TryRemove(payloadToRemove, out IBlockImprovementContext? context))
+                    {
+                        context.Dispose();
+                        if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
+                    }
+                }
+
+                _payloadsToRemove.Clear();
             }
 
             if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");

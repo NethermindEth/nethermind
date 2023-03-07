@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.Producers
         private readonly ITxSource _txSource;
         private readonly IBlockProductionTrigger _trigger;
         private bool _isRunning;
-        protected readonly SemaphoreSlim _producingBlockLock = new(1);
+        protected readonly ManualResetEvent _producingBlockLock = new(true);
         private CancellationTokenSource? _producerCancellationToken;
 
         private DateTime _lastProducedBlockDateTime;
@@ -122,7 +122,7 @@ namespace Nethermind.Consensus.Producers
             token = tokenSource.Token;
 
             Block? block = null;
-            if (await _producingBlockLock.WaitAsync(BlockProductionTimeout, token))
+            if (await _producingBlockLock.WaitOneAsync(BlockProductionTimeout, token))
             {
                 try
                 {
@@ -140,7 +140,7 @@ namespace Nethermind.Consensus.Producers
                 }
                 finally
                 {
-                    _producingBlockLock.Release();
+                    _producingBlockLock.Set();
                 }
             }
             else
