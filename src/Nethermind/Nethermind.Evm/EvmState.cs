@@ -243,10 +243,10 @@ namespace Nethermind.Evm
                 _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
                 DataStack = null;
                 ReturnStack = null;
-                Restore(); // we are trying to restore when disposing
-                Memory?.Dispose();
-                Memory = null;
             }
+            Restore(); // we are trying to restore when disposing
+            Memory?.Dispose();
+            Memory = null;
         }
 
         public void InitStacks()
