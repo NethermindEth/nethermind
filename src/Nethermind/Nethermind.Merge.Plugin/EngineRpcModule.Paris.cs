@@ -65,17 +65,17 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(ExecutionPayload executionPayload, int version)
     {
-        bool noGcRegion = GC.TryStartNoGCRegion(10.MB(), true);
-
-        try
+        if (!executionPayload.Validate(_specProvider, version, out string? error))
         {
-            if (!executionPayload.Validate(_specProvider, version, out string? error))
-            {
-                if (_logger.IsWarn) _logger.Warn(error);
-                return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
-            }
+            if (_logger.IsWarn) _logger.Warn(error);
+            return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
+        }
 
-            if (await _locker.WaitAsync(_timeout))
+        if (await _locker.WaitAsync(_timeout))
+        {
+            bool noGcRegion = GC.TryStartNoGCRegion(10.MB(), true);
+            
+            try
             {
                 Stopwatch watch = Stopwatch.StartNew();
                 try
@@ -94,18 +94,19 @@ public partial class EngineRpcModule : IEngineRpcModule
                     _locker.Release();
                 }
             }
-            else
+            finally
             {
-                if (_logger.IsWarn) _logger.Warn($"engine_newPayloadV{version} timed out");
-                return ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout);
+                if (noGcRegion)
+                {
+                    GC.EndNoGCRegion();
+                }
             }
         }
-        finally
+        else
         {
-            if (noGcRegion)
-            {
-                GC.EndNoGCRegion();
-            }
+            if (_logger.IsWarn) _logger.Warn($"engine_newPayloadV{version} timed out");
+            return ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout);
         }
     }
+
 }
