@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -130,41 +132,42 @@ namespace Nethermind.Synchronization.FastSync
 
         public byte[] Serialize()
         {
-            int contentLength = GetLength();
-            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-            stream.StartSequence(contentLength);
-            stream.Encode(ConsumedNodesCount);
-            stream.Encode(SavedStorageCount);
-            stream.Encode(SavedStateCount);
-            stream.Encode(SavedNodesCount);
-            stream.Encode(SavedAccounts);
-            stream.Encode(SavedCode);
-            stream.Encode(RequestedNodesCount);
-            stream.Encode(DbChecks);
-            stream.Encode(StateWasThere);
-            stream.Encode(StateWasNotThere);
-            stream.Encode(DataSize);
-            stream.Encode(SecondsInSync);
+            Span<long> progress = stackalloc[]
+            {
+                ConsumedNodesCount,
+                SavedStorageCount,
+                SavedStateCount,
+                SavedNodesCount,
+                SavedAccounts,
+                SavedCode,
+                RequestedNodesCount,
+                DbChecks,
+                StateWasThere,
+                StateWasNotThere,
+                DataSize,
+                SecondsInSync
+            };
 
+            int contentLength = GetLength(progress);
+            RlpStream stream = new RlpStream(Rlp.LengthOfSequence(contentLength));
+            stream.StartSequence(contentLength);
+            foreach (long entry in progress)
+            {
+                stream.Encode(entry);
+            }
             return stream.Data;
         }
 
-        private int GetLength()
+        private static int GetLength(Span<long> progress)
         {
-            int contentLength = 0;
-            contentLength += Rlp.LengthOf(ConsumedNodesCount);
-            contentLength += Rlp.LengthOf(SavedStorageCount);
-            contentLength += Rlp.LengthOf(SavedStateCount);
-            contentLength += Rlp.LengthOf(SavedNodesCount);
-            contentLength += Rlp.LengthOf(SavedAccounts);
-            contentLength += Rlp.LengthOf(SavedCode);
-            contentLength += Rlp.LengthOf(RequestedNodesCount);
-            contentLength += Rlp.LengthOf(DbChecks);
-            contentLength += Rlp.LengthOf(StateWasThere);
-            contentLength += Rlp.LengthOf(StateWasNotThere);
-            contentLength += Rlp.LengthOf(DataSize);
-            contentLength += Rlp.LengthOf(SecondsInSync);
-            return contentLength;
+            int sum = 0;
+
+            for (int index = 0; index < progress.Length; index++)
+            {
+                sum += Rlp.LengthOf(progress[index]);
+            }
+
+            return sum;
         }
     }
 }
