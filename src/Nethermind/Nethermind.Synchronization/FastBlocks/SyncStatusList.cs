@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
+using ConcurrentCollections;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 
@@ -12,75 +14,67 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         private long _queueSize;
         private readonly IBlockTree _blockTree;
-        private readonly FastBlockStatusList _statuses;
 
         public long LowestInsertWithoutGaps { get; private set; }
         public long QueueSize => _queueSize;
 
+        private readonly ConcurrentHashSet<long> _insertedItems = new();
+        private readonly ConcurrentQueue<long> _retryItems = new();
+        private long _lowestSent;
+
         public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _statuses = new FastBlockStatusList(pivotNumber + 1);
-
-            LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
+            _lowestSent = LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
         }
 
         public void GetInfosForBatch(BlockInfo?[] blockInfos)
         {
             int collected = 0;
-
-            long currentNumber = LowestInsertWithoutGaps;
-            lock (_statuses)
+            while (collected < blockInfos.Length)
             {
-                while (collected < blockInfos.Length && currentNumber != 0)
+                if (blockInfos[collected] is not null)
                 {
-                    if (blockInfos[collected] is not null)
-                    {
-                        collected++;
-                        continue;
-                    }
-
-                    switch (_statuses[currentNumber])
-                    {
-                        case FastBlockStatus.Unknown:
-                            blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(currentNumber);
-                            _statuses[currentNumber] = FastBlockStatus.Sent;
-                            collected++;
-                            break;
-                        case FastBlockStatus.Inserted:
-                            if (currentNumber == LowestInsertWithoutGaps)
-                            {
-                                LowestInsertWithoutGaps--;
-                                Interlocked.Decrement(ref _queueSize);
-                            }
-
-                            break;
-                        case FastBlockStatus.Sent:
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-
-                    currentNumber--;
+                    collected++;
+                    continue;
                 }
+
+                if (!_retryItems.TryDequeue(out long blockNumber))
+                {
+                    blockNumber = Interlocked.Decrement(ref _lowestSent);
+                }
+
+                if (blockNumber <= 0)
+                {
+                    break;
+                }
+
+                blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(blockNumber);
+                collected++;
             }
         }
 
-        public void MarkInserted(in long blockNumber)
+        public void MarkInserted(long blockNumber)
         {
             Interlocked.Increment(ref _queueSize);
-            lock (_statuses)
+            if (blockNumber == LowestInsertWithoutGaps)
             {
-                _statuses[blockNumber] = FastBlockStatus.Inserted;
+                do
+                {
+                    LowestInsertWithoutGaps--;
+                    Interlocked.Decrement(ref _queueSize);
+                    blockNumber--;
+                } while (_insertedItems.TryRemove(blockNumber));
+            }
+            else
+            {
+                _insertedItems.Add(blockNumber);
             }
         }
 
-        public void MarkUnknown(in long blockNumber)
+        public void MarkUnknown(long blockNumber)
         {
-            lock (_statuses)
-            {
-                _statuses[blockNumber] = FastBlockStatus.Unknown;
-            }
+            _retryItems.Enqueue(blockNumber);
         }
     }
 }
