@@ -12,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 
@@ -29,7 +28,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private readonly PostMergeBlockProducer _blockProducer;
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
         private readonly ILogger _logger;
-        private readonly List<string> _payloadsToRemove = new();
 
         // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
         public const int SlotsPerOldPayloadCleanup = 6;
@@ -151,28 +149,31 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         private void CleanupOldPayloads(object? sender, EventArgs e)
         {
-            if (_logger.IsTrace) _logger.Trace("Started old payloads cleanup");
-            foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
+            try
             {
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-                if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
+                if (_logger.IsTrace) _logger.Trace("Started old payloads cleanup");
+                foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
-                    _payloadsToRemove.Add(payload.Key);
+                    DateTimeOffset now = DateTimeOffset.UtcNow;
+                    if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
+                    {
+                        if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
+                    
+                        if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
+                        {
+                            context.Dispose();
+                            if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
+                        }
+                    }
                 }
+
+                if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Exception in old payloads cleanup: {ex}");
             }
 
-            foreach (string payloadToRemove in _payloadsToRemove)
-            {
-                if (_payloadStorage.TryRemove(payloadToRemove, out IBlockImprovementContext? context))
-                {
-                    context.Dispose();
-                    if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
-                }
-            }
-
-            _payloadsToRemove.Clear();
-            if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");
         }
 
         private Block? LogProductionResult(Task<Block?> t)
