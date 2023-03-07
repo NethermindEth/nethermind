@@ -20,8 +20,6 @@ namespace Nethermind.Config
 
         private readonly Dictionary<Type, Type> _implementations = new();
 
-        private readonly TypeDiscovery _typeDiscovery = new();
-
         public T GetConfig<T>() where T : IConfig
         {
             return (T)GetConfig(typeof(T));
@@ -67,7 +65,7 @@ namespace Nethermind.Config
         public void Initialize()
         {
             Type type = typeof(IConfig);
-            IEnumerable<Type> interfaces = _typeDiscovery.FindNethermindTypes(type).Where(x => x.IsInterface);
+            IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindTypes(type).Where(x => x.IsInterface);
 
             foreach (Type @interface in interfaces)
             {

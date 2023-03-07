@@ -227,6 +227,42 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryDecodeFromUtf8(ReadOnlySpan<byte> hex, Span<byte> bytes, bool isOdd)
+        {
+            Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length, "Target buffer not right-sized for provided characters");
+
+            int i = 0;
+            int j = 0;
+            int byteLo = 0;
+            int byteHi = 0;
+
+            if (isOdd)
+            {
+                byteLo = FromChar((char)hex[i++]);
+                bytes[j++] = (byte)byteLo;
+            }
+
+            while (j < bytes.Length)
+            {
+                byteLo = FromChar((char)hex[i + 1]);
+                byteHi = FromChar((char)hex[i]);
+
+                // byteHi hasn't been shifted to the high half yet, so the only way the bitwise or produces this pattern
+                // is if either byteHi or byteLo was not a hex character.
+                if ((byteLo | byteHi) == 0xFF)
+                    break;
+
+                bytes[j++] = (byte)((byteHi << 4) | byteLo);
+                i += 2;
+            }
+
+            if (byteLo == 0xFF)
+                i++;
+
+            return (byteLo | byteHi) != 0xFF;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryDecodeFromUtf16(ReadOnlySpan<char> chars, Span<byte> bytes, bool isOdd)
         {
             Debug.Assert((chars.Length / 2) + (chars.Length % 2) == bytes.Length, "Target buffer not right-sized for provided characters");

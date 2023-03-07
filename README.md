@@ -19,7 +19,7 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 ### Supported networks
 
-**`Mainnet`** **`Goerli`** **`Rinkeby`** **`Ropsten`** **`Sepolia`** **`Gnosis (xDai)`** **`Energy Web`** **`Volta`** **`Kovan`**
+**`Mainnet`** **`Goerli`** **`Sepolia`** **`Gnosis (xDai)`** **`Energy Web`** **`Volta`**
 
 ## Download and run
 
@@ -32,6 +32,12 @@ Release builds are available on the [Releases page](https://github.com/nethermin
 2. `sudo apt install nethermind`
 3. To run the launcher: `nethermind`
 4. To run the runner: `nethermind -c mainnet`
+
+#### On Windows using Windows Package Manager
+
+1. `winget install nethermind`
+2. To run the launcher: `nethermind.launcher.exe`
+3. To run the runner: `nethermind.runner.exe -c mainnet`
 
 #### On macOS using Homebrew
 

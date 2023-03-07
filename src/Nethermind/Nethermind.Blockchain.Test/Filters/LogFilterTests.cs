@@ -15,7 +15,7 @@ namespace Nethermind.Blockchain.Test.Filters
     {
         private int _filterCounter;
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void any_address_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(Core.Bloom.Empty).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void address_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void addresses_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void any_topics_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(Core.Bloom.Empty).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void specific_topics_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void multiple_specific_topics_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void or_topics_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void complex_topics_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void complex_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -120,7 +120,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void address_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void addresses_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -144,7 +144,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void specific_topics_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -156,7 +156,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void multiple_specific_topics_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -168,7 +168,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void or_topics_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -180,7 +180,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void complex_topics_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -192,7 +192,7 @@ namespace Nethermind.Blockchain.Test.Filters
             filter.Matches(bloom).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void complex_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)

@@ -28,7 +28,7 @@ public class TraceStorePlugin : INethermindPlugin
     public string Name => DbName;
     public string Description => "Allows to serve traces without the block state, by saving historical traces to DB.";
     public string Author => "Nethermind";
-    private bool Enabled => _config.Enabled;
+    private bool Enabled => _config?.Enabled == true;
 
     public Task Init(INethermindApi nethermindApi)
     {

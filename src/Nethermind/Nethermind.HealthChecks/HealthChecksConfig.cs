@@ -21,5 +21,6 @@ namespace Nethermind.HealthChecks
 
         public float LowStorageSpaceWarningThreshold { get; set; } = 5;
         public float LowStorageSpaceShutdownThreshold { get; set; } = 1;
+        public bool LowStorageCheckAwaitOnStartup { get; set; } = false;
     }
 }

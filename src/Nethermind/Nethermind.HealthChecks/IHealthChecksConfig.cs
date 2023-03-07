@@ -45,5 +45,8 @@ namespace Nethermind.HealthChecks
 
         [ConfigItem(Description = "Percentage of available disk space below which node will shutdown. Zero to disable.", DefaultValue = "1")]
         public float LowStorageSpaceShutdownThreshold { get; set; }
+
+        [ConfigItem(Description = "Free disk space check on startup will pause node initalization until enough space is available.", DefaultValue = "false")]
+        public bool LowStorageCheckAwaitOnStartup { get; set; }
     }
 }

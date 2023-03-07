@@ -21,6 +21,7 @@ namespace Nethermind.Specs
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
+        public ulong TimestampFork => ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 

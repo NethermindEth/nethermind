@@ -15,7 +15,7 @@
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FastEnum" Version="1.8.0" />
-    <PackageReference Include="Nethermind.Gmp" Version="1.0.1" />
+    <PackageReference Include="FastEnum" />
+    <PackageReference Include="Nethermind.Gmp" />
   </ItemGroup>
 </Project>

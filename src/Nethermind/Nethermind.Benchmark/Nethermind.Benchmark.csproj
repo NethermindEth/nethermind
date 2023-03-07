@@ -10,9 +10,9 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" Version="0.13.4" />
-    <PackageReference Include="HexMate" Version="0.0.3" />
-    <PackageReference Include="Nethermind.Numerics.Dirichlet" Version="1.0.0" />
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="HexMate" />
+    <PackageReference Include="Nethermind.Numerics.Dirichlet" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />

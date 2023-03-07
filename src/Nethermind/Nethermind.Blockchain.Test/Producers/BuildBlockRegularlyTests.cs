@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain.Test.Producers
     [TestFixture]
     public class BuildBlockRegularlyTests
     {
-        [Test, Retry(3)]
+        [Test, Timeout(Timeout.MaxTestTime), Retry(3)]
         public async Task Regular_trigger_works()
         {
             int triggered = 0;

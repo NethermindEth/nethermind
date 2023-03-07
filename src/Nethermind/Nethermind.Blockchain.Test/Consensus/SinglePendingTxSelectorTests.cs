@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.Test.Consensus
     {
         private BlockHeader _anyParent = Build.A.BlockHeader.TestObject;
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void To_string_does_not_throw()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
@@ -25,13 +25,13 @@ namespace Nethermind.Blockchain.Test.Consensus
             _ = selector.ToString();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Throws_on_null_argument()
         {
             Assert.Throws<ArgumentNullException>(() => new SinglePendingTxSelector(null));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_no_transactions_returns_empty_list()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             selector.GetTransactions(_anyParent, 1000000).Should().HaveCount(0);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_many_transactions_returns_one_with_lowest_nonce_and_highest_timestamp()
         {
             ITxSource txSource = Substitute.For<ITxSource>();

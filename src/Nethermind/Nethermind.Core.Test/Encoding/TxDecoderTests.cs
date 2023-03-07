@@ -65,7 +65,7 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((Transaction Tx, string Description) testCase)
         {
-            RlpStream rlpStream = new(10000);
+            RlpStream rlpStream = new RlpStream(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
             _txDecoder.Encode(rlpStream, testCase.Tx);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(rlpStream);
@@ -95,7 +95,7 @@ namespace Nethermind.Core.Test.Encoding
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
 
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
             decoded.CalculateHash().Should().Be(testCase.Hash);
 
             RlpStream ourRlpOutput = new(incomingTxRlp.Length * 2);
@@ -110,10 +110,10 @@ namespace Nethermind.Core.Test.Encoding
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
 
-            decoded.CalculateHash().Should().Be(decoded.Hash!);
+            decoded.CalculateHash().Should().Be(decoded.Hash);
             decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
 
@@ -122,7 +122,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
             decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
@@ -132,7 +132,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp);
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
             decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
@@ -156,12 +156,12 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
             Span<byte> spanIncomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsSpan();
             Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
-            Transaction decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
-            Transaction decoded = _txDecoder.Decode(incomingTxRlp, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
-            Rlp encoded = _txDecoder.Encode(decoded);
-            Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext);
-            decoded.Hash.Should().Be(testCase.Hash);
-            decoded.Hash.Should().Be(decodedByValueDecoderContext.Hash!);
+            Transaction decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None);
+            Transaction decoded = _txDecoder.Decode(incomingTxRlp, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None);
+            Rlp encoded = _txDecoder.Encode(decoded!);
+            Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext!);
+            decoded!.Hash.Should().Be(testCase.Hash);
+            decoded!.Hash.Should().Be(decodedByValueDecoderContext!.Hash);
             Assert.AreEqual(encoded.Bytes, encodedWithDecodedByValueDecoderContext.Bytes);
         }
 
