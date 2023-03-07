@@ -158,7 +158,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                     if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
                     {
                         if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
-                    
+
                         if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
                         {
                             context.Dispose();
