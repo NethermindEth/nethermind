@@ -5,9 +5,9 @@ namespace Nethermind.Trie
 {
     public enum NodeType : byte
     {
-        Unknown = 0,
-        Branch = 1,
-        Extension = 2,
-        Leaf = 3
+        Unknown,
+        Branch,
+        Extension,
+        Leaf
     }
 }
