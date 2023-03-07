@@ -18,20 +18,23 @@ public class DetailedProgressSerializerTest
     [Test]
     public void SerializerMultiThreadFuzzTest()
     {
-        Task.Run(ChangeData);
+        CancellationTokenSource cts = new CancellationTokenSource();
+        Task.Run(() => ChangeData(cts.Token));
+
         for (int i = 0; i < 1000000; i++)
         {
             _data.Serialize();
         }
+
+        cts.Cancel();
     }
 
-    private void ChangeData()
+    private void ChangeData(CancellationToken token)
     {
         Random rand = new Random();
         Random randBool = new Random();
-        while (true)
+        while (token.IsCancellationRequested)
         {
-            randBool.NextBoolean();
             Interlocked.Exchange(ref _data.ConsumedNodesCount, randBool.NextBoolean() ? rand.NextInt64() : 0);
             Interlocked.Exchange(ref _data.ConsumedNodesCount, randBool.NextBoolean() ? rand.NextInt64() : 0);
             Interlocked.Exchange(ref _data.SavedStorageCount, randBool.NextBoolean() ? rand.NextInt64() : 0);
