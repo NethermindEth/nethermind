@@ -741,7 +741,11 @@ namespace Nethermind.Synchronization.FastSync
 
         private void StoreProgressInDb()
         {
-            byte[] serializedData = _data.Serialize();
+            byte[]? serializedData;
+            lock (_data)
+            {
+                serializedData = _data.Serialize();
+            }
             _stateDbLock.EnterWriteLock();
             try
             {
