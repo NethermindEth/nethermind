@@ -161,24 +161,20 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
                 {
                     if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
-                    if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
-                    {
-                        _payloadsToRemove.Add(payload.Key);
-                    }
+                    _payloadsToRemove.Add(payload.Key);
                 }
-
-                foreach (string payloadToRemove in _payloadsToRemove)
-                {
-                    if (_payloadStorage.TryRemove(payloadToRemove, out IBlockImprovementContext? context))
-                    {
-                        context.Dispose();
-                        if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
-                    }
-                }
-
-                _payloadsToRemove.Clear();
             }
 
+            foreach (string payloadToRemove in _payloadsToRemove)
+            {
+                if (_payloadStorage.TryRemove(payloadToRemove, out IBlockImprovementContext? context))
+                {
+                    context.Dispose();
+                    if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
+                }
+            }
+
+            _payloadsToRemove.Clear();
             if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");
         }
 
