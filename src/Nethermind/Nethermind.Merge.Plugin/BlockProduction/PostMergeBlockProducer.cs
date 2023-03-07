@@ -44,7 +44,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 logManager,
                 ConstantDifficulty.Zero,
                 miningConfig
-                )
+            )
         {
         }
 
@@ -54,8 +54,14 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             blockHeader.TxRoot = Keccak.EmptyTreeHash;
             blockHeader.Bloom = Bloom.Empty;
+            var block = new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+            // ToDo add lock
+            if (TrySetState(parent.StateRoot))
+            {
+                block = ProcessPreparedBlock(block, null) ?? block;
+            }
 
-            return new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+            return block;
         }
 
         protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)

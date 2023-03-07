@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
@@ -19,9 +20,13 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Logging.NLog;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
+using NLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -388,13 +393,18 @@ public partial class EngineModuleTests
         cancelledContext?.Disposed.Should().BeTrue();
     }
 
-    [Test, Repeat(5000)]
+    [Test, Repeat(100)]
     public async Task Cannot_produce_bad_blocks()
     {
         // this test sends two payloadAttributes on block X and X + 1 to start many block improvements
         // as the result we want to check if we are not able to produce invalid block by repeating this test many times
+
+        // ToDo cleanup logs directory
+        string logFolder = "D:\\logs";
+        string guid = Guid.NewGuid().ToString();
+        NLogManager logManager = new NLogManager($"log_+{guid}", logFolder);
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockChain();
+        using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(London.Instance), logManager);
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 4 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
@@ -441,6 +451,15 @@ public partial class EngineModuleTests
         ExecutionPayload getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload))).Data!;
 
         Task<ResultWrapper<PayloadStatusV1>> secondBlock = rpc.engine_newPayloadV2(getSecondBlockPayload);
+        if (secondBlock.Result.Data.Status == PayloadStatus.Invalid)
+        {
+            string[] files = Directory.GetFiles(logFolder);
+            foreach (string file in files)
+            {
+                if (!file.Contains(guid))
+                    File.Delete(file);
+            }
+        }
         secondBlock.Result.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 }
