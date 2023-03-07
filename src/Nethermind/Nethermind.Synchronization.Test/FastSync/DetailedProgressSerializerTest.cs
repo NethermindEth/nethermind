@@ -33,7 +33,7 @@ public class DetailedProgressSerializerTest
     {
         Random rand = new Random();
         Random randBool = new Random();
-        while (token.IsCancellationRequested)
+        while (!token.IsCancellationRequested)
         {
             Interlocked.Exchange(ref _data.ConsumedNodesCount, randBool.NextBoolean() ? rand.NextInt64() : 0);
             Interlocked.Exchange(ref _data.ConsumedNodesCount, randBool.NextBoolean() ? rand.NextInt64() : 0);
