@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public void MarkInserted(long blockNumber)
         {
             Interlocked.Increment(ref _queueSize);
-            if (blockNumber == LowestInsertWithoutGaps)
+            if (blockNumber + 1 == LowestInsertWithoutGaps)
             {
                 do
                 {
