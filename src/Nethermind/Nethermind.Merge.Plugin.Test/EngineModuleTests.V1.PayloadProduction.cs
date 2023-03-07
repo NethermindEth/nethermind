@@ -386,4 +386,70 @@ public partial class EngineModuleTests
         getPayloadResult.GetTransactions().Should().HaveCount(3);
         cancelledContext?.Disposed.Should().BeTrue();
     }
+
+    [Test, Repeat(500)]
+    public async Task Cannot_produce_bad_blocks()
+    {
+        // this test sends two payloadAttributes on block X and X + 1 to start many block improvements
+        // as the result we want to check if we are not able to produce invalid block by repeating this test many times
+        using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        TimeSpan delay = TimeSpan.FromMilliseconds(10);
+        TimeSpan timePerSlot = 4 * delay;
+        StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
+        chain.PayloadPreparationService = new PayloadPreparationService(
+            chain.PostMergeBlockProducer!,
+            improvementContextFactory,
+            TimerFactory.Default,
+            chain.LogManager,
+            timePerSlot,
+            improvementDelay: delay,
+            minTimeForProduction: delay);
+
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak blockX = chain.BlockTree.HeadHash;
+        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
+        chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
+        string? payloadId = (await rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
+                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
+            ).Data.PayloadId!;
+        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
+        await blockImprovementLock.WaitAsync(timePerSlot * 2);
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+
+        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
+
+        Task<ResultWrapper<PayloadStatusV1>> firstBlockTask = rpc.engine_newPayloadV2(getPayloadResult);
+
+        // starting building on block X
+        await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
+            new PayloadAttributes { Timestamp = 101, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
+
+        // starting building on block X + 1
+        string? secondNewPayload = (await rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(getPayloadResult.BlockHash, Keccak.Zero, getPayloadResult.BlockHash),
+                new PayloadAttributes { Timestamp = 102, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
+            ).Data.PayloadId!;
+
+        ExecutionPayload getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload))).Data!;
+        Task<ResultWrapper<PayloadStatusV1>> secondBlockTask = rpc.engine_newPayloadV2(getSecondBlockPayload);
+
+        (await firstBlockTask).Data.Status.Should().Be(PayloadStatus.Valid);
+
+        var secondBlock = await secondBlockTask;
+        if (secondBlock.Data is null)
+        {
+            TestContext.WriteLine($"Data is null, Error Code: {secondBlock.ErrorCode} after {TestContext.CurrentContext.CurrentRepeatCount} runs");
+            // Fail
+            secondBlock.Data.Should().NotBeNull();
+        }
+        else if (!secondBlock.Data.Status.Equals(PayloadStatus.Valid))
+        {
+            TestContext.WriteLine($"Validation error: {secondBlock.Data.ValidationError} after {TestContext.CurrentContext.CurrentRepeatCount} runs");
+        }
+
+        secondBlock.Data!.Status.Should().Be(PayloadStatus.Valid);
+    }
 }
