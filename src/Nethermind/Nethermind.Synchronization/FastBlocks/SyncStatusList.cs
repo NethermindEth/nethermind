@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public void MarkUnknown(BlockInfo blockInfo)
+        public void MarkRetry(BlockInfo blockInfo)
         {
             _retryItems.Enqueue(blockInfo);
         }

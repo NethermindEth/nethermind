@@ -198,12 +198,12 @@ namespace Nethermind.Synchronization.FastBlocks
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
                         }
 
-                        _syncStatusList.MarkUnknown(blockInfo);
+                        _syncStatusList.MarkRetry(blockInfo);
                     }
                 }
                 else
                 {
-                    _syncStatusList.MarkUnknown(blockInfo);
+                    _syncStatusList.MarkRetry(blockInfo);
                 }
             }
 
