@@ -95,15 +95,17 @@ namespace Nethermind.Evm.Benchmark
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
 
             _environment = new ExecutionEnvironment
-            {
-                ExecutingAccount = Address.Zero,
-                CodeSource = Address.Zero,
-                Caller = Address.Zero,
-                CodeInfo = new CodeInfo(Bytecode),
-                Value = 0,
-                TransferValue = 0,
-                TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0, null)
-            };
+            (
+                executingAccount: Address.Zero,
+                codeSource: Address.Zero,
+                caller: Address.Zero,
+                codeInfo: new CodeInfo(Bytecode),
+                value: 0,
+                transferValue: 0,
+                txExecutionContext: new TxExecutionContext(_header, Address.Zero, null, 0),
+                callDepth: 0,
+                inputData: default
+            );
 
             _evmState = new EvmState(100_000_000L, _environment, ExecutionType.Transaction, true, _worldState.TakeSnapshot(), false);
         }
