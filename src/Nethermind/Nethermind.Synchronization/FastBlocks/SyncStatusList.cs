@@ -25,7 +25,8 @@ namespace Nethermind.Synchronization.FastBlocks
         public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _lowestSent = LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
+            LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
+            _lowestSent = LowestInsertWithoutGaps + 1;
         }
 
         public void GetInfosForBatch(BlockInfo?[] blockInfos)
@@ -57,7 +58,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public void MarkInserted(long blockNumber)
         {
             Interlocked.Increment(ref _queueSize);
-            if (blockNumber + 1 == LowestInsertWithoutGaps)
+            if (blockNumber == LowestInsertWithoutGaps)
             {
                 do
                 {
