@@ -30,43 +30,43 @@ namespace Nethermind.Synchronization.FastBlocks
             int collected = 0;
 
             long currentNumber = LowestInsertWithoutGaps;
-            lock (_statuses)
+            while (collected < blockInfos.Length && currentNumber != 0)
             {
-                while (collected < blockInfos.Length && currentNumber != 0)
+                if (blockInfos[collected] is not null)
                 {
-                    if (blockInfos[collected] is not null)
-                    {
-                        collected++;
-                        continue;
-                    }
-
-                    switch (_statuses[currentNumber])
-                    {
-                        case FastBlockStatus.Unknown:
-                            blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(currentNumber);
-                            _statuses[currentNumber] = FastBlockStatus.Sent;
-                            collected++;
-                            break;
-                        case FastBlockStatus.Inserted:
-                            if (currentNumber == LowestInsertWithoutGaps)
-                            {
-                                LowestInsertWithoutGaps--;
-                                Interlocked.Decrement(ref _queueSize);
-                            }
-
-                            break;
-                        case FastBlockStatus.Sent:
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-
-                    currentNumber--;
+                    collected++;
+                    continue;
                 }
+
+                switch (_statuses[currentNumber])
+                {
+                    case FastBlockStatus.Unknown:
+                        blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(currentNumber);
+                        lock (_statuses)
+                        {
+                            _statuses[currentNumber] = FastBlockStatus.Sent;
+                        }
+                        collected++;
+                        break;
+                    case FastBlockStatus.Inserted:
+                        if (currentNumber == LowestInsertWithoutGaps)
+                        {
+                            LowestInsertWithoutGaps--;
+                            Interlocked.Decrement(ref _queueSize);
+                        }
+
+                        break;
+                    case FastBlockStatus.Sent:
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
+                currentNumber--;
             }
         }
 
-        public void MarkInserted(in long blockNumber)
+        public void MarkInserted(long blockNumber)
         {
             Interlocked.Increment(ref _queueSize);
             lock (_statuses)
@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public void MarkUnknown(in long blockNumber)
+        public void MarkUnknown(long blockNumber)
         {
             lock (_statuses)
             {

@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 namespace Nethermind.Synchronization.FastBlocks;
@@ -36,7 +37,7 @@ internal class FastBlockStatusList
 
             (long q, long r) = Math.DivRem(index, 4);
 
-            byte status = _statuses[q];
+            byte status = Volatile.Read(ref _statuses[q]);
             return (FastBlockStatus)((status >> (int)(r * 2)) & 0b11);
         }
         set
