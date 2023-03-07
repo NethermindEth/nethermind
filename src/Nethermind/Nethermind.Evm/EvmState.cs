@@ -237,7 +237,7 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            if (DataStack is not null) 
+            if (DataStack is not null)
             {
                 // Only Dispose once
                 _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
