@@ -31,29 +31,18 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public void GetInfosForBatch(BlockInfo?[] blockInfos)
         {
-            int collected = 0;
-            while (collected < blockInfos.Length)
+            for (int collected = 0; collected < blockInfos.Length; collected++)
             {
-                if (blockInfos[collected] is not null)
-                {
-                    collected++;
-                    continue;
-                }
+                if (blockInfos[collected] is not null) continue;
 
                 if (!_retryItems.TryDequeue(out BlockInfo blockInfo))
                 {
                     long blockNumber = Interlocked.Decrement(ref _lowestSent);
-
-                    if (blockNumber <= 0)
-                    {
-                        break;
-                    }
-
+                    if (blockNumber <= 0) break;
                     blockInfo = _blockTree.FindCanonicalBlockInfo(blockNumber);
                 }
 
                 blockInfos[collected] = blockInfo;
-                collected++;
             }
         }
 
