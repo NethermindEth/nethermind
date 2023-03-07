@@ -231,7 +231,7 @@ namespace Nethermind.Evm
                     }
 
                     Address callCodeOwner = currentState.Env.ExecutingAccount;
-                    EvmState previousState = currentState;
+                    using EvmState previousState = currentState;
                     currentState = _stateStack.Pop();
                     currentState.IsContinuation = true;
                     currentState.GasAvailable += previousState.GasAvailable;
@@ -322,8 +322,6 @@ namespace Nethermind.Evm
                             _txTracer.ReportActionError(EvmExceptionType.Revert, previousState.GasAvailable);
                         }
                     }
-
-                    previousState.Dispose();
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException)
                 {

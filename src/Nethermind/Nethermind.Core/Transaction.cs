@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -40,7 +43,71 @@ namespace Nethermind.Core
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
-        public Keccak? Hash { get; set; }
+
+        private Keccak? _hash;
+        public Keccak? Hash
+        {
+            get
+            {
+                Keccak? hash = _hash;
+                if (hash is not null) return hash;
+
+                if (_preHash.Length > 0)
+                {
+                    GenerateHash();
+                }
+
+                return _hash;
+
+                void GenerateHash()
+                {
+                    _hash = Keccak.Compute(_preHash.Span);
+                    if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+                    {
+                        ArrayPool<byte>.Shared.Return(rentedArray.Array!);
+                    }
+
+                    _preHash = default;
+                }
+            }
+            set
+            {
+                if (_preHash.Length > 0)
+                {
+                    if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+                    {
+                        ArrayPool<byte>.Shared.Return(rentedArray.Array!);
+                    }
+
+                    _preHash = default;
+                }
+
+                _hash = value;
+            }
+        }
+
+        private ReadOnlyMemory<byte> _preHash;
+        public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
+        {
+            // Used to delay hash generation, as may be filtered as having too low gas etc
+            _hash = null;
+
+            int size = transactionSequence.Length;
+            byte[] preHash = ArrayPool<byte>.Shared.Rent(size);
+            transactionSequence.CopyTo(preHash);
+            _preHash = new ReadOnlyMemory<byte>(preHash, 0, size);
+        }
+
+        public void ClearPreHash()
+        {
+            if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+            {
+                ArrayPool<byte>.Shared.Return(rentedArray.Array!);
+            }
+
+            _preHash = default;
+        }
+
         public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
 

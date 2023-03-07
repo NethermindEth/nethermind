@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Intrinsics;
+using System.Diagnostics;
 
 namespace Nethermind.Evm
 {
@@ -399,14 +400,16 @@ namespace Nethermind.Evm
             return stackTrace;
         }
 
+        [StackTraceHidden]
         [DoesNotReturn]
         private static void ThrowEvmStackUnderflowException()
         {
             throw new EvmStackUnderflowException();
         }
 
+        [StackTraceHidden]
         [DoesNotReturn]
-        private static void ThrowEvmStackOverflowException()
+        internal static void ThrowEvmStackOverflowException()
         {
             throw new EvmStackOverflowException();
         }
