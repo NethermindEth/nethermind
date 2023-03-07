@@ -186,7 +186,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (isValid)
                     {
                         validResponsesCount++;
-                        InsertOneBlock(block!);
+                        InsertOneBlock(block!, blockInfo);
                     }
                     else
                     {
@@ -198,12 +198,12 @@ namespace Nethermind.Synchronization.FastBlocks
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
                         }
 
-                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        _syncStatusList.MarkUnknown(blockInfo);
                     }
                 }
                 else
                 {
-                    _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                    _syncStatusList.MarkUnknown(blockInfo);
                 }
             }
 
@@ -214,10 +214,10 @@ namespace Nethermind.Synchronization.FastBlocks
             return validResponsesCount;
         }
 
-        private void InsertOneBlock(Block block)
+        private void InsertOneBlock(Block block, BlockInfo blockInfo)
         {
             _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks);
-            _syncStatusList.MarkInserted(block.Number);
+            _syncStatusList.MarkInserted(blockInfo);
         }
 
         private void LogPostProcessingBatchInfo(BodiesSyncBatch batch, int validResponsesCount)

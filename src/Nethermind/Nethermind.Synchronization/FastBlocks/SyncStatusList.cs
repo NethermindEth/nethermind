@@ -19,7 +19,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public long QueueSize => _queueSize;
 
         private readonly ConcurrentHashSet<long> _insertedItems = new();
-        private readonly ConcurrentQueue<long> _retryItems = new();
+        private readonly ConcurrentQueue<BlockInfo> _retryItems = new();
         private long _lowestSent;
 
         public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
@@ -40,23 +40,26 @@ namespace Nethermind.Synchronization.FastBlocks
                     continue;
                 }
 
-                if (!_retryItems.TryDequeue(out long blockNumber))
+                if (!_retryItems.TryDequeue(out BlockInfo blockInfo))
                 {
-                    blockNumber = Interlocked.Decrement(ref _lowestSent);
+                    long blockNumber = Interlocked.Decrement(ref _lowestSent);
+
+                    if (blockNumber <= 0)
+                    {
+                        break;
+                    }
+
+                    blockInfo = _blockTree.FindCanonicalBlockInfo(blockNumber);
                 }
 
-                if (blockNumber <= 0)
-                {
-                    break;
-                }
-
-                blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(blockNumber);
+                blockInfos[collected] = blockInfo;
                 collected++;
             }
         }
 
-        public void MarkInserted(long blockNumber)
+        public void MarkInserted(BlockInfo blockInfo)
         {
+            long blockNumber = blockInfo.BlockNumber;
             Interlocked.Increment(ref _queueSize);
             if (blockNumber == LowestInsertWithoutGaps)
             {
@@ -73,9 +76,9 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public void MarkUnknown(long blockNumber)
+        public void MarkUnknown(BlockInfo blockInfo)
         {
-            _retryItems.Enqueue(blockNumber);
+            _retryItems.Enqueue(blockInfo);
         }
     }
 }

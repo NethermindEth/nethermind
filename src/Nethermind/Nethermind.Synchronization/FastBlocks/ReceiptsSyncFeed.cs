@@ -221,19 +221,19 @@ namespace Nethermind.Synchronization.FastBlocks
                                 if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
                             }
 
-                            _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                            _syncStatusList.MarkUnknown(blockInfo);
                         }
                         else
                         {
                             try
                             {
                                 _receiptStorage.Insert(block, prepared);
-                                _syncStatusList.MarkInserted(block.Number);
+                                _syncStatusList.MarkInserted(blockInfo);
                                 validResponsesCount++;
                             }
                             catch (InvalidDataException)
                             {
-                                _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                                _syncStatusList.MarkUnknown(blockInfo);
                             }
                         }
                     }
@@ -247,14 +247,14 @@ namespace Nethermind.Synchronization.FastBlocks
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, InitiateDisconnectReason.InvalidReceiptRoot, "invalid tx or uncles root");
                         }
 
-                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        _syncStatusList.MarkUnknown(blockInfo);
                     }
                 }
                 else
                 {
                     if (blockInfo is not null)
                     {
-                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        _syncStatusList.MarkUnknown(blockInfo);
                     }
                 }
             }
