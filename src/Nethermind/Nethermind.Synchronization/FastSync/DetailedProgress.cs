@@ -132,7 +132,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public byte[] Serialize()
         {
-            long[] progress = new long[]
+            Span<long> progress = stackalloc[]
             {
                 ConsumedNodesCount,
                 SavedStorageCount,
@@ -158,9 +158,16 @@ namespace Nethermind.Synchronization.FastSync
             return stream.Data;
         }
 
-        private static int GetLength(IEnumerable<long> progress)
+        private static int GetLength(Span<long> progress)
         {
-            return progress.Sum(Rlp.LengthOf);
+            int sum = 0;
+
+            for (int index = 0; index < progress.Length; index++)
+            {
+                sum += Rlp.LengthOf(progress[index]);
+            }
+
+            return sum;
         }
     }
 }
