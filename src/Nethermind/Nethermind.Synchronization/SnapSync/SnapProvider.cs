@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -18,7 +20,7 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapProvider : ISnapProvider
     {
-        private readonly ITrieStore _store;
+        private readonly ObjectPool<ITrieStore> _trieStorePool;
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
@@ -29,12 +31,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
-
-            _store = new TrieStore(
-                _dbProvider.StateDb,
-                Trie.Pruning.No.Pruning,
-                Persist.EveryBlock,
-                logManager);
+            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
@@ -71,7 +68,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
-            StateTree tree = new(_store, _logManager);
+            ITrieStore store = _trieStorePool.Get();
+            StateTree tree = new(store, _logManager);
 
             (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes) =
                 SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
@@ -97,6 +95,7 @@ namespace Nethermind.Synchronization.SnapSync
                 _logger.Trace($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
             }
 
+            _trieStorePool.Return(store);
             return result;
         }
 
@@ -153,7 +152,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
-            StorageTree tree = new(_store, _logManager);
+            ITrieStore store = _trieStorePool.Get();
+            StorageTree tree = new(store, _logManager);
             (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
 
             if (result == AddRangeResult.OK)
@@ -182,12 +182,14 @@ namespace Nethermind.Synchronization.SnapSync
                 _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
             }
 
+            _trieStorePool.Return(store);
             return result;
         }
 
         public void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response)
         {
             int respLength = response.Length;
+            ITrieStore store = _trieStorePool.Get();
 
             for (int reqi = 0; reqi < request.Paths.Length; reqi++)
             {
@@ -207,8 +209,8 @@ namespace Nethermind.Synchronization.SnapSync
                     try
                     {
                         var node = new TrieNode(NodeType.Unknown, nodeData, true);
-                        node.ResolveNode(_store);
-                        node.ResolveKey(_store, true);
+                        node.ResolveNode(store);
+                        node.ResolveKey(store, true);
 
                         requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(node.Keccak);
 
@@ -240,6 +242,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             _progressTracker.ReportAccountRefreshFinished();
+            _trieStorePool.Return(store);
         }
 
         private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath)
@@ -293,6 +296,32 @@ namespace Nethermind.Synchronization.SnapSync
         public void UpdatePivot()
         {
             _progressTracker.UpdatePivot();
+        }
+
+        private class TrieStorePoolPolicy : IPooledObjectPolicy<ITrieStore>
+        {
+            private readonly IKeyValueStoreWithBatching _stateDb;
+            private readonly ILogManager _logManager;
+
+            public TrieStorePoolPolicy(IKeyValueStoreWithBatching stateDb, ILogManager logManager)
+            {
+                _stateDb = stateDb;
+                _logManager = logManager;
+            }
+
+            public ITrieStore Create()
+            {
+                return new TrieStore(
+                    _stateDb,
+                    Trie.Pruning.No.Pruning,
+                    Persist.EveryBlock,
+                    _logManager);
+            }
+
+            public bool Return(ITrieStore obj)
+            {
+                return true;
+            }
         }
     }
 }

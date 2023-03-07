@@ -2,21 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -25,8 +18,6 @@ namespace Nethermind.Synchronization.SnapSync
 {
     internal static class SnapProviderHelper
     {
-        private static object _syncCommit = new();
-
         public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes)
             AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
@@ -73,10 +64,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            lock (_syncCommit)
-            {
-                tree.Commit(blockNumber, skipRoot: true);
-            }
+            tree.Commit(blockNumber, skipRoot: true);
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
@@ -110,10 +98,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            lock (_syncCommit)
-            {
-                tree.Commit(blockNumber);
-            }
+            tree.Commit(blockNumber);
 
             return (AddRangeResult.OK, moreChildrenToRight);
         }
