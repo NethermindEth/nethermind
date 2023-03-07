@@ -40,7 +40,6 @@ namespace Nethermind.Core.Test.Encoding
             rlp.Length.Should().Be(1);
 
             BlockInfo decoded = Rlp.Decode<BlockInfo>(rlp);
-            Assert.Null(decoded);
             decoded.Should().BeNull();
         }
 
