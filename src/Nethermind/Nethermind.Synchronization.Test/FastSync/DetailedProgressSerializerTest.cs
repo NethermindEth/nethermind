@@ -33,17 +33,17 @@ public class DetailedProgressSerializerTest
         {
             randBool.NextBoolean();
             Interlocked.Exchange(ref _data.ConsumedNodesCount, randBool.NextBoolean() ? rand.NextInt64() : 0);
-            Interlocked.Exchange( ref _data.ConsumedNodesCount, randBool.NextBoolean()? rand.NextInt64(): 0);
-            Interlocked.Exchange( ref _data.SavedStorageCount, randBool.NextBoolean()? rand.NextInt64(): 0);
-            Interlocked.Exchange( ref _data.SavedStateCount, randBool.NextBoolean()? rand.NextInt64(): 0);
-            Interlocked.Exchange( ref _data.SavedNodesCount, randBool.NextBoolean()? rand.NextInt64(): 0);
-            Interlocked.Exchange( ref _data.SavedAccounts, randBool.NextBoolean()? rand.NextInt64(): 0);
-            Interlocked.Exchange( ref _data.SavedCode, randBool.NextBoolean()? rand.NextInt64(): 0);
-            Interlocked.Exchange( ref _data.RequestedNodesCount, randBool.NextBoolean()? rand.NextInt64(): 0);
-            Interlocked.Exchange( ref _data.DbChecks, randBool.NextBoolean()? rand.NextInt64(): 0);
-            Interlocked.Exchange( ref _data.StateWasThere, randBool.NextBoolean()? rand.NextInt64(): 0);
-            Interlocked.Exchange( ref _data.StateWasNotThere, randBool.NextBoolean()? rand.NextInt64(): 0);
-            Interlocked.Exchange( ref _data.DataSize, randBool.NextBoolean()? rand.NextInt64(): 0);
+            Interlocked.Exchange(ref _data.ConsumedNodesCount, randBool.NextBoolean() ? rand.NextInt64() : 0);
+            Interlocked.Exchange(ref _data.SavedStorageCount, randBool.NextBoolean() ? rand.NextInt64() : 0);
+            Interlocked.Exchange(ref _data.SavedStateCount, randBool.NextBoolean() ? rand.NextInt64() : 0);
+            Interlocked.Exchange(ref _data.SavedNodesCount, randBool.NextBoolean() ? rand.NextInt64() : 0);
+            Interlocked.Exchange(ref _data.SavedAccounts, randBool.NextBoolean() ? rand.NextInt64() : 0);
+            Interlocked.Exchange(ref _data.SavedCode, randBool.NextBoolean() ? rand.NextInt64() : 0);
+            Interlocked.Exchange(ref _data.RequestedNodesCount, randBool.NextBoolean() ? rand.NextInt64() : 0);
+            Interlocked.Exchange(ref _data.DbChecks, randBool.NextBoolean() ? rand.NextInt64() : 0);
+            Interlocked.Exchange(ref _data.StateWasThere, randBool.NextBoolean() ? rand.NextInt64() : 0);
+            Interlocked.Exchange(ref _data.StateWasNotThere, randBool.NextBoolean() ? rand.NextInt64() : 0);
+            Interlocked.Exchange(ref _data.DataSize, randBool.NextBoolean() ? rand.NextInt64() : 0);
         }
     }
 }
