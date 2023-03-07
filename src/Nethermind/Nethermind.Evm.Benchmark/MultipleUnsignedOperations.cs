@@ -92,7 +92,7 @@ public class MultipleUnsignedOperations
             value: 0,
             transferValue: 0,
             txExecutionContext: new TxExecutionContext(_header, Address.Zero, null, 0),
-            callDepth:0,
+            callDepth: 0,
             inputData: default
         );
 
