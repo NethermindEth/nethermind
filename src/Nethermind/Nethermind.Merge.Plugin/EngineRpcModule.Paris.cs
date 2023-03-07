@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
@@ -64,35 +65,47 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(ExecutionPayload executionPayload, int version)
     {
-        if (!executionPayload.Validate(_specProvider, version, out string? error))
-        {
-            if (_logger.IsWarn) _logger.Warn(error);
-            return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
-        }
+        bool noGcRegion = GC.TryStartNoGCRegion(10.MB(), true);
 
-        if (await _locker.WaitAsync(_timeout))
+        try
         {
-            Stopwatch watch = Stopwatch.StartNew();
-            try
+            if (!executionPayload.Validate(_specProvider, version, out string? error))
             {
-                return await _newPayloadV1Handler.HandleAsync(executionPayload);
+                if (_logger.IsWarn) _logger.Warn(error);
+                return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
             }
-            catch (Exception exception)
+
+            if (await _locker.WaitAsync(_timeout))
             {
-                if (_logger.IsError) _logger.Error($"engine_newPayloadV{version} failed: {exception}");
-                return ResultWrapper<PayloadStatusV1>.Fail(exception.Message);
+                Stopwatch watch = Stopwatch.StartNew();
+                try
+                {
+                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
+                }
+                catch (Exception exception)
+                {
+                    if (_logger.IsError) _logger.Error($"engine_newPayloadV{version} failed: {exception}");
+                    return ResultWrapper<PayloadStatusV1>.Fail(exception.Message);
+                }
+                finally
+                {
+                    watch.Stop();
+                    Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
+                    _locker.Release();
+                }
             }
-            finally
+            else
             {
-                watch.Stop();
-                Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
-                _locker.Release();
+                if (_logger.IsWarn) _logger.Warn($"engine_newPayloadV{version} timed out");
+                return ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout);
             }
         }
-        else
+        finally
         {
-            if (_logger.IsWarn) _logger.Warn($"engine_newPayloadV{version} timed out");
-            return ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout);
+            if (noGcRegion)
+            {
+                GC.EndNoGCRegion();
+            }
         }
     }
 }
