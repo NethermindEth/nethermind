@@ -324,9 +324,15 @@ namespace Nethermind.Trie.Pruning
 
         internal byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore)
         {
+            byte[]? rlp =_rlpCache.GetRlpCache(keccak);
+            if (rlp != null)
+            {
+                return rlp;
+            }
+
             keyValueStore ??= _keyValueStore;
 
-            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _rlpCache.GetRlpCache(keccak) ?? keyValueStore[keccak.Bytes];
+            rlp = _currentBatch?[keccak.Bytes] ?? keyValueStore[keccak.Bytes];
 
             if (rlp is null)
             {
@@ -342,7 +348,13 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(Keccak keccak)
         {
-            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
+            byte[]? rlp =_rlpCache.GetRlpCache(keccak);
+            if (rlp != null)
+            {
+                return true;
+            }
+
+            rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
 
             if (rlp is null)
             {
