@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -696,8 +697,7 @@ namespace Nethermind.Trie
                         return null;
                     }
 
-                    throw new TrieException(
-                        $"Could not find the leaf node to delete: {traverseContext.UpdatePath.ToHexString(false)}");
+                    ThrowMissingLeafException(in traverseContext);
                 }
 
                 int currentIndex = traverseContext.CurrentIndex + 1;
@@ -713,6 +713,13 @@ namespace Nethermind.Trie
             childNode.ResolveNode(TrieStore);
             TrieNode nextNode = childNode;
 
+            return TraverseNext(in traverseContext, nextNode);
+        }
+
+        private byte[] TraverseNext(in TraverseContext traverseContext, TrieNode nextNode)
+        {
+            // Move large struct creation out of flow so doesn't force additional stack space
+            // in calling method even if not used 
             TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + 1);
             return TraverseNode(nextNode, in newContext);
         }
@@ -721,7 +728,7 @@ namespace Nethermind.Trie
         {
             if (node.Key is null)
             {
-                throw new InvalidDataException("An attempt to visit a node without a prefix path.");
+                ThrowMissingPrefixException();
             }
 
             ReadOnlySpan<byte> remaining = traverseContext.GetRemainingUpdatePath();
@@ -788,8 +795,7 @@ namespace Nethermind.Trie
                     return null;
                 }
 
-                throw new TrieException(
-                    $"Could not find the leaf node to delete: {traverseContext.UpdatePath.ToHexString(false)}");
+                ThrowMissingLeafException(in traverseContext);
             }
 
             if (extensionLength != 0)
@@ -825,7 +831,7 @@ namespace Nethermind.Trie
         {
             if (node.Key is null)
             {
-                throw new InvalidDataException("An attempt to visit a node without a prefix path.");
+                ThrowMissingPrefixException();
             }
 
             TrieNode originalNode = node;
@@ -842,14 +848,12 @@ namespace Nethermind.Trie
                 TrieNode next = node.GetChild(TrieStore, 0);
                 if (next is null)
                 {
-                    throw new TrieException(
-                        $"Found an {nameof(NodeType.Extension)} {node.Keccak} that is missing a child.");
+                    ThrowMissingChildException(node);
                 }
 
                 next.ResolveNode(TrieStore);
 
-                TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
-                return TraverseNode(next, in newContext);
+                return TraverseNext(in traverseContext, extensionLength, next);
             }
 
             if (traverseContext.IsRead)
@@ -864,8 +868,7 @@ namespace Nethermind.Trie
                     return null;
                 }
 
-                throw new TrieException(
-                    $"Could find the leaf node to delete: {traverseContext.UpdatePath.ToHexString()}");
+                ThrowMissingLeafException(in traverseContext);
             }
 
             byte[] pathBeforeUpdate = node.Key;
@@ -891,8 +894,7 @@ namespace Nethermind.Trie
             TrieNode originalNodeChild = originalNode.GetChild(TrieStore, 0);
             if (originalNodeChild is null)
             {
-                throw new InvalidDataException(
-                    $"Extension {originalNode.Keccak} has no child.");
+                ThrowInvalidDataException(originalNode);
             }
 
             if (pathBeforeUpdate.Length - extensionLength > 1)
@@ -910,6 +912,14 @@ namespace Nethermind.Trie
 
             ConnectNodes(branch);
             return traverseContext.UpdateValue;
+        }
+
+        private byte[] TraverseNext(in TraverseContext traverseContext, int extensionLength, TrieNode next)
+        {
+            // Move large struct creation out of flow so doesn't force additional stack space
+            // in calling method even if not used 
+            TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
+            return TraverseNode(next, in newContext);
         }
 
         private static int FindCommonPrefixLength(ReadOnlySpan<byte> shorterPath, ReadOnlySpan<byte> longerPath)
@@ -1024,6 +1034,37 @@ namespace Nethermind.Trie
 
             visitor.VisitTree(rootHash, trieVisitContext);
             rootRef?.Accept(visitor, TrieStore, trieVisitContext);
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowInvalidDataException(TrieNode originalNode)
+        {
+            throw new InvalidDataException(
+                $"Extension {originalNode.Keccak} has no child.");
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowMissingChildException(TrieNode node)
+        {
+            throw new TrieException(
+                $"Found an {nameof(NodeType.Extension)} {node.Keccak} that is missing a child.");
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowMissingLeafException(in TraverseContext traverseContext)
+        {
+            throw new TrieException(
+                $"Could not find the leaf node to delete: {traverseContext.UpdatePath.ToHexString()}");
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowMissingPrefixException()
+        {
+            throw new InvalidDataException("An attempt to visit a node without a prefix path.");
         }
     }
 }
