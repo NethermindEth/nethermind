@@ -49,6 +49,7 @@ namespace Nethermind.Core.Collections
                 Initialize(capacity);
             }
 
+            ArgumentNullException.ThrowIfNull(comparer);
             _comparer = comparer;
         }
 
@@ -709,17 +710,22 @@ ReturnNotFound:
 
         public bool Remove(TKey[] key)
         {
+            ArgumentNullException.ThrowIfNull(key);
+
+            return Remove(key.AsSpan());
+        }
+
+        public bool Remove(ReadOnlySpan<TKey> key)
+        {
             // The overload Remove(TKey[] key, out TValue value) is a copy of this method with one additional
             // statement to copy the value for entry being removed into the output parameter.
             // Code has been intentionally duplicated for performance reasons.
-
-            ArgumentNullException.ThrowIfNull(key);
 
             if (_buckets != null)
             {
                 Debug.Assert(_entries != null, "entries should be non-null");
                 uint collisionCount = 0;
-                uint hashCode = (uint)(_comparer?.GetHashCode(key) ?? key.GetHashCode());
+                uint hashCode = (uint)(_comparer.GetHashCode(key));
                 ref int bucket = ref GetBucket(hashCode);
                 Entry[]? entries = _entries;
                 int last = -1;
@@ -728,7 +734,7 @@ ReturnNotFound:
                 {
                     ref Entry entry = ref entries[i];
 
-                    if (entry.hashCode == hashCode && (_comparer?.Equals(entry.key, key) ?? EqualityComparer<TKey[]>.Default.Equals(entry.key, key)))
+                    if (entry.hashCode == hashCode && _comparer!.Equals(entry.key, key))
                     {
                         if (last < 0)
                         {

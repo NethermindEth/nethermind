@@ -110,8 +110,7 @@ namespace Nethermind.Core.Caching
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
-                // TODO: Make remove indexable by span also
-                _cacheMap.Remove(key.ToArray());
+                _cacheMap.Remove(key);
                 return true;
             }
 

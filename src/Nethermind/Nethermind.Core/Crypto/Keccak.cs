@@ -151,10 +151,6 @@ namespace Nethermind.Core.Crypto
         public Keccak(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString)) { }
 
-        public Keccak(ReadOnlySpan<byte> bytes) : this(bytes.ToArray())
-        {
-        }
-
         public Keccak(byte[] bytes)
         {
             if (bytes.Length != Size)
