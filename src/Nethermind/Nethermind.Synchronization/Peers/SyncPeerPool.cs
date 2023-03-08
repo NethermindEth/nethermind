@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Timer = System.Timers.Timer;
 
@@ -64,29 +65,10 @@ namespace Nethermind.Synchronization.Peers
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             IBetterPeerStrategy betterPeerStrategy,
-            int peersMaxCount,
-            ILogManager logManager)
-            : this(blockTree, nodeStatsManager, betterPeerStrategy, peersMaxCount, DefaultUpgradeIntervalInMs, logManager)
-        {
-        }
-
-        public SyncPeerPool(IBlockTree blockTree,
-            INodeStatsManager nodeStatsManager,
-            IBetterPeerStrategy betterPeerStrategy,
-            int peersMaxCount,
-            int allocationsUpgradeIntervalInMs,
-            ILogManager logManager)
-            : this(blockTree, nodeStatsManager, betterPeerStrategy, peersMaxCount, 0, allocationsUpgradeIntervalInMs, logManager)
-        {
-        }
-
-        public SyncPeerPool(IBlockTree blockTree,
-            INodeStatsManager nodeStatsManager,
-            IBetterPeerStrategy betterPeerStrategy,
-            int peersMaxCount,
-            int priorityPeerMaxCount,
-            int allocationsUpgradeIntervalInMsInMs,
-            ILogManager logManager)
+            ILogManager logManager,
+            int peersMaxCount = 100,
+            int priorityPeerMaxCount = 0,
+            int allocationsUpgradeIntervalInMsInMs = DefaultUpgradeIntervalInMs)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -469,6 +451,73 @@ namespace Nethermind.Synchronization.Peers
             upgradeTimer.Start();
         }
 
+        internal void DropUselessPeers(bool force = false)
+        {
+            if (!force && DateTime.UtcNow - _lastUselessPeersDropTime < TimeSpan.FromSeconds(30))
+                return;
+
+            if (_logger.IsTrace) _logger.Trace($"Reviewing {PeerCount} peer usefulness");
+
+            int peersDropped = 0;
+            _lastUselessPeersDropTime = DateTime.UtcNow;
+
+            if (PeerCount == PeerMaxCount)
+            {
+                peersDropped += DropWorstPeer();
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
+        }
+
+        private int DropWorstPeer()
+        {
+            string? IsPeerWorstWithReason(PeerInfo currentPeer, PeerInfo toCompare)
+            {
+                if (toCompare.HeadNumber < currentPeer.HeadNumber)
+                {
+                    return "LOWEST NUMBER";
+                }
+
+                if (toCompare.TotalDifficulty < currentPeer.TotalDifficulty)
+                {
+                    return "LOWEST DIFFICULTY";
+                }
+
+                if ((_stats.GetOrAdd(toCompare.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue) >
+                    (_stats.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue))
+                {
+                    return "HIGHEST PING";
+                }
+
+                return null;
+            }
+
+            bool canDropPriorityPeer = PriorityPeerCount >= PriorityPeerMaxCount;
+
+            PeerInfo? worstPeer = null;
+            string? worstReason = "DEFAULT";
+
+            foreach (PeerInfo peerInfo in NonStaticPeers)
+            {
+                if (peerInfo.SyncPeer.IsPriority && !canDropPriorityPeer)
+                {
+                    continue;
+                }
+
+                worstPeer ??= peerInfo;
+
+                string? peerWorstReason = IsPeerWorstWithReason(worstPeer, peerInfo);
+                if (peerWorstReason is not null)
+                {
+                    worstPeer = peerInfo;
+                    worstReason = peerWorstReason;
+                }
+            }
+
+            worstPeer?.SyncPeer.Disconnect(InitiateDisconnectReason.DropWorstPeer, $"PEER REVIEW / {worstReason}");
+            return 1;
+        }
+
         public void SignalPeersChanged()
         {
             if (!_signals.SafeWaitHandle.IsClosed)
@@ -549,6 +598,7 @@ namespace Nethermind.Synchronization.Peers
         /// <exception cref="InvalidOperationException">Thrown if an irreplaceable allocation is being replaced by this method (internal implementation error).</exception>
         private void UpgradeAllocations()
         {
+            DropUselessPeers();
             WakeUpPeerThatSleptEnough();
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
             {

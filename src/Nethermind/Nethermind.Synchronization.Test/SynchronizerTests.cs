@@ -331,24 +331,13 @@ namespace Nethermind.Synchronization.Test
                     syncConfig,
                     _logManager);
 
-                if (IsMerge(synchronizerType))
-                    SyncPeerPool = new SyncPeerPool(BlockTree, stats,
-                        new MergeBetterPeerStrategy(
-                            new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), poSSwitcher, beaconPivot, LimboLogs.Instance), 25, _logManager);
-                else
-                    SyncPeerPool = new SyncPeerPool(BlockTree, stats,
-                        new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), 25,
-                        _logManager);
-
                 TotalDifficultyBetterPeerStrategy totalDifficultyBetterPeerStrategy = new(LimboLogs.Instance);
-                IBetterPeerStrategy bestPeerStrategy;
-                bestPeerStrategy = IsMerge(synchronizerType)
-                    ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy,
-                        poSSwitcher, beaconPivot, LimboLogs.Instance)
+                IBetterPeerStrategy bestPeerStrategy = IsMerge(synchronizerType)
+                    ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance)
                     : totalDifficultyBetterPeerStrategy;
 
-                MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool,
-                    syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
+                SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);
+                MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
                 Pivot pivot = new(syncConfig);
 
                 IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
