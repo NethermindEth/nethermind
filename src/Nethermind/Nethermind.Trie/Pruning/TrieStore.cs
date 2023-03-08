@@ -499,7 +499,7 @@ namespace Nethermind.Trie.Pruning
                     if (node.Keccak is null)
                     {
                         node.ResolveKey(this, true); // TODO: hack
-                        if (node.Keccak?.Bytes != key)
+                        if (!Bytes.AreEqual(node.Keccak?.Bytes, key))
                         {
                             throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                         }
