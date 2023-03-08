@@ -220,7 +220,7 @@ namespace Nethermind.Init.Steps
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
             IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
-                trieStore,
+                storageStore,
                 stateProvider,
                 getApi.LogManager);
 
