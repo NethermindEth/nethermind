@@ -15,12 +15,27 @@ namespace Nethermind.Core.Extensions
     {
         public static string ToHexString(this in Span<byte> span, bool withZeroX)
         {
-            return ToHexString(span, withZeroX, false, false);
+            return ToHexViaLookup(span, withZeroX, false, false);
+        }
+
+        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
+        {
+            return ToHexViaLookup(span, withZeroX, false, false);
+        }
+
+        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros)
+        {
+            return ToHexViaLookup(span, withZeroX, noLeadingZeros, false);
         }
 
         public static string ToHexString(this in Span<byte> span)
         {
-            return ToHexString(span, false, false, false);
+            return ToHexViaLookup(span, false, false, false);
+        }
+
+        public static string ToHexString(this in ReadOnlySpan<byte> span)
+        {
+            return ToHexViaLookup(span, false, false, false);
         }
 
         public static string ToHexString(this in Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
@@ -29,7 +44,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        private static string ToHexViaLookup(Span<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
+        private static string ToHexViaLookup(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
             if (withEip55Checksum)
             {
@@ -50,7 +65,7 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        private static string ToHexStringWithEip55Checksum(Span<byte> bytes, bool withZeroX, bool skipLeadingZeros)
+        private static string ToHexStringWithEip55Checksum(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros)
         {
             string hashHex = Keccak.Compute(bytes.ToHexString(false)).ToString(false);
 
