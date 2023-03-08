@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -10,31 +9,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 {
     public class HelperTrieProofsMessageSerializer : IZeroMessageSerializer<HelperTrieProofsMessage>
     {
-        [Todo(Improve.Refactor, "Rlp.Encode<T>(T[]...) could recurse to handle arbitrary array nesting. Would clean this up a lot.")]
         public void Serialize(IByteBuffer byteBuffer, HelperTrieProofsMessage message)
         {
-            Rlp[] proofNodesRlp = new Rlp[message.ProofNodes.Length];
+            Keccak[] proofNodesKeccak = new Keccak[message.ProofNodes.Length];
+            int proofNodesContentLength = 0;
             for (int i = 0; i < message.ProofNodes.Length; i++)
             {
-                proofNodesRlp[i] = Rlp.Encode(new Keccak(message.ProofNodes[i]));
+                proofNodesKeccak[i] = new Keccak(message.ProofNodes[i]);
+                proofNodesContentLength += Rlp.LengthOf(proofNodesKeccak[i]);
             }
 
-            Rlp proofsRlp = Rlp.Encode(proofNodesRlp);
-
-            Rlp[] tempAuxRlp = new Rlp[message.AuxiliaryData.Length];
+            int tempAuxContentLength = 0;
             for (int i = 0; i < message.AuxiliaryData.Length; i++)
             {
-                tempAuxRlp[i] = Rlp.Encode(message.AuxiliaryData[i]);
+                tempAuxContentLength += Rlp.LengthOf(message.AuxiliaryData[i]);
             }
-            Rlp auxRlp = Rlp.Encode(tempAuxRlp);
 
-            int innerContentLength = proofsRlp.Length + auxRlp.Length;
-
+            int innerContentLength = Rlp.LengthOfSequence(proofNodesContentLength) + Rlp.LengthOfSequence(tempAuxContentLength);
             int contentLength =
                 Rlp.LengthOf(message.RequestId) +
                 Rlp.LengthOf(message.BufferValue) +
                 Rlp.LengthOfSequence(innerContentLength);
-
             int totalLength = Rlp.LengthOfSequence(contentLength);
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
@@ -44,8 +39,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             rlpStream.Encode(message.RequestId);
             rlpStream.Encode(message.BufferValue);
             rlpStream.StartSequence(innerContentLength);
-            rlpStream.Encode(proofsRlp);
-            rlpStream.Encode(auxRlp);
+            rlpStream.StartSequence(proofNodesContentLength);
+            for (int i = 0; i < message.ProofNodes.Length; i++)
+            {
+                rlpStream.Encode(proofNodesKeccak[i]);
+            }
+            rlpStream.StartSequence(tempAuxContentLength);
+            for (int i = 0; i < message.AuxiliaryData.Length; i++)
+            {
+                rlpStream.Encode(message.AuxiliaryData[i]);
+            }
         }
 
         public HelperTrieProofsMessage Deserialize(IByteBuffer byteBuffer)

@@ -56,7 +56,7 @@ public class EthStatsPlugin : INethermindPlugin
             }
             else
             {
-                _logger.Warn($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
+                if (_logger.IsDebug) _logger.Debug($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
             }
         }
 

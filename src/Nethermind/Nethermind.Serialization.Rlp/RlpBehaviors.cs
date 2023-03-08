@@ -9,7 +9,7 @@ namespace Nethermind.Serialization.Rlp
     public enum RlpBehaviors
     {
         None,
-        AllowExtraData = 1,
+        AllowExtraBytes = 1,
         ForSealing = 2,
         Storage = 4,
         Eip658Receipts = 8,
@@ -18,6 +18,6 @@ namespace Nethermind.Serialization.Rlp
                                 // when we're calculating tx hash or sending raw transaction we should skip this wrapping
                                 // with additional wrapping for typed transactions we're decoding Uint8Array([TransactionType, TransactionPayload]
                                 // without wrapping we're decoding (TransactionType || TransactionPayload)
-        All = AllowExtraData | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping
+        All = AllowExtraBytes | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping
     }
 }

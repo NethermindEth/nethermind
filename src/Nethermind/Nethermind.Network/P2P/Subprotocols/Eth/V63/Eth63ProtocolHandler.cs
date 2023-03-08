@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
@@ -37,7 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
         }
 
-        public override byte ProtocolVersion => 63;
+        public override byte ProtocolVersion => EthVersions.Eth63;
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go
 

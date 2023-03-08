@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
@@ -99,7 +100,7 @@ public class InitializeNetwork : IStep
 
         CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
-        ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
+        ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager, _syncConfig.SnapSyncAccountRangePartitionCount);
         _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
 
         SyncProgressResolver syncProgressResolver = new(
@@ -205,11 +206,9 @@ public class InitializeNetwork : IStep
             // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
             // no longer available). Eth67 should be added if snap is enabled OR sync is finished
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-
-            // eth68 is disabled for now, as spec has draft status and can change (https://eips.ethereum.org/EIPS/eip-5793)
-            // _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
         }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 capability");
+        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
 
         if (_syncConfig.SnapSync && !stateSyncFinished)
         {
@@ -504,10 +503,11 @@ public class InitializeNetwork : IStep
                 _api.LogManager);
 
         NetworkStorage peerStorage = new(peersDb, _api.LogManager);
-
-        ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree!, _api.LogManager);
-        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);
         ISyncServer syncServer = _api.SyncServer!;
+        ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
+
+        ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree!, forkInfo, _api.LogManager);
+        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
@@ -519,7 +519,7 @@ public class InitializeNetwork : IStep
             _api.NodeStatsManager,
             protocolValidator,
             peerStorage,
-            new ForkInfo(_api.SpecProvider!, syncServer.Genesis.Hash!),
+            forkInfo,
             _api.GossipPolicy,
             _api.LogManager);
 

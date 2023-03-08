@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.Reporting
         private const int SyncReportFrequency = 1;
         private const int PeerCountFrequency = 15;
         private const int NoProgressStateSyncReportFrequency = 30;
-        private const int SyncShortPeersReportFrequency = 30;
+        private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
         private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(1);
 
@@ -92,9 +92,9 @@ namespace Nethermind.Synchronization.Reporting
             {
                 _syncPeersReport.WriteFullReport();
             }
-            else if (_reportId % SyncShortPeersReportFrequency == 0)
+            else if (_reportId % SyncAllocatedPeersReportFrequency == 0)
             {
-                _syncPeersReport.WriteShortReport();
+                _syncPeersReport.WriteAllocatedReport();
             }
 
             _reportId++;

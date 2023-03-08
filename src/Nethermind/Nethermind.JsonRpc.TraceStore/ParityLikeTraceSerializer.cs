@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.IO.Compression;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -17,11 +18,13 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
 
     private readonly ILogger? _logger;
     private readonly IJsonSerializer _jsonSerializer;
+    private readonly int _maxDepth;
     private readonly bool _verifySerialized;
 
     public ParityLikeTraceSerializer(ILogManager logManager, int maxDepth = 1024, bool verifySerialized = false)
     {
         _jsonSerializer = new EthereumJsonSerializer(maxDepth, new ParityTraceActionCreationConverter());
+        _maxDepth = maxDepth;
         _verifySerialized = verifySerialized;
         _logger = logManager?.GetClassLogger<ParityLikeTraceSerializer>();
     }
@@ -46,6 +49,8 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
     public byte[] Serialize(IReadOnlyCollection<ParityLikeTxTrace> traces)
     {
         if (traces.Count == 0) return _emptyBytes;
+
+        CheckDepth(traces);
 
         using MemoryStream output = new();
         using (GZipStream compressionStream = new(output, CompressionMode.Compress))
@@ -75,5 +80,32 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
         }
 
         return result;
+    }
+
+    private void CheckDepth(IReadOnlyCollection<ParityLikeTxTrace> parityLikeTxTraces)
+    {
+        int depth = 0;
+        foreach (ParityLikeTxTrace trace in parityLikeTxTraces)
+        {
+            if (trace.Action is not null)
+            {
+                CheckDepth(trace.Action, depth);
+            }
+        }
+    }
+
+    private void CheckDepth(ParityTraceAction action, int depth)
+    {
+        depth++;
+
+        if (depth >= _maxDepth)
+        {
+            throw new ArgumentException("Trace depth is too high");
+        }
+
+        foreach (ParityTraceAction subAction in action.Subtraces)
+        {
+            CheckDepth(subAction, depth);
+        }
     }
 }

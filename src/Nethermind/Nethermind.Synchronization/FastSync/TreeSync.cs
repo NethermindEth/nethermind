@@ -18,6 +18,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -128,7 +129,7 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch)
+        public SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch, PeerInfo? peerInfo = null)
         {
             if (batch == EmptyBatch)
             {
@@ -177,17 +178,23 @@ namespace Nethermind.Synchronization.FastSync
                         AddAgainAllItems();
                         if (_logger.IsWarn) _logger.Warn("Batch response had invalid format");
                         Interlocked.Increment(ref _data.InvalidFormatCount);
-                        return isMissingRequestData
-                            ? SyncResponseHandlingResult.InternalError
-                            : SyncResponseHandlingResult.NotAssigned;
+                        return SyncResponseHandlingResult.InternalError;
                     }
 
-                    if (batch.Responses is null)
+                    if (peerInfo == null)
                     {
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace("Batch was not assigned to any peer.");
                         Interlocked.Increment(ref _data.NotAssignedCount);
                         return SyncResponseHandlingResult.NotAssigned;
+                    }
+
+                    if (batch.Responses is null)
+                    {
+                        AddAgainAllItems();
+                        if (_logger.IsTrace) _logger.Trace($"Peer {peerInfo} failed to satisfy request.");
+                        Interlocked.Increment(ref _data.NotAssignedCount);
+                        return SyncResponseHandlingResult.LesserQuality;
                     }
 
                     if (_logger.IsTrace)

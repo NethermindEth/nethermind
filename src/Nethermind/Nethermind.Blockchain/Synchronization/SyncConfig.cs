@@ -42,9 +42,11 @@ namespace Nethermind.Blockchain.Synchronization
         public string PivotHash { get; set; }
         public bool WitnessProtocolEnabled { get; set; } = false;
         public bool SnapSync { get; set; } = false;
+        public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
         public bool FixReceipts { get; set; } = false;
         public bool StrictMode { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;
+        public bool NonValidatorNode { get; set; } = false;
 
         public override string ToString()
         {

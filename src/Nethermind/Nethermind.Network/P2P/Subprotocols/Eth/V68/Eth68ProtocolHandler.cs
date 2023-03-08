@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Consensus;
@@ -8,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
@@ -22,9 +24,11 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 {
     private readonly IPooledTxsRequestor _pooledTxsRequestor;
 
+    private readonly Action<V66.Messages.GetPooledTransactionsMessage> _sendAction;
+
     public override string Name => "eth68";
 
-    public override byte ProtocolVersion => 68;
+    public override byte ProtocolVersion => EthVersions.Eth68;
 
     public Eth68ProtocolHandler(ISession session,
         IMessageSerializationService serializer,
@@ -39,6 +43,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             forkInfo, logManager)
     {
         _pooledTxsRequestor = pooledTxsRequestor;
+
+        // Capture Action once rather than per call
+        _sendAction = Send<V66.Messages.GetPooledTransactionsMessage>;
     }
 
     public override void HandleMessage(ZeroPacket message)
@@ -59,13 +66,14 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
     private void Handle(NewPooledTransactionHashesMessage68 message)
     {
+        bool isTrace = Logger.IsTrace;
         if (message.Hashes.Count != message.Types.Count || message.Hashes.Count != message.Sizes.Count)
         {
             string errorMessage = $"Wrong format of {nameof(NewPooledTransactionHashesMessage68)} message. " +
                                   $"Hashes count: {message.Hashes.Count} " +
                                   $"Types count: {message.Types.Count} " +
                                   $"Sizes count: {message.Sizes.Count}";
-            if (Logger.IsTrace)
+            if (isTrace)
                 Logger.Trace(errorMessage);
 
             throw new SubprotocolException(errorMessage);
@@ -73,13 +81,13 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         Metrics.Eth68NewPooledTransactionHashesReceived++;
 
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
 
-        _pooledTxsRequestor.RequestTransactionsEth66(Send, message.Hashes);
+        _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, message.Hashes);
 
-        stopwatch.Stop();
+        stopwatch?.Stop();
 
-        if (Logger.IsTrace)
+        if (isTrace)
             Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} " +
                          $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
     }

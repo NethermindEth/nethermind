@@ -38,7 +38,7 @@ internal static class RocksDbExtensions
             throw new RocksDbException(error);
 
         if (result == IntPtr.Zero)
-            return null;
+            return default;
 
         var span = new Span<byte>((void*)result, (int)valueLength);
 

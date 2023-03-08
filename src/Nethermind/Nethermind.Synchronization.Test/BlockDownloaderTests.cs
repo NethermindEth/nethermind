@@ -587,6 +587,8 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; } = UInt256.MaxValue;
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
+            public byte ProtocolVersion { get; }
+            public string ProtocolCode { get; }
 
             public void Disconnect(InitiateDisconnectReason reason, string details)
             {
@@ -965,11 +967,16 @@ namespace Nethermind.Synchronization.Test
             protected virtual IBetterPeerStrategy BetterPeerStrategy =>
                 _betterPeerStrategy ??= new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
 
-            private ISyncModeSelector SyncModeSelector => _syncModeSelector ??=
+            public ISyncModeSelector SyncModeSelector => _syncModeSelector ??=
                 new MultiSyncModeSelector(SyncProgressResolver, PeerPool, syncConfig, No.BeaconSync, BetterPeerStrategy, LimboLogs.Instance);
 
-            private FullSyncFeed _feed;
-            public ActivatedSyncFeed<BlocksRequest> Feed => _feed ??= new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
+            private ActivatedSyncFeed<BlocksRequest?>? _feed;
+
+            public ActivatedSyncFeed<BlocksRequest?> Feed
+            {
+                get => _feed ??= new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
+                set => _feed = value;
+            }
 
             private ISealValidator? _sealValidator;
             public ISealValidator SealValidator
@@ -1075,6 +1082,8 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; }
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
+            public byte ProtocolVersion { get; }
+            public string ProtocolCode { get; }
 
             public void Disconnect(InitiateDisconnectReason reason, string details)
             {
