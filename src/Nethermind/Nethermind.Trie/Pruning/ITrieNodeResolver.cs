@@ -29,6 +29,8 @@ namespace Nethermind.Trie.Pruning
         byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash = null);
 
         TrieNodeResolverCapability Capability { get; }
+
+        bool ExistsInDB(Keccak hash, byte[] nodePathNibbles);
     }
 
     public enum TrieNodeResolverCapability

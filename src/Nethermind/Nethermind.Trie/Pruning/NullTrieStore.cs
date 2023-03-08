@@ -58,6 +58,8 @@ namespace Nethermind.Trie.Pruning
 
         public void SaveNodeDirectly(long blockNumber, TrieNode trieNode) { }
 
+        public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => false;
+
         public byte[]? this[byte[] key] => null;
     }
 }

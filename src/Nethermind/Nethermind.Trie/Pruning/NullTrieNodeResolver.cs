@@ -28,5 +28,10 @@ namespace Nethermind.Trie.Pruning
         {
             return null;
         }
+
+        public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles)
+        {
+            return false;
+        }
     }
 }

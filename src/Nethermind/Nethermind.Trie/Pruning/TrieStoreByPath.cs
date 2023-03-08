@@ -902,6 +902,21 @@ namespace Nethermind.Trie.Pruning
             keyValueStore[pathBytes] = trieNode.FullRlp;
         }
 
+        public bool ExistsInDB(Keccak hash, byte[] pathNibbles)
+        {
+            byte[] pathBytes = pathNibbles.Length < 64 ?
+                Nibbles.ToEncodedStorageBytes(pathNibbles) : Nibbles.ToBytes(pathNibbles);
+
+            byte[] rlp = _currentBatch?[pathBytes] ?? _keyValueStore[pathBytes];
+            if (rlp is not null)
+            {
+                TrieNode node = new(NodeType.Unknown, rlp);
+                node.ResolveKey(this, false);
+                return node.Keccak == hash;
+            }
+            return false;
+        }
+
         public byte[]? this[byte[] key]
         {
             get => _pruningStrategy.PruningEnabled

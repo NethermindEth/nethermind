@@ -838,6 +838,11 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore[trieNode.Keccak.Bytes] = trieNode.Value;
         }
 
+        public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles)
+        {
+            return _keyValueStore[hash.Bytes] is not null;
+        }
+
         public byte[]? this[byte[] key]
         {
             get => _pruningStrategy.PruningEnabled
