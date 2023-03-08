@@ -803,7 +803,11 @@ namespace Nethermind.Evm
                             break;
                         }
                     case Instruction.EXTCODESIZE:
-                        if (!InstructionEXTCODESIZE(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
+                        if (programCounter < code.Length && (Instruction)code[programCounter] == Instruction.ISZERO)
+                        {
+                            if (!InstructionIsContract(ref stack, ref gasAvailable, ref programCounter, vmState, spec)) goto OutOfGas;
+                        }
+                        else if (!InstructionEXTCODESIZE(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;
                         break;
                     case Instruction.EXTCODECOPY:
                         if (!InstructionEXTCODECOPY(ref stack, ref gasAvailable, vmState, spec)) goto OutOfGas;

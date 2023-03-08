@@ -894,6 +894,37 @@ public partial class VirtualMachine
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool InstructionIsContract(ref EvmStack stack, ref long gasAvailable, ref int programCounter, EvmState vmState, IReleaseSpec spec)
+    {
+        if (!UpdateGas(spec.GetExtCodeCost(), ref gasAvailable)) return false;
+
+        Address address = stack.PopAddress();
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) return false;
+
+        if (_txTracer.IsTracingInstructions)
+        {
+            EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+            StartInstructionTrace(Instruction.ISZERO, vmState, gasAvailable, programCounter, in stack, in vmState.Env);
+        }
+
+        programCounter++;
+        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return false;
+
+        if (!_state.AccountExists(address) ||
+            _state.IsDeadAccount(address) ||
+            !_state.IsContract(address))
+        {
+            stack.PushOne();
+        }
+        else
+        {
+            stack.PushZero();
+        }
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private bool InstructionEXTCODESIZE(ref EvmStack stack, ref long gasAvailable, EvmState vmState, IReleaseSpec spec)
     {
         if (!UpdateGas(spec.GetExtCodeCost(), ref gasAvailable)) return false;
