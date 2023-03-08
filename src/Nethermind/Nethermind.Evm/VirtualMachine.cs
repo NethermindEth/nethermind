@@ -646,8 +646,7 @@ namespace Nethermind.Evm
                 UInt256 localPreviousDest = previousCallOutputDestination;
                 if (!UpdateMemoryCost(vmState, ref gasAvailable, in localPreviousDest, (ulong)previousCallOutput.Length))
                 {
-                    Metrics.EvmExceptions++;
-                    throw new OutOfGasException();
+                    ThrowStackOverflowException();
                 }
 
                 vmState.Memory.Save(in localPreviousDest, previousCallOutput);
@@ -669,8 +668,7 @@ namespace Nethermind.Evm
                     case Instruction.STOP:
                         {
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                            goto Empty;
+                            goto EmptyTrace;
                         }
                     case Instruction.ADD:
                         {
@@ -1289,11 +1287,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RETURNDATASIZE:
                         {
-                            if (!spec.ReturnDataOpcodesEnabled)
-                            {
-                                if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
+                            if (!spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
 
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
@@ -1312,7 +1306,7 @@ namespace Nethermind.Evm
 
                             if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
                             {
-                                return CallResult.AccessViolationException;
+                                goto AccessViolation;
                             }
 
                             if (length > UInt256.Zero)
@@ -2267,8 +2261,7 @@ namespace Nethermind.Evm
                             _state.SubtractFromBalance(env.ExecutingAccount, ownerBalance, spec);
 
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-                            return CallResult.Empty;
+                            goto EmptyTrace;
                         }
                     case Instruction.SHL:
                         {
@@ -2418,6 +2411,9 @@ Empty:
 OutOfGas:
             if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.OutOfGas);
             return CallResult.OutOfGasException;
+EmptyTrace:
+            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+            return CallResult.Empty;
 InvalidInstruction:
             if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
             return CallResult.InvalidInstructionException;
@@ -2436,6 +2432,17 @@ StackOverflow:
 InvalidJumpDestination:
             if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.InvalidJumpDestination);
             return CallResult.InvalidJumpDestination;
+AccessViolation:
+            if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.AccessViolation);
+            return CallResult.AccessViolationException;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowStackOverflowException()
+            {
+                Metrics.EvmExceptions++;
+                throw new OutOfGasException();
+            }
         }
 
         static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
