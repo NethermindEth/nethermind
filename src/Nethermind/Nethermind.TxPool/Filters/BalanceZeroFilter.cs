@@ -25,19 +25,17 @@ namespace Nethermind.TxPool.Filters
             UInt256 balance = account.Balance;
 
             bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
-            if (!tx.IsFree() && balance.IsZero)
+            if (isNotLocal && !tx.IsFree() && balance.IsZero)
             {
                 Metrics.PendingTransactionsZeroBalance++;
-                return isNotLocal ?
-                    AcceptTxResult.InsufficientFunds :
-                    AcceptTxResult.InsufficientFunds.WithMessage("Balance is zero, cannot pay gas");
+                return AcceptTxResult.InsufficientFunds;
             }
             if (balance < tx.Value)
             {
                 Metrics.PendingTransactionsBalanceBelowValue++;
                 return isNotLocal ?
                     AcceptTxResult.InsufficientFunds :
-                    AcceptTxResult.InsufficientFunds.WithMessage($"Balance is {balance} less than sending value {tx.Value}");
+                    AcceptTxResult.InsufficientFunds.WithMessage($"Balance is {balance} - less than sending value {tx.Value}");
             }
 
             return AcceptTxResult.Accepted;
