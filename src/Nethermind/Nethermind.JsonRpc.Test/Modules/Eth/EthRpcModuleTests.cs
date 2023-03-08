@@ -1077,6 +1077,18 @@ public partial class EthRpcModuleTests
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"InsufficientFunds, Balance is 0 - less than sending value 10000\"},\"id\":67}", serialized);
     }
 
+    [Test]
+    public async Task Send_transaction_should_not_return_ErrorCode_if_sender_balance_is_zero_but_tx_cost_is_zero_too()
+    {
+        using Context ctx = await Context.Create();
+        Transaction tx = Build.A.Transaction.WithValue(0).WithGasPrice(0).SignedAndResolved(new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000001")).WithNonce(0).TestObject;
+        TransactionForRpc txForRpc = new(tx);
+
+        string serialized = ctx.Test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(txForRpc));
+
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x432300203475b2268c4b86252f14cc26ad2b1d1fc05d7cb635d4875f18d1b407\",\"id\":67}", serialized);
+    }
+
     public enum AccessListProvided
     {
         None,
