@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
@@ -73,8 +74,8 @@ public partial class EngineRpcModule : IEngineRpcModule
 
         if (await _locker.WaitAsync(_timeout))
         {
-            bool noGcRegion = GC.TryStartNoGCRegion(10.MB(), true);
-            
+            bool noGcRegion = GC.TryStartNoGCRegion(100.MB(), true);
+
             try
             {
                 Stopwatch watch = Stopwatch.StartNew();
@@ -96,9 +97,13 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             finally
             {
-                if (noGcRegion)
+                if (noGcRegion && GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
                 {
-                    GC.EndNoGCRegion();
+                    try
+                    {
+                        GC.EndNoGCRegion();
+                    }
+                    catch (InvalidOperationException) { }
                 }
             }
         }
