@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using ConcurrentCollections;
@@ -16,13 +17,19 @@ namespace Nethermind.Synchronization.FastBlocks
         private long _queueSize;
         private readonly IBlockTree _blockTree;
 
-        public long LowestInsertWithoutGaps { get; private set; }
+        public long LowestInsertWithoutGaps
+        {
+            get => _lowestInsertWithoutGaps;
+            private set => _lowestInsertWithoutGaps = value;
+        }
+
         public long QueueSize => _queueSize;
 
         private readonly ConcurrentHashSet<long> _insertedItems = new();
         private readonly ConcurrentQueue<BlockInfo> _retryItems = new();
         private long _lowestSent;
         private Task _cleanupTask = Task.CompletedTask;
+        private long _lowestInsertWithoutGaps;
 
         public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
         {
@@ -53,9 +60,9 @@ namespace Nethermind.Synchronization.FastBlocks
         public void MarkInserted(BlockInfo blockInfo)
         {
             long blockNumber = blockInfo.BlockNumber;
-            if (blockNumber == LowestInsertWithoutGaps)
+            if (blockNumber == _lowestInsertWithoutGaps)
             {
-                LowestInsertWithoutGaps--;
+                DecrementLowestInsertedWithoutGaps(blockNumber - 1);
                 ScheduleClearInsertedItemsWithoutGaps();
             }
             else
@@ -89,10 +96,23 @@ namespace Nethermind.Synchronization.FastBlocks
             long blockNumber = LowestInsertWithoutGaps;
             while (_insertedItems.TryRemove(blockNumber))
             {
-                LowestInsertWithoutGaps--;
+                DecrementLowestInsertedWithoutGaps(--blockNumber);
                 Interlocked.Decrement(ref _queueSize);
-                blockNumber--;
             }
+        }
+
+        private void DecrementLowestInsertedWithoutGaps(long expectedBlockNumber)
+        {
+            if (Interlocked.Decrement(ref _lowestInsertWithoutGaps) != expectedBlockNumber)
+            {
+                ThrowNotPossibleException();
+            }
+        }
+
+        [DoesNotReturn]
+        private void ThrowNotPossibleException()
+        {
+            throw new InvalidOperationException($"{nameof(LowestInsertWithoutGaps)} decrement failure. This should not be possible.");
         }
     }
 }
