@@ -2026,7 +2026,7 @@ namespace Nethermind.Evm
                                 executingAccount: contractAddress,
                                 codeSource: null,
                                 codeInfo: new CodeInfo(initCode.ToArray()),
-                                inputData: ReadOnlyMemory<byte>.Empty,
+                                inputData: default,
                                 transferValue: value,
                                 value: value
                             );
