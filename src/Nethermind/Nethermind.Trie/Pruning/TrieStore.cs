@@ -33,7 +33,7 @@ namespace Nethermind.Trie.Pruning
             public void SaveInCache(TrieNode node)
             {
                 Debug.Assert(node.Keccak is not null, "Cannot store in cache nodes without resolved key.");
-                if (_objectsCache.TryAdd(node.Keccak!, node))
+                if (_objectsCache.TryAdd(node.Keccak!.Bytes, node))
                 {
                     Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
                     _trieStore.MemoryUsedByDirtyCache += node.GetMemorySize(false);
@@ -42,7 +42,7 @@ namespace Nethermind.Trie.Pruning
 
             public TrieNode FindCachedOrUnknown(Keccak hash)
             {
-                if (_objectsCache.TryGetValue(hash, out TrieNode trieNode))
+                if (_objectsCache.TryGetValue(hash.Bytes, out TrieNode trieNode))
                 {
                     Metrics.LoadedFromCacheNodesCount++;
                 }
@@ -59,7 +59,7 @@ namespace Nethermind.Trie.Pruning
             public TrieNode FromCachedRlpOrUnknown(Keccak hash)
             {
                 // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-                if (_objectsCache.TryGetValue(hash, out TrieNode? trieNode))
+                if (_objectsCache.TryGetValue(hash.Bytes, out TrieNode? trieNode))
                 {
                     if (trieNode!.FullRlp is null)
                     {
@@ -84,11 +84,11 @@ namespace Nethermind.Trie.Pruning
                 return trieNode;
             }
 
-            public bool IsNodeCached(Keccak hash) => _objectsCache.ContainsKey(hash);
+            public bool IsNodeCached(Keccak hash) => _objectsCache.ContainsKey(hash.Bytes);
 
-            public ConcurrentDictionary<Keccak, TrieNode> AllNodes => _objectsCache;
+            public SpanConcurrentDictionary<byte, TrieNode> AllNodes => _objectsCache;
 
-            private readonly ConcurrentDictionary<Keccak, TrieNode> _objectsCache = new();
+            private readonly SpanConcurrentDictionary<byte, TrieNode> _objectsCache = new(KeccakSpanEqualityComparer.Instance);
 
             private int _count = 0;
 
@@ -96,7 +96,7 @@ namespace Nethermind.Trie.Pruning
 
             public void Remove(Keccak hash)
             {
-                if (_objectsCache.Remove(hash, out _))
+                if (_objectsCache.Remove(hash.Bytes, out _))
                 {
                     Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
                 }
@@ -107,7 +107,7 @@ namespace Nethermind.Trie.Pruning
                 if (_trieStore._logger.IsTrace)
                 {
                     _trieStore._logger.Trace($"Trie node dirty cache ({Count})");
-                    foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _objectsCache)
+                    foreach (KeyValuePair<byte[], TrieNode> keyValuePair in _objectsCache)
                     {
                         _trieStore._logger.Trace($"  {keyValuePair.Value}");
                     }
@@ -491,7 +491,7 @@ namespace Nethermind.Trie.Pruning
             List<TrieNode> toRemove = new(); // TODO: resettable
 
             long newMemory = 0;
-            foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
+            foreach ((byte[] key, TrieNode node) in _dirtyNodes.AllNodes)
             {
                 if (node.IsPersisted)
                 {
@@ -499,7 +499,7 @@ namespace Nethermind.Trie.Pruning
                     if (node.Keccak is null)
                     {
                         node.ResolveKey(this, true); // TODO: hack
-                        if (node.Keccak != key)
+                        if (node.Keccak?.Bytes != key)
                         {
                             throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                         }
@@ -808,7 +808,7 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
-                KeyValuePair<Keccak, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
+                KeyValuePair<byte[], TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
                 Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
                 {
                     if (!cancellationToken.IsCancellationRequested)
@@ -824,7 +824,7 @@ namespace Nethermind.Trie.Pruning
         public byte[]? this[ReadOnlySpan<byte> key]
         {
             get => _pruningStrategy.PruningEnabled
-                   && _dirtyNodes.AllNodes.TryGetValue(new Keccak(key.ToArray()), out TrieNode? trieNode)
+                   && _dirtyNodes.AllNodes.TryGetValue(key, out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp is not null

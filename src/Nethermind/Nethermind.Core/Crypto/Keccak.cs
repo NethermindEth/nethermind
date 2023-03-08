@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto
@@ -434,5 +435,28 @@ namespace Nethermind.Core.Crypto
         }
 
         public Keccak ToKeccak() => new(Bytes.ToArray());
+    }
+
+    public class KeccakSpanEqualityComparer : ISpanEqualityComparer<byte>
+    {
+        public static KeccakSpanEqualityComparer Instance = new();
+
+        public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
+        {
+            return Bytes.AreEqual(x, y);
+        }
+
+        public int GetHashCode(ReadOnlySpan<byte> obj)
+        {
+            long v0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetReference(obj));
+            long v1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetReference(obj), sizeof(long)));
+            long v2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetReference(obj), sizeof(long) * 2));
+            long v3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetReference(obj), sizeof(long) * 3));
+            v0 ^= v1;
+            v2 ^= v3;
+            v0 ^= v2;
+
+            return (int)v0 ^ (int)(v0 >> 32);
+        }
     }
 }

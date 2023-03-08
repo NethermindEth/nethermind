@@ -2164,6 +2164,37 @@ namespace Nethermind.Core.Collections
 
             public void Reset() => _enumerator.Reset();
         }
+
+        /// <summary>
+        /// Represents a lock on <see cref="SpanConcurrentDictionary{TKey,TValue}"/>.
+        /// </summary>
+        /// <remarks>
+        /// This is a ref struct in order not to keep the locks longer than a method.
+        /// You have to <see cref="Dispose"/> it to release the lock!
+        /// </remarks>
+        public readonly ref struct Lock
+        {
+            private readonly SpanConcurrentDictionary<TKey, TValue> _dictionary;
+            private readonly int _locksAcquired = 0;
+
+            internal Lock(SpanConcurrentDictionary<TKey, TValue> dictionary)
+            {
+                _dictionary = dictionary;
+                dictionary.AcquireAllLocks(ref _locksAcquired);
+            }
+
+            // Duck typing
+            public void Dispose()
+            {
+                _dictionary.ReleaseLocks(0, _locksAcquired);
+            }
+        }
+
+        /// <summary>
+        /// Acquires the internal lock on all the keys of Dictionary.
+        /// </summary>
+        /// <returns>Lock instance. To release the lock it needs to be <see cref="Lock.Dispose"/>d.</returns>
+        public Lock AcquireLock() => new(this);
     }
 
     internal sealed class IDictionaryDebugView<TKey, TValue> where TKey : notnull
