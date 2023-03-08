@@ -1227,7 +1227,7 @@ namespace Nethermind.Evm
 
                             if (length > UInt256.Zero)
                             {
-                                if(!UpdateMemoryCost(vmState, ref gasAvailable, in dest, length)) goto OutOfGas;
+                                if (!UpdateMemoryCost(vmState, ref gasAvailable, in dest, length)) goto OutOfGas;
 
                                 ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int)length);
                                 vmState.Memory.Save(in dest, codeSlice);
@@ -2119,7 +2119,7 @@ namespace Nethermind.Evm
                             }
 
                             if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
-                                !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) || 
+                                !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
                                 !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
                                 !UpdateGas(gasExtra, ref gasAvailable)) goto OutOfGas;
 
