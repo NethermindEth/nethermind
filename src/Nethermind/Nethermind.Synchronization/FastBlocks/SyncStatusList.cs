@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -21,6 +22,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ConcurrentHashSet<long> _insertedItems = new();
         private readonly ConcurrentQueue<BlockInfo> _retryItems = new();
         private long _lowestSent;
+        private Task _cleanupTask = Task.CompletedTask;
 
         public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
         {
@@ -44,23 +46,21 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 blockInfos[collected] = blockInfo;
             }
+
+            ScheduleClearInsertedItemsWithoutGaps();
         }
 
         public void MarkInserted(BlockInfo blockInfo)
         {
             long blockNumber = blockInfo.BlockNumber;
-            Interlocked.Increment(ref _queueSize);
             if (blockNumber == LowestInsertWithoutGaps)
             {
-                do
-                {
-                    LowestInsertWithoutGaps--;
-                    Interlocked.Decrement(ref _queueSize);
-                    blockNumber--;
-                } while (_insertedItems.TryRemove(blockNumber));
+                LowestInsertWithoutGaps--;
+                ScheduleClearInsertedItemsWithoutGaps();
             }
             else
             {
+                Interlocked.Increment(ref _queueSize);
                 _insertedItems.Add(blockNumber);
             }
         }
@@ -68,6 +68,31 @@ namespace Nethermind.Synchronization.FastBlocks
         public void MarkRetry(BlockInfo blockInfo)
         {
             _retryItems.Enqueue(blockInfo);
+        }
+
+        private void ScheduleClearInsertedItemsWithoutGaps()
+        {
+            if (_cleanupTask.IsCompleted)
+            {
+                lock (_insertedItems)
+                {
+                    if (_cleanupTask.IsCompleted)
+                    {
+                        _cleanupTask = Task.Run(ClearInsertedItemsWithoutGaps);
+                    }
+                }
+            }
+        }
+
+        private void ClearInsertedItemsWithoutGaps()
+        {
+            long blockNumber = LowestInsertWithoutGaps;
+            while (_insertedItems.TryRemove(blockNumber))
+            {
+                LowestInsertWithoutGaps--;
+                Interlocked.Decrement(ref _queueSize);
+                blockNumber--;
+            }
         }
     }
 }
