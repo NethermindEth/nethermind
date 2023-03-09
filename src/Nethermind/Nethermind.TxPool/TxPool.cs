@@ -105,7 +105,7 @@ namespace Nethermind.TxPool
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
                 new UnknownSenderFilter(ecdsa, _logger),
-                new BalanceZeroFilter(_logger),
+                new BalanceBelowValueFilter(_logger),
                 new BalanceTooLowFilter(_transactions, _logger),
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
                 new GapNonceFilter(_transactions, _logger),
@@ -623,7 +623,7 @@ Sent
 ------------------------------------------------
 Total Received:         {Metrics.PendingTransactionsReceived,24:N0}
 ------------------------------------------------
-Discarded at Filter Stage:        
+Discarded at Filter Stage:
 1.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
 2.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
 3.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}

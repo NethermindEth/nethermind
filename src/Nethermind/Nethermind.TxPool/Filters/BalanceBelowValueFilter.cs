@@ -10,11 +10,11 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions which gas payments overflow uint256 or simply exceed sender balance
     /// </summary>
-    internal sealed class BalanceZeroFilter : IIncomingTxFilter
+    internal sealed class BalanceBelowValueFilter : IIncomingTxFilter
     {
         private readonly ILogger _logger;
 
-        public BalanceZeroFilter(ILogger logger)
+        public BalanceBelowValueFilter(ILogger logger)
         {
             _logger = logger;
         }
