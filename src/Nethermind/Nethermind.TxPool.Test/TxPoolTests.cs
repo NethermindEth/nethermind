@@ -1334,7 +1334,7 @@ namespace Nethermind.TxPool.Test
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
 
-            _txPool.SubmitTx(zeroCostTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(zeroCostTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
             // Cumulative cost should be 1
             Transaction expensiveTx = Build.A.Transaction
@@ -1345,7 +1345,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(0)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
-            _txPool.SubmitTx(expensiveTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(expensiveTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
         }
 
         [Test]
