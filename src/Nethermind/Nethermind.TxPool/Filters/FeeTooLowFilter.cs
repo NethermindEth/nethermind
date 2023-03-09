@@ -18,13 +18,15 @@ namespace Nethermind.TxPool.Filters
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly TxDistinctSortedPool _txs;
+        private readonly bool _thereIsPriorityContract;
         private readonly ILogger _logger;
 
-        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, ILogger logger)
+        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, bool thereIsPriorityContract, ILogger logger)
         {
             _specProvider = headInfo.SpecProvider;
             _headInfo = headInfo;
             _txs = txs;
+            _thereIsPriorityContract = thereIsPriorityContract;
             _logger = logger;
         }
 
@@ -40,7 +42,7 @@ namespace Nethermind.TxPool.Filters
             bool isEip1559Enabled = spec.IsEip1559Enabled;
             UInt256 affordableGasPrice = tx.CalculateGasPrice(isEip1559Enabled, _headInfo.CurrentBaseFee);
             // Don't accept zero fee txns even if pool is empty as will never run
-            if (isEip1559Enabled && !tx.IsFree() && affordableGasPrice.IsZero)
+            if (!_thereIsPriorityContract && !tx.IsFree() && affordableGasPrice.IsZero)
             {
                 Metrics.PendingTransactionsTooLowFee++;
                 if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, too low payable gas price with options {handlingOptions} from {new StackTrace()}");
