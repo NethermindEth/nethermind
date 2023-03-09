@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
@@ -12,12 +11,12 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions which gas payments overflow uint256 or simply exceed sender balance
     /// </summary>
-    internal class TooExpensiveTxFilter : IIncomingTxFilter
+    internal sealed class BalanceTooLowFilter : IIncomingTxFilter
     {
         private readonly TxDistinctSortedPool _txs;
         private readonly ILogger _logger;
 
-        public TooExpensiveTxFilter(TxDistinctSortedPool txs, ILogger logger)
+        public BalanceTooLowFilter(TxDistinctSortedPool txs, ILogger logger)
         {
             _txs = txs;
             _logger = logger;
@@ -25,24 +24,31 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
+            if (tx.IsFree())
+            {
+                return AcceptTxResult.Accepted;
+            }
+
             Account account = state.SenderAccount;
             UInt256 balance = account.Balance;
+
             UInt256 cumulativeCost = UInt256.Zero;
             bool overflow = false;
             Transaction[] transactions = _txs.GetBucketSnapshot(tx.SenderAddress!); // since unknownSenderFilter will run before this one
 
             for (int i = 0; i < transactions.Length; i++)
             {
-                if (transactions[i].Nonce < account.Nonce)
+                Transaction otherTx = transactions[i];
+                if (otherTx.Nonce < account.Nonce)
                 {
                     continue;
                 }
 
-                if (transactions[i].Nonce < tx.Nonce)
+                if (otherTx.Nonce < tx.Nonce)
                 {
-                    overflow |= UInt256.MultiplyOverflow(transactions[i].MaxFeePerGas, (UInt256)transactions[i].GasLimit, out UInt256 maxTxCost);
+                    overflow |= UInt256.MultiplyOverflow(otherTx.MaxFeePerGas, (UInt256)otherTx.GasLimit, out UInt256 maxTxCost);
                     overflow |= UInt256.AddOverflow(cumulativeCost, maxTxCost, out cumulativeCost);
-                    overflow |= UInt256.AddOverflow(cumulativeCost, transactions[i].Value, out cumulativeCost);
+                    overflow |= UInt256.AddOverflow(cumulativeCost, otherTx.Value, out cumulativeCost);
                 }
                 else
                 {
@@ -62,9 +68,17 @@ namespace Nethermind.TxPool.Filters
 
             if (balance < cumulativeCost)
             {
+                Metrics.PendingTransactionsTooLowBalance++;
+
                 if (_logger.IsTrace)
+                {
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
-                return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, cumulative cost: {cumulativeCost}");
+                }
+
+                bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
+                return isNotLocal ?
+                    AcceptTxResult.InsufficientFunds :
+                    AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, cumulative cost: {cumulativeCost}");
             }
 
             return AcceptTxResult.Accepted;

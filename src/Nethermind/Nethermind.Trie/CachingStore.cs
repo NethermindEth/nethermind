@@ -57,7 +57,7 @@ namespace Nethermind.Trie
 
         public void PersistCache(IKeyValueStore pruningContext)
         {
-            IDictionary<byte[], byte[]> clone = _cache.Clone();
+            KeyValuePair<byte[], byte[]>[] clone = _cache.ToArray();
             Task.Run(() =>
             {
                 foreach (KeyValuePair<byte[], byte[]> kvp in clone)

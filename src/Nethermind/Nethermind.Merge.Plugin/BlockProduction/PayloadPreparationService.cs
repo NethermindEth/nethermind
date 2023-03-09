@@ -12,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 
@@ -51,7 +50,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
-        private string _latestPayloadId = string.Empty;
 
         public PayloadPreparationService(
             PostMergeBlockProducer blockProducer,
@@ -80,7 +78,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             string payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
-            _latestPayloadId = payloadId;
             if (!_payloadStorage.ContainsKey(payloadId))
             {
                 Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
@@ -131,8 +128,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 {
                     if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
                     await Task.Delay(_improvementDelay);
-                    if (!blockImprovementContext.Disposed // if GetPayload wasn't called for this item or it wasn't cleared
-                        && payloadId == _latestPayloadId) // we only improve on latest block payload
+                    if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                     {
                         Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
                         ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
@@ -153,22 +149,31 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         private void CleanupOldPayloads(object? sender, EventArgs e)
         {
-            if (_logger.IsTrace) _logger.Trace("Started old payloads cleanup");
-            foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
+            try
             {
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-                if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
+                if (_logger.IsTrace) _logger.Trace("Started old payloads cleanup");
+                foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
-                    if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
+                    DateTimeOffset now = DateTimeOffset.UtcNow;
+                    if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
                     {
-                        context.Dispose();
-                        if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
+                        if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
+
+                        if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
+                        {
+                            context.Dispose();
+                            if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
+                        }
                     }
                 }
+
+                if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Exception in old payloads cleanup: {ex}");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");
         }
 
         private Block? LogProductionResult(Task<Block?> t)

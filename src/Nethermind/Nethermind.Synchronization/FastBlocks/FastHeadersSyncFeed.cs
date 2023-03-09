@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ConcurrentCollections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -38,7 +39,6 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
 
-        private readonly object _dummyObject = new();
         private readonly object _handlerLock = new();
 
         private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <summary>
         /// Requests sent to peers for which responses have not been received yet
         /// </summary>
-        protected readonly ConcurrentDictionary<HeadersSyncBatch, object> _sent = new();
+        protected readonly ConcurrentHashSet<HeadersSyncBatch> _sent = new();
 
         /// <summary>
         /// Responses received from peers but waiting in a queue for some other requests to be handled first
@@ -305,7 +305,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (batch is not null)
                 {
-                    _sent.TryAdd(batch, _dummyObject);
+                    _sent.Add(batch);
                     if (batch.StartNumber >= (LowestInsertedBlockHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
                     {
                         batch.Prioritized = true;
@@ -354,7 +354,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     foreach (var sentBatch in _sent)
                     {
-                        all.TryAdd(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
+                        all.TryAdd(sentBatch.EndNumber, $"  SENT       {sentBatch}");
                     }
 
                     foreach (KeyValuePair<long, string> keyValuePair in all
@@ -379,7 +379,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _resetLock.EnterReadLock();
             try
             {
-                if (!_sent.ContainsKey(batch))
+                if (!_sent.Contains(batch))
                 {
                     if (_logger.IsDebug) _logger.Debug("Ignoring batch not in sent record");
                     return SyncResponseHandlingResult.Ignored;
@@ -411,7 +411,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 finally
                 {
                     batch.MarkHandlingEnd();
-                    _sent.TryRemove(batch, out _);
+                    _sent.TryRemove(batch);
                 }
             }
             finally
