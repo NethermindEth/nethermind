@@ -14,8 +14,13 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IBlockTree _blockTree;
         private readonly FastBlockStatusList _statuses;
         private readonly ReaderWriterLockSlim _readerWriterLockSlim = new();
+        private long _lowestInsertWithoutGaps;
 
-        public long LowestInsertWithoutGaps { get; private set; }
+        public long LowestInsertWithoutGaps
+        {
+            get => _lowestInsertWithoutGaps;
+        }
+
         public long QueueSize => _queueSize;
 
         public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
@@ -23,7 +28,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _statuses = new FastBlockStatusList(pivotNumber + 1);
 
-            LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
+            _lowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
         }
 
         public void GetInfosForBatch(BlockInfo?[] blockInfos)
@@ -47,12 +52,11 @@ namespace Nethermind.Synchronization.FastBlocks
                         case FastBlockStatus.Unknown:
                             _statuses[currentNumber] = FastBlockStatus.Sent;
                             sent = true;
-                            collected++;
                             break;
                         case FastBlockStatus.Inserted:
                             if (currentNumber == LowestInsertWithoutGaps)
                             {
-                                LowestInsertWithoutGaps--;
+                                _lowestInsertWithoutGaps--;
                                 _queueSize--;
                             }
                             break;
@@ -61,7 +65,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (sent)
                 {
-                    blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(currentNumber);
+                    blockInfos[collected++] = _blockTree.FindCanonicalBlockInfo(currentNumber);
                 }
 
                 currentNumber--;
