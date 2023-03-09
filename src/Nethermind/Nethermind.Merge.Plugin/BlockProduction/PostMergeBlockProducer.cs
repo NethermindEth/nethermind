@@ -12,6 +12,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Core.Extensions;
+using System.Threading;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -44,7 +46,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 logManager,
                 ConstantDifficulty.Zero,
                 miningConfig
-                )
+            )
         {
         }
 
@@ -54,8 +56,24 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             blockHeader.TxRoot = Keccak.EmptyTreeHash;
             blockHeader.Bloom = Bloom.Empty;
+            var block = new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
 
-            return new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+            if (_producingBlockLock.Wait(BlockProductionTimeout))
+            {
+                try
+                {
+                    if (TrySetState(parent.StateRoot))
+                    {
+                        return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
+                    }
+                }
+                finally
+                {
+                    _producingBlockLock.Release();
+                }
+            }
+
+            throw new EmptyBlockProductionException("Setting state for processing block failed");
         }
 
         protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
