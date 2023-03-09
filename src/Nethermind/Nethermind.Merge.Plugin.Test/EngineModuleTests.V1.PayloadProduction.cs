@@ -4,12 +4,14 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Google.Protobuf.WellKnownTypes;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,6 +22,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
@@ -236,7 +239,9 @@ public partial class EngineModuleTests
                     FeeRecipient = Address.Zero,
                     GasLimit = 0x3d0900L,
                     GasUsed = 0,
-                    LogsBloom = new Bloom(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
+                    LogsBloom =
+                        new Bloom(Bytes.FromHexString(
+                            "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
                     ParentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c"),
                     PrevRandao = new("0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2"),
                     ReceiptsRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
@@ -244,8 +249,10 @@ public partial class EngineModuleTests
                     Timestamp = 0xf4240UL,
                     Transactions = new[]
                     {
-                        Bytes.FromHexString("0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"),
-                        Bytes.FromHexString("0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0033e85439a128c42f2ba47ca278f1375ef211e61750018ff21bcd9750d1893f2a04ee981fe5261f8853f95c865232ffdab009abcc7858ca051fb624c49744bf18d")
+                        Bytes.FromHexString(
+                            "0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"),
+                        Bytes.FromHexString(
+                            "0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0033e85439a128c42f2ba47ca278f1375ef211e61750018ff21bcd9750d1893f2a04ee981fe5261f8853f95c865232ffdab009abcc7858ca051fb624c49744bf18d")
                     },
                 },
                 id = 67
@@ -399,10 +406,15 @@ public partial class EngineModuleTests
         // this test sends two payloadAttributes on block X and X + 1 to start many block improvements
         // as the result we want to check if we are not able to produce invalid block by repeating this test many times
 
-        // ToDo cleanup logs directory
-        string logFolder = "D:\\logs";
+        bool logInvalidBlockExecution = false; // change to true if you want to log invalid blocks
+        string logFolder = "D:\\logs"; // adjust to your folder if needed by default logging is turned off
         string guid = Guid.NewGuid().ToString();
-        NLogManager logManager = new NLogManager($"log_+{guid}", logFolder);
+        ILogManager? logManager = LimboLogs.Instance;
+        if (logInvalidBlockExecution)
+        {
+            logManager = new NLogManager($"log_+{guid}", logFolder);
+        }
+
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(London.Instance), logManager);
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
@@ -423,35 +435,16 @@ public partial class EngineModuleTests
         chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
-                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
+                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
-        await blockImprovementLock.WaitAsync(timePerSlot * 2);
+        await blockImprovementLock.WaitAsync(delay);
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
 
-        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV2(getPayloadResult);
-        result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
-
-        // starting building on block X
-        await rpc.engine_forkchoiceUpdatedV1(
-            new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
-            new PayloadAttributes { Timestamp = 101, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
-
-        int milliseconds = RandomNumberGenerator.GetInt32(timePerSlot.Milliseconds, timePerSlot.Milliseconds * 2);
-        await Task.Delay(milliseconds);
-
-        // starting building on block X + 1
-        string? secondNewPayload = rpc.engine_forkchoiceUpdatedV1(
-                new ForkchoiceStateV1(getPayloadResult.BlockHash, Keccak.Zero, getPayloadResult.BlockHash),
-                new PayloadAttributes { Timestamp = 102, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
-            .Result.Data.PayloadId!;
-
-        ExecutionPayload getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload))).Data!;
-
-        Task<ResultWrapper<PayloadStatusV1>> secondBlock = rpc.engine_newPayloadV2(getSecondBlockPayload);
-        if (secondBlock.Result.Data.Status == PayloadStatus.Invalid)
+        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(getPayloadResult);
+        if (result1.Result.Data.Status != PayloadStatus.Valid)
         {
             string[] files = Directory.GetFiles(logFolder);
             foreach (string file in files)
@@ -460,7 +453,36 @@ public partial class EngineModuleTests
                     File.Delete(file);
             }
         }
+        result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
+
+
+        // starting building on block X
+        await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
+            new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(4).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
+
+        int milliseconds = RandomNumberGenerator.GetInt32(timePerSlot.Milliseconds, timePerSlot.Milliseconds * 2);
+        await Task.Delay(milliseconds);
+
+        // starting building on block X + 1
+        string? secondNewPayload = rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(getPayloadResult.BlockHash, Keccak.Zero, getPayloadResult.BlockHash),
+                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
+            .Result.Data.PayloadId!;
+
+        ExecutionPayload getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload))).Data!;
+
+        Task<ResultWrapper<PayloadStatusV1>> secondBlock = rpc.engine_newPayloadV1(getSecondBlockPayload);
+        if (secondBlock.Result.Data.Status != PayloadStatus.Valid)
+        {
+            string[] files = Directory.GetFiles(logFolder);
+            foreach (string file in files)
+            {
+                if (!file.Contains(guid))
+                    File.Delete(file);
+            }
+        }
+
         secondBlock.Result.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 }
-

@@ -188,7 +188,8 @@ public partial class EngineModuleTests
                 new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
                 TimerFactory.Default,
                 LogManager,
-                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
+                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
+                50000); // by default we want to avoid cleanup payload effects in testing
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 

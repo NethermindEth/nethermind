@@ -129,7 +129,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 ),
                 TimerFactory.Default,
                 LogManager,
-                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
+                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
+                int.MaxValue // by default we want to avoid cleanup payload effects in testing
             );
 
             IAuRaStepCalculator auraStepCalculator = Substitute.For<IAuRaStepCalculator>();
