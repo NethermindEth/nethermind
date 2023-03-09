@@ -764,16 +764,16 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // compaction to happen in background at 1/10th the specified speed (if rate limited).
             //
             // Read and writes written on different tune during mainnet sync in TB. StateSync omitted but included in total:
-            // +-----------------------------+--------------+--------------+--------------+--------------+
-            // | L0FileNumTarget             |  Total (R/W) |     SnapSync |    OldBodies |  OldReceipts |
-            // +-----------------------------+--------------+--------------+--------------+--------------+
-            // | 4 (Default)                 |  25.9 / 13.5 |  4.63 / 3.84 |  8.21 / 4.54 |  9.27 / 5.06 |
-            // | 64 (WriteBias)              |  22.6 / 10.8 |  5.52 / 2.56 |  6.54 / 4.00 |  7.17 / 4.19 |
-            // | 256 (HeavyWrite)            |  38.7 /  8.3 |  8.50 / 1.89 |  6.76 / 3.20 |  7.39 / 3.20 |
-            // | 512                         |  36.5 /  7.5 |  12.0 / 1.65 |  5.78 / 2.84 |  6.08 / 2.79 |
-            // | 1024 (AggressiveHeavyWrite) |  35.1 /  6.2 |  19.4 / 1.30 |  5.19 / 2.47 |  5.77 / 2.40 |
-            // | DisableCompaction           |           ?? |  30.4 / 0.75 |           ?? |           ?? |
-            // +-----------------------------+--------------+--------------+--------------+--------------+
+            // +-----------------------------+--------------+--------------+---------------+--------------+
+            // | L0FileNumTarget             |  Total (R/W) |     SnapSync |     OldBodies |  OldReceipts |
+            // +-----------------------------+--------------+--------------+---------------+--------------+
+            // | 4 (Default)                 |  25.9 / 13.5 |  4.63 / 3.84 |   8.21 / 4.54 |  9.27 / 5.06 |
+            // | 64 (WriteBias)              |  22.6 / 10.8 |  5.52 / 2.56 |   6.54 / 4.00 |  7.17 / 4.19 |
+            // | 256 (HeavyWrite)            |  38.7 /  8.3 |  8.50 / 1.89 |   6.76 / 3.20 |  7.39 / 3.20 |
+            // | 512                         |  36.5 /  7.5 |  12.0 / 1.65 |   5.78 / 2.84 |  6.08 / 2.79 |
+            // | 1024 (AggressiveHeavyWrite) |  35.1 /  6.2 |  19.4 / 1.30 |   5.19 / 2.47 |  5.77 / 2.40 |
+            // | DisableCompaction           |  94.1 /  3.5 |  30.4 / 0.75 |  56.50 / 1.33 |  6.97 / 1.53 |
+            // +-----------------------------+--------------+--------------+---------------+--------------+
             // Note, in practice on my machine, the reads does not reach the SSD. Read measured from SSD is much lower
             // than read measured from process. It is likely that most files are cached as I have 128GB of RAM.
             // Also notice that the heavier the tune, the higher the reads.
@@ -797,14 +797,17 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 break;
             case ITunableDb.TuneType.DisableCompaction:
                 // Completely disable compaction. On mainnet, max num of l0 files for state seems to be about 10800.
-                // Blocksdb are way more.
+                // Blocksdb are way more at 53000. Final compaction for state db need 30 minute, while blocks db need
+                // 13 hour. Receipts db don't show up in metrics likely because its a column db.
+                // Ram usage at that time was 86 GB. The default buffer size for blocks on mainnet is too low
+                // to make this work reasonably well.
+                // L0 to L1 compaction is known to be slower than other level so its
                 // Snap sync performance suffer as it does have some read during stitching.
                 // If you don't specify a lower open files limit, it has a tendency to crash, like.. the whole system
                 // crash. I don't have any open file limit at OS level.
                 // Also, if a peer send a packet that causes a query to the state db during snap sync like GetNodeData
                 // or some of the tx filter querying state, It'll cause the network stack to hang and triggers a
                 // large peer drops. Also happens on lesser tune, but weaker.
-                // Snap sync took about 30 minute to compact. L0 to L1 compaction is known to be slower than other level.
                 // State sync essentially hang until that completes because its read heavy, and the uncompacted db is
                 // slow to a halt.
                 // Additionally, the number of open files handles measured from collectd jumped massively higher. Some
