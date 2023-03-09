@@ -763,7 +763,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // machine. Specifying a rate limit smoothens this spike somewhat by not blocking writes while allowing
             // compaction to happen in background at 1/10th the specified speed (if rate limited).
             //
-            // Read and writes written on different tune during sync in TB. StateSync omitted but included in total:
+            // Read and writes written on different tune during mainnet sync in TB. StateSync omitted but included in total:
             // +-----------------------------+--------------+--------------+--------------+--------------+
             // | L0FileNumTarget             |  Total (R/W) |     SnapSync |    OldBodies |  OldReceipts |
             // +-----------------------------+--------------+--------------+--------------+--------------+
