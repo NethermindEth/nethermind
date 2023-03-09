@@ -23,7 +23,9 @@ using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth;
+using Nethermind.HealthChecks;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
@@ -62,6 +64,7 @@ public partial class EngineModuleTests
             chain.LogManager);
         invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
         chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
+        EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
         return new EngineRpcModule(
             new GetPayloadV1Handler(
                 chain.PayloadPreparationService!,
@@ -96,10 +99,10 @@ public partial class EngineModuleTests
                 chain.BeaconPivot,
                 peerRefresher,
                 chain.LogManager),
-            new ExecutionStatusHandler(chain.BlockTree),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
+            new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.SpecProvider, chain.LogManager),
             chain.SpecProvider,
             chain.LogManager);
     }
@@ -139,7 +142,7 @@ public partial class EngineModuleTests
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-        public sealed override ILogManager LogManager { get; } = LimboLogs.Instance;
+        public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
 
         public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
 

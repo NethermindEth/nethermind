@@ -25,7 +25,7 @@ namespace Nethermind.Network.Test.Rlpx
         private byte[] _frame;
         private byte[] _shortFrame;
         private IFrameCipher _frameCipher;
-        private IFrameMacProcessor _macProcessor;
+        private FrameMacProcessor _macProcessor;
 
         [SetUp]
         public void Setup()

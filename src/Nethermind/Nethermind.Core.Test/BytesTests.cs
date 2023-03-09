@@ -39,10 +39,20 @@ namespace Nethermind.Core.Test
         [TestCase("0x0123", 1)]
         [TestCase("123", 1)]
         [TestCase("0123", 1)]
+        [TestCase("", 0)]
         public void FromHexString(string hexString, byte expectedResult)
         {
             byte[] bytes = Bytes.FromHexString(hexString);
-            Assert.AreEqual(bytes[0], expectedResult, "new");
+            if (hexString == "")
+                Assert.AreEqual(bytes.Length, expectedResult, "Bytes array should be empty but is not");
+            else
+                Assert.AreEqual(bytes[0], expectedResult, "new");
+        }
+
+        [TestCase(null)]
+        public void FromHexStringThrows(string hexString)
+        {
+            Assert.That(() => Bytes.FromHexString(hexString), Throws.TypeOf<ArgumentNullException>());
         }
 
         [TestCase("0x07", "0x7", true, true)]
@@ -265,6 +275,13 @@ namespace Nethermind.Core.Test
 
         [TestCase("0x", 0)]
         [TestCase("0x1000", 1)]
+        [TestCase("0x100000", 2)]
+        [TestCase("0x10000000", 3)]
+        [TestCase("0x1000000000", 4)]
+        [TestCase("0x100000000000", 5)]
+        [TestCase("0x10000000000000", 6)]
+        [TestCase("0x1000000000000000", 7)]
+        [TestCase("0x100000000000000000", 8)]
         [TestCase("0x0000", 2)]
         [TestCase("0x000100", 1)]
         public void Trailing_zeros_count_works(string hex, int expectedResult)

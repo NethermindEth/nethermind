@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators
@@ -43,11 +42,7 @@ namespace Nethermind.Consensus.Validators
                    Validate4844Fields(transaction);
         }
 
-        private bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec)
-        {
-            bool aboveInitCode = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled && transaction.DataLength > releaseSpec.MaxInitCodeSize;
-            return !aboveInitCode;
-        }
+        private bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) => !transaction.IsAboveInitCode(releaseSpec);
 
         private bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec)
         {
@@ -92,15 +87,15 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            BigInteger sValue = signature.SAsSpan.ToUnsignedBigInteger();
-            BigInteger rValue = signature.RAsSpan.ToUnsignedBigInteger();
+            UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
+            UInt256 rValue = new(signature.RAsSpan, isBigEndian: true);
 
-            if (sValue.IsZero || sValue >= (spec.IsEip2Enabled ? Secp256K1Curve.HalfN + 1 : Secp256K1Curve.N))
+            if (sValue.IsZero || sValue >= (spec.IsEip2Enabled ? Secp256K1Curve.HalfNPlusOne : Secp256K1Curve.N))
             {
                 return false;
             }
 
-            if (rValue.IsZero || rValue >= Secp256K1Curve.N - 1)
+            if (rValue.IsZero || rValue >= Secp256K1Curve.NMinusOne)
             {
                 return false;
             }

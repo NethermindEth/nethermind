@@ -6,7 +6,7 @@
 
 # Nethermind Ethereum client
 
-[![Tests](https://github.com/nethermindeth/nethermind/actions/workflows/run-nethermind-tests.yml/badge.svg)](https://github.com/nethermindeth/nethermind/actions/workflows/run-nethermind-tests.yml)
+[![Tests](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml/badge.svg)](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml)
 [![Chat on Discord](https://img.shields.io/discord/629004402170134531?style=social&logo=discord)](https://discord.gg/GXJFaYk)
 [![Follow us on Twitter](https://img.shields.io/twitter/follow/nethermindeth?style=social&label=Follow)](https://twitter.com/nethermindeth)
 [![Ask on Discourse](https://img.shields.io/discourse/posts?style=social&label=Community&logo=discourse&server=https%3A%2F%2Fcommunity.nethermind.io)](https://community.nethermind.io/c/nethermind-client)
@@ -19,7 +19,7 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 ### Supported networks
 
-**`Mainnet`** **`Goerli`** **`Rinkeby`** **`Ropsten`** **`Sepolia`** **`Gnosis (xDai)`** **`Energy Web`** **`Volta`** **`Kovan`**
+**`Mainnet`** **`Goerli`** **`Sepolia`** **`Gnosis (xDai)`** **`Energy Web`** **`Volta`**
 
 ## Download and run
 
@@ -32,6 +32,12 @@ Release builds are available on the [Releases page](https://github.com/nethermin
 2. `sudo apt install nethermind`
 3. To run the launcher: `nethermind`
 4. To run the runner: `nethermind -c mainnet`
+
+#### On Windows using Windows Package Manager
+
+1. `winget install nethermind`
+2. To run the launcher: `nethermind.launcher.exe`
+3. To run the runner: `nethermind.runner.exe -c mainnet`
 
 #### On macOS using Homebrew
 

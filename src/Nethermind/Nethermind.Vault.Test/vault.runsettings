@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<RunSettings>
-  <!-- Parameters used by tests at runtime -->
-  <TestRunParameters>
-    <Parameter name="token" value="bearer token" />
-  </TestRunParameters>
-</RunSettings>

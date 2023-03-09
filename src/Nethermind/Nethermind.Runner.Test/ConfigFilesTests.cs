@@ -78,7 +78,6 @@ namespace Nethermind.Runner.Test
         [TestCase("rinkeby", "ws://localhost:3000/api")]
         [TestCase("goerli", "wss://stats.goerli.net/api")]
         [TestCase("mainnet", "wss://ethstats.net/api")]
-        [TestCase("sokol", "ws://localhost:3000/api")]
         [TestCase("poacore", "ws://localhost:3000/api")]
         [TestCase("xdai", "ws://localhost:3000/api")]
         [TestCase("spaceneth", "ws://localhost:3000/api")]
@@ -104,7 +103,6 @@ namespace Nethermind.Runner.Test
         [TestCase("rinkeby", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]
         [TestCase("goerli", "0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")]
         [TestCase("mainnet", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
-        [TestCase("sokol", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
         [TestCase("poacore", "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634")]
         [TestCase("xdai", "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")]
         [TestCase("volta", "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5")]
@@ -174,8 +172,6 @@ namespace Nethermind.Runner.Test
         [TestCase("xdai ^archive", 768000000)]
         [TestCase("poacore archive", 1024000000)]
         [TestCase("poacore ^archive", 768000000)]
-        [TestCase("sokol archive", 768000000)]
-        [TestCase("sokol ^archive", 512000000)]
         [TestCase("spaceneth.cfg", 64000000)]
         [TestCase("spaceneth_persistent.cfg", 128000000)]
         public void Memory_hint_values_are_correct(string configWildcard, long expectedValue)
@@ -213,8 +209,8 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("mainnet xdai poacore energy", 2048)]
-        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^energy ^sokol ^poacore ^xdai", 1024)]
-        [TestCase("baseline volta sokol", 512)]
+        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^energy ^poacore ^xdai", 1024)]
+        [TestCase("baseline volta", 512)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
@@ -259,7 +255,6 @@ namespace Nethermind.Runner.Test
         [TestCase("rinkeby.cfg", false)]
         [TestCase("sepolia.cfg", true)]
         [TestCase("xdai.cfg", false)]
-        [TestCase("sokol.cfg", false)]
         public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
@@ -326,7 +321,6 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli", false)]
         [TestCase("mainnet_archive.cfg", true)]
         [TestCase("mainnet.cfg", true)]
-        [TestCase("sokol", false)]
         [TestCase("poacore", true)]
         [TestCase("xdai", true)]
         [TestCase("volta", false)]
@@ -351,9 +345,6 @@ namespace Nethermind.Runner.Test
         [TestCase("rinkeby")]
         [TestCase("goerli", new[] { 16, 16, 16, 16 })]
         [TestCase("mainnet")]
-        [TestCase("sokol.cfg", new[] { 16, 16, 16, 16 })]
-        [TestCase("sokol_archive.cfg", new[] { 16, 16, 16, 16 })]
-        [TestCase("sokol_validator.cfg", null, false)]
         [TestCase("poacore.cfg", new[] { 16, 16, 16, 16 })]
         [TestCase("poacore_archive.cfg", new[] { 16, 16, 16, 16 })]
         [TestCase("poacore_validator.cfg", null, false)]
@@ -377,7 +368,7 @@ namespace Nethermind.Runner.Test
         [TestCase("*")]
         public void Arena_order_is_default(string configWildcard)
         {
-            Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, 11);
+            Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, -1);
         }
 
         [TestCase("^mainnet ^goerli", false)]
@@ -441,9 +432,6 @@ namespace Nethermind.Runner.Test
             "kovan_archive.cfg",
             "mainnet_archive.cfg",
             "mainnet.cfg",
-            "sokol.cfg",
-            "sokol_archive.cfg",
-            "sokol_validator.cfg",
             "poacore.cfg",
             "poacore_archive.cfg",
             "poacore_validator.cfg",
@@ -458,49 +446,6 @@ namespace Nethermind.Runner.Test
             "energyweb.cfg",
             "energyweb_archive.cfg",
         };
-
-        private IEnumerable<string> Resolve(string configWildcard)
-        {
-            Dictionary<string, IEnumerable<string>> groups = BuildConfigGroups();
-            string[] configWildcards = configWildcard.Split(" ");
-
-            List<IEnumerable<string>> toIntersect = new List<IEnumerable<string>>();
-            foreach (string singleWildcard in configWildcards)
-            {
-                string singleWildcardBase = singleWildcard.Replace("^", string.Empty);
-                var result = groups.TryGetValue(singleWildcardBase, out IEnumerable<string> value) ? value : Enumerable.Repeat(singleWildcardBase, 1);
-
-                if (singleWildcard.StartsWith("^"))
-                {
-                    result = Configs.Except(result);
-                }
-
-                toIntersect.Add(result);
-            }
-
-            var intersection = toIntersect.First();
-            foreach (IEnumerable<string> next in toIntersect.Skip(1))
-            {
-                intersection = intersection.Intersect(next);
-            }
-
-            return intersection;
-        }
-
-        private Dictionary<string, IEnumerable<string>> BuildConfigGroups()
-        {
-            Dictionary<string, IEnumerable<string>> groups = new Dictionary<string, IEnumerable<string>>();
-            foreach (PropertyInfo propertyInfo in GetType().GetProperties(BindingFlags.Instance | BindingFlags.NonPublic))
-            {
-                ConfigFileGroup groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
-                if (groupAttribute is not null)
-                {
-                    groups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this));
-                }
-            }
-
-            return groups;
-        }
 
         public IEnumerable<int> AllIndexesOf(string str, string searchString)
         {

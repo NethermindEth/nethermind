@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -18,7 +19,7 @@ namespace Nethermind.Consensus.Processing
         private readonly ILogger _logger;
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="ecdsa">Needed to recover an address from a signature.</param>
         /// <param name="txPool">Finding transactions in mempool can speed up address recovery.</param>
@@ -41,7 +42,7 @@ namespace Nethermind.Consensus.Processing
 
             var releaseSpec = _specProvider.GetSpec(block.Header);
 
-            for (int i = 0; i < block.Transactions.Length; i++)
+            Parallel.For(0, block.Transactions.Length, i =>
             {
                 Transaction blockTransaction = block.Transactions[i];
                 _txPool.TryGetPendingTransaction(blockTransaction.Hash, out Transaction? transaction);
@@ -51,7 +52,7 @@ namespace Nethermind.Consensus.Processing
 
                 blockTransaction.SenderAddress = sender ?? _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
                 if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender}, block transaction address: {blockTransactionAddress})");
-            }
+            });
         }
     }
 }

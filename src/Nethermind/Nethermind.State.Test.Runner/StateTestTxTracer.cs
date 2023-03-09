@@ -143,12 +143,12 @@ namespace Nethermind.State.Test.Runner
             throw new NotImplementedException();
         }
 
-        public void ReportStorageChange(StorageCell storageAddress, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageAddress, byte[] before, byte[] after)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
             throw new NotImplementedException();
         }

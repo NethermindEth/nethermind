@@ -1,27 +1,13 @@
-//  Copyright (c) 2022 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Config;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 
@@ -33,14 +19,20 @@ namespace Nethermind.HealthChecks
         private readonly ILogger _logger;
         private readonly IDriveInfo[] _drives;
         private readonly ITimer _timer;
-        private const int CheckPeriodMinutes = 1;
+        private readonly double _checkPeriodMinutes;
+        public static readonly int DefaultCheckPeriodMinutes = 1;
 
-        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IDriveInfo[] drives, ITimerFactory timerFactory)
+        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IDriveInfo[] drives, ITimerFactory timerFactory) :
+            this(healthChecksConfig, logger, drives, timerFactory, DefaultCheckPeriodMinutes)
+        { }
+
+        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IDriveInfo[] drives, ITimerFactory timerFactory, double checkPeriodMinutes)
         {
             _healthChecksConfig = healthChecksConfig;
             _logger = logger;
             _drives = drives;
-            _timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(CheckPeriodMinutes));
+            _checkPeriodMinutes = checkPeriodMinutes;
+            _timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(_checkPeriodMinutes));
             _timer.Elapsed += CheckDiskSpace;
         }
 
@@ -79,6 +71,54 @@ namespace Nethermind.HealthChecks
         {
             await StopAsync(default);
             _timer.Dispose();
+        }
+
+        public void EnsureEnoughFreeSpaceOnStart(ITimerFactory timerFactory)
+        {
+            float minAvailableSpaceThreshold = 2 * _healthChecksConfig.LowStorageSpaceShutdownThreshold;
+            if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 && _healthChecksConfig.LowStorageSpaceWarningThreshold > _healthChecksConfig.LowStorageSpaceShutdownThreshold)
+                minAvailableSpaceThreshold = _healthChecksConfig.LowStorageSpaceWarningThreshold / 2.0f;
+
+            if (!IsEnoughDiskSpace(minAvailableSpaceThreshold))
+            {
+                if (_healthChecksConfig.LowStorageCheckAwaitOnStartup)
+                {
+                    ManualResetEventSlim mre = new(false);
+                    using ITimer timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(_checkPeriodMinutes));
+                    timer.Elapsed += (t, e) =>
+                    {
+                        if (IsEnoughDiskSpace(minAvailableSpaceThreshold))
+                            mre.Set();
+                    };
+
+                    timer.Start();
+                    mre.Wait();
+                }
+                else
+                {
+                    //throwing an exception as Environment.Exit will cause a deadlock in this scenario:
+                    //https://github.com/dotnet/runtime/issues/50397
+                    throw new NotEnoughDiskSpaceException();
+                }
+            }
+        }
+
+        private bool IsEnoughDiskSpace(float minAvailableSpaceThreshold)
+        {
+            bool enoughSpace = true;
+            for (int index = 0; index < _drives.Length; index++)
+            {
+                IDriveInfo drive = _drives[index];
+                double freeSpacePercent = drive.GetFreeSpacePercentage();
+                enoughSpace &= freeSpacePercent >= minAvailableSpaceThreshold;
+                if (freeSpacePercent < minAvailableSpaceThreshold)
+                {
+                    double minAvailableSpace = drive.GetFreeSpaceInGiB() / freeSpacePercent * minAvailableSpaceThreshold;
+                    if (_logger.IsWarn)
+                        _logger.Warn($"Not enough free disk space in '{drive.RootDirectory.FullName}' to safely run a node - please provide at least {minAvailableSpace:F2} GB to continue initialization.");
+                }
+            }
+            return enoughSpace;
         }
     }
 }

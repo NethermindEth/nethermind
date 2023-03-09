@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         // this means that we know what the number, hash, and total diff of the head block is
         public bool IsInitialized { get; set; }
-        public override string ToString() => $"[Peer|{Name}|{HeadNumber,8}|{Node:s}]";
+        public override string ToString() => $"[Peer|{Name}|{HeadNumber,8}|{Node:s}|{Session?.Direction,4}]";
 
         protected Keccak _remoteHeadBlockHash;
         protected readonly ITimestamper _timestamper;
@@ -424,8 +424,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         #region IPeerWithSatelliteProtocol
 
-        private IDictionary<string, object>? _protocolHandlers;
-        private IDictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
+        private Dictionary<string, object>? _protocolHandlers;
+        private Dictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
         {

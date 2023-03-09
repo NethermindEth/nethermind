@@ -23,12 +23,12 @@ namespace Nethermind.TxPool
     {
         private const int SafeCapacity = 1024 * 16;
 
-        private readonly LruKeyCache<Keccak> _longTermCache = new(
+        private readonly LruKeyCache<KeccakKey> _longTermCache = new(
             MemoryAllowance.TxHashCacheSize,
             Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize),
             "long term hash cache");
 
-        private readonly LruKeyCache<Keccak> _currentBlockCache = new(
+        private readonly LruKeyCache<KeccakKey> _currentBlockCache = new(
             SafeCapacity,
             Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize),
             "current block hash cache");

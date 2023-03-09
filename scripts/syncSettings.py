@@ -29,11 +29,6 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 30000
     },
-    "poacore": {
-        "url": "https://core.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
     "gnosis": {
         "url": "https://rpc.gnosischain.com",
         "blockReduced": 8192,
@@ -53,11 +48,6 @@ configs = {
         "url": "api-sepolia.etherscan.io",
         "blockReduced": 1000,
         "multiplierRequirement": 1000
-    },
-    "sokol": {
-        "url": "https://sokol.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
     },
     "energyweb": {
         "url": "https://rpc.energyweb.org",

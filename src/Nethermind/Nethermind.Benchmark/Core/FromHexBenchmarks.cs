@@ -9,24 +9,36 @@ namespace Nethermind.Benchmarks.Core
 {
     public class FromHexBenchmarks
     {
-        private string array = Bytes.FromHexString("0123456789abcdef").ToHexString();
+        private string hex = "0123456789abcdef";
+
+        [Params(true, false)]
+        public bool With0xPrefix;
+
+        [Params(true, false)]
+        public bool OddNumber;
 
         [GlobalSetup]
         public void Setup()
         {
+            //Test Performance of odd number
+            if (OddNumber)
+                hex = "5" + hex;
 
+            //Test performance of hex
+            if (With0xPrefix)
+                hex = "0x" + hex;
         }
 
         [Benchmark(Baseline = true)]
         public byte[] Current()
         {
-            return Bytes.FromHexString(array);
+            return Bytes.FromHexStringOld(hex);
         }
 
         [Benchmark]
         public byte[] Improved()
         {
-            return Bytes.FromHexString(array);
+            return Bytes.FromHexString(hex);
         }
     }
 }

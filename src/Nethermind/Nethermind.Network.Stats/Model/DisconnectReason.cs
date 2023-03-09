@@ -20,11 +20,6 @@ namespace Nethermind.Stats.Model
         UnexpectedIdentity = 0x09,
         IdentitySameAsSelf = 0x0a,
         ReceiveMessageTimeout = 0x0b,
-        Other = 0x10,
-        Breach1 = 0x11,
-        Breach2 = 0x12,
-        NdmInvalidHiSignature = 0x13,
-        NdmHostAddressesNotConfigured = 0x14,
-        NdmPeerAddressesNotConfigured = 0x15
+        Other = 0x10
     }
 }

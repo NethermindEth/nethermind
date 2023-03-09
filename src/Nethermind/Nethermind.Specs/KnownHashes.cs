@@ -19,8 +19,6 @@ namespace Nethermind.Specs
         public static readonly Keccak RopstenGenesis = new("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d");
         public static readonly Keccak RopstenConstantinopleFix = new("0x8696d2eed8197e186d8d682756a0c2a1947ab5e71257475ebcce4fa3252ee9f7");
 
-        public static readonly Keccak SokolGenesis = new("0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f");
-
         public static readonly Keccak SepoliaGenesis = new("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9");
 
         public static readonly Keccak GnosisGenesis = new("0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756");

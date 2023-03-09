@@ -42,7 +42,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly ILogger _logger;
-    private readonly LruCache<Keccak, bool>? _latestBlocks;
+    private readonly LruCache<KeccakKey, bool>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
@@ -76,7 +76,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _defaultProcessingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
         if (cacheSize > 0)
-            _latestBlocks = new LruCache<Keccak, bool>(cacheSize, 0, "LatestBlocks");
+            _latestBlocks = new(cacheSize, 0, "LatestBlocks");
     }
 
     /// <summary>
@@ -99,7 +99,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         if (!HeaderValidator.ValidateHash(block!.Header))
         {
             if (_logger.IsWarn) _logger.Warn($"InvalidBlockHash. Result of {requestStr}.");
-            return NewPayloadV1Result.InvalidBlockHash;
+            return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}");
         }
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
@@ -152,7 +152,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
             if (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null)
             {
-                if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Block already known in blockTree {block}.");
+                if (_logger.IsInfo) _logger.Info($"Syncing... Block already known in blockTree {block}.");
                 return NewPayloadV1Result.Syncing;
             }
 
@@ -165,7 +165,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _beaconPivot.EnsurePivot(block.Header, true);
             _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, insertHeaderOptions);
 
-            if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Inserting block {block}.");
+            if (_logger.IsInfo) _logger.Info($"Syncing... Inserting block {block}.");
             return NewPayloadV1Result.Syncing;
         }
 

@@ -17,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -65,11 +66,13 @@ namespace Nethermind.Api
         ITransactionProcessor? TransactionProcessor { get; set; }
         ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }
+        INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         IWitnessCollector? WitnessCollector { get; set; }
         IWitnessRepository? WitnessRepository { get; set; }
         IHealthHintService? HealthHintService { get; set; }
+        IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         TxValidator? TxValidator { get; set; }
 

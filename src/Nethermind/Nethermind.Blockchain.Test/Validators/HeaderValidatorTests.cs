@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _blockTree.SuggestBlock(_block);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Valid_when_valid()
         {
             _block.Header.SealEngineType = SealEngineType.None;
@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.True(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_gas_limit_too_high()
         {
             _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_gas_limit_just_correct_high()
         {
             _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) - 1;
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.True(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_gas_limit_just_correct_low()
         {
             _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + 1;
@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.True(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_gas_limit_is_just_too_low()
         {
             _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_gas_used_above_gas_limit()
         {
             _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_no_parent_invalid()
         {
             _block.Header.ParentHash = Keccak.Zero;
@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_timestamp_same_as_parent()
         {
             _block.Header.Timestamp = _parentBlock.Header.Timestamp;
@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_extra_data_too_long()
         {
             _block.Header.ExtraData = new byte[33];
@@ -163,7 +163,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_incorrect_difficulty_then_invalid()
         {
             _block.Header.Difficulty = 1;
@@ -174,7 +174,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_incorrect_number_then_invalid()
         {
             _block.Header.Number += 1;
@@ -185,6 +185,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(10000000, 4, 20000000, true)]
         [TestCase(10000000, 4, 20019530, true)]
         [TestCase(10000000, 4, 20019531, false)]
@@ -225,7 +226,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.AreEqual(expectedResult, result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_gas_limit_is_long_max_value()
         {
             _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));
@@ -247,7 +248,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.True(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_block_number_is_negative()
         {
             _block.Header.Number = -1;
@@ -257,7 +258,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_gas_used_is_negative()
         {
             _block.Header.GasUsed = -1;
@@ -267,12 +268,11 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(result);
         }
 
-        [TestCase(0)]
-        [TestCase(null)]
-        public void When_total_difficulty_0_or_null_we_should_skip_total_difficulty_validation(long? totalDifficulty)
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public void When_total_difficulty_null_we_should_skip_total_difficulty_validation()
         {
             _block.Header.Difficulty = 1;
-            _block.Header.TotalDifficulty = totalDifficulty is null ? null : (UInt256)totalDifficulty;
+            _block.Header.TotalDifficulty = null;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
 
@@ -281,7 +281,39 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.True(result);
         }
 
-        [Test]
+        [Timeout(Timeout.MaxTestTime)]
+        [TestCase(0, 0, true)]
+        [TestCase(0, null, false)]
+        [TestCase(0, 1, false)]
+        [TestCase(1, 0, false)]
+        [TestCase(1, null, false)]
+        [TestCase(1, 1, false)]
+        public void When_total_difficulty_zero_we_should_skip_total_difficulty_validation_depending_on_ttd_and_genesis_td(
+                long genesisTd, long? ttd, bool expectedResult)
+        {
+            _block.Header.Difficulty = 1;
+            _block.Header.TotalDifficulty = 0;
+            _block.Header.SealEngineType = SealEngineType.None;
+            _block.Header.Hash = _block.CalculateHash();
+
+            {
+                MemDb blockInfoDb = new();
+                _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb,
+                    new ChainLevelInfoRepository(blockInfoDb),
+                    FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+
+                Block genesis = Build.A.Block.WithDifficulty((UInt256)genesisTd).TestObject;
+                _blockTree.SuggestBlock(genesis);
+            }
+
+            _specProvider.UpdateMergeTransitionInfo(null, (UInt256?)ttd);
+
+            HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(_testLogger));
+            bool result = validator.Validate(_block.Header);
+            Assert.AreEqual(expectedResult, result);
+        }
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_gas_limit_is_negative()
         {
             _block.Header.GasLimit = -1;

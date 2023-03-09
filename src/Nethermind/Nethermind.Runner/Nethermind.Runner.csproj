@@ -13,24 +13,31 @@
     <DockerfileRunArguments>-v $(NETHERMIND_DATA_DIR):/data -p 8545:8545 -p 8551:8551 -p 30303:30303</DockerfileRunArguments>
     <UserSecretsId>03db39d0-4200-473e-9ff8-4a48d496381f</UserSecretsId>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.11.1" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI" Version="6.0.5" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="6.0.5" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="6.0.5" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="7.0.2" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="7.0.2" />
-    <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="7.0.0" />
-    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.17.0" />
-    <PackageReference Include="NLog.Targets.Seq" Version="2.1.0" />
-    <PackageReference Include="NLog" Version="5.1.1" />
-    <PackageReference Include="Seq.Api" Version="2023.1.0" />
-    <PackageReference Include="System.IO.Abstractions" Version="19.1.5" />
-    <PackageReference Include="System.Linq.Async" Version="6.0.1" />
-    <PackageReference Include="YamlDotNet" Version="12.3.1" />
+    <PackageReference Include="Antlr4.Runtime.Standard" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
+    <PackageReference Include="Microsoft.Extensions.CommandLineUtils" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
+    <PackageReference Include="NLog.Targets.Seq" />
+    <PackageReference Include="NLog" />
+    <PackageReference Include="Seq.Api" />
+    <PackageReference Include="System.IO.Abstractions" />
+    <PackageReference Include="System.Linq.Async" />
+    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />

@@ -17,7 +17,6 @@ namespace Nethermind.Core
     /// 8: Ubiq, the public Gubiq main network with flux difficulty chain ID 8
     /// 42: Kovan, the public Parity-only PoA testnet
     /// 60: GoChain, the GoChain networks mainnet
-    /// 77: Sokol, the public POA Network testnet
     /// 99: Core, the public POA Network main network
     /// 100: xDai, the public MakerDAO/POA Network main network
     /// 246: EnergyWeb, the public Energyweb main network

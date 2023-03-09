@@ -43,6 +43,8 @@ namespace Nethermind.Core.Extensions
         {
             public override int Compare(byte[]? x, byte[]? y)
             {
+                if (ReferenceEquals(x, y)) return 0;
+
                 if (x is null)
                 {
                     return y is null ? 0 : 1;
@@ -77,6 +79,12 @@ namespace Nethermind.Core.Extensions
 
             public int Compare(Span<byte> x, Span<byte> y)
             {
+                if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
+                    x.Length == y.Length)
+                {
+                    return 0;
+                }
+
                 if (x.Length == 0)
                 {
                     return y.Length == 0 ? 0 : 1;
@@ -131,67 +139,41 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool AreEqual(Span<byte> a1, Span<byte> a2)
         {
+            if (Unsafe.AreSame(ref MemoryMarshal.GetReference(a1), ref MemoryMarshal.GetReference(a2)) &&
+                a1.Length == a2.Length)
+            {
+                return true;
+            }
+
             // this works for nulls
             return a1.SequenceEqual(a2);
         }
 
         public static bool IsZero(this byte[] bytes)
         {
-            return IsZero((ReadOnlySpan<byte>)bytes);
+            return bytes.AsSpan().IndexOfAnyExcept((byte)0) < 0;
         }
 
         public static bool IsZero(this Span<byte> bytes)
         {
-            return IsZero((ReadOnlySpan<byte>)bytes);
+            return bytes.IndexOfAnyExcept((byte)0) < 0;
         }
 
         public static bool IsZero(this ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length == 32)
-            {
-                return bytes[31] == 0 && bytes.SequenceEqual(Zero32);
-            }
-
-            for (int i = 0; i < bytes.Length / 2; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return false;
-                }
-
-                if (bytes[bytes.Length - i - 1] != 0)
-                {
-                    return false;
-                }
-            }
-
-            return bytes.Length % 2 == 0 || bytes[bytes.Length / 2] == 0;
+            return bytes.IndexOfAnyExcept((byte)0) < 0;
         }
 
         public static int LeadingZerosCount(this Span<byte> bytes, int startIndex = 0)
         {
-            for (int i = startIndex; i < bytes.Length; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return i - startIndex;
-                }
-            }
-
-            return bytes.Length - startIndex;
+            int nonZeroIndex = bytes[startIndex..].IndexOfAnyExcept((byte)0);
+            return nonZeroIndex < 0 ? bytes.Length - startIndex : nonZeroIndex;
         }
 
         public static int TrailingZerosCount(this byte[] bytes)
         {
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                if (bytes[bytes.Length - i - 1] != 0)
-                {
-                    return i;
-                }
-            }
-
-            return bytes.Length;
+            int lastIndex = bytes.AsSpan().LastIndexOfAnyExcept((byte)0);
+            return lastIndex < 0 ? bytes.Length : bytes.Length - lastIndex - 1;
         }
 
         public static Span<byte> WithoutLeadingZeros(this byte[] bytes)
@@ -201,15 +183,10 @@ namespace Nethermind.Core.Extensions
 
         public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return bytes.Slice(i, bytes.Length - i);
-                }
-            }
+            if (bytes.Length == 0) return new byte[] { 0 };
 
-            return new byte[] { 0 };
+            int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
+            return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)
@@ -221,9 +198,7 @@ namespace Nethermind.Core.Extensions
         }
 
         public static byte[] PadLeft(this byte[] bytes, int length, byte padding = 0)
-        {
-            return PadLeft(bytes.AsSpan(), length, padding);
-        }
+            => bytes.Length == length ? bytes : bytes.AsSpan().PadLeft(length, padding);
 
         public static byte[] PadLeft(this Span<byte> bytes, int length, byte padding = 0)
         {
@@ -238,7 +213,7 @@ namespace Nethermind.Core.Extensions
             }
 
             byte[] result = new byte[length];
-            bytes.CopyTo(result.AsSpan().Slice(length - bytes.Length));
+            bytes.CopyTo(result.AsSpan(length - bytes.Length));
 
             if (padding != 0)
             {
@@ -841,38 +816,42 @@ namespace Nethermind.Core.Extensions
             return leadingZeros;
         }
 
-        private static byte[] FromHexNibble1Table =
+        [DebuggerStepThrough]
+        public static byte[] FromUtf8HexString(ReadOnlySpan<byte> hexString)
         {
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 0, 16,
-            32, 48, 64, 80, 96, 112, 128, 144, 255, 255,
-            255, 255, 255, 255, 255, 160, 176, 192, 208, 224,
-            240, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 160, 176, 192,
-            208, 224, 240
-        };
+            if (hexString.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
 
-        private static byte[] FromHexNibble2Table =
-        {
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 0, 1,
-            2, 3, 4, 5, 6, 7, 8, 9, 255, 255,
-            255, 255, 255, 255, 255, 10, 11, 12, 13, 14,
-            15, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 10, 11, 12,
-            13, 14, 15
-        };
+            int oddMod = hexString.Length % 2;
+            byte[] result = GC.AllocateUninitializedArray<byte>((hexString.Length >> 1) + oddMod);
+            return HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1) ? result : throw new FormatException("Incorrect hex string");
+        }
 
         [DebuggerStepThrough]
         public static byte[] FromHexString(string hexString)
+        {
+            if (hexString is null)
+            {
+                throw new ArgumentNullException($"{nameof(hexString)}");
+            }
+
+            int start = hexString is ['0', 'x', ..] ? 2 : 0;
+            ReadOnlySpan<char> chars = hexString.AsSpan(start);
+
+            if (chars.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int oddMod = hexString.Length % 2;
+            byte[] result = GC.AllocateUninitializedArray<byte>((chars.Length >> 1) + oddMod);
+            return HexConverter.TryDecodeFromUtf16(chars, result, oddMod == 1) ? result : throw new FormatException("Incorrect hex string");
+        }
+
+        [DebuggerStepThrough]
+        public static byte[] FromHexStringOld(string hexString)
         {
             if (hexString is null)
             {
@@ -903,6 +882,36 @@ namespace Nethermind.Core.Extensions
 
             return bytes;
         }
+
+        private static byte[] FromHexNibble1Table =
+        {
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 0, 16,
+            32, 48, 64, 80, 96, 112, 128, 144, 255, 255,
+            255, 255, 255, 255, 255, 160, 176, 192, 208, 224,
+            240, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 160, 176, 192,
+            208, 224, 240
+        };
+
+        private static byte[] FromHexNibble2Table =
+        {
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 0, 1,
+            2, 3, 4, 5, 6, 7, 8, 9, 255, 255,
+            255, 255, 255, 255, 255, 10, 11, 12, 13, 14,
+            15, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 10, 11, 12,
+            13, 14, 15
+        };
 
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
         public static int GetSimplifiedHashCode(this byte[] bytes)

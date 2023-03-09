@@ -3,12 +3,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -49,7 +53,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _floodController.IsEnabled = false;
         }
 
-        public override byte ProtocolVersion => 62;
+        public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
         public override int MessageIdSpaceSize => 8;
         public override string Name => "eth62";
@@ -223,6 +227,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
                 ProtocolVersion = status.ProtocolVersion,
+                ForkId = status.ForkId,
                 TotalDifficulty = status.TotalDifficulty
             };
 
@@ -234,17 +239,57 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected void Handle(TransactionsMessage msg)
         {
-            IList<Transaction> transactions = msg.Transactions;
-            for (int i = 0; i < transactions.Count; i++)
-            {
-                Transaction tx = transactions[i];
-                tx.DeliveredBy = Node.Id;
-                tx.Timestamp = _timestamper.UnixTime.Seconds;
-                AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
-                _floodController.Report(accepted);
+            IList<Transaction> iList = msg.Transactions;
 
-                if (Logger.IsTrace) Logger.Trace(
-                    $"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
+            if (iList is ArrayPoolList<Transaction> apl)
+            {
+                HandleFast(apl.AsSpan());
+            }
+            else if (iList is Transaction[] array)
+            {
+                HandleFast(array.AsSpan());
+            }
+            else if (iList is List<Transaction> list)
+            {
+                HandleFast(CollectionsMarshal.AsSpan(list));
+            }
+            else
+            {
+                HandleSlow(iList);
+            }
+        }
+
+        private void HandleFast(Span<Transaction> transactions)
+        {
+            bool isTrace = Logger.IsTrace;
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                PrepareAndSubmitTransaction(transactions[i], isTrace);
+            }
+        }
+
+        private void HandleSlow(IList<Transaction> transactions)
+        {
+            bool isTrace = Logger.IsTrace;
+            int count = transactions.Count;
+            for (int i = 0; i < count; i++)
+            {
+                PrepareAndSubmitTransaction(transactions[i], isTrace);
+            }
+        }
+
+        private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
+        {
+            tx.DeliveredBy = Node.Id;
+            tx.Timestamp = _timestamper.UnixTime.Seconds;
+            AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            _floodController.Report(accepted);
+
+            if (isTrace) Log(tx, accepted);
+
+            void Log(Transaction tx, in AcceptTxResult accepted)
+            {
+                Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
             }
         }
 

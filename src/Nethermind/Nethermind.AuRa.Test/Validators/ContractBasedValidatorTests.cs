@@ -334,7 +334,7 @@ namespace Nethermind.AuRa.Test.Validators
                                         InitializeBlock = 3,
                                         FinalizeBlock = 3
                                     },
-                                    new() 
+                                    new()
                                         // this will not get finalized because of reorganisation
                                     {
                                         Addresses = GenerateValidators(2),
@@ -347,7 +347,7 @@ namespace Nethermind.AuRa.Test.Validators
                         {
                             7, new ConsecutiveInitiateChangeTestParameters.ChainInfo()
                             {
-                                BlockNumber = 5, //reorganisation to block 5 in order to invalidate last initiate change 
+                                BlockNumber = 5, //reorganisation to block 5 in order to invalidate last initiate change
                                 ExpectedFinalizationCount = 0,
                                 NumberOfSteps = 10,
                             }
@@ -448,7 +448,7 @@ namespace Nethermind.AuRa.Test.Validators
                         {
                             7, new ConsecutiveInitiateChangeTestParameters.ChainInfo()
                             {
-                                BlockNumber = 6, //reorganisation to block 6 in order to keep last initiate change 
+                                BlockNumber = 6, //reorganisation to block 6 in order to keep last initiate change
                                 ExpectedFinalizationCount = 2,
                                 NumberOfSteps = 10,
                                 Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
@@ -564,7 +564,7 @@ namespace Nethermind.AuRa.Test.Validators
                                 .TestObject
                         };
                     })
-                .OfChainLength(9, 0, 0, validators);
+                .OfChainLength(9, 0, 0, false, validators);
 
             BlockTree blockTree = blockTreeBuilder.TestObject;
             SetupInitialValidators(blockTree.Head?.Header, blockTree.FindHeader(blockTree.Head?.ParentHash, BlockTreeLookupOptions.None), validators);

@@ -21,6 +21,7 @@ namespace Nethermind.Specs
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
+        public ulong TimestampFork => ShanghaiBlockTimestamp;
         public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
@@ -57,6 +58,7 @@ namespace Nethermind.Specs
         public const long LondonBlockNumber = 12_965_000;
         public const long ArrowGlacierBlockNumber = 13_773_000;
         public const long GrayGlacierBlockNumber = 15_050_000;
+        public const ulong GenesisBlockTimestamp = 1_438_269_973;
         public const ulong ShanghaiBlockTimestamp = ulong.MaxValue - 4;
         public const ulong CancunBlockTimestamp = ulong.MaxValue - 3;
         public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;

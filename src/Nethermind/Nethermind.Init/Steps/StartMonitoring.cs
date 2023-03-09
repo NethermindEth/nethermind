@@ -44,7 +44,7 @@ public class StartMonitoring : IStep
             MetricsController metricsController = new(metricsConfig);
 
             _api.MonitoringService = new MonitoringService(metricsController, metricsConfig, _api.LogManager);
-            IEnumerable<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics));
+            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics));
             foreach (Type metric in metrics)
             {
                 _api.MonitoringService.RegisterMetrics(metric);
