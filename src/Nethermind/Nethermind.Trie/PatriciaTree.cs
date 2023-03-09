@@ -713,15 +713,7 @@ namespace Nethermind.Trie
             childNode.ResolveNode(TrieStore);
             TrieNode nextNode = childNode;
 
-            return TraverseNext(in traverseContext, nextNode);
-        }
-
-        private byte[] TraverseNext(in TraverseContext traverseContext, TrieNode nextNode)
-        {
-            // Move large struct creation out of flow so doesn't force additional stack space
-            // in calling method even if not used 
-            TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + 1);
-            return TraverseNode(nextNode, in newContext);
+            return TraverseNext(in traverseContext, 1, nextNode);
         }
 
         private byte[]? TraverseLeaf(TrieNode node, in TraverseContext traverseContext)
