@@ -4,14 +4,12 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Data;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,7 +27,6 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using NLog;
 using NSubstitute;
 using NUnit.Framework;
 
