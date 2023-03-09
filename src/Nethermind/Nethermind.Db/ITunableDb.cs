@@ -13,7 +13,6 @@ public interface ITunableDb: IDb
         WriteBias,
         HeavyWrite,
         AggressiveHeavyWrite,
-        VeryAggressiveHeavyWrite,
         DisableCompaction,
     }
 }
