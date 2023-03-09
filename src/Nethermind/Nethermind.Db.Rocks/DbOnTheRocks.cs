@@ -764,16 +764,16 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // compaction to happen in background at 1/10th the specified speed (if rate limited).
             //
             // Read and writes written on different tune during sync in TB. StateSync omitted but included in total:
-            // +---------------------------+---------+----------+-----------+-------------+
-            // | Tune                      | Total (R/W) |     SnapSync |   OldBodies | OldReceipts |
-            // +---------------------------+---------+----------+-----------+-------------+
-            // | Default                   |        12.5 |      3.20 TB |     ?.?0 TB |             |
-            // | WriteBias                 |        10.B |  5.68 / 2.60 | 6.90 / 3.80 |       4.00  |
-            // | HeavyWrite                |  24.2 / 8.4 |   8.7 / 1.85 | 5.95 / 3.12 |   5.9 / 3.4 |
-            // | AggressiveHeavyWrite      |  32.7 / 6.0 |  15.2 / 1.20 | 7.00 / 2.50 |  6.0 / 2.30 |
-            // | VeryAggressiveHeavyWrite  |         ?.? |      ?.?? TB |             |             |
-            // | DisableCompaction         |         2.9 |      0.67 TB |             |             |
-            // +---------------------------+---------+----------+-----------+-------------+
+            // +-----------------------------+--------------+--------------+--------------+--------------+
+            // | L0FileNumTarget             |  Total (R/W) |     SnapSync |    OldBodies |  OldReceipts |
+            // +-----------------------------+--------------+--------------+--------------+--------------+
+            // | 4 (Default)                 |  25.9 / 13.5 |  4.63 / 3.84 |  8.21 / 4.54 |  9.27 / 5.06 |
+            // | 64 (WriteBias)              |  22.6 / 10.8 |  5.52 / 2.56 |  6.54 / 4.00 |  7.17 / 4.19 |
+            // | 256 (HeavyWrite)            |  38.7 /  8.3 |  8.50 / 1.89 |  6.76 / 3.20 |  7.39 / 3.20 |
+            // | 512                         |  36.5 /  7.5 |  12.0 / 1.65 |  5.78 / 2.84 |  6.08 / 2.79 |
+            // | 1024 (AggressiveHeavyWrite) |  35.1 /  6.2 |  19.4 / 1.30 |  5.19 / 2.47 |  5.77 / 2.40 |
+            // | DisableCompaction           |           ?? |  30.4 / 0.75 |           ?? |           ?? |
+            // +-----------------------------+--------------+--------------+--------------+--------------+
             // Note, in practice on my machine, the reads does not reach the SSD. Read measured from SSD is much lower
             // than read measured from process. It is likely that most files are cached as I have 128GB of RAM.
             // Also notice that the heavier the tune, the higher the reads.
@@ -789,22 +789,29 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 ApplyOptions(GetHeavyWriteOptions(256));
                 break;
             case ITunableDb.TuneType.AggressiveHeavyWrite:
-                // Large, 1 minute long compaction every 7 minute or so. If you don't specify a ratelimiter, snap sync
-                // effectively hang during this 1 minute and snap pivot change every time. Likely slow down sync time.
-                ApplyOptions(GetHeavyWriteOptions(512));
-                break;
-            case ITunableDb.TuneType.VeryAggressiveHeavyWrite:
+                // For when, you are desperate, but don't wanna disable compaction completely, because you don't want
+                // peers to drop. Tend to be faster than disabling compaction completely, except if your ratelimit
+                // is a bit low and your compaction is lagging behind, which will trigger slowdown, so sync will hang
+                // intermittently, but at least peer count is stable.
                 ApplyOptions(GetHeavyWriteOptions(1024));
                 break;
             case ITunableDb.TuneType.DisableCompaction:
-                // Completely disable compaction. On mainnet, max num of l0 files for state seems to be about 5400.
-                // Snap sync performance suffer as it does have some read during sync. If you don't specify
-                // a lower open files limit, it has a tendency to crash. Also, if a peer send a packet that causes a query
-                // to the state db during snap sync like GetNodeData or some of the tx filter querying state, It'll cause
-                // the network stack to hang and triggers a large peer drops. Also happens on lesser tune, but weaker.
-                // With all those cons, this result in the minimum write amplification possible via tweaking compaction.
-                // Not recommended for mainnet, unless you are desperate.
-                IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(10000);
+                // Completely disable compaction. On mainnet, max num of l0 files for state seems to be about 10800.
+                // Blocksdb are way more.
+                // Snap sync performance suffer as it does have some read during stitching.
+                // If you don't specify a lower open files limit, it has a tendency to crash, like.. the whole system
+                // crash. I don't have any open file limit at OS level.
+                // Also, if a peer send a packet that causes a query to the state db during snap sync like GetNodeData
+                // or some of the tx filter querying state, It'll cause the network stack to hang and triggers a
+                // large peer drops. Also happens on lesser tune, but weaker.
+                // Snap sync took about 30 minute to compact. L0 to L1 compaction is known to be slower than other level.
+                // State sync essentially hang until that completes because its read heavy, and the uncompacted db is
+                // slow to a halt.
+                // Additionally, the number of open files handles measured from collectd jumped massively higher. Some
+                // user config may not be able to handle this.
+                // With all those cons, this result in the minimum write amplification possible via tweaking compaction
+                // without changing memory budget. Not recommended for mainnet, unless you are very desperate.
+                IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(2048);
                 heavyWriteOption["disable_auto_compactions"] = "true";
                 ApplyOptions(heavyWriteOption);
                 break;
@@ -842,7 +849,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     /// <summary>
     /// Allow num of l0 file to grow very large. This dramatically increase read response time by about
     /// (l0FileNumTarget / (default num (4) + max level usually (4)). but it saves write bandwidth as l0->l1 happens
-    /// in larger size.
+    /// in larger size. In addition to that, the large base l1 size means the number of level is a bit lower.
+    /// Note: Regardless of max_open_files config, the number of files handle jumped by this number when compacting. It
+    /// could be that l0->l1 compaction does not (or cant?) follow the max_open_files limit.
     /// </summary>
     /// <param name="l0FileNumTarget">
     ///  This caps the maximum allowed number of l0 files, which is also the read response time amplification.
@@ -853,7 +862,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,
         // the extra size in l1 is basically extra rewrites. If l0 is larger... then I don't know why not. Even so, it seems to
         // always get triggered when l0 size exceed max_bytes_for_level_base even if file num is less than l0FileNumTarget.
-        // The 2 here is min write buffer to merge.
+        // The 2 here is MinWriteBufferToMerge. Note, that this does highly depends on the WriteBufferSize as do standard
+        // config.
         ulong l1SizeTarget = l0FileNumTarget * _perTableDbConfig.WriteBufferSize * 2;
 
         return new Dictionary<string, string>()
