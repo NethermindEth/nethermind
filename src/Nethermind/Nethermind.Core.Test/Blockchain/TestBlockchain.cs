@@ -378,8 +378,12 @@ public class TestBlockchain : IDisposable
     public virtual void Dispose()
     {
         BlockProducer?.StopAsync();
-        CodeDb?.Dispose();
-        StateDb?.Dispose();
+        if (DbProvider != null)
+        {
+            CodeDb?.Dispose();
+            StateDb?.Dispose();
+        }
+
         _trieStoreWatcher?.Dispose();
         DbProvider?.Dispose();
     }

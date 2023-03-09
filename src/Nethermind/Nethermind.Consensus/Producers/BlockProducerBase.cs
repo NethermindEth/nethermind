@@ -48,11 +48,11 @@ namespace Nethermind.Consensus.Producers
         private readonly ITxSource _txSource;
         private readonly IBlockProductionTrigger _trigger;
         private bool _isRunning;
-        private readonly ManualResetEvent _producingBlockLock = new(true);
+        protected readonly SemaphoreSlim _producingBlockLock = new(1);
         private CancellationTokenSource? _producerCancellationToken;
 
         private DateTime _lastProducedBlockDateTime;
-        private const int BlockProductionTimeout = 1000;
+        protected const int BlockProductionTimeout = 2000;
         protected ILogger Logger { get; }
         protected readonly IBlocksConfig _blocksConfig;
 
@@ -122,7 +122,7 @@ namespace Nethermind.Consensus.Producers
             token = tokenSource.Token;
 
             Block? block = null;
-            if (await _producingBlockLock.WaitOneAsync(BlockProductionTimeout, token))
+            if (await _producingBlockLock.WaitAsync(BlockProductionTimeout, token))
             {
                 try
                 {
@@ -140,7 +140,7 @@ namespace Nethermind.Consensus.Producers
                 }
                 finally
                 {
-                    _producingBlockLock.Set();
+                    _producingBlockLock.Release();
                 }
             }
             else
@@ -229,6 +229,12 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
+        /// <summary>
+        /// Sets the state to produce block on
+        /// </summary>
+        /// <param name="parentStateRoot">Parent block state</param>
+        /// <returns>True if succeeded, false otherwise</returns>
+        /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
         protected bool TrySetState(Keccak? parentStateRoot)
         {
             bool HasState(Keccak stateRoot)
