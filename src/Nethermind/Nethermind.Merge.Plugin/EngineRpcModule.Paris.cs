@@ -74,7 +74,8 @@ public partial class EngineRpcModule : IEngineRpcModule
 
         if (await _locker.WaitAsync(_timeout))
         {
-            bool noGcRegion = GC.TryStartNoGCRegion(100.MB(), true);
+            long totalSize = 100.MB();
+            bool noGcRegion = GC.TryStartNoGCRegion(totalSize, true);
 
             try
             {
@@ -97,14 +98,22 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             finally
             {
-                if (noGcRegion && GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
+                if (noGcRegion)
                 {
-                    try
+                    if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
                     {
-                        GC.EndNoGCRegion();
+                        try
+                        {
+                            GC.EndNoGCRegion();
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"Failed to keep in NoGCRegion with Exception with {totalSize} bytes");
+                        }
                     }
-                    catch (InvalidOperationException) { }
+                    else if (_logger.IsWarn) _logger.Warn($"Failed to keep in NoGCRegion with {totalSize} bytes");
                 }
+                else if (_logger.IsWarn) _logger.Warn($"Failed to start NoGCRegion with {totalSize} bytes");
             }
         }
         else
