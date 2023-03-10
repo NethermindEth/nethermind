@@ -50,12 +50,13 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
     public override void HandleMessage(ZeroPacket message)
     {
+        int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {
             case Eth68MessageCode.NewPooledTransactionHashes:
                 NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
                     Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
-                ReportIn(newPooledTxHashesMsg);
+                ReportIn(newPooledTxHashesMsg, size);
                 Handle(newPooledTxHashesMsg);
                 break;
             default:

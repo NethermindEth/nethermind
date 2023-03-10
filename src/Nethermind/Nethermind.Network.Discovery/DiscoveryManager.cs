@@ -161,11 +161,11 @@ public class DiscoveryManager : IDiscoveryManager
         {
             if (discoveryMsg is PingMsg pingMessage)
             {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(pingMessage.FarAddress, "HANDLER disc v4", $"Ping {pingMessage.SourceAddress?.Address} -> {pingMessage.DestinationAddress?.Address}");
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(pingMessage.FarAddress, "HANDLER disc v4", $"Ping {pingMessage.SourceAddress?.Address} -> {pingMessage.DestinationAddress?.Address}", -1);
             }
             else
             {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMsg.FarAddress, "HANDLER disc v4", discoveryMsg.MsgType.ToString());
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMsg.FarAddress, "HANDLER disc v4", discoveryMsg.MsgType.ToString(), -1);
             }
 
             _msgSender?.SendMsg(discoveryMsg);
@@ -215,14 +215,14 @@ public class DiscoveryManager : IDiscoveryManager
             return false;
         }
 
-        #region 
+        #region
         // port will be different as we dynamically open ports for each socket connection
         // if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
         // {
         //     throw new NetworkingException($"Received message with incorrect destination port, message: {message}", NetworkExceptionType.Discovery);
         // }
 
-        // either an old Nethermind or other nodes that make the same mistake 
+        // either an old Nethermind or other nodes that make the same mistake
         // if (!Bytes.AreEqual(message.FarAddress?.Address.MapToIPv6().GetAddressBytes(), message.SourceAddress?.Address.MapToIPv6().GetAddressBytes()))
         // {
         //     // there is no sense to complain here as nodes sent a lot of garbage as their source addresses
