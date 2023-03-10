@@ -8,6 +8,6 @@ namespace Nethermind.Precompiles.Benchmark;
 
 public class EcRecoverBenchmark : PrecompileBenchmarkBase
 {
-    protected override IEnumerable<IPrecompile> Precompiles => new[] {EcRecoverPrecompile.Instance};
+    protected override IEnumerable<IPrecompile> Precompiles => new[] { EcRecoverPrecompile.Instance };
     protected override string InputsDirectory => "ec_recover";
 }
