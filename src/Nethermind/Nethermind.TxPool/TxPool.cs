@@ -70,6 +70,7 @@ namespace Nethermind.TxPool
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
         /// <param name="incomingTxFilter"></param>
+        /// <param name="thereIsPriorityContract"></param>
         public TxPool(
             IEthereumEcdsa ecdsa,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -77,7 +78,8 @@ namespace Nethermind.TxPool
             ITxValidator validator,
             ILogManager? logManager,
             IComparer<Transaction> comparer,
-            IIncomingTxFilter? incomingTxFilter = null)
+            IIncomingTxFilter? incomingTxFilter = null,
+            bool thereIsPriorityContract = false)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
@@ -96,7 +98,7 @@ namespace Nethermind.TxPool
             _preHashFilters = new IIncomingTxFilter[]
             {
                 new GasLimitTxFilter(_headInfo, txPoolConfig, _logger),
-                new FeeTooLowFilter(_headInfo, _transactions, _logger),
+                new FeeTooLowFilter(_headInfo, _transactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
             };
 
@@ -105,7 +107,7 @@ namespace Nethermind.TxPool
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
                 new UnknownSenderFilter(ecdsa, _logger),
-                new BalanceZeroFilter(_logger),
+                new BalanceZeroFilter(thereIsPriorityContract, _logger),
                 new BalanceTooLowFilter(_transactions, _logger),
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
                 new GapNonceFilter(_transactions, _logger),
@@ -623,7 +625,7 @@ Sent
 ------------------------------------------------
 Total Received:         {Metrics.PendingTransactionsReceived,24:N0}
 ------------------------------------------------
-Discarded at Filter Stage:        
+Discarded at Filter Stage:
 1.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
 2.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
 3.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}
