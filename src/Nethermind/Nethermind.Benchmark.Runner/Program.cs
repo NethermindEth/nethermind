@@ -10,7 +10,6 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using System.Linq;
-using BenchmarkDotNet.Filters;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -37,44 +36,36 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
-            DashboardConfig config = new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core60));
-            if (args.Length > 0)
+            List<Assembly> additionalJobAssemblies = new()
             {
-                IFilter[] filters = args.Select(a => new SimpleFilter(c => c.Parameters.Items.Any(p=>p.Value.ToString().Contains(a)))).OfType<IFilter>().ToArray();
-                config.AddFilter(new DisjunctionFilter(filters));
+                typeof(Nethermind.JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
+                typeof(Nethermind.Benchmarks.Core.Keccak256Benchmarks).Assembly,
+                typeof(Nethermind.Evm.Benchmark.EvmStackBenchmarks).Assembly,
+                typeof(Nethermind.Network.Benchmarks.DiscoveryBenchmarks).Assembly,
+                typeof(Nethermind.Precompiles.Benchmark.KeccakBenchmark).Assembly
+            };
+
+            List<Assembly> simpleJobAssemblies = new()
+            {
+                typeof(Nethermind.EthereumTests.Benchmark.EthereumTests).Assembly,
+            };
+
+            if (Debugger.IsAttached)
+            {
+                BenchmarkSwitcher.FromAssemblies(additionalJobAssemblies.Union(simpleJobAssemblies).ToArray()).RunAll(new DebugInProcessConfig());
             }
-            BenchmarkRunner.Run(typeof(Precompiles.Benchmark.PointEvaluationBenchmark), config);
-            BenchmarkRunner.Run(typeof(Precompiles.Benchmark.EcRecoverBenchmark), config);
-            // List<Assembly> additionalJobAssemblies = new()
-            // {
-            //     typeof(Nethermind.JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,
-            //     typeof(Nethermind.Benchmarks.Core.Keccak256Benchmarks).Assembly,
-            //     typeof(Nethermind.Evm.Benchmark.EvmStackBenchmarks).Assembly,
-            //     typeof(Nethermind.Network.Benchmarks.DiscoveryBenchmarks).Assembly,
-            //     typeof(Nethermind.Precompiles.Benchmark.KeccakBenchmark).Assembly
-            // };
-            //
-            // List<Assembly> simpleJobAssemblies = new()
-            // {
-            //     typeof(Nethermind.EthereumTests.Benchmark.EthereumTests).Assembly,
-            // };
-            //
-            // if (Debugger.IsAttached)
-            // {
-            //     BenchmarkSwitcher.FromAssemblies(additionalJobAssemblies.Union(simpleJobAssemblies).ToArray()).RunAll(new DebugInProcessConfig());
-            // }
-            // else
-            // {
-            //     foreach (Assembly assembly in additionalJobAssemblies)
-            //     {
-            //         BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core60)));
-            //     }
-            //
-            //     foreach (Assembly assembly in simpleJobAssemblies)
-            //     {
-            //         BenchmarkRunner.Run(assembly, new DashboardConfig());
-            //     }
-            // }
+            else
+            {
+                foreach (Assembly assembly in additionalJobAssemblies)
+                {
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core70)), args);
+                }
+
+                foreach (Assembly assembly in simpleJobAssemblies)
+                {
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(), args);
+                }
+            }
         }
     }
 }
