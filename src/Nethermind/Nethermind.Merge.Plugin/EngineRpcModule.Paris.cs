@@ -22,6 +22,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler;
     private readonly SemaphoreSlim _locker = new(1, 1);
     private readonly TimeSpan _timeout = TimeSpan.FromSeconds(8);
+    private Task _gcScheduleTask = Task.CompletedTask;
 
     public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
@@ -72,12 +73,12 @@ public partial class EngineRpcModule : IEngineRpcModule
             return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
         }
 
-        if (await _locker.WaitAsync(_timeout))
-        {
-            long totalSize = 100.MB();
-            bool noGcRegion = GC.TryStartNoGCRegion(totalSize, true);
+        long totalSize = 200.MB();
+        bool noGcRegion = GC.TryStartNoGCRegion(totalSize, true);
 
-            try
+        try
+        {
+            if (await _locker.WaitAsync(_timeout))
             {
                 Stopwatch watch = Stopwatch.StartNew();
                 try
@@ -93,34 +94,40 @@ public partial class EngineRpcModule : IEngineRpcModule
                 {
                     watch.Stop();
                     Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
+                    if (_gcScheduleTask.IsCompleted) _gcScheduleTask = ScheduleGC();
                     _locker.Release();
                 }
             }
-            finally
+            else
             {
-                if (noGcRegion)
-                {
-                    if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
-                    {
-                        try
-                        {
-                            GC.EndNoGCRegion();
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            if (_logger.IsWarn) _logger.Warn($"Failed to keep in NoGCRegion with Exception with {totalSize} bytes");
-                        }
-                    }
-                    else if (_logger.IsWarn) _logger.Warn($"Failed to keep in NoGCRegion with {totalSize} bytes");
-                }
-                else if (_logger.IsWarn) _logger.Warn($"Failed to start NoGCRegion with {totalSize} bytes");
+                if (_logger.IsWarn) _logger.Warn($"engine_newPayloadV{version} timed out");
+                return ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout);
             }
         }
-        else
+        finally
         {
-            if (_logger.IsWarn) _logger.Warn($"engine_newPayloadV{version} timed out");
-            return ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout);
+            if (noGcRegion)
+            {
+                if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
+                {
+                    try
+                    {
+                        GC.EndNoGCRegion();
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Failed to keep in NoGCRegion with Exception with {totalSize} bytes");
+                    }
+                }
+                else if (_logger.IsWarn) _logger.Warn($"Failed to keep in NoGCRegion with {totalSize} bytes");
+            }
+            else if (_logger.IsWarn) _logger.Warn($"Failed to start NoGCRegion with {totalSize} bytes");
         }
     }
 
+    private static async Task ScheduleGC()
+    {
+        await Task.Delay(1000);
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Default, false, true);
+    }
 }
