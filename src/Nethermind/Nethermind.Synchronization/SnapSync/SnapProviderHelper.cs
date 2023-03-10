@@ -315,13 +315,20 @@ namespace Nethermind.Synchronization.SnapSync
 
                     if (node.IsBranch)
                     {
+                        bool isBoundaryProofNode = false;
                         for (int ci = 0; ci <= 15; ci++)
                         {
                             if (!IsChildPersisted(node, ci, store, boundaryProofNodes))
                             {
+                                isBoundaryProofNode = true;
                                 boundaryProofNodes.Add(node);
                                 break;
                             }
+                        }
+
+                        if (isBoundaryProofNode == false)
+                        {
+                            boundaryProofNodes.Remove(node);
                         }
                     }
                 }
