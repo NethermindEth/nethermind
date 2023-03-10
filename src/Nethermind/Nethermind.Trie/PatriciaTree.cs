@@ -124,7 +124,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Commit(long blockNumber, bool skipRoot = false)
+        public void Commit(long blockNumber, bool skipRoot = false, IReadOnlySet<TrieNode>? nodesToSkip = default)
         {
             if (_currentCommit is null)
             {
@@ -143,7 +143,11 @@ namespace Nethermind.Trie
                 while (_currentCommit.TryDequeue(out NodeCommitInfo node))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
-                    TrieStore.CommitNode(blockNumber, node);
+
+                    if (nodesToSkip != null && !nodesToSkip.Contains(node.Node))
+                    {
+                        TrieStore.CommitNode(blockNumber, node);
+                    }
                 }
 
                 // reset objects
@@ -909,7 +913,7 @@ namespace Nethermind.Trie
         private byte[] TraverseNext(in TraverseContext traverseContext, int extensionLength, TrieNode next)
         {
             // Move large struct creation out of flow so doesn't force additional stack space
-            // in calling method even if not used 
+            // in calling method even if not used
             TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
             return TraverseNode(next, in newContext);
         }
