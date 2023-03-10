@@ -144,7 +144,7 @@ namespace Nethermind.Trie
                 {
                     if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
 
-                    if (nodesToSkip != null && !nodesToSkip.Contains(node.Node))
+                    if (nodesToSkip == null || !nodesToSkip.Contains(node.Node))
                     {
                         TrieStore.CommitNode(blockNumber, node);
                     }
