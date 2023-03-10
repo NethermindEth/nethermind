@@ -332,10 +332,12 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             PathWithAccount[] receiptAccounts = TestItem.Tree.AccountsWithPaths[0..2];
 
+            HashSet<TrieNode> boundaryProofNodes = new();
+
             bool HasMoreChildren(Keccak limitHash)
             {
                 (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<Keccak> _) =
-                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash, receiptAccounts, proofs);
+                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash, receiptAccounts, boundaryProofNodes, proofs);
                 return moreChildrenToRight;
             }
 
@@ -386,10 +388,11 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             PathWithAccount[] receiptAccounts = { ac1, ac2 };
 
+            HashSet<TrieNode> boundaryProofNodes = new();
             bool HasMoreChildren(Keccak limitHash)
             {
                 (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<Keccak> _) =
-                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash, receiptAccounts, proofs);
+                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash, receiptAccounts, boundaryProofNodes, proofs);
                 return moreChildrenToRight;
             }
 

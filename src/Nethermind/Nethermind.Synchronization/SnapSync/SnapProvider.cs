@@ -22,6 +22,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
+        private readonly HashSet<TrieNode> _boundaryProofNodes;
 
         private readonly ProgressTracker _progressTracker;
 
@@ -29,6 +30,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
+            _boundaryProofNodes = new HashSet<TrieNode>();
 
             _store = new TrieStore(
                 _dbProvider.StateDb,
@@ -76,7 +78,7 @@ namespace Nethermind.Synchronization.SnapSync
             if (hashLimit == null) hashLimit = Keccak.MaxValue;
 
             (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes) =
-                SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, hashLimit, accounts, proofs);
+                SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, hashLimit, accounts, _boundaryProofNodes, proofs);
 
             if (result == AddRangeResult.OK)
             {
@@ -154,7 +156,7 @@ namespace Nethermind.Synchronization.SnapSync
         public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
             StorageTree tree = new(_store, _logManager);
-            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
+            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, _boundaryProofNodes, proofs);
 
             if (result == AddRangeResult.OK)
             {

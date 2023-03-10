@@ -28,6 +28,7 @@ namespace Nethermind.Synchronization.SnapSync
                 Keccak startingHash,
                 Keccak limitHash,
                 PathWithAccount[] accounts,
+                HashSet<TrieNode> boundaryProofNodes,
                 byte[][] proofs = null
             )
         {
@@ -35,9 +36,8 @@ namespace Nethermind.Synchronization.SnapSync
 
             Keccak lastHash = accounts[^1].Path;
 
-            (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight,
-                    HashSet<TrieNode> boundaryProofNodes) =
-                FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, proofs);
+            (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) =
+                FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, boundaryProofNodes, proofs);
 
             if (result != AddRangeResult.OK)
             {
@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             lock (_syncCommit)
             {
-                tree.Commit(blockNumber, skipRoot: true);
+                tree.Commit(blockNumber, skipRoot: true, boundaryProofNodes);
             }
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
@@ -90,6 +90,7 @@ namespace Nethermind.Synchronization.SnapSync
             Keccak? startingHash,
             PathWithStorageSlot[] slots,
             Keccak expectedRootHash,
+            HashSet<TrieNode> boundaryProofNodes,
             byte[][]? proofs = null
         )
         {
@@ -97,9 +98,8 @@ namespace Nethermind.Synchronization.SnapSync
 
             Keccak lastHash = slots.Last().Path;
 
-            (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight,
-                HashSet<TrieNode> boundaryProofNodes) = FillBoundaryTree(
-                tree, startingHash, lastHash, Keccak.MaxValue, expectedRootHash, proofs);
+            (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
+                tree, startingHash, lastHash, Keccak.MaxValue, expectedRootHash, boundaryProofNodes, proofs);
 
             if (result != AddRangeResult.OK)
             {
@@ -130,19 +130,19 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, moreChildrenToRight);
         }
 
-        private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight,
-            HashSet<TrieNode> boundaryProofNodes) FillBoundaryTree(
+        private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(
                 PatriciaTree tree,
                 Keccak? startingHash,
                 Keccak endHash,
                 Keccak limitHash,
                 Keccak expectedRootHash,
+                HashSet<TrieNode> boundaryProofNodes,
                 byte[][]? proofs = null
             )
         {
             if (proofs is null || proofs.Length == 0)
             {
-                return (AddRangeResult.OK, null, false, new HashSet<TrieNode>());
+                return (AddRangeResult.OK, null, false);
             }
 
             if (tree is null)
@@ -152,12 +152,11 @@ namespace Nethermind.Synchronization.SnapSync
 
             startingHash ??= Keccak.Zero;
             List<TrieNode> sortedBoundaryList = new();
-            HashSet<TrieNode> boundaryProofNodes = new();
             Dictionary<Keccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore, boundaryProofNodes);
 
             if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
             {
-                return (AddRangeResult.MissingRootHashInProofs, null, true, new HashSet<TrieNode>());
+                return (AddRangeResult.MissingRootHashInProofs, null, true);
             }
 
             Span<byte> leftBoundary = stackalloc byte[64];
@@ -269,7 +268,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight, boundaryProofNodes);
+            return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight);
         }
 
         private static Dictionary<Keccak, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store,
