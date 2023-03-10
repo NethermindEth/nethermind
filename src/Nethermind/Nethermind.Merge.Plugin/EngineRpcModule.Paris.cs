@@ -73,7 +73,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
         }
 
-        long totalSize = 200.MB();
+        long totalSize = 300.MB();
         bool noGcRegion = GC.TryStartNoGCRegion(totalSize, true);
 
         try
