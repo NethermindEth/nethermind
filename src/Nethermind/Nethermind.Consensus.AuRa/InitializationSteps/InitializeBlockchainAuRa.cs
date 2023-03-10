@@ -279,7 +279,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
                 new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager),
-                txPriorityContract is not null);
+                txPriorityContract is not null || localDataSource is not null);
         }
 
         private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
