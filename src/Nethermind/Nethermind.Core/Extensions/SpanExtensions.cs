@@ -23,11 +23,6 @@ namespace Nethermind.Core.Extensions
             return ToHexViaLookup(span, withZeroX, false, false);
         }
 
-        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
-        {
-            return ToHexViaLookup(span, withZeroX, false, false);
-        }
-
         public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros)
         {
             return ToHexViaLookup(span, withZeroX, noLeadingZeros, false);
@@ -39,11 +34,6 @@ namespace Nethermind.Core.Extensions
         }
 
         public static string ToHexString(this in Span<byte> span)
-        {
-            return ToHexViaLookup(span, false, false, false);
-        }
-
-        public static string ToHexString(this in ReadOnlySpan<byte> span)
         {
             return ToHexViaLookup(span, false, false, false);
         }

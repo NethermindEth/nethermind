@@ -157,19 +157,6 @@ namespace Nethermind.Core.Extensions
             return a1.SequenceEqual(a2);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool AreEqual(ReadOnlySpan<byte> a1, ReadOnlySpan<byte> a2)
-        {
-            if (Unsafe.AreSame(ref MemoryMarshal.GetReference(a1), ref MemoryMarshal.GetReference(a2)) &&
-                a1.Length == a2.Length)
-            {
-                return true;
-            }
-
-            // this works for nulls
-            return a1.SequenceEqual(a2);
-        }
-
         public static bool IsZero(this byte[] bytes)
         {
             return bytes.AsSpan().IndexOfAnyExcept((byte)0) < 0;
