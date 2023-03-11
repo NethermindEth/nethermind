@@ -18,7 +18,6 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public static class SnapProviderHelper
     {
-        private static object _syncCommit = new();
 
         public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes) AddAccountRange(
             StateTree tree,
@@ -74,10 +73,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            lock (_syncCommit)
-            {
-                tree.Commit(blockNumber, skipRoot: true);
-            }
+            tree.Commit(blockNumber, skipRoot: true);
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
@@ -119,10 +115,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            lock (_syncCommit)
-            {
-                tree.Commit(blockNumber);
-            }
+            tree.Commit(blockNumber);
 
             return (AddRangeResult.OK, moreChildrenToRight);
         }
