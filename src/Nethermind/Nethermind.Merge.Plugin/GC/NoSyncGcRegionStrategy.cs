@@ -8,7 +8,7 @@ namespace Nethermind.Merge.Plugin.GC;
 public class NoSyncGcRegionStrategy : IGCStrategy
 {
     private readonly ISyncModeSelector _syncModeSelector;
-    
+
     public NoSyncGcRegionStrategy(ISyncModeSelector syncModeSelector)
     {
         _syncModeSelector = syncModeSelector;
