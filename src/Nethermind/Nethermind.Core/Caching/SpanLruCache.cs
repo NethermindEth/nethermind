@@ -123,6 +123,9 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public IDictionary<TKey[], TValue> Clone() => _cacheMap.ToDictionary(i => i.Key, i => i.Value.Value.Value);
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public KeyValuePair<TKey[], TValue>[] ToArray() => _cacheMap.Select(kv => new KeyValuePair<TKey[], TValue>(kv.Key, kv.Value.Value.Value)).ToArray();
+
         private void Replace(ReadOnlySpan<TKey> key, TValue value)
         {
             LinkedListNode<LruCacheItem>? node = _leastRecentlyUsed;
