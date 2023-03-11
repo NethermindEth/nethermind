@@ -313,7 +313,7 @@ namespace Nethermind.Synchronization.Test
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
-            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), 25, logManager);
+            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
             StateProvider devState = new(trieStore, codeDb, logManager);
             StorageProvider devStorage = new(trieStore, devState, logManager);
