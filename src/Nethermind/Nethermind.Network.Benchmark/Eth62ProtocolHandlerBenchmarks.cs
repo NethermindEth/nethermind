@@ -1,18 +1,5 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using BenchmarkDotNet.Attributes;
@@ -64,15 +51,15 @@ namespace Nethermind.Network.Benchmarks
             _ser.Register(new TransactionsMessageSerializer());
             _ser.Register(new StatusMessageSerializer());
             NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
-            var ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
+            var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
             var tree = Build.A.BlockTree().TestObject;
             var stateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
             var specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new TxPool.TxPool(
                 ecdsa,
-                new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
-                new TxValidator(ChainId.Mainnet),
+                new TxValidator(TestBlockchainIds.ChainId),
                 LimboLogs.Instance,
                 new TransactionComparerProvider(specProvider, tree).GetDefaultComparer());
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
@@ -86,7 +73,7 @@ namespace Nethermind.Network.Benchmarks
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
-            statusMessage.ChainId = 1;
+            statusMessage.NetworkId = 1;
             IByteBuffer bufStatus = _ser.ZeroSerialize(statusMessage);
             _zeroPacket = new ZeroPacket(bufStatus);
             _zeroPacket.PacketType = bufStatus.ReadByte();

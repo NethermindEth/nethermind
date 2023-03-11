@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -42,12 +29,15 @@ namespace Nethermind.TxPool.Collections
         private readonly IDictionary<TGroupKey, EnhancedSortedSet<TValue>> _buckets;
 
         private readonly IDictionary<TKey, TValue> _cacheMap;
+        private bool _isFull = false;
 
         // comparer for worst elements in buckets
         private readonly IComparer<TValue> _sortedComparer;
 
         // worst element from every group, used to determine element that will be evicted when pool is full
         protected readonly DictionarySortedSet<TValue, TKey> _worstSortedValues;
+        protected KeyValuePair<TValue, TKey>? _worstValue = null;
+        private TValue[]? _snapshot;
 
         /// <summary>
         /// Constructor
@@ -94,7 +84,13 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetSnapshot()
         {
-            return _buckets.SelectMany(b => b.Value).ToArray();
+            TValue[]? snapshot = _snapshot;
+            if (snapshot is null)
+            {
+                snapshot = _snapshot = _buckets.SelectMany(b => b.Value).ToArray();
+            }
+
+            return snapshot;
         }
 
         /// <summary>
@@ -117,8 +113,8 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetBucketSnapshot(TGroupKey group)
         {
-            if (group == null) throw new ArgumentNullException(nameof(group));
-            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue> bucket) ? bucket.ToArray() : Array.Empty<TValue>();
+            if (group is null) throw new ArgumentNullException(nameof(group));
+            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : Array.Empty<TValue>();
         }
 
         /// <summary>
@@ -127,17 +123,20 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public int GetBucketCount(TGroupKey group)
         {
-            if (group == null) throw new ArgumentNullException(nameof(group));
-            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue> bucket) ? bucket.Count : 0;
+            if (group is null) throw new ArgumentNullException(nameof(group));
+            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.Count : 0;
         }
 
         /// <summary>
         /// Takes first element in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryTakeFirst(out TValue first)
+        public bool TryTakeFirst(out TValue? first)
         {
-            return TryRemove(GetKey(GetFirsts().Min), out first);
+            if (GetFirsts().Min is TValue min)
+                return TryRemove(GetKey(min), out first);
+            first = default;
+            return false;
         }
 
         /// <summary>
@@ -158,12 +157,15 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets last element in supplied comparer order.
         /// </summary>
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGetLast(out TValue last)
+        public bool TryGetLast(out TValue? last)
         {
-            last = _worstSortedValues.Max.Key;
+            last = _worstValue.GetValueOrDefault().Key;
             return last is not null;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected void UpdateWorstValue() =>
+            _worstValue = _worstSortedValues.Max;
 
         /// <summary>
         /// Tries to remove element.
@@ -173,17 +175,17 @@ namespace Nethermind.TxPool.Collections
         /// <param name="bucket">Bucket for same sender transactions.</param>
         /// <returns>If element was removed. False if element was not present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, out TValue value, [MaybeNullWhen(false)] out ICollection<TValue>? bucket) =>
+        public bool TryRemove(TKey key, out TValue? value, [NotNullWhen(true)] out ICollection<TValue>? bucket) =>
             TryRemove(key, false, out value, out bucket);
 
-        private bool TryRemove(TKey key, bool evicted, out TValue value, out ICollection<TValue>? bucket)
+        private bool TryRemove(TKey key, bool evicted, [NotNullWhen(true)] out TValue? value, out ICollection<TValue>? bucket)
         {
-            if (_cacheMap.TryGetValue(key, out value))
+            if (_cacheMap.TryGetValue(key, out value) && value != null)
             {
                 if (Remove(key, value))
                 {
                     TGroupKey groupMapping = MapToGroup(value);
-                    if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue> bucketSet))
+                    if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue>? bucketSet))
                     {
                         bucket = bucketSet;
                         TValue? last = bucketSet.Max;
@@ -192,12 +194,17 @@ namespace Nethermind.TxPool.Collections
                             if (bucket.Count == 0)
                             {
                                 _buckets.Remove(groupMapping);
-                                _worstSortedValues.Remove(last);
+                                if (last is not null)
+                                {
+                                    _worstSortedValues.Remove(last);
+                                    UpdateWorstValue();
+                                }
                             }
                             else
                             {
                                 UpdateSortedValues(bucketSet, last);
                             }
+                            _snapshot = null;
 
                             return true;
                         }
@@ -215,7 +222,7 @@ namespace Nethermind.TxPool.Collections
         protected abstract TKey GetKey(TValue value);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, [MaybeNullWhen(false)] out TValue value) => TryRemove(key, out value, out _);
+        public bool TryRemove(TKey key, [NotNullWhen(true)] out TValue? value) => TryRemove(key, out value, out _);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
@@ -257,10 +264,9 @@ namespace Nethermind.TxPool.Collections
         /// <param name="value">Returned element or null.</param>
         /// <returns>If element retrieval succeeded. True if element was present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGetValue(TKey key, out TValue value)
+        public bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
         {
-            value = default;
-            return _cacheMap.TryGetValue(key, out value);
+            return _cacheMap.TryGetValue(key, out value) && value != null;
         }
 
         /// <summary>
@@ -301,7 +307,15 @@ namespace Nethermind.TxPool.Collections
 
         private void RemoveLast(out TValue? removed)
         {
-            TryRemove(_worstSortedValues.Max.Value, true, out removed, out _);
+            TKey? key = _worstValue.GetValueOrDefault().Value;
+            if (key is not null)
+            {
+                TryRemove(key, true, out removed, out _);
+            }
+            else
+            {
+                removed = default;
+            }
         }
 
         /// <summary>
@@ -322,7 +336,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         protected virtual void InsertCore(TKey key, TValue value, TGroupKey groupKey)
         {
-            if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue> bucket))
+            if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
                 _buckets[groupKey] = bucket = new EnhancedSortedSet<TValue>(_groupComparer);
             }
@@ -331,7 +345,9 @@ namespace Nethermind.TxPool.Collections
             if (bucket.Add(value))
             {
                 _cacheMap[key] = value;
+                UpdateIsFull();
                 UpdateSortedValues(bucket, last);
+                _snapshot = null;
                 Inserted?.Invoke(this, new SortedPoolEventArgs(key, value, groupKey));
             }
         }
@@ -346,24 +362,41 @@ namespace Nethermind.TxPool.Collections
                     _worstSortedValues.Remove(previousLast);
                 }
 
-                _worstSortedValues.Add(newLast, GetKey(newLast));
+                if (newLast is not null)
+                {
+                    _worstSortedValues.Add(newLast, GetKey(newLast));
+                }
+
+                UpdateWorstValue();
             }
         }
 
         /// <summary>
         /// Actual removal mechanism.
         /// </summary>
-        protected virtual bool Remove(TKey key, TValue value) => _cacheMap.Remove(key);
+        protected virtual bool Remove(TKey key, TValue value)
+        {
+            if (_cacheMap.Remove(key))
+            {
+                UpdateIsFull();
+                _snapshot = null;
+                return true;
+            }
 
+            return false;
+        }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool IsFull() => _cacheMap.Count >= _capacity;
+        public bool IsFull() => _isFull;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void UpdateIsFull() =>
+            _isFull = _cacheMap.Count >= _capacity;
 
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGetBucket(TGroupKey groupKey, out TValue[] items)
         {
-            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue> bucket))
+            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
                 items = bucket.ToArray();
                 return true;
@@ -386,8 +419,8 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdateGroup(TGroupKey groupKey, Func<TGroupKey, IReadOnlySortedSet<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
         {
-            if (groupKey == null) throw new ArgumentNullException(nameof(groupKey));
-            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue> bucket))
+            if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
+            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
                 UpdateGroup(groupKey, bucket, changingElements);
             }
@@ -397,7 +430,7 @@ namespace Nethermind.TxPool.Collections
         {
             foreach ((TValue value, Action<TValue>? change) in changingElements(groupKey, bucket))
             {
-                change(value);
+                change?.Invoke(value);
             }
         }
     }

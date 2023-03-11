@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -53,7 +40,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public byte[] Get(StorageCell storageCell)
+        public byte[] Get(in StorageCell storageCell)
         {
             return GetCurrentValue(storageCell);
         }
@@ -63,7 +50,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, byte[] newValue)
         {
             PushUpdate(storageCell, newValue);
         }
@@ -226,7 +213,7 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <param name="bytes">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(StorageCell storageCell, out byte[]? bytes)
+        protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
         {
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
@@ -246,14 +233,14 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract byte[] GetCurrentValue(StorageCell storageCell);
+        protected abstract byte[] GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(StorageCell cell, byte[] value)
+        private void PushUpdate(in StorageCell cell, byte[] value)
         {
             SetupRegistry(cell);
             IncrementChangePosition();
@@ -262,7 +249,7 @@ namespace Nethermind.State
         }
 
         /// <summary>
-        /// Increment position and size (if needed) of _changes 
+        /// Increment position and size (if needed) of _changes
         /// </summary>
         protected void IncrementChangePosition()
         {
@@ -273,7 +260,7 @@ namespace Nethermind.State
         /// Initialize the StackList at the storage cell position if needed
         /// </summary>
         /// <param name="cell"></param>
-        protected void SetupRegistry(StorageCell cell)
+        protected void SetupRegistry(in StorageCell cell)
         {
             if (!_intraBlockCache.ContainsKey(cell))
             {

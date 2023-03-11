@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Runtime.CompilerServices;
@@ -36,7 +23,7 @@ namespace Nethermind.Consensus.Ethash
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
 
-        private readonly ICache<Keccak, bool> _sealCache = new LruCache<Keccak, bool>(2048, 2048, "ethash seals");
+        private readonly LruCache<KeccakKey, bool> _sealCache = new(2048, 2048, "ethash seals");
         private const int SealValidationIntervalConstantComponent = 1024;
         private const long AllowedFutureBlockTimeSeconds = 15;
         private int _sealValidationInterval = SealValidationIntervalConstantComponent;
@@ -86,32 +73,47 @@ namespace Nethermind.Consensus.Ethash
             _ethash.HintRange(guid, start, end);
         }
 
-        public bool ValidateParams(BlockHeader parent, BlockHeader header)
+        public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
-            bool extraDataNotTooLong = header.ExtraData.Length <= 32;
-            if (!extraDataNotTooLong)
+            return ValidateExtraData(header)
+                   && ValidateDifficulty(parent, header)
+                   && (isUncle || ValidateTimestamp(header));
+
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            bool ValidateExtraData(BlockHeader blockHeader)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - extra data too long {header.ExtraData.Length}");
-                return false;
+                bool extraDataNotTooLong = blockHeader.ExtraData.Length <= 32;
+                if (!extraDataNotTooLong && _logger.IsWarn)
+                    _logger.Warn(
+                        $"Invalid block header ({blockHeader.ToString(BlockHeader.Format.Full)}) - extra data too long {blockHeader.ExtraData.Length}");
+
+                return extraDataNotTooLong;
             }
 
-            UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);
-            bool isDifficultyCorrect = difficulty == header.Difficulty;
-            if (!isDifficultyCorrect)
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            bool ValidateDifficulty(BlockHeader parentHeader, BlockHeader blockHeader)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - incorrect difficulty {header.Difficulty} instead of {difficulty}");
-                return false;
+                UInt256 difficulty = _difficultyCalculator.Calculate(blockHeader, parentHeader);
+                bool isDifficultyCorrect = difficulty == blockHeader.Difficulty;
+                if (!isDifficultyCorrect && _logger.IsWarn)
+                    _logger.Warn(
+                        $"Invalid block header ({blockHeader.ToString(BlockHeader.Format.Full)}) - incorrect difficulty {blockHeader.Difficulty} instead of {difficulty}");
+
+                return isDifficultyCorrect;
             }
 
-            ulong unixTimeSeconds = _timestamper.UnixTime.Seconds;
-            bool blockTooFarIntoFuture = header.Timestamp > unixTimeSeconds + AllowedFutureBlockTimeSeconds;
-            if (blockTooFarIntoFuture)
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            bool ValidateTimestamp(BlockHeader blockHeader)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - incorrect timestamp {header.Timestamp - unixTimeSeconds} seconds into the future");
-                return false;
-            }
+                ulong unixTimeSeconds = _timestamper.UnixTime.Seconds;
+                bool blockTooFarIntoFuture = blockHeader.Timestamp > unixTimeSeconds + AllowedFutureBlockTimeSeconds;
+                if (blockTooFarIntoFuture && _logger.IsWarn)
+                    _logger.Warn(
+                        $"Invalid block header ({blockHeader.ToString(BlockHeader.Format.Full)}) - incorrect timestamp {blockHeader.Timestamp - unixTimeSeconds} seconds into the future");
 
-            return true;
+                return !blockTooFarIntoFuture;
+            }
         }
     }
 }

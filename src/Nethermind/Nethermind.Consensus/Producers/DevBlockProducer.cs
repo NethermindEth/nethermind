@@ -1,21 +1,9 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -28,7 +16,7 @@ namespace Nethermind.Consensus.Producers
 {
     public class DevBlockProducer : BlockProducerBase, IDisposable
     {
-        private readonly IMiningConfig _miningConfig;
+        private new readonly IBlocksConfig _blocksConfig;
 
         public DevBlockProducer(
             ITxSource? txSource,
@@ -38,7 +26,7 @@ namespace Nethermind.Consensus.Producers
             IBlockProductionTrigger? trigger,
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
-            IMiningConfig? miningConfig,
+            IBlocksConfig? blockConfig,
             ILogManager logManager)
             : base(
                 txSource,
@@ -51,15 +39,16 @@ namespace Nethermind.Consensus.Producers
                 timestamper,
                 specProvider,
                 logManager,
-                new RandomizedDifficultyCalculator(miningConfig!, ConstantDifficulty.One))
+                new RandomizedDifficultyCalculator(blockConfig!, ConstantDifficulty.One),
+                blockConfig)
         {
-            _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
+            _blocksConfig = blockConfig ?? throw new ArgumentNullException(nameof(blockConfig));
             BlockTree.NewHeadBlock += OnNewHeadBlock;
         }
 
         private void OnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            if (_miningConfig.RandomizedBlocks)
+            if (_blocksConfig.RandomizedBlocks)
             {
                 if (Logger.IsInfo)
                     Logger.Info(
@@ -74,19 +63,19 @@ namespace Nethermind.Consensus.Producers
 
         private class RandomizedDifficultyCalculator : IDifficultyCalculator
         {
-            private readonly IMiningConfig _miningConfig;
+            private readonly IBlocksConfig _blocksConfig;
             private readonly IDifficultyCalculator _fallbackDifficultyCalculator;
             private readonly Random _random = new();
 
-            public RandomizedDifficultyCalculator(IMiningConfig miningConfig, IDifficultyCalculator fallbackDifficultyCalculator)
+            public RandomizedDifficultyCalculator(IBlocksConfig blocksConfig, IDifficultyCalculator fallbackDifficultyCalculator)
             {
-                _miningConfig = miningConfig;
+                _blocksConfig = blocksConfig;
                 _fallbackDifficultyCalculator = fallbackDifficultyCalculator;
             }
 
             public UInt256 Calculate(BlockHeader header, BlockHeader parent)
             {
-                if (_miningConfig.RandomizedBlocks)
+                if (_blocksConfig.RandomizedBlocks)
                 {
                     UInt256 change = new((ulong)(_random.Next(100) + 50));
                     return UInt256.Max(1000, UInt256.Max(parent.Difficulty, 1000) / 100 * change);

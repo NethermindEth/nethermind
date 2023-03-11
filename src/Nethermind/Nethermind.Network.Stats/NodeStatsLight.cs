@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -28,12 +15,12 @@ namespace Nethermind.Stats
     {
         private readonly StatsParameters _statsParameters;
 
-        private long _headersTransferSpeedEventCount;
-        private long _bodiesTransferSpeedEventCount;
-        private long _receiptsTransferSpeedEventCount;
-        private long _nodesTransferSpeedEventCount;
-        private long _snapRangesTransferSpeedEventCount;
-        private long _latencyEventCount;
+        // How much weight to put on latest speed.
+        // 1.0m means that the reported speed will always replaced with latest speed.
+        // 0.5m means that the reported speed will be (oldSpeed + newSpeed)/2;
+        // 0.25m here means that the latest weight affect the stored weight a bit for every report, resulting in a smoother
+        // modification to account for jitter.
+        private readonly decimal _latestSpeedWeight;
 
         private decimal? _averageNodesTransferSpeed;
         private decimal? _averageHeadersTransferSpeed;
@@ -50,14 +37,18 @@ namespace Nethermind.Stats
 
         private DateTime? _lastDisconnectTime;
         private DateTime? _lastFailedConnectionTime;
+
+        private (DateTimeOffset, NodeStatsEventType) _delayConnectDeadline = (DateTimeOffset.Now - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
+
         private static readonly Random Random = new();
 
         private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Count;
 
-        public NodeStatsLight(Node node)
+        public NodeStatsLight(Node node, decimal latestSpeedWeight = 0.25m)
         {
             _statCountersArray = new int[_statsLength];
             _statsParameters = StatsParameters.Instance;
+            _latestSpeedWeight = latestSpeedWeight;
             Node = node;
         }
 
@@ -92,6 +83,11 @@ namespace Nethermind.Stats
                 _lastFailedConnectionTime = DateTime.UtcNow;
             }
 
+            if (_statsParameters.DelayDueToEvent.TryGetValue(nodeStatsEventType, out TimeSpan delay))
+            {
+                UpdateDelayConnectDeadline(delay, nodeStatsEventType);
+            }
+
             Increment(nodeStatsEventType);
         }
 
@@ -112,7 +108,32 @@ namespace Nethermind.Stats
                 _lastRemoteDisconnect = disconnectReason;
             }
 
+            if (disconnectType == DisconnectType.Local)
+            {
+                if (_statsParameters.DelayDueToLocalDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
+                {
+                    UpdateDelayConnectDeadline(delay, NodeStatsEventType.LocalDisconnectDelay);
+                }
+            }
+            else if (disconnectType == DisconnectType.Remote)
+            {
+                if (_statsParameters.DelayDueToRemoteDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
+                {
+                    UpdateDelayConnectDeadline(delay, NodeStatsEventType.RemoteDisconnectDelay);
+                }
+            }
+
             Increment(NodeStatsEventType.Disconnect);
+        }
+
+        private void UpdateDelayConnectDeadline(TimeSpan delay, NodeStatsEventType reason)
+        {
+            DateTimeOffset newDeadline = DateTimeOffset.Now + delay;
+            (DateTimeOffset currentDeadline, NodeStatsEventType _) = _delayConnectDeadline;
+            if (newDeadline > currentDeadline)
+            {
+                _delayConnectDeadline = (newDeadline, reason);
+            }
         }
 
         public void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails)
@@ -152,27 +173,32 @@ namespace Nethermind.Stats
                 switch (transferSpeedType)
                 {
                     case TransferSpeedType.Latency:
-                        _averageLatency = ((_latencyEventCount * (_averageLatency ?? 0)) + bytesPerMillisecond) / (++_latencyEventCount);
+                        UpdateValue(ref _averageLatency, bytesPerMillisecond);
                         break;
                     case TransferSpeedType.NodeData:
-                        _averageNodesTransferSpeed = ((_nodesTransferSpeedEventCount * (_averageNodesTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_nodesTransferSpeedEventCount);
+                        UpdateValue(ref _averageNodesTransferSpeed, bytesPerMillisecond);
                         break;
                     case TransferSpeedType.Headers:
-                        _averageHeadersTransferSpeed = ((_headersTransferSpeedEventCount * (_averageHeadersTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_headersTransferSpeedEventCount);
+                        UpdateValue(ref _averageHeadersTransferSpeed, bytesPerMillisecond);
                         break;
                     case TransferSpeedType.Bodies:
-                        _averageBodiesTransferSpeed = ((_bodiesTransferSpeedEventCount * (_averageBodiesTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_bodiesTransferSpeedEventCount);
+                        UpdateValue(ref _averageBodiesTransferSpeed, bytesPerMillisecond);
                         break;
                     case TransferSpeedType.Receipts:
-                        _averageReceiptsTransferSpeed = ((_receiptsTransferSpeedEventCount * (_averageReceiptsTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_receiptsTransferSpeedEventCount);
+                        UpdateValue(ref _averageReceiptsTransferSpeed, bytesPerMillisecond);
                         break;
                     case TransferSpeedType.SnapRanges:
-                        _averageSnapRangesTransferSpeed = ((_snapRangesTransferSpeedEventCount * (_averageSnapRangesTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_snapRangesTransferSpeedEventCount);
+                        UpdateValue(ref _averageSnapRangesTransferSpeed, bytesPerMillisecond);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
                 }
             }
+        }
+
+        private void UpdateValue(ref decimal? currentValue, decimal newValue)
+        {
+            currentValue = ((currentValue ?? newValue) * (1.0m - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
         }
 
         public long? GetAverageTransferSpeed(TransferSpeedType transferSpeedType)
@@ -189,20 +215,6 @@ namespace Nethermind.Stats
             });
         }
 
-        public string GetPaddedAverageTransferSpeed(TransferSpeedType transferSpeedType)
-        {
-            return (transferSpeedType switch
-            {
-                TransferSpeedType.Latency => $"{_averageLatency ?? 0,5:0}",
-                TransferSpeedType.NodeData => $"{_averageNodesTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.Headers => $"{_averageHeadersTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.Bodies => $"{_averageBodiesTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.Receipts => $"{_averageReceiptsTransferSpeed ?? 0,5:0}",
-                TransferSpeedType.SnapRanges => $"{_averageSnapRangesTransferSpeed ?? 0,5:0}",
-                _ => throw new ArgumentOutOfRangeException()
-            });
-        }
-
         public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed()
         {
             if (IsDelayedDueToDisconnect())
@@ -213,6 +225,12 @@ namespace Nethermind.Stats
             if (IsDelayedDueToFailedConnection())
             {
                 return (true, NodeStatsEventType.ConnectionFailed);
+            }
+
+            (DateTimeOffset outgoingDelayDeadline, NodeStatsEventType reason) = _delayConnectDeadline;
+            if (outgoingDelayDeadline > DateTime.Now)
+            {
+                return (true, reason);
             }
 
             return (false, null);

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -92,12 +79,12 @@ namespace Nethermind.State
 
         public bool AccountExists(Address address)
         {
-            if (_intraBlockCache.ContainsKey(address))
+            if (_intraBlockCache.TryGetValue(address, out Stack<int> value))
             {
-                return _changes[_intraBlockCache[address].Peek()]!.ChangeType != ChangeType.Delete;
+                return _changes[value.Peek()]!.ChangeType != ChangeType.Delete;
             }
 
-            return GetAndAddToCache(address) != null;
+            return GetAndAddToCache(address) is not null;
         }
 
         public bool IsEmptyAccount(Address address)
@@ -452,7 +439,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(StateProvider)}");
             }
 
-            if (_changes[_currentPosition + 1] != null)
+            if (_changes[_currentPosition + 1] is not null)
             {
                 throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(StateProvider)}");
             }
@@ -668,7 +655,7 @@ namespace Nethermind.State
         private Account? GetAndAddToCache(Address address)
         {
             Account? account = GetState(address);
-            if (account != null)
+            if (account is not null)
             {
                 PushJustCache(address, account);
             }
@@ -683,9 +670,9 @@ namespace Nethermind.State
 
         private Account? GetThroughCache(Address address)
         {
-            if (_intraBlockCache.ContainsKey(address))
+            if (_intraBlockCache.TryGetValue(address, out Stack<int> value))
             {
-                return _changes[_intraBlockCache[address].Peek()]!.Account;
+                return _changes[value.Peek()]!.Account;
             }
 
             Account account = GetAndAddToCache(address);

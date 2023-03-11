@@ -1,23 +1,9 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Numerics;
 using System.Reflection;
 using System.Text;
@@ -137,8 +123,8 @@ namespace Nethermind.Serialization.Rlp
 
         public static T[] DecodeArray<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var rlpDecoder = GetStreamDecoder<T>();
-            if (rlpDecoder != null)
+            IRlpStreamDecoder<T>? rlpDecoder = GetStreamDecoder<T>();
+            if (rlpDecoder is not null)
             {
                 return DecodeArray(rlpStream, rlpDecoder, rlpBehaviors);
             }
@@ -149,7 +135,7 @@ namespace Nethermind.Serialization.Rlp
         public static T[] DecodeArray<T>(RlpStream rlpStream, IRlpStreamDecoder<T>? rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
-            T[] result = new T[rlpStream.ReadNumberOfItemsRemaining(checkPosition)];
+            T[] result = new T[rlpStream.PeekNumberOfItemsRemaining(checkPosition)];
             for (int i = 0; i < result.Length; i++)
             {
                 result[i] = rlpDecoder.Decode(rlpStream, rlpBehaviors);
@@ -158,32 +144,42 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public static IRlpValueDecoder<T>? GetValueDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? Decoders[typeof(T)] as IRlpValueDecoder<T> : null;
-        public static IRlpStreamDecoder<T>? GetStreamDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? Decoders[typeof(T)] as IRlpStreamDecoder<T> : null;
-        public static IRlpObjectDecoder<T>? GetObjectDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? Decoders[typeof(T)] as IRlpObjectDecoder<T> : null;
-        public static IRlpDecoder<T>? GetDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? Decoders[typeof(T)] as IRlpDecoder<T> : null;
+        public static IRlpValueDecoder<T>? GetValueDecoder<T>() => Decoders.TryGetValue(typeof(T), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;
+        public static IRlpStreamDecoder<T>? GetStreamDecoder<T>() => Decoders.TryGetValue(typeof(T), out IRlpDecoder value) ? value as IRlpStreamDecoder<T> : null;
+        public static IRlpObjectDecoder<T>? GetObjectDecoder<T>() => Decoders.TryGetValue(typeof(T), out IRlpDecoder value) ? value as IRlpObjectDecoder<T> : null;
+        public static IRlpDecoder<T>? GetDecoder<T>() => Decoders.TryGetValue(typeof(T), out IRlpDecoder value) ? value as IRlpDecoder<T> : null;
 
         public static T Decode<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             IRlpStreamDecoder<T>? rlpDecoder = GetStreamDecoder<T>();
-            return rlpDecoder != null ? rlpDecoder.Decode(rlpStream, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+            return rlpDecoder is not null ? rlpDecoder.Decode(rlpStream, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
         public static T Decode<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             IRlpValueDecoder<T>? rlpDecoder = GetValueDecoder<T>();
-            return rlpDecoder != null ? rlpDecoder.Decode(ref decoderContext, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+            return rlpDecoder is not null ? rlpDecoder.Decode(ref decoderContext, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (item is Rlp rlp)
             {
-                return Encode(new[] { rlp });
+                RlpStream stream = new(LengthOfSequence(rlp.Length));
+                return new(stream.Data);
+            }
+
+            IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
+            if (rlpStreamDecoder != null)
+            {
+                int totalLength = rlpStreamDecoder.GetLength(item, behaviors);
+                RlpStream stream = new(totalLength);
+                rlpStreamDecoder.Encode(stream, item, behaviors);
+                return new Rlp(stream.Data);
             }
 
             IRlpObjectDecoder<T>? rlpDecoder = GetObjectDecoder<T>();
-            return rlpDecoder != null ? rlpDecoder.Encode(item, behaviors) : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+            return rlpDecoder is not null ? rlpDecoder.Encode(item, behaviors) : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
         }
 
         public static Rlp Encode<T>(T[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
@@ -193,16 +189,19 @@ namespace Nethermind.Serialization.Rlp
                 return OfEmptySequence;
             }
 
+            IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
+            if (rlpStreamDecoder != null)
+            {
+                int totalLength = rlpStreamDecoder.GetLength(items, behaviors);
+                RlpStream stream = new(totalLength);
+                rlpStreamDecoder.Encode(stream, items, behaviors);
+                return new Rlp(stream.Data);
+            }
+
             IRlpObjectDecoder<T> rlpDecoder = GetObjectDecoder<T>();
             if (rlpDecoder is not null)
             {
-                Rlp[] rlpSequence = new Rlp[items.Length];
-                for (int i = 0; i < items.Length; i++)
-                {
-                    rlpSequence[i] = items[i] is null ? OfEmptySequence : rlpDecoder.Encode(items[i], behaviors);
-                }
-
-                return Encode(rlpSequence);
+                return rlpDecoder.Encode(items, behaviors);
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
@@ -241,82 +240,9 @@ namespace Nethermind.Serialization.Rlp
             bool isEip155Enabled = false,
             ulong chainId = 0)
         {
-            bool includeSigChainIdHack = isEip155Enabled && chainId != 0 && transaction.Type == TxType.Legacy;
-            int extraItems = transaction.IsEip1559 ? 1 : 0; // one extra gas field for 1559. 1559: GasPremium, FeeCap. Legacy: GasPrice
-            if (!forSigning || includeSigChainIdHack)
-            {
-                extraItems += 3; // sig fields
-            }
-
-            if (transaction.Type != TxType.Legacy)
-            {
-                extraItems += 2; // chainID + accessList
-            }
-
-            Rlp[] sequence = new Rlp[6 + extraItems];
-            int position = 0;
-
-            if (transaction.Type != TxType.Legacy)
-            {
-                sequence[position++] = Encode(transaction.ChainId ?? 0);
-            }
-
-            sequence[position++] = Encode(transaction.Nonce);
-
-            if (transaction.IsEip1559)
-            {
-                sequence[position++] = Encode(transaction.MaxPriorityFeePerGas);
-                sequence[position++] = Encode(transaction.DecodedMaxFeePerGas);
-            }
-            else
-            {
-                sequence[position++] = Encode(transaction.GasPrice);
-            }
-
-            sequence[position++] = Encode(transaction.GasLimit);
-            sequence[position++] = Encode(transaction.To);
-            sequence[position++] = Encode(transaction.Value);
-            sequence[position++] = Encode(transaction.Data);
-            if (transaction.Type != TxType.Legacy)
-            {
-                sequence[position++] = Encode(transaction.AccessList);
-            }
-
-            if (forSigning)
-            {
-                if (includeSigChainIdHack)
-                {
-                    sequence[position++] = Encode(chainId);
-                    sequence[position++] = OfEmptyByteArray;
-                    sequence[position++] = OfEmptyByteArray;
-                }
-            }
-            else
-            {
-                Signature signature = transaction.Signature;
-                if (signature is null)
-                {
-                    sequence[position++] = OfEmptyByteArray;
-                    sequence[position++] = OfEmptyByteArray;
-                    sequence[position++] = OfEmptyByteArray;
-                }
-                else
-                {
-                    sequence[position++] = Encode(transaction.Type == TxType.Legacy ? signature.V : signature.RecoveryId);
-                    sequence[position++] = Encode(signature.RAsSpan.WithoutLeadingZeros());
-                    sequence[position++] = Encode(signature.SAsSpan.WithoutLeadingZeros());
-                }
-            }
-
-            Debug.Assert(position == 6 + extraItems);
-
-            Rlp result = Encode(sequence);
-            if (transaction.Type != TxType.Legacy)
-            {
-                result = new Rlp(Core.Extensions.Bytes.Concat((byte)transaction.Type, Encode(sequence).Bytes));
-            }
-
-            return result;
+            TxDecoder txDecoder = new TxDecoder();
+            return txDecoder.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled,
+                chainId);
         }
 
         public static Rlp Encode(UInt256? value)
@@ -726,7 +652,7 @@ namespace Nethermind.Serialization.Rlp
             byte[] allBytes = new byte[lengthOfPrefixAndSerializedLength + contentLength];
             allBytes[0] = prefix;
             int offset = 1;
-            if (serializedLength != null)
+            if (serializedLength is not null)
             {
                 Buffer.BlockCopy(serializedLength, 0, allBytes, offset, serializedLength.Length);
                 offset += serializedLength.Length;
@@ -743,7 +669,7 @@ namespace Nethermind.Serialization.Rlp
 
         public ref struct ValueDecoderContext
         {
-            public ValueDecoderContext(in Span<byte> data)
+            public ValueDecoderContext(scoped in Span<byte> data)
             {
                 Data = data;
                 Position = 0;
@@ -762,7 +688,7 @@ namespace Nethermind.Serialization.Rlp
                 return Data[Position] >= 192;
             }
 
-            public int ReadNumberOfItemsRemaining(int? beforePosition = null)
+            public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
             {
                 int positionStored = Position;
                 int numberOfItems = 0;
@@ -796,6 +722,10 @@ namespace Nethermind.Serialization.Rlp
                     }
 
                     numberOfItems++;
+                    if (numberOfItems >= maxSearch)
+                    {
+                        break;
+                    }
                 }
 
                 Position = positionStored;
@@ -958,7 +888,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             // This class was introduce to reduce allocations when deserializing receipts. In order to deserialize receipts we first try to deserialize it in new format and then in old format.
-            // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings. 
+            // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings.
             private class DecodeKeccakRlpException : RlpException
             {
                 private readonly int _prefix;
@@ -1035,8 +965,10 @@ namespace Nethermind.Serialization.Rlp
                     {
                         keccak = new KeccakStructRef(Keccak.EmptyTreeHash.Bytes);
                     }
-
-                    keccak = new KeccakStructRef(keccakSpan);
+                    else
+                    {
+                        keccak = new KeccakStructRef(keccakSpan);
+                    }
                 }
             }
 
@@ -1100,7 +1032,7 @@ namespace Nethermind.Serialization.Rlp
                 // https://github.com/NethermindEth/nethermind/issues/113
                 if (Data[Position] == 249)
                 {
-                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
                     bloomBytes = Read(256);
                 }
                 else
@@ -1128,7 +1060,7 @@ namespace Nethermind.Serialization.Rlp
                 // https://github.com/NethermindEth/nethermind/issues/113
                 if (Data[Position] == 249)
                 {
-                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
                     bloomBytes = Read(256);
                 }
                 else
@@ -1402,7 +1334,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override int GetHashCode()
         {
-            return Bytes != null ? Bytes.GetSimplifiedHashCode() : 0;
+            return Bytes is not null ? Bytes.GetSimplifiedHashCode() : 0;
         }
 
         public bool Equals(Rlp? other)
@@ -1532,6 +1464,18 @@ namespace Nethermind.Serialization.Rlp
             return value;
         }
 
+        public static int LengthOf(IReadOnlyList<Keccak> keccaks, bool includeLengthOfSequenceStart = false)
+        {
+            int value = keccaks?.Count * LengthOfKeccakRlp ?? 0;
+
+            if (includeLengthOfSequenceStart)
+            {
+                value = LengthOfSequence(value);
+            }
+
+            return value;
+        }
+
         public static int LengthOf(Address? item)
         {
             return item is null ? 1 : 21;
@@ -1557,6 +1501,16 @@ namespace Nethermind.Serialization.Rlp
             return LengthOf(array.AsSpan());
         }
 
+        public static int LengthOf(IReadOnlyList<byte> array)
+        {
+            if (array.Count == 0)
+            {
+                return 1;
+            }
+
+            return LengthOfByteString(array.Count, array[0]);
+        }
+
         public static int LengthOf(Span<byte> array)
         {
             if (array.Length == 0)
@@ -1564,17 +1518,23 @@ namespace Nethermind.Serialization.Rlp
                 return 1;
             }
 
-            if (array.Length == 1 && array[0] < 128)
+            return LengthOfByteString(array.Length, array[0]);
+        }
+
+        // Assumes that length is greater then 0
+        private static int LengthOfByteString(int length, byte firstByte)
+        {
+            if (length == 1 && firstByte < 128)
             {
                 return 1;
             }
 
-            if (array.Length < 56)
+            if (length < 56)
             {
-                return array.Length + 1;
+                return length + 1;
             }
 
-            return LengthOfLength(array.Length) + 1 + array.Length;
+            return LengthOfLength(length) + 1 + length;
         }
 
         public static int LengthOf(string value)
@@ -1614,5 +1574,12 @@ namespace Nethermind.Serialization.Rlp
             IRlpDecoder<LogEntry>? rlpDecoder = GetDecoder<LogEntry>();
             return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(LogEntry)}");
         }
+
+        public static int LengthOf(BlockInfo item)
+        {
+            IRlpDecoder<BlockInfo>? rlpDecoder = GetDecoder<BlockInfo>();
+            return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(BlockInfo)}");
+        }
+
     }
 }

@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Linq;
@@ -35,10 +21,10 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Test;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
@@ -47,12 +33,11 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
+using Nethermind.Config;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -65,7 +50,6 @@ namespace Nethermind.AccountAbstraction.Test
             TestSpecProvider testSpecProvider = releaseSpec is not null
                 ? new TestSpecProvider(releaseSpec)
                 : new TestSpecProvider(London.Instance);
-            testSpecProvider.ChainId = 1;
             return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
         }
 
@@ -90,7 +74,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 Signer = new Signer(1, TestItem.PrivateKeyD, LogManager);
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
-                    .WithTimestamp(UInt256.One)
+                    .WithTimestamp(1UL)
                     .WithGasLimit(GasLimitCalculator.GasLimit)
                     .WithBaseFeePerGas(initialBaseFeePerGas ?? 0);
             }
@@ -107,12 +91,12 @@ namespace Nethermind.AccountAbstraction.Test
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
             private ISigner Signer { get; }
 
-            public override ILogManager LogManager => NUnitLogManager.Instance;
+            public override ILogManager LogManager => LimboLogs.Instance;
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer,
                 ITransactionComparerProvider transactionComparerProvider)
             {
-                MiningConfig miningConfig = new() { MinGasPrice = UInt256.One };
+                BlocksConfig blocksConfig = new() { MinGasPrice = UInt256.One };
                 SpecProvider.UpdateMergeTransitionInfo(1, 0);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
@@ -126,7 +110,7 @@ namespace Nethermind.AccountAbstraction.Test
                     BlockPreprocessorStep,
                     TxPool,
                     transactionComparerProvider,
-                    miningConfig,
+                    blocksConfig,
                     LogManager)
                 {
                     TransactionsExecutorFactory =
@@ -143,7 +127,7 @@ namespace Nethermind.AccountAbstraction.Test
                     ITxSource? txSource = null)
                 {
                     var blockProducerEnv = blockProducerEnvFactory.Create(txSource);
-                    return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, miningConfig,
+                    return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, blocksConfig,
                         LogManager, GasLimitCalculator).Create(
                         blockProducerEnv, blockProductionTrigger);
                 }
@@ -224,7 +208,7 @@ namespace Nethermind.AccountAbstraction.Test
                         entryPoint!,
                         SpecProvider);
                 }
-
+                BlocksConfig blocksConfig = new();
                 foreach (Address entryPoint in entryPointContractAddresses)
                 {
                     UserOperationSimulator[entryPoint] = new(
@@ -236,7 +220,8 @@ namespace Nethermind.AccountAbstraction.Test
                         WhitelistedPayamsters,
                         SpecProvider,
                         Timestamper,
-                        LogManager);
+                        LogManager,
+                        blocksConfig);
                 }
 
                 IUserOperationBroadcaster broadcaster = new UserOperationBroadcaster(LogManager.GetClassLogger());

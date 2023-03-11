@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -719,6 +722,18 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder WhenFastSyncWithFastBlocksIsConfigured()
+                {
+                    _configActions.Add(() =>
+                    {
+                        SyncConfig.FastSync = true;
+                        SyncConfig.FastBlocks = true;
+                        return "fast sync with fast blocks";
+                    });
+
+                    return this;
+                }
+
                 public ScenarioBuilder WhenSnapSyncWithoutFastBlocksIsConfigured()
                 {
                     _configActions.Add(() =>
@@ -755,6 +770,22 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     {
                         BeaconSyncStrategy.ShouldBeInBeaconModeControl().Returns(true);
                     }
+
+                    return this;
+                }
+
+                public ScenarioBuilder WhenBeaconProcessDestinationWithinFastSyncLag()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+                            BeaconSyncStrategy.GetTargetBlockHeight().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
+                            SyncProgressResolver.IsFastBlocksHeadersFinished().Returns(true);
+                            return "beacon process destination with fast sync lag";
+                        }
+                    );
 
                     return this;
                 }

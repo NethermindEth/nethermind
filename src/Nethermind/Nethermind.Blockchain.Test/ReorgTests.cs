@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Threading;
@@ -25,6 +11,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -114,13 +101,11 @@ namespace Nethermind.Blockchain.Test
                 LimboLogs.Instance, BlockchainProcessor.Options.Default);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         [Retry(3)]
         public void Test()
         {
             List<Block> events = new();
-
-            AutoResetEvent resetEvent = new AutoResetEvent(false);
 
             Block block0 = Build.A.Block.Genesis.WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
             Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(2).WithTotalDifficulty(2L).TestObject;
@@ -132,11 +117,6 @@ namespace Nethermind.Blockchain.Test
             _blockTree.BlockAddedToMain += (_, args) =>
             {
                 events.Add(args.Block);
-
-                if (args.Block == block2B)
-                {
-                    resetEvent.Set();
-                }
             };
 
             _blockchainProcessor.Start();
@@ -148,9 +128,8 @@ namespace Nethermind.Blockchain.Test
             _blockTree.SuggestBlock(block1B);
             _blockTree.SuggestBlock(block2B);
 
-            resetEvent.WaitOne(2000);
+            Assert.That(() => _blockTree.Head, Is.EqualTo(block2B).After(10000, 500));
 
-            _blockTree.Head.Should().Be(block2B);
             events.Should().HaveCount(6);
             events[4].Hash.Should().Be(block1B.Hash);
             events[5].Hash.Should().Be(block2B.Hash);

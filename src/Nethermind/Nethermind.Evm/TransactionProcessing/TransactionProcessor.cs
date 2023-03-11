@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -141,19 +128,19 @@ namespace Nethermind.Evm.TransactionProcessing
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer,
             ExecutionOptions executionOptions)
         {
-            bool eip658NotEnabled = !_specProvider.GetSpec(block.Number).IsEip658Enabled;
+            IReleaseSpec spec = _specProvider.GetSpec(block);
+            bool eip658NotEnabled = !spec.IsEip658Enabled;
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = (executionOptions & ExecutionOptions.Restore) == ExecutionOptions.Restore;
             bool noValidation = (executionOptions & ExecutionOptions.NoValidation) == ExecutionOptions.NoValidation;
-            // commit - is for standard execute, we will commit thee state after execution 
+            // commit - is for standard execute, we will commit thee state after execution
             bool commit = (executionOptions & ExecutionOptions.Commit) == ExecutionOptions.Commit || eip658NotEnabled;
             //!commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
-            //we commit only after all block is constructed 
+            //we commit only after all block is constructed
             bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
 
-            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
             {
                 spec = new SystemTransactionReleaseSpec(spec);
@@ -192,6 +179,25 @@ namespace Nethermind.Evm.TransactionProcessing
                 return;
             }
 
+            if (!noValidation && transaction.Nonce >= ulong.MaxValue - 1)
+            {
+                // we are here if nonce is at least (ulong.MaxValue - 1). If tx is contract creation,
+                // it is max possible value. Otherwise, (ulong.MaxValue - 1) is allowed, but ulong.MaxValue not.
+                if (transaction.IsContractCreation || transaction.Nonce == ulong.MaxValue)
+                {
+                    TraceLogInvalidTx(transaction, "NONCE_OVERFLOW");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "nonce overflow");
+                    return;
+                }
+            }
+
+            if (transaction.IsAboveInitCode(spec))
+            {
+                TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.DataLength} > {spec.MaxInitCodeSize}");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "EIP-3860 - transaction size over max init code size");
+                return;
+            }
+
             long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
             if (_logger.IsTrace) _logger.Trace($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
 
@@ -216,7 +222,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!_stateProvider.AccountExists(caller))
             {
                 // hacky fix for the potential recovery issue
-                if (transaction.Signature != null)
+                if (transaction.Signature is not null)
                 {
                     transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
                 }
@@ -306,7 +312,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     PrepareAccountForContractDeployment(contractAddress!, spec);
                 }
 
-                if (recipient == null)
+                if (recipient is null)
                 {
                     // this transaction is not a contract creation so it should have the recipient known and not null
                     throw new InvalidDataException("Recipient has not been resolved properly before tx execution");
@@ -315,19 +321,19 @@ namespace Nethermind.Evm.TransactionProcessing
                 recipientOrNull = recipient;
 
                 ExecutionEnvironment env = new();
-                env.TxExecutionContext = new TxExecutionContext(block, caller, effectiveGasPrice);
+                env.TxExecutionContext = new TxExecutionContext(block, caller, effectiveGasPrice, transaction.BlobVersionedHashes);
                 env.Value = value;
                 env.TransferValue = value;
                 env.Caller = caller;
                 env.CodeSource = recipient;
                 env.ExecutingAccount = recipient;
                 env.InputData = data ?? Array.Empty<byte>();
-                env.CodeInfo = machineCode == null
+                env.CodeInfo = machineCode is null
                     ? _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec)
                     : new CodeInfo(machineCode);
 
                 ExecutionType executionType =
-                    transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
+                    transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Transaction;
                 using (EvmState state =
                     new(unspentGas, env, executionType, true, snapshot, false))
                 {
@@ -340,6 +346,11 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         state.WarmUp(caller); // eip-2929
                         state.WarmUp(recipient); // eip-2929
+                    }
+
+                    if (spec.AddCoinbaseToTxAccessList)
+                    {
+                        state.WarmUp(block.GasBeneficiary);
                     }
 
                     substate = _virtualMachine.Run(state, _worldState, txTracer);
@@ -419,9 +430,10 @@ namespace Nethermind.Evm.TransactionProcessing
                         _stateProvider.CreateAccount(gasBeneficiary, fees);
                     }
 
-                    if (!transaction.IsFree() && spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null)
+                    UInt256 burntFees = !transaction.IsFree() ? (ulong)spentGas * block.BaseFeePerGas : 0;
+
+                    if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null)
                     {
-                        UInt256 burntFees = (ulong)spentGas * block.BaseFeePerGas;
                         if (!burntFees.IsZero)
                         {
                             if (_stateProvider.AccountExists(spec.Eip1559FeeCollector))
@@ -433,6 +445,11 @@ namespace Nethermind.Evm.TransactionProcessing
                                 _stateProvider.CreateAccount(spec.Eip1559FeeCollector, burntFees);
                             }
                         }
+                    }
+
+                    if (txTracer.IsTracingFees)
+                    {
+                        txTracer.ReportFees(fees, burntFees);
                     }
                 }
             }

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -48,6 +35,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public bool IsTracingStack { get; }
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
+        public bool IsTracingFees => false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
@@ -74,11 +62,11 @@ namespace Nethermind.Evm.Tracing.GethStyle
             if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
             {
                 _traceEntry.Storage = new Dictionary<string, string>();
-                _trace.StoragesByDepth.Push(previousTraceEntry != null ? previousTraceEntry.Storage : new Dictionary<string, string>());
+                _trace.StoragesByDepth.Push(previousTraceEntry is not null ? previousTraceEntry.Storage : new Dictionary<string, string>());
             }
             else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
             {
-                if (previousTraceEntry == null)
+                if (previousTraceEntry is null)
                 {
                     throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
                 }
@@ -87,7 +75,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
             }
             else
             {
-                if (previousTraceEntry == null)
+                if (previousTraceEntry is null)
                 {
                     throw new InvalidOperationException("Unexpected missing previous trace on continuation.");
                 }
@@ -173,12 +161,12 @@ namespace Nethermind.Evm.Tracing.GethStyle
         {
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
             throw new NotSupportedException();
         }
@@ -244,6 +232,11 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public void SetOperationMemory(List<string> memoryTrace)
         {
             _traceEntry.Memory = memoryTrace;
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
         }
 
         public GethLikeTxTrace BuildResult()

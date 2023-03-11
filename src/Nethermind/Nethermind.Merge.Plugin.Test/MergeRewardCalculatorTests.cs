@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -24,7 +10,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -148,8 +133,8 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void No_block_rewards_calculator()
         {
-            Block block = Build.A.Block.WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
-            Block block2 = Build.A.Block.WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTotalDifficulty(1L).WithDifficulty(0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
 
             PoSSwitcher poSSwitcher = CreatePosSwitcher();
             poSSwitcher.TryUpdateTerminalBlock(block.Header);
@@ -169,7 +154,7 @@ namespace Nethermind.Merge.Plugin.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = 2;
-            MergeConfig? mergeConfig = new() { Enabled = true };
+            MergeConfig? mergeConfig = new() { };
             IBlockCacheService blockCacheService = new BlockCacheService();
             return new PoSSwitcher(mergeConfig, new SyncConfig(), db, blockTree, specProvider, LimboLogs.Instance);
         }

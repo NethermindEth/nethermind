@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,12 +45,12 @@ namespace Nethermind.Hive
         {
             if (Enabled)
             {
-                if (_api.BlockTree == null) throw new ArgumentNullException(nameof(_api.BlockTree));
-                if (_api.BlockProcessingQueue == null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-                if (_api.ConfigProvider == null) throw new ArgumentNullException(nameof(_api.ConfigProvider));
-                if (_api.LogManager == null) throw new ArgumentNullException(nameof(_api.LogManager));
-                if (_api.FileSystem == null) throw new ArgumentNullException(nameof(_api.FileSystem));
-                if (_api.BlockValidator == null) throw new ArgumentNullException(nameof(_api.BlockValidator));
+                if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
+                if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+                if (_api.ConfigProvider is null) throw new ArgumentNullException(nameof(_api.ConfigProvider));
+                if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
+                if (_api.FileSystem is null) throw new ArgumentNullException(nameof(_api.FileSystem));
+                if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
 
                 HiveRunner hiveRunner = new(
                     _api.BlockTree,

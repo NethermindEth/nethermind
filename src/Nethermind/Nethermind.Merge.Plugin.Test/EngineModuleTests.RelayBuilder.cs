@@ -1,21 +1,8 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,7 +18,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
-using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -44,7 +31,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay()
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         IBoostRelay boostRelay = Substitute.For<IBoostRelay>();
         boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
@@ -69,7 +56,7 @@ public partial class EngineModuleTests
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
@@ -86,9 +73,9 @@ public partial class EngineModuleTests
 
         await wait.WaitOneAsync(100, CancellationToken.None);
 
-        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        ExecutionPayloadV1 executionPayloadV1 = response.Data!;
+        ExecutionPayload executionPayloadV1 = response.Data!;
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
         executionPayloadV1.GasLimit.Should().Be(10_000_000L);
@@ -100,11 +87,11 @@ public partial class EngineModuleTests
     [Parallelizable(ParallelScope.None)]
     public virtual async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http()
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         IJsonSerializer serializer = chain.JsonSerializer;
 
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         PayloadAttributes payloadAttributes = new() { Timestamp = timestamp, SuggestedFeeRecipient = Address.Zero, PrevRandao = Keccak.Zero };
 
         string relayUrl = "http://localhost";
@@ -113,8 +100,47 @@ public partial class EngineModuleTests
             .WithContent("{\"timestamp\":\"0x3e8\",\"prevRandao\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"suggestedFeeRecipient\":\"0x0000000000000000000000000000000000000000\"}")
             .Respond("application/json", "{\"timestamp\":\"0x3e9\",\"prevRandao\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"suggestedFeeRecipient\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}");
 
-        mockHttp.Expect(HttpMethod.Post, relayUrl + BoostRelay.SendPayloadPath)
-            .WithContent("{\"block\":{\"parentHash\":\"0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133\",\"feeRecipient\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"prevRandao\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"timestamp\":\"0x3e9\",\"extraData\":\"0x\",\"baseFeePerGas\":\"0x0\",\"blockHash\":\"0xb519d89363b891216dbf9bd046f226cae9348a90ba0db00e7ade437fff7a1510\",\"transactions\":[]},\"profit\":\"0x0\"}");
+        //TODO: think about extracting an essely serialisable class, test its serializatoin sepratly, refactor with it similar methods like the one above
+        var expected_parentHash = "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133";
+        var expected_feeRecipient = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099";
+        var expected_stateRoot = "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f";
+        var expected_receiptsRoot = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421";
+        var expected_logsBloom = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        var expected_prevRandao = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760";
+        var expected_blockNumber = 1;
+        var expected_gasLimit = 0x3d0900L;
+        var expected_gasUsed = 0;
+        var expected_timestamp = 0x3e9UL;
+        var expected_extraData = "0x4e65746865726d696e64"; // Nethermind
+        var expected_baseFeePerGas = (UInt256)0;
+        var expected_blockHash = "0x4ced29c819cf146b41ef448042773f958d5bbe297b0d6b82be677b65c85b436b";
+        var expected_profit = "0x0";
+
+        var expected = new BoostExecutionPayloadV1
+        {
+            Block = new ExecutionPayload
+            {
+                ParentHash = new(expected_parentHash),
+                FeeRecipient = new(expected_feeRecipient),
+                StateRoot = new(expected_stateRoot),
+                ReceiptsRoot = new(expected_receiptsRoot),
+                LogsBloom = new(Bytes.FromHexString(expected_logsBloom)),
+                PrevRandao = new(expected_prevRandao),
+                BlockNumber = expected_blockNumber,
+                GasLimit = expected_gasLimit,
+                GasUsed = expected_gasUsed,
+                Timestamp = expected_timestamp,
+                ExtraData = Bytes.FromHexString(expected_extraData),
+                BaseFeePerGas = expected_baseFeePerGas,
+                BlockHash = new(expected_blockHash),
+                Transactions = Array.Empty<byte[]>()
+            },
+            Profit = UInt256.Parse(expected_profit[2..], NumberStyles.HexNumber)
+        };
+
+        mockHttp
+            .Expect(HttpMethod.Post, relayUrl + BoostRelay.SendPayloadPath)
+            .WithContent(serializer.Serialize(expected));
 
         DefaultHttpClient defaultHttpClient = new(mockHttp.ToHttpClient(), serializer, chain.LogManager, 1, 100);
         BoostRelay boostRelay = new(defaultHttpClient, relayUrl);
@@ -139,9 +165,9 @@ public partial class EngineModuleTests
 
         await wait.WaitOneAsync(100, CancellationToken.None);
 
-        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        ExecutionPayloadV1 executionPayloadV1 = response.Data!;
+        ExecutionPayload executionPayloadV1 = response.Data!;
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
 
@@ -151,7 +177,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkchoiceUpdatedV1_should_ignore_gas_limit([Values(false, true)] bool relay)
     {
-        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
         IBlockImprovementContextFactory improvementContextFactory;
         if (relay)
@@ -177,7 +203,7 @@ public partial class EngineModuleTests
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
-        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
         Keccak random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
@@ -185,9 +211,9 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random, GasLimit = 10_000_000L }).Result.Data
             .PayloadId!;
 
-        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        ExecutionPayloadV1 executionPayloadV1 = response.Data!;
+        ExecutionPayload executionPayloadV1 = response.Data!;
         executionPayloadV1.GasLimit.Should().Be(4_000_000L);
     }
 }

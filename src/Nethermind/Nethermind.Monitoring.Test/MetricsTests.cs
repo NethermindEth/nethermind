@@ -1,31 +1,17 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
-using Nethermind.Runner;
 using NUnit.Framework;
 
 namespace Nethermind.Monitoring.Test
@@ -33,6 +19,36 @@ namespace Nethermind.Monitoring.Test
     [TestFixture]
     public class MetricsTests
     {
+        public static class TestMetrics
+        {
+            [System.ComponentModel.Description("A test description")]
+            public static long OneTwoThree { get; set; }
+
+            [System.ComponentModel.Description("Another test description.")]
+            [DataMember(Name = "one_two_three")]
+            public static long OneTwoThreeSpecial { get; set; }
+        }
+
+        [Test]
+        public void Test_gauge_names()
+        {
+            MetricsConfig metricsConfig = new()
+            {
+                Enabled = true
+            };
+            MetricsController metricsController = new(metricsConfig);
+            metricsController.RegisterMetrics(typeof(TestMetrics));
+            var gauges = metricsController._gauges;
+            var keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
+            var keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
+
+            Assert.Contains(keyDefault, gauges.Keys);
+            Assert.Contains(keySpecial, gauges.Keys);
+
+            Assert.AreEqual(gauges[keyDefault].Name, "nethermind_one_two_three");
+            Assert.AreEqual(gauges[keySpecial].Name, "one_two_three");
+        }
+
         [Test]
         public void Register_and_update_metrics_should_not_throw_exception()
         {
@@ -42,14 +58,22 @@ namespace Nethermind.Monitoring.Test
             };
             List<Type> knownMetricsTypes = new()
             {
-                typeof(Nethermind.Mev.Metrics), typeof(Nethermind.TxPool.Metrics), typeof(Nethermind.Blockchain.Metrics),
-                typeof(Nethermind.Consensus.AuRa.Metrics), typeof(Nethermind.Evm.Metrics), typeof(Nethermind.JsonRpc.Metrics),
-                typeof(Nethermind.Db.Metrics), typeof(Nethermind.Network.Metrics), typeof(Init.Metrics),
-                typeof(Nethermind.Synchronization.Metrics), typeof(Nethermind.Trie.Metrics), typeof(Nethermind.Trie.Pruning.Metrics),
+                typeof(Nethermind.Mev.Metrics),
+                typeof(Nethermind.TxPool.Metrics),
+                typeof(Nethermind.Blockchain.Metrics),
+                typeof(Nethermind.Consensus.AuRa.Metrics),
+                typeof(Nethermind.Evm.Metrics),
+                typeof(Nethermind.JsonRpc.Metrics),
+                typeof(Nethermind.Db.Metrics),
+                typeof(Nethermind.Network.Metrics),
+                typeof(Init.Metrics),
+                typeof(Nethermind.Synchronization.Metrics),
+                typeof(Nethermind.Trie.Metrics),
+                typeof(Nethermind.Trie.Pruning.Metrics),
             };
-            MetricsUpdater metricsUpdater = new(metricsConfig);
-            MonitoringService monitoringService = new(metricsUpdater, metricsConfig, LimboLogs.Instance);
-            List<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics)).ToList();
+            MetricsController metricsController = new(metricsConfig);
+            MonitoringService monitoringService = new(metricsController, metricsConfig, LimboLogs.Instance);
+            List<Type> metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics)).ToList();
             metrics.AddRange(knownMetricsTypes);
 
             Assert.DoesNotThrow(() =>
@@ -59,7 +83,7 @@ namespace Nethermind.Monitoring.Test
                     monitoringService.RegisterMetrics(metric);
                 }
 
-                metricsUpdater.UpdateMetrics(null);
+                metricsController.UpdateMetrics(null);
             });
         }
 

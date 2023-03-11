@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -66,7 +52,7 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [TestCaseSource(nameof(Tests))]
-        public async Task CompareReceipts(Uri uri1, Uri uri2, Keccak blockHash = null)
+        public async Task CompareReceipts(Uri uri1, Uri uri2, Keccak? blockHash = null)
         {
             using IConsensusDataSource<IEnumerable<ReceiptForRpc>> receipt1Source = GetSource<IEnumerable<ReceiptForRpc>>(uri1);
             using IConsensusDataSource<IEnumerable<ReceiptForRpc>> receipt2Source = GetSource<IEnumerable<ReceiptForRpc>>(uri2);
@@ -75,7 +61,7 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [TestCaseSource(nameof(Tests))]
-        public async Task CompareReceipt(Uri uri1, Uri uri2, Keccak blockHash = null)
+        public async Task CompareReceipt(Uri uri1, Uri uri2, Keccak? blockHash = null)
         {
             using IConsensusDataSource<ReceiptForRpc> receipt1Source = GetSource<ReceiptForRpc>(uri1);
             using IConsensusDataSource<ReceiptForRpc> receipt2Source = GetSource<ReceiptForRpc>(uri2);
@@ -84,7 +70,7 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [TestCaseSource(nameof(Tests))]
-        public async Task CompareGethBlockTrace(Uri uri1, Uri uri2, Keccak blockHash = null, GethTraceOptions gethTraceOptions = null)
+        public async Task CompareGethBlockTrace(Uri uri1, Uri uri2, Keccak? blockHash = null, GethTraceOptions? gethTraceOptions = null)
         {
             gethTraceOptions ??= GethTraceOptions.Default;
             using IConsensusDataSource<IEnumerable<GethLikeTxTrace>> receipt1Source = GetSource<IEnumerable<GethLikeTxTrace>>(uri1, DebugModuleFactory.Converters);
@@ -95,7 +81,7 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [TestCaseSource(nameof(Tests))]
-        public async Task CompareGethTxTrace(Uri uri1, Uri uri2, Keccak transactionHash = null, GethTraceOptions gethTraceOptions = null)
+        public async Task CompareGethTxTrace(Uri uri1, Uri uri2, Keccak? transactionHash = null, GethTraceOptions? gethTraceOptions = null)
         {
             gethTraceOptions ??= GethTraceOptions.Default;
             using IConsensusDataSource<GethLikeTxTrace> receipt1Source = GetSource<GethLikeTxTrace>(uri1, DebugModuleFactory.Converters);
@@ -125,9 +111,9 @@ namespace Nethermind.JsonRpc.Test
             }
         }
 
-        private IConsensusDataSource<T> GetSource<T>(Uri uri, IEnumerable<JsonConverter> additionalConverters = null)
+        private IConsensusDataSource<T> GetSource<T>(Uri uri, IEnumerable<JsonConverter>? additionalConverters = null)
         {
-            var serializer = GetSerializer(additionalConverters);
+            var serializer = GetSerializer(additionalConverters!);
             if (uri.IsFile)
             {
                 return new FileConsensusDataSource<T>(uri, serializer);
@@ -160,10 +146,10 @@ namespace Nethermind.JsonRpc.Test
             throw new NotSupportedException($"Uri: {uri} is not supported");
         }
 
-        private IJsonSerializer GetSerializer(IEnumerable<JsonConverter> additionalConverters)
+        private IJsonSerializer GetSerializer(IEnumerable<JsonConverter>? additionalConverters)
         {
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
-            if (additionalConverters != null)
+            if (additionalConverters is not null)
             {
                 jsonSerializer.RegisterConverters(additionalConverters);
             }
@@ -174,7 +160,7 @@ namespace Nethermind.JsonRpc.Test
         private static async Task Compare<T>(IConsensusDataSource<T> source1,
             IConsensusDataSource<T> source2,
             bool compareJson,
-            Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>> options = null)
+            Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>>? options = null)
         {
 
             if (compareJson)
@@ -204,7 +190,7 @@ namespace Nethermind.JsonRpc.Test
         private static async Task CompareCollection<T>(IConsensusDataSource<IEnumerable<T>> source1,
             IConsensusDataSource<IEnumerable<T>> source2,
             bool compareJson,
-            Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>> options = null)
+            Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>>? options = null)
         {
 
             if (compareJson)

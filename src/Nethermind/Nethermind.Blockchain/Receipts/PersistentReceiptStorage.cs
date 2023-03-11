@@ -1,21 +1,9 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -41,7 +29,7 @@ namespace Nethermind.Blockchain.Receipts
         private static readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
 
         private const int CacheSize = 64;
-        private readonly ICache<Keccak, TxReceipt[]> _receiptsCache = new LruCache<Keccak, TxReceipt[]>(CacheSize, CacheSize, "receipts");
+        private readonly LruCache<KeccakKey, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
         public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery)
         {
@@ -54,14 +42,14 @@ namespace Nethermind.Blockchain.Receipts
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
 
             byte[] lowestBytes = _database.Get(Keccak.Zero);
-            _lowestInsertedReceiptBlock = lowestBytes == null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
+            _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
         }
 
         public Keccak FindBlockHash(Keccak txHash)
         {
             var blockHashData = _transactionDb.Get(txHash);
-            return blockHashData == null ? FindReceiptObsolete(txHash)?.BlockHash : new Keccak(blockHashData);
+            return blockHashData is null ? FindReceiptObsolete(txHash)?.BlockHash : new Keccak(blockHashData);
         }
 
         // Find receipt stored with old - obsolete format.
@@ -183,9 +171,12 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsRecovery.TryRecover(block, txReceipts, false);
 
             var blockNumber = block.Number;
-            var spec = _specProvider.GetSpec(blockNumber);
+            var spec = _specProvider.GetSpec(block.Header);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
-            _blocksDb.Set(block.Hash!, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
+            using (NettyRlpStream stream = StorageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
+            {
+                _blocksDb.Set(block.Hash!, stream.AsSpan());
+            }
 
             if (blockNumber < MigratedBlockNumber)
             {

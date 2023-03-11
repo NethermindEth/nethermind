@@ -1,20 +1,12 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -23,11 +15,14 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
+using RocksDbSharp;
 
 namespace Nethermind.Db.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.None)]
     public class DbOnTheRocksTests
     {
         [Test]
@@ -37,6 +32,19 @@ namespace Nethermind.Db.Test
             DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
             db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
             Assert.AreEqual(new byte[] { 4, 5, 6 }, db[new byte[] { 1, 2, 3 }]);
+        }
+
+        [Test]
+        public void Smoke_test_span()
+        {
+            IDbConfig config = new DbConfig();
+            DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
+            byte[] key = new byte[] { 1, 2, 3 };
+            byte[] value = new byte[] { 4, 5, 6 };
+            db.PutSpan(key, value);
+            Span<byte> readSpan = db.GetSpan(key);
+            Assert.AreEqual(new byte[] { 4, 5, 6 }, readSpan.ToArray());
+            db.DangerousReleaseMemory(readSpan);
         }
 
         [Test]
@@ -62,25 +70,39 @@ namespace Nethermind.Db.Test
             IDbConfig config = new DbConfig();
             DbOnTheRocks db = new("testDispose1", GetRocksDbSettings("testDispose1", "TestDispose1"), config, LimboLogs.Instance);
 
+            CancellationTokenSource cancelSource = new();
+            ManualResetEventSlim firstWriteWait = new();
+            firstWriteWait.Reset();
+            bool writeCompleted = false;
+
             Task task = new(() =>
             {
-                while (true)
+                for (int i = 0; i < 10000; i++)
                 {
-                    // ReSharper disable once AccessToDisposedClosure
                     db.Set(Keccak.Zero, new byte[] { 1, 2, 3 });
+                    if (i == 0) firstWriteWait.Set();
+
+                    if (cancelSource.IsCancellationRequested)
+                    {
+                        return;
+                    }
                 }
 
-                // ReSharper disable once FunctionNeverReturns
+                writeCompleted = true;
             });
 
             task.Start();
 
-            await Task.Delay(100);
+            firstWriteWait.Wait(TimeSpan.FromSeconds(1)).Should().BeTrue();
 
             db.Dispose();
 
             await Task.Delay(100);
 
+            cancelSource.Cancel();
+            writeCompleted.Should().BeFalse();
+
+            task.IsFaulted.Should().BeTrue();
             task.Dispose();
         }
 
@@ -93,6 +115,60 @@ namespace Nethermind.Db.Test
             db.Dispose();
         }
 
+        [Test]
+        public void Corrupted_exception_on_open_would_create_marker()
+        {
+            IDbConfig config = new DbConfig();
+
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            bool exceptionThrown = false;
+            try
+            {
+                CorruptedDbOnTheRocks db = new("test", GetRocksDbSettings("test", "test"), config,
+                    LimboLogs.Instance,
+                    fileSystem: fileSystem);
+            }
+            catch (RocksDbSharpException)
+            {
+                exceptionThrown = true;
+            }
+
+            exceptionThrown.Should().BeTrue();
+            file.Received().WriteAllText(Arg.Any<string>(), Arg.Any<string>());
+        }
+
+        [Test]
+        public void If_marker_exists_on_open_then_repair_before_open()
+        {
+            IDbConfig config = new DbConfig();
+
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            string markerFile = Path.Join(Path.GetTempPath(), "test", "test", "corrupt.marker");
+            file.Exists(markerFile).Returns(true);
+
+            RocksDbSharp.Native native = Substitute.For<RocksDbSharp.Native>();
+
+            try
+            {
+                DbOnTheRocks db = new(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config,
+                    LimboLogs.Instance,
+                    fileSystem: fileSystem,
+                    rocksDbNative: native);
+            }
+            catch (Exception)
+            {
+            }
+
+            native.Received().rocksdb_repair_db(Arg.Any<IntPtr>(), Arg.Any<string>(), out Arg.Any<IntPtr>());
+            file.Received().Delete(markerFile);
+        }
+
         private static RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)
         {
             return new(dbName, dbPath)
@@ -102,6 +178,55 @@ namespace Nethermind.Db.Test
                 WriteBufferNumber = 4,
                 WriteBufferSize = (ulong)1.KiB()
             };
+        }
+
+        [Test]
+        public void Test_columndb_put_and_get_span_correctly_store_value()
+        {
+            string path = Path.Join(Path.GetTempPath(), "test");
+            Directory.CreateDirectory(path);
+            try
+            {
+                IDbConfig config = new DbConfig();
+                using ColumnsDb<ReceiptsColumns> columnDb = new(path, GetRocksDbSettings("blocks", "Blocks"), config,
+                    LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
+
+                using IDbWithSpan db = columnDb.GetColumnDb(ReceiptsColumns.Blocks);
+
+                Keccak key = Keccak.Compute("something");
+                Keccak value = Keccak.Compute("something");
+
+                db.KeyExists(key.Bytes).Should().BeFalse();
+                db.PutSpan(key.Bytes, value.Bytes);
+                db.KeyExists(key.Bytes).Should().BeTrue();
+                Span<byte> data = db.GetSpan(key.Bytes);
+                data.SequenceEqual(value.Bytes);
+                db.DangerousReleaseMemory(data);
+            }
+            finally
+            {
+                Directory.Delete(path, true);
+            }
+        }
+    }
+
+    class CorruptedDbOnTheRocks : DbOnTheRocks
+    {
+        public CorruptedDbOnTheRocks(
+            string basePath,
+            RocksDbSettings rocksDbSettings,
+            IDbConfig dbConfig,
+            ILogManager logManager,
+            ColumnFamilies? columnFamilies = null,
+            RocksDbSharp.Native? rocksDbNative = null,
+            IFileSystem? fileSystem = null
+        ) : base(basePath, rocksDbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)
+        {
+        }
+
+        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
+        {
+            throw new RocksDbSharpException("Corruption: test corruption");
         }
     }
 }

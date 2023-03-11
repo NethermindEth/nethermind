@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -31,6 +17,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -70,7 +57,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     parent = block;
                 }
 
-                BlocksByHash = Blocks.Where(b => b != null).ToDictionary(b => b.Hash, b => b);
+                BlocksByHash = Blocks.Where(b => b is not null).ToDictionary(b => b.Hash, b => b);
             }
 
             public Dictionary<Keccak, Block> BlocksByHash;
@@ -101,7 +88,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         static ReceiptsSyncFeedTests()
         {
-            _specProvider = new SingleReleaseSpecProvider(Istanbul.Instance, 1);
+            _specProvider = new TestSingleReleaseSpecProvider(Istanbul.Instance);
             _1024BodiesWithOneTxEach = new Scenario(_specProvider, 1024, 1);
             _256BodiesWithOneTxEach = new Scenario(_specProvider, 256, 1);
             _64BodiesWithOneTxEach = new Scenario(_specProvider, 64, 1);
@@ -275,7 +262,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 ci =>
                 {
                     Block block = scenario.Blocks[ci.Arg<long>()];
-                    if (block == null)
+                    if (block is null)
                     {
                         return null;
                     }
@@ -287,14 +274,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.ContainsKey(ci.Arg<Keccak>())
-                        ? scenario.BlocksByHash[ci.Arg<Keccak>()]
-                        : null);
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block value) ? value : null);
 
             _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.ContainsKey(ci.Arg<Keccak>())
-                        ? scenario.BlocksByHash[ci.Arg<Keccak>()].Header
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block value) ? value.Header
                         : null);
 
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?)null);
@@ -344,7 +328,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncResponseHandlingResult handlingResult = await _feed.HandleResponse(batch);
             handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
 
-            _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, Arg.Any<string>());
+            _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, InitiateDisconnectReason.InvalidReceiptRoot, Arg.Any<string>());
         }
 
         private static void FillBatchResponses(ReceiptsSyncBatch batch)

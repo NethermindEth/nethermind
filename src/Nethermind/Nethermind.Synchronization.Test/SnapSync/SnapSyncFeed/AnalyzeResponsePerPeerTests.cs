@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -19,7 +22,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
 
-            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, null!, LimboLogs.Instance);
+            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, LimboLogs.Instance);
 
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
@@ -54,7 +57,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
 
-            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, null!, LimboLogs.Instance);
+            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, LimboLogs.Instance);
 
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
@@ -89,7 +92,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
 
-            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, null!, LimboLogs.Instance);
+            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, LimboLogs.Instance);
 
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer2);
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
@@ -114,7 +117,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
 
-            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, null!, LimboLogs.Instance);
+            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, LimboLogs.Instance);
 
             for (int i = 0; i < 200; i++)
             {

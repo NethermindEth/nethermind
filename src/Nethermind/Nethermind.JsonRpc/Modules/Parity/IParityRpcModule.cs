@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -24,10 +11,10 @@ namespace Nethermind.JsonRpc.Modules.Parity
     [RpcModule(ModuleType.Parity)]
     public interface IParityRpcModule : IRpcModule
     {
-        [JsonRpcMethod(Description = "Returns a list of transactions currently in the queue.",
+        [JsonRpcMethod(Description = "Returns a list of transactions currently in the queue. If address is provided, returns transactions only with given sender address.",
             IsImplemented = true,
             ExampleResponse = "{\"hash\":\"0x9372fe18622fd45569ef117644d4cda4af51d11bb3c72fa27690e78c9b0d7808\",\"nonce\":\"0x11b55\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x89a3fc1d3c68f927be68d3de139980940a89fc80\",\"to\":\"0x89a3fc1d3c68f927be68d3de139980940a89fc80\",\"value\":\"0x0\",\"gasPrice\":\"0x3b9aca08\",\"gas\":\"0x7530\",\"input\":\"0x2f47e6a5c13bb151cad6f7297ceb6a197a9be6fdb3acbcfe1df3cad362525932\",\"raw\":\"0xf88683011b55843b9aca088275309489a3fc1d3c68f927be68d3de139980940a89fc8080a02f47e6a5c13bb151cad6f7297ceb6a197a9be6fdb3acbcfe1df3cad3625259322ba04cfe3030a781f8af08ebe69286a4fab707f00ce4e535c392ba8249527bdae5e5a002203d6802596ff141506437f7ae72b4391b2bdffafba45f8cb561cf5d24b456\",\"creates\":null,\"publicKey\":\"0xf409402c0b151206bb98e1031630681df4c046f0c278f920174daa14a34549fa2da52016ca659c0fe254c542fc3034c5a8da9f4d145fec6150db5ed19b4bc7ce\",\"chainId\":4,\"condition\":null,\"r\":\"0x4cfe3030a781f8af08ebe69286a4fab707f00ce4e535c392ba8249527bdae5e5\",\"s\":\"0x02203d6802596ff141506437f7ae72b4391b2bdffafba45f8cb561cf5d24b456\",\"v\":\"0x2b\",\"standardV\":\"0x0\"}, (...)")]
-        ResultWrapper<ParityTransaction[]> parity_pendingTransactions();
+        ResultWrapper<ParityTransaction[]> parity_pendingTransactions([JsonRpcParameter(ExampleValue = "[\"0x78467cada5f1883e79fcf0f3ebfa50abeec8c820\"]")] Address? address = null);
 
         [JsonRpcMethod(Description = "Get receipts from all transactions from particular block, more efficient than fetching the receipts one-by-one.",
             IsImplemented = true,

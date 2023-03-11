@@ -1,154 +1,137 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 
-namespace Nethermind.Cli.Console
+namespace Nethermind.Cli.Console;
+
+public class CliConsole : ICliConsole
 {
-    public class CliConsole : ICliConsole
+    protected static Terminal _terminal;
+    public Terminal Terminal { get => _terminal; }
+
+    protected static readonly Dictionary<string, Terminal> Terminals = new Dictionary<string, Terminal>
     {
-        private static ColorScheme _colorScheme = DraculaColorScheme.Instance;
+        ["cmd.exe"] = Terminal.Cmd,
+        ["cmd"] = Terminal.Cmder,
+        ["powershell"] = Terminal.Powershell,
+        ["cygwin"] = Terminal.Cygwin
+    };
 
-        private static Terminal _terminal;
+    public CliConsole()
+    {
+        _terminal = PrepareConsoleForTerminal();
 
-        private static readonly Dictionary<string, Terminal> Terminals = new Dictionary<string, Terminal>
+        System.Console.WriteLine("**********************************************");
+        System.Console.WriteLine();
+        System.Console.WriteLine("Nethermind CLI {0}", ProductInfo.Version);
+        System.Console.WriteLine("  https://github.com/NethermindEth/nethermind");
+        System.Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/");
+        System.Console.WriteLine();
+        System.Console.WriteLine("powered by:");
+        System.Console.WriteLine("  https://github.com/sebastienros/jint");
+        System.Console.WriteLine("  https://github.com/tomakita/Colorful.Console");
+        System.Console.WriteLine("  https://github.com/tonerdo/readline");
+        System.Console.WriteLine();
+        System.Console.WriteLine("**********************************************");
+        System.Console.WriteLine();
+    }
+
+    protected Terminal GetTerminal()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            ["cmd.exe"] = Terminal.Cmd,
-            ["cmd"] = Terminal.Cmder,
-            ["powershell"] = Terminal.Powershell,
-            ["cygwin"] = Terminal.Cygwin
-        };
+            return RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? Terminal.LinuxBash :
+                RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? Terminal.MacBash : Terminal.Unknown;
+        }
 
-        public Terminal Init(ColorScheme colorScheme)
+        var title = System.Console.Title.ToLowerInvariant();
+        foreach (var (key, value) in Terminals)
         {
-            _colorScheme = colorScheme;
-            Colorful.Console.BackgroundColor = colorScheme.BackgroundColor;
-            Colorful.Console.ForegroundColor = colorScheme.Text;
-            _terminal = GetTerminal();
-            if (_terminal != Terminal.Powershell)
+            if (title.Contains(key))
             {
-                Colorful.Console.ResetColor();
+                return value;
             }
-
-            if (_terminal != Terminal.Cygwin)
-            {
-                Colorful.Console.Clear();
-            }
-
-            string version = ClientVersion.Version;
-
-            Colorful.Console.WriteLine("**********************************************", _colorScheme.Comment);
-            Colorful.Console.WriteLine();
-            Colorful.Console.WriteLine("Nethermind CLI {0}", GetColor(_colorScheme.Good), version);
-            Colorful.Console.WriteLine("  https://github.com/NethermindEth/nethermind", GetColor(_colorScheme.Interesting));
-            Colorful.Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/", GetColor(_colorScheme.Interesting));
-            Colorful.Console.WriteLine();
-            Colorful.Console.WriteLine("powered by:", _colorScheme.Text);
-            Colorful.Console.WriteLine("  https://github.com/sebastienros/jint", GetColor(_colorScheme.Interesting));
-            Colorful.Console.WriteLine("  https://github.com/tomakita/Colorful.Console", GetColor(_colorScheme.Interesting));
-            Colorful.Console.WriteLine("  https://github.com/tonerdo/readline", GetColor(_colorScheme.Interesting));
-            Colorful.Console.WriteLine();
-            Colorful.Console.WriteLine("**********************************************", _colorScheme.Comment);
-            Colorful.Console.WriteLine();
-
-            return _terminal;
         }
 
-        private Terminal GetTerminal()
+        return Terminal.Unknown;
+    }
+
+    protected Terminal PrepareConsoleForTerminal()
+    {
+        _terminal = GetTerminal();
+        if (_terminal != Terminal.Powershell)
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                return RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? Terminal.LinuxBash :
-                    RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? Terminal.MacBash : Terminal.Unknown;
-            }
-
-            var title = Colorful.Console.Title.ToLowerInvariant();
-            foreach (var (key, value) in Terminals)
-            {
-                if (title.Contains(key))
-                {
-                    return value;
-                }
-            }
-
-            return Terminal.Unknown;
+            System.Console.ResetColor();
         }
 
-        private Color GetColor(Color defaultColor)
+        if (_terminal != Terminal.Cygwin)
         {
-            return _terminal == Terminal.LinuxBash ? _colorScheme.Text : defaultColor;
+            System.Console.Clear();
         }
+        return _terminal;
+    }
 
-        public void WriteException(Exception e)
-        {
-            Colorful.Console.WriteLine(e.ToString(), GetColor(_colorScheme.ErrorColor));
-        }
+    public virtual void WriteException(Exception e)
+    {
+        System.Console.WriteLine(e.ToString());
+    }
 
-        public void WriteErrorLine(string errorMessage)
-        {
-            Colorful.Console.WriteLine(errorMessage, GetColor(_colorScheme.ErrorColor));
-        }
+    public virtual void WriteErrorLine(string errorMessage)
+    {
+        System.Console.WriteLine(errorMessage);
+    }
 
-        public void WriteLine(object objectToWrite)
-        {
-            Colorful.Console.WriteLine(objectToWrite.ToString(), _colorScheme.Text);
-        }
+    public virtual void WriteLine(object objectToWrite)
+    {
+        System.Console.WriteLine(objectToWrite.ToString());
+    }
 
-        public void Write(object objectToWrite)
-        {
-            Colorful.Console.Write(objectToWrite.ToString(), _colorScheme.Text);
-        }
+    public virtual void Write(object objectToWrite)
+    {
+        System.Console.Write(objectToWrite.ToString());
+    }
 
-        public void WriteCommentLine(object objectToWrite)
-        {
-            Colorful.Console.WriteLine(objectToWrite.ToString(), _colorScheme.Comment);
-        }
+    public virtual void WriteCommentLine(object objectToWrite)
+    {
+        System.Console.WriteLine(objectToWrite.ToString());
+    }
 
-        public void WriteLessImportant(object objectToWrite)
-        {
-            Colorful.Console.Write(objectToWrite.ToString(), GetColor(_colorScheme.LessImportant));
-        }
+    public virtual void WriteLessImportant(object objectToWrite)
+    {
+        System.Console.Write(objectToWrite.ToString());
+    }
 
-        public void WriteKeyword(string keyword)
-        {
-            Colorful.Console.Write(keyword, GetColor(_colorScheme.Keyword));
-        }
+    public virtual void WriteKeyword(string keyword)
+    {
+        System.Console.Write(keyword);
+    }
 
-        public void WriteInteresting(string interesting)
-        {
-            Colorful.Console.WriteLine(interesting, GetColor(_colorScheme.Interesting));
-        }
+    public virtual void WriteInteresting(string interesting)
+    {
+        System.Console.WriteLine(interesting);
+    }
 
-        public void WriteLine()
-        {
-            Colorful.Console.WriteLine();
-        }
+    public virtual void WriteLine()
+    {
+        System.Console.WriteLine();
+    }
 
-        public void WriteGood(string goodText)
-        {
-            Colorful.Console.WriteLine(goodText, GetColor(_colorScheme.Good));
-        }
+    public virtual void WriteGood(string goodText)
+    {
+        System.Console.WriteLine(goodText);
+    }
 
-        public void WriteString(object result)
-        {
-            Colorful.Console.WriteLine(result, GetColor(_colorScheme.String));
-        }
+    public virtual void WriteString(object result)
+    {
+        System.Console.WriteLine(result);
+    }
+
+    public void ResetColor()
+    {
+        System.Console.ResetColor();
     }
 }

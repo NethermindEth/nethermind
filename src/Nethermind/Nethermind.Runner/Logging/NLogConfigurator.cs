@@ -1,22 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
 using Microsoft.Extensions.CommandLineUtils;
+using Nethermind.Core.Collections;
 using NLog;
 using NLog.Config;
 using NLog.Targets;
@@ -32,9 +20,9 @@ namespace Nethermind.Runner.Logging
             string minLevel = "Off")
         {
             LoggingConfiguration loggingConfiguration = LogManager.Configuration;
-            if (loggingConfiguration != null)
+            if (loggingConfiguration is not null)
             {
-                if (loggingConfiguration.AllTargets != null)
+                if (loggingConfiguration.AllTargets is not null)
                 {
                     foreach (SeqTarget target in loggingConfiguration.AllTargets.OfType<SeqTarget>())
                     {
@@ -44,7 +32,7 @@ namespace Nethermind.Runner.Logging
                         {
                             foreach (Target? ruleTarget in rule.Targets)
                             {
-                                if (ruleTarget.Name == "seq")
+                                if (ruleTarget.Name == "seq" && rule.LoggerNamePattern == "*")
                                 {
                                     rule.EnableLoggingForLevels(LogLevel.FromString(minLevel), LogLevel.Fatal);
                                 }
@@ -54,8 +42,17 @@ namespace Nethermind.Runner.Logging
                 }
 
                 // // // re-initialize single target
-                loggingConfiguration.AllTargets?.OfType<SeqTarget>().ToList().ForEach(t => t.Dispose());
+                loggingConfiguration.AllTargets?.OfType<SeqTarget>().ForEach(t => t.Dispose());
                 LogManager.ReconfigExistingLoggers();
+            }
+        }
+
+        public static void ClearSeqTarget()
+        {
+            LoggingConfiguration loggingConfiguration = LogManager.Configuration;
+            if (loggingConfiguration is not null)
+            {
+                loggingConfiguration.RemoveTarget("seq");
             }
         }
 

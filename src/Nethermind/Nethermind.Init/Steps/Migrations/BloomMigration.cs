@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -36,7 +23,7 @@ namespace Nethermind.Init.Steps.Migrations
 {
     public class BloomMigration : IDatabaseMigration
     {
-        private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Array.Empty<byte>());
+        private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>());
 
         private readonly IApiWithNetwork _api;
         private readonly ILogger _logger;
@@ -58,9 +45,9 @@ namespace Nethermind.Init.Steps.Migrations
 
         public void Run()
         {
-            if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
-            if (_api.Synchronizer == null) throw new StepDependencyException(nameof(_api.Synchronizer));
-            if (_api.SyncModeSelector == null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
+            if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
+            if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
+            if (_api.SyncModeSelector is null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
 
             IBloomStorage? storage = _api.BloomStorage;
             if (storage.NeedsMigration)
@@ -93,7 +80,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             if (CanMigrate(e.Current))
             {
-                if (_api.SyncModeSelector == null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
+                if (_api.SyncModeSelector is null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
 
                 RunBloomMigration();
                 _api.SyncModeSelector.Changed -= SynchronizerOnSyncModeChanged;
@@ -102,8 +89,8 @@ namespace Nethermind.Init.Steps.Migrations
 
         private void RunBloomMigration()
         {
-            if (_api.DisposeStack == null) throw new StepDependencyException(nameof(_api.DisposeStack));
-            if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
+            if (_api.DisposeStack is null) throw new StepDependencyException(nameof(_api.DisposeStack));
+            if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
 
             if (_api.BloomStorage.NeedsMigration)
             {
@@ -126,8 +113,8 @@ namespace Nethermind.Init.Steps.Migrations
         {
             get
             {
-                if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
-                if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+                if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
+                if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
                 return _api.BloomStorage.MinBlockNumber == long.MaxValue
                     ? _api.BlockTree.BestKnownNumber
@@ -143,9 +130,9 @@ namespace Nethermind.Init.Steps.Migrations
                 return EmptyHeader;
             }
 
-            if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.ChainLevelInfoRepository == null) throw new StepDependencyException(nameof(_api.ChainLevelInfoRepository));
+            if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.ChainLevelInfoRepository is null) throw new StepDependencyException(nameof(_api.ChainLevelInfoRepository));
 
             IBlockTree blockTree = _api.BlockTree;
             IBloomStorage storage = _api.BloomStorage;
@@ -183,7 +170,7 @@ namespace Nethermind.Init.Steps.Migrations
                     {
                         using BatchWrite batch = chainLevelInfoRepository.StartBatch();
                         ChainLevelInfo? level = chainLevelInfoRepository.LoadLevel(number);
-                        if (level != null)
+                        if (level is not null)
                         {
                             if (!level.HasBlockOnMainChain)
                             {
@@ -195,7 +182,7 @@ namespace Nethermind.Init.Steps.Migrations
                             }
 
                             blockHash = level.MainChainBlock?.BlockHash;
-                            return blockHash != null;
+                            return blockHash is not null;
                         }
                         else
                         {
@@ -243,7 +230,7 @@ namespace Nethermind.Init.Steps.Migrations
 
         private string GeAveragesMessage()
         {
-            if (_bloomConfig.MigrationStatistics && _averages != null)
+            if (_bloomConfig.MigrationStatistics && _averages is not null)
             {
                 _builder.Clear();
                 _builder.Append("Average bloom saturation: ");

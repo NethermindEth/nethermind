@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
@@ -109,7 +96,7 @@ namespace Nethermind.Evm.Precompiles
 
             int baseLength = (int)new UInt256(extendedInput.Slice(0, 32), true);
             UInt256 expLengthUint256 = new(extendedInput.Slice(32, 32), true);
-            int expLength = expLengthUint256 > int.MaxValue ? int.MaxValue : (int)expLengthUint256;
+            int expLength = expLengthUint256 > Array.MaxLength ? Array.MaxLength : (int)expLengthUint256;
             int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);
 
             return (baseLength, expLength, modulusLength);
@@ -120,6 +107,12 @@ namespace Nethermind.Evm.Precompiles
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
+
+            // if both are 0, than expLenght can be huge, which leads to potential buffer to big exception
+            if (baseLength == 0 && modulusLength == 0)
+            {
+                return (Bytes.Empty, true);
+            }
 
             byte[] modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
             using mpz_t modulusInt = ImportDataToGmp(modulusData);
@@ -194,7 +187,7 @@ namespace Nethermind.Evm.Precompiles
         /// if exponent_length &lt;= 32 and exponent == 0: iteration_count = 0
         /// elif exponent_length &lt;= 32: iteration_count = exponent.bit_length() - 1
         /// elif exponent_length > 32: iteration_count = (8 * (exponent_length - 32)) + ((exponent & (2**256 - 1)).bit_length() - 1)
-        /// return max(iteration_count, 1) 
+        /// return max(iteration_count, 1)
         /// </summary>
         /// <param name="exponentLength"></param>
         /// <param name="exponent"></param>

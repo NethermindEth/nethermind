@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -22,6 +9,7 @@ using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
@@ -30,6 +18,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -87,11 +76,11 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public Task<IBlockProducer> BuildProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? additionalTxSource = null)
         {
-            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
             ILogger logger = _api.LogManager.GetClassLogger();
-            if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
+            if (logger.IsInfo) logger.Info("Starting AuRa block producer & sealer");
 
             BlockProducerEnv producerEnv = GetProducerChain(additionalTxSource);
 
@@ -110,20 +99,21 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _auraConfig,
                 gasLimitCalculator,
                 _api.SpecProvider,
-                _api.LogManager);
+                _api.LogManager,
+                _api.ConfigProvider.GetConfig<IBlocksConfig>());
 
             return Task.FromResult(blockProducer);
         }
 
         private BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv changeableTxProcessingEnv, ReadOnlyTxProcessingEnv constantContractTxProcessingEnv)
         {
-            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.ValidatorStore == null) throw new StepDependencyException(nameof(_api.ValidatorStore));
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.GasPriceOracle == null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
+            if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            if (_api.ValidatorStore is null) throw new StepDependencyException(nameof(_api.ValidatorStore));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
 
@@ -143,7 +133,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     _api.FinalizationManager,
                     NullTxSender.Instance,
                     NullTxPool.Instance,
-                    NethermindApi.Config<IMiningConfig>(),
+                    NethermindApi.Config<IBlocksConfig>(),
                     _api.LogManager,
                     _api.EngineSigner,
                     _api.SpecProvider,
@@ -169,6 +159,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 changeableTxProcessingEnv.BlockTree,
+                new WithdrawalProcessor(_api.StateProvider!, _api.LogManager),
                 auRaTxFilter,
                 CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride,
                 contractRewriter)
@@ -177,7 +168,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             };
         }
 
-        private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        internal TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
             IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority =
@@ -185,7 +176,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
             (_txPriorityContract, _localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
-            if (_txPriorityContract != null || _localDataSource != null)
+            if (_txPriorityContract is not null || _localDataSource is not null)
             {
                 _minGasPricesContractDataStore = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);
@@ -278,7 +269,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             return _blockProducerContext ??= Create();
         }
 
-        internal ITxSource CreateStandardTxSourceForProducer(
+        private ITxSource CreateStandardTxSourceForProducer(
             ReadOnlyTxProcessingEnv processingEnv,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
             CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
@@ -295,7 +286,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         private ITxFilter CreateAuraTxFilterForProducer(IReadOnlyTxProcessorSource readOnlyTxProcessorSource, ISpecProvider specProvider) =>
             TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(
-                NethermindApi.Config<IMiningConfig>(),
+                NethermindApi.Config<IBlocksConfig>(),
                 _api,
                 readOnlyTxProcessorSource,
                 _minGasPricesContractDataStore,
@@ -349,9 +340,9 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 return false;
             }
 
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
 
             IList<ITxSource> txSources = new List<ITxSource> { CreateStandardTxSourceForProducer(processingEnv, readOnlyTxProcessorSource) };
             bool needSigner = false;
@@ -372,7 +363,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             }
 
             ITxFilter? txPermissionFilter = TxAuRaFilterBuilders.CreateTxPermissionFilter(_api, readOnlyTxProcessorSource);
-            if (txPermissionFilter != null)
+            if (txPermissionFilter is not null)
             {
                 // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
                 txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, _api.LogManager);
@@ -383,11 +374,11 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         private IGasLimitCalculator CreateGasLimitCalculator(IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
 
             IGasLimitCalculator gasLimitCalculator =
-                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IMiningConfig>());
+                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IBlocksConfig>());
             if (blockGasLimitContractTransitions?.Any() == true)
             {
                 AuRaContractGasLimitOverride auRaContractGasLimitOverride = new(

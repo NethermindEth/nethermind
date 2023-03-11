@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -28,6 +14,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -263,7 +250,7 @@ namespace Nethermind.AuRa.Test.Transactions
             VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance,
                 TestItem.AddressA,
                 5,
-                Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<Keccak, UInt256>(100, "TestCache"),
+                Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<KeccakKey, UInt256>(100, "TestCache"),
                 LimboLogs.Instance,
                 Substitute.For<ISpecProvider>());
 
@@ -276,7 +263,7 @@ namespace Nethermind.AuRa.Test.Transactions
             public PermissionBasedTxFilter PermissionBasedTxFilter { get; private set; }
             public PermissionBasedTxFilter.Cache TxPermissionFilterCache { get; private set; }
 
-            public ICache<Keccak, UInt256> TransactionPermissionContractVersions { get; private set; }
+            public LruCache<KeccakKey, UInt256> TransactionPermissionContractVersions { get; private set; }
 
             protected override BlockProcessor CreateBlockProcessor()
             {
@@ -287,7 +274,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 };
 
                 TransactionPermissionContractVersions =
-                    new LruCache<Keccak, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
+                    new LruCache<KeccakKey, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
 
                 IReadOnlyTrieStore trieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
                 IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(
@@ -313,6 +300,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,
+                    new WithdrawalProcessor(State, LogManager),
                     PermissionBasedTxFilter);
             }
 

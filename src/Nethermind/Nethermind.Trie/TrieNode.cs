@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.ComponentModel;
@@ -78,12 +65,10 @@ namespace Nethermind.Trie
 
         public long? LastSeen { get; set; }
 
-        public byte[]? Path => Key?.Path;
-
-        internal HexPrefix? Key
+        public byte[]? Key
         {
-            get => _data?[0] as HexPrefix;
-            set
+            get => _data?[0] as byte[];
+            internal set
             {
                 if (IsSealed)
                 {
@@ -219,7 +204,7 @@ namespace Nethermind.Trie
 #if DEBUG
             return
                 $"[{NodeType}({FullRlp?.Length}){(FullRlp is not null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
-                $"|{Id}|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+                $"|{Id}|{Keccak}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
             return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
@@ -278,7 +263,7 @@ namespace Nethermind.Trie
                 _rlpStream.ReadSequenceLength();
 
                 // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-                int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining(null, 3);
+                int numberOfItems = _rlpStream.PeekNumberOfItemsRemaining(null, 3);
 
                 if (numberOfItems > 2)
                 {
@@ -286,24 +271,23 @@ namespace Nethermind.Trie
                 }
                 else if (numberOfItems == 2)
                 {
-                    HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
-                    bool isExtension = key.IsExtension;
+                    (byte[] key, bool isLeaf) = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
 
                     // a hack to set internally and still verify attempts from the outside
                     // after the code is ready we should just add proper access control for methods from the outside and inside
                     bool isDirtyActual = IsDirty;
                     IsDirty = true;
 
-                    if (isExtension)
-                    {
-                        NodeType = NodeType.Extension;
-                        Key = key;
-                    }
-                    else
+                    if (isLeaf)
                     {
                         NodeType = NodeType.Leaf;
                         Key = key;
                         Value = _rlpStream.DecodeByteArray();
+                    }
+                    else
+                    {
+                        NodeType = NodeType.Extension;
+                        Key = key;
                     }
 
                     IsDirty = isDirtyActual;
@@ -574,7 +558,7 @@ namespace Nethermind.Trie
             return MemorySizes.Align(unaligned);
         }
 
-        public TrieNode CloneWithChangedKey(HexPrefix key)
+        public TrieNode CloneWithChangedKey(byte[] key)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -609,7 +593,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(HexPrefix key, byte[]? changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(byte[] key, byte[]? changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -873,7 +857,7 @@ namespace Nethermind.Trie
                     {
                         throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");
                     }
-                    else if (childNode.Keccak != null) // if not by value node
+                    else if (childNode.Keccak is not null) // if not by value node
                     {
                         _data![i] = childNode.Keccak;
                     }

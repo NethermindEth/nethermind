@@ -1,20 +1,8 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -26,18 +14,19 @@ namespace Nethermind.Specs
         public static readonly GoerliSpecProvider Instance = new();
         private GoerliSpecProvider() { }
 
-        private long? _theMergeBlock = null;
+        private ForkActivation? _theMergeBlock = null;
         private UInt256? _terminalTotalDifficulty = 10790000;
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            if (blockNumber != null)
-                _theMergeBlock = blockNumber;
-            if (terminalTotalDifficulty != null)
+            if (blockNumber is not null)
+                _theMergeBlock = (ForkActivation)blockNumber;
+            if (terminalTotalDifficulty is not null)
                 _terminalTotalDifficulty = terminalTotalDifficulty;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public ForkActivation? MergeBlockNumber => _theMergeBlock;
+        public ulong TimestampFork => ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
 
@@ -47,26 +36,36 @@ namespace Nethermind.Specs
 
         private IReleaseSpec LondonNoBomb { get; } = London.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber) =>
-            blockNumber switch
+
+        public IReleaseSpec GetSpec(ForkActivation forkActivation)
+        {
+            return forkActivation.BlockNumber switch
             {
                 < IstanbulBlockNumber => GenesisSpec,
                 < BerlinBlockNumber => IstanbulNoBomb,
-                < LondonBlockNumber => BerlinNoBomb,
-                _ => LondonNoBomb
+                < LondonBlockNumber => Berlin.Instance,
+                _ => forkActivation.Timestamp switch
+                {
+                    null or < ShanghaiTimestamp => London.Instance,
+                    _ => Shanghai.Instance
+                }
             };
+        }
 
         public long? DaoBlockNumber => null;
         public const long IstanbulBlockNumber = 1_561_651;
         public const long BerlinBlockNumber = 4_460_644;
         public const long LondonBlockNumber = 5_062_605;
-        public ulong ChainId => Core.ChainId.Goerli;
+        public const ulong ShanghaiTimestamp = 1678832736;
+        public ulong NetworkId => BlockchainIds.Goerli;
+        public ulong ChainId => NetworkId;
 
-        public long[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionActivations { get; } =
         {
-            IstanbulBlockNumber,
-            BerlinBlockNumber,
-            LondonBlockNumber
+            (ForkActivation)IstanbulBlockNumber,
+            (ForkActivation)BerlinBlockNumber,
+            (ForkActivation)LondonBlockNumber,
+            (LondonBlockNumber, ShanghaiTimestamp)
         };
     }
 }

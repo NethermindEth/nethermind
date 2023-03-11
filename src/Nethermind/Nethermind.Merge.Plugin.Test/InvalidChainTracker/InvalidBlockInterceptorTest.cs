@@ -1,27 +1,14 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using System.Linq;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -89,6 +76,42 @@ public class InvalidBlockInterceptorTest
     {
         Block block = Build.A.Block.TestObject;
         block.Header.StateRoot = Keccak.Zero;
+
+        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+
+        _tracker.DidNotReceive().SetChildParent(block.Hash, block.ParentHash);
+        _tracker.DidNotReceive().OnInvalidBlock(block.Hash, block.ParentHash);
+    }
+
+    [Test]
+    public void TestBlockWithNotMatchingTxShouldNotGetTracked()
+    {
+        Block block = Build.A.Block
+            .WithTransactions(10, MainnetSpecProvider.Instance)
+            .TestObject;
+
+        block = new Block(block.Header, block.Body.WithChangedTransactions(
+            block.Transactions.Take(9).ToArray()
+        ));
+
+        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+
+        _tracker.DidNotReceive().SetChildParent(block.Hash, block.ParentHash);
+        _tracker.DidNotReceive().OnInvalidBlock(block.Hash, block.ParentHash);
+    }
+
+    [Test]
+    public void TestBlockWithIncorrectWithdrawalsShouldNotGetTracked()
+    {
+        Block block = Build.A.Block
+            .WithWithdrawals(10)
+            .TestObject;
+
+        block = new Block(block.Header, block.Body.WithChangedWithdrawals(
+            block.Withdrawals.Take(8).ToArray()
+        ));
 
         _baseValidator.ValidateSuggestedBlock(block).Returns(false);
         _invalidBlockInterceptor.ValidateSuggestedBlock(block);

@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -28,6 +14,14 @@ namespace Nethermind.Crypto
         {
             private const string AppName = "Nethermind";
             private const string BaseName = AppName + "_";
+            private const string ProtectionDir = "protection_keys";
+
+            private readonly string _keyStoreDir;
+
+            public AspNetWrapper(string keyStoreDir)
+            {
+                _keyStoreDir = keyStoreDir;
+            }
 
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
             {
@@ -43,23 +37,18 @@ namespace Nethermind.Crypto
 
             private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy)
             {
-                if (scope == DataProtectionScope.CurrentUser)
-                {
-                    return GetUserProtector(optionalEntropy);
-                }
-                else
-                {
-                    return GetMachineProtector(optionalEntropy);
-                }
+                return scope == DataProtectionScope.CurrentUser
+                    ? GetUserProtector(optionalEntropy)
+                    : GetMachineProtector(optionalEntropy);
             }
 
             private IDataProtector GetUserProtector(byte[] optionalEntropy)
             {
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                var path = Path.Combine(appData, AppName);
-                var info = new DirectoryInfo(path);
-                var provider = DataProtectionProvider.Create(info);
-                var purpose = CreatePurpose(optionalEntropy);
+                string path = Path.Combine(_keyStoreDir, ProtectionDir);
+                DirectoryInfo info = new(path);
+                IDataProtectionProvider provider = DataProtectionProvider.Create(info);
+                string purpose = CreatePurpose(optionalEntropy);
+
                 return provider.CreateProtector(purpose);
             }
 

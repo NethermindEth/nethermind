@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -32,8 +19,6 @@ namespace Nethermind.Config
         private Dictionary<string, object> Categories { get; set; } = new(StringComparer.InvariantCultureIgnoreCase);
 
         private readonly Dictionary<Type, Type> _implementations = new();
-
-        private readonly TypeDiscovery _typeDiscovery = new();
 
         public T GetConfig<T>() where T : IConfig
         {
@@ -59,17 +44,17 @@ namespace Nethermind.Config
         {
             for (int i = 0; i < _configSource.Count; i++)
             {
-                (bool isSet, string value) = _configSource[i].GetRawValue(category, name);
+                (bool isSet, string str) = _configSource[i].GetRawValue(category, name);
                 if (isSet)
                 {
-                    return value;
+                    return str;
                 }
             }
 
-            return Categories.ContainsKey(category) ? Categories[category].GetType()
+            return Categories.TryGetValue(category, out object value) ? value.GetType()
                 .GetProperties(BindingFlags.Instance | BindingFlags.Public)
                 .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.InvariantCultureIgnoreCase))
-                ?.GetValue(Categories[category]) : null;
+                ?.GetValue(value) : null;
         }
 
         public void AddSource(IConfigSource configSource)
@@ -80,15 +65,17 @@ namespace Nethermind.Config
         public void Initialize()
         {
             Type type = typeof(IConfig);
-            IEnumerable<Type> interfaces = _typeDiscovery.FindNethermindTypes(type).Where(x => x.IsInterface);
+            IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindTypes(type).Where(x => x.IsInterface);
 
             foreach (Type @interface in interfaces)
             {
                 Type directImplementation = @interface.GetDirectInterfaceImplementation();
 
-                if (directImplementation != null)
+                if (directImplementation is not null)
                 {
-                    Categories.Add(@interface.Name.Substring(1), Activator.CreateInstance(directImplementation));
+                    Categories.Add(@interface.Name.Substring(1),
+                        Activator.CreateInstance(directImplementation));
+
                     _implementations[@interface] = directImplementation;
 
                     object config = Activator.CreateInstance(_implementations[@interface]);
@@ -122,12 +109,16 @@ namespace Nethermind.Config
 
         public (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) FindIncorrectSettings()
         {
-            if (_instances.Count == 0)
+            if (_instances.IsEmpty)
             {
                 Initialize();
             }
 
-            HashSet<string> propertySet = _instances.Values.SelectMany(i => i.GetType().GetProperties().Select(p => GetKey(i.GetType().Name, p.Name))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> propertySet = _instances.Values
+                .SelectMany(i => i.GetType()
+                    .GetProperties()
+                    .Select(p => GetKey(i.GetType().Name, p.Name)))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             List<(IConfigSource Source, string Category, string Name)> incorrectSettings = new();
 

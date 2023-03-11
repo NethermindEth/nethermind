@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -62,7 +49,7 @@ namespace Nethermind.Synchronization
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
-        private readonly LruKeyCache<Keccak> _recentlySuggested = new(128, 128, "recently suggested blocks");
+        private readonly LruCache<KeccakKey, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
         private readonly long _pivotNumber;
         private readonly Keccak _pivotHash;
@@ -105,14 +92,14 @@ namespace Nethermind.Synchronization
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
         }
 
-        public ulong ChainId => _blockTree.ChainId;
+        public ulong NetworkId => _blockTree.NetworkId;
         public BlockHeader Genesis => _blockTree.Genesis;
 
         public BlockHeader? Head
         {
             get
             {
-                if (_blockTree.Head == null)
+                if (_blockTree.Head is null)
                 {
                     return null;
                 }
@@ -146,12 +133,12 @@ namespace Nethermind.Synchronization
             if (!_gossipPolicy.CanGossipBlocks) return;
             if (block.Difficulty == 0) return; // don't gossip post merge blocks
 
-            if (block.TotalDifficulty == null)
+            if (block.TotalDifficulty is null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown total difficulty");
             }
 
-            if (block.Hash == null)
+            if (block.Hash is null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown hash");
             }
@@ -180,20 +167,27 @@ namespace Nethermind.Synchronization
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
 
+            // We skip blocks that are old
             if (isBlockBeforeTheSyncPivot || isBlockOlderThanMaxReorgAllows)
             {
                 return;
             }
 
-            if (_recentlySuggested.Set(block.Hash))
+            // We skip already imported blocks
+            if (_blockTree.IsKnownBlock(block.Number, block.Hash))
             {
-                if (_specProvider.TerminalTotalDifficulty != null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
+                return;
+            }
+
+            if (_recentlySuggested.Set(block.Hash, nodeWhoSentTheBlock))
+            {
+                if (_specProvider.TerminalTotalDifficulty is not null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
                 {
                     if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
                 }
 
                 Block? parent = _blockTree.FindBlock(block.ParentHash);
-                if (parent != null)
+                if (parent is not null)
                 {
                     // we null total difficulty for a block in a block tree as we don't trust the message
                     UInt256? totalDifficulty = block.TotalDifficulty;
@@ -329,28 +323,28 @@ namespace Nethermind.Synchronization
             StringBuilder sb = new();
             sb.Append($"Discovered new block {block.ToString(Block.Format.HashNumberAndTx)}");
 
-            if (block.Author != null)
+            if (block.Author is not null)
             {
                 sb.Append(" sealer ");
-                if (KnownAddresses.GoerliValidators.ContainsKey(block.Author))
+                if (KnownAddresses.GoerliValidators.TryGetValue(block.Author, out string value))
                 {
-                    sb.Append(KnownAddresses.GoerliValidators[block.Author]);
+                    sb.Append(value);
                 }
-                else if (KnownAddresses.RinkebyValidators.ContainsKey(block.Author))
+                else if (KnownAddresses.RinkebyValidators.TryGetValue(block.Author, out value))
                 {
-                    sb.Append(KnownAddresses.GoerliValidators[block.Author]);
+                    sb.Append(value);
                 }
                 else
                 {
                     sb.Append(block.Author);
                 }
             }
-            else if (block.Beneficiary != null)
+            else if (block.Beneficiary is not null)
             {
                 sb.Append(" miner ");
-                if (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary))
+                if (KnownAddresses.KnownMiners.TryGetValue(block.Beneficiary, out string value))
                 {
-                    sb.Append(KnownAddresses.KnownMiners[block.Beneficiary]);
+                    sb.Append(value);
                 }
                 else
                 {
@@ -360,7 +354,7 @@ namespace Nethermind.Synchronization
 
             sb.Append($", sent by {syncPeer:s}");
 
-            if (block.Header?.AuRaStep != null)
+            if (block.Header?.AuRaStep is not null)
             {
                 sb.Append($", with AuRa step {block.Header.AuRaStep.Value}");
             }
@@ -383,7 +377,7 @@ namespace Nethermind.Synchronization
                 syncPeer.HeadNumber = number;
                 syncPeer.HeadHash = hash;
 
-                if (!_recentlySuggested.Get(hash) && !_blockTree.IsKnownBlock(number, hash))
+                if (!_recentlySuggested.Contains(hash) && !_blockTree.IsKnownBlock(number, hash))
                 {
                     _pool.RefreshTotalDifficulty(syncPeer, hash);
                 }
@@ -392,7 +386,7 @@ namespace Nethermind.Synchronization
 
         public TxReceipt[] GetReceipts(Keccak? blockHash)
         {
-            return blockHash != null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
+            return blockHash is not null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
         }
 
         public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
@@ -411,7 +405,7 @@ namespace Nethermind.Synchronization
                     values[i] = _stateDb[keys[i].Bytes];
                 }
 
-                if (values[i] == null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
+                if (values[i] is null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
                 {
                     values[i] = _codeDb[keys[i].Bytes];
                 }
@@ -448,7 +442,7 @@ namespace Nethermind.Synchronization
             Block block = blockEventArgs.Block;
             if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
             {
-                BroadcastBlock(block, true);
+                BroadcastBlock(block, true, _recentlySuggested.Get(block.Hash));
             }
         }
 
@@ -497,7 +491,7 @@ namespace Nethermind.Synchronization
             {
                 lock (_chtLock)
                 {
-                    if (_cht == null)
+                    if (_cht is null)
                     {
                         throw new InvalidAsynchronousStateException("CHT reference is null when building CHT.");
                     }

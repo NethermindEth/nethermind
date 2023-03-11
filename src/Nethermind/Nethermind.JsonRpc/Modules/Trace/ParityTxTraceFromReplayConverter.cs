@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -33,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteProperty("output", value.Output, serializer);
             writer.WritePropertyName("stateDiff");
 
-            if (value.StateChanges != null)
+            if (value.StateChanges is not null)
             {
                 writer.WriteStartObject();
                 foreach ((Address address, ParityAccountStateChange stateChange) in value.StateChanges.OrderBy(sc => sc.Key, AddressComparer.Instance)) writer.WriteProperty(address.ToString(), stateChange, serializer);
@@ -48,13 +35,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("trace");
 
             writer.WriteStartArray();
-            if (value.Action != null)
+            if (value.Action is not null)
             {
                 WriteJson(writer, value.Action, serializer);
             }
             writer.WriteEndArray();
 
-            if (value.TransactionHash != null)
+            if (value.TransactionHash is not null)
             {
                 writer.WriteProperty("transactionHash", value.TransactionHash, serializer);
             }
@@ -88,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             writer.WriteStartObject();
             writer.WriteProperty("action", traceAction, serializer);
-            if (traceAction.Error == null)
+            if (traceAction.Error is null)
             {
                 writer.WriteProperty("result", traceAction.Result, serializer);
             }

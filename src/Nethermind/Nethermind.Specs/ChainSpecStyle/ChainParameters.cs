@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -22,8 +9,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public class ChainParameters
     {
-        public long MaxCodeSize { get; set; }
-        public long MaxCodeSizeTransition { get; set; }
+        public long? MaxCodeSize { get; set; }
+        public long? MaxCodeSizeTransition { get; set; }
+        public ulong? MaxCodeSizeTransitionTimestamp { get; set; }
         public long GasLimitBoundDivisor { get; set; }
         public Address Registrar { get; set; }
         public UInt256 AccountStartNonce { get; set; }
@@ -57,6 +45,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? Eip1559Transition { get; set; }
         public long? Eip2315Transition { get; set; }
         public long? Eip2537Transition { get; set; }
+        public ulong? Eip2537TransitionTimestamp { get; set; }
         public long? Eip2565Transition { get; set; }
         public long? Eip2929Transition { get; set; }
         public long? Eip2930Transition { get; set; }
@@ -120,6 +109,20 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public UInt256? TerminalTotalDifficulty { get; set; }
 
-        public long? Eip1153Transition { get; set; }
+        /// <summary>
+        /// this field will indicate the timestamp at which this EIP1153 will be enabled.
+        /// </summary>
+        public ulong? Eip1153TransitionTimestamp { get; set; }
+
+        /// <summary>
+        /// this field will indicate the timestamp at which this EIP3651 will be enabled.
+        /// </summary>
+        public ulong? Eip3651TransitionTimestamp { get; set; }
+        public ulong? Eip3855TransitionTimestamp { get; set; }
+        public ulong? Eip3860TransitionTimestamp { get; set; }
+
+        public ulong? Eip4895TransitionTimestamp { get; set; }
+
+        public ulong? Eip4844TransitionTimestamp { get; set; }
     }
 }

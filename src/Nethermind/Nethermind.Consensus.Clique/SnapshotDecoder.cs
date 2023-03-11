@@ -1,19 +1,7 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
@@ -23,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Clique
 {
-    internal class SnapshotDecoder : IRlpDecoder<Snapshot>
+    internal class SnapshotDecoder : IRlpStreamDecoder<Snapshot>
     {
         public Snapshot Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -45,25 +33,39 @@ namespace Nethermind.Consensus.Clique
             return snapshot;
         }
 
-        public Rlp Encode(Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Rlp.Encode(
-                Rlp.Encode((UInt256)item.Number),
-                Rlp.Encode(item.Hash),
-                Rlp.Encode(EncodeSigners(item.Signers)),
-                Rlp.Encode(EncodeVotes(item.Votes)),
-                Rlp.Encode(EncodeTally(item.Tally))
-            );
-        }
+            (int contentLength, int signersLength, int votesLength, int tallyLength) =
+                GetContentLength(item, rlpBehaviors);
+            stream.StartSequence(contentLength);
+            stream.Encode((UInt256)item.Number);
+            stream.Encode(item.Hash);
+            EncodeSigners(stream, item.Signers, signersLength);
+            EncodeVotes(stream, item.Votes, votesLength);
+            EncodeTally(stream, item.Tally, tallyLength);
 
-        public void Encode(MemoryStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new System.NotImplementedException();
         }
 
         public int GetLength(Snapshot item, RlpBehaviors rlpBehaviors)
         {
-            throw new System.NotImplementedException();
+            (int contentLength, int _, int _, int _) = GetContentLength(item, rlpBehaviors);
+            return Rlp.LengthOfSequence(contentLength);
+        }
+
+        private (int contentLength, int signersLength, int votesLength, int tallyLength) GetContentLength(Snapshot item,
+            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            int signersLength = GetSignersContentLength(item.Signers);
+            int votesLength = GetVotesContentLength(item.Votes);
+            int tallyLength = GetTallyContentLength(item.Tally);
+
+            int contentLength = Rlp.LengthOf((UInt256)item.Number);
+            contentLength += Rlp.LengthOf(item.Hash);
+            contentLength += Rlp.LengthOfSequence(signersLength);
+            contentLength += Rlp.LengthOfSequence(votesLength);
+            contentLength += Rlp.LengthOfSequence(tallyLength);
+
+            return (contentLength, signersLength, votesLength, tallyLength);
         }
 
         private SortedList<Address, long> DecodeSigners(RlpStream rlpStream)
@@ -115,50 +117,95 @@ namespace Nethermind.Consensus.Clique
             return tally;
         }
 
-        private Rlp[] EncodeSigners(SortedList<Address, long> signers)
+        private int GetSignersContentLength(SortedList<Address, long> signers)
         {
             int signerCount = signers.Count;
-            Rlp[] rlp = new Rlp[signerCount * 2 + 1];
-            rlp[0] = Rlp.Encode(signerCount);
+            int contentLength = Rlp.LengthOf(signerCount);
             int i = 0;
             foreach ((Address address, long signedAt) in signers)
             {
-                rlp[i + 1] = Rlp.Encode(address);
-                rlp[i + 2] = Rlp.Encode((UInt256)signedAt);
+                contentLength += Rlp.LengthOf(address);
+                contentLength += Rlp.LengthOf((UInt256)signedAt);
                 i += 2;
             }
-            return rlp;
+            return contentLength;
         }
 
-        private Rlp[] EncodeVotes(List<Vote> votes)
+        private void EncodeSigners(RlpStream stream, SortedList<Address, long> signers, int contentLength)
+        {
+            stream.StartSequence(contentLength);
+            int signerCount = signers.Count;
+            stream.Encode(signerCount);
+            int i = 0;
+            foreach ((Address address, long signedAt) in signers)
+            {
+                stream.Encode(address);
+                stream.Encode((UInt256)signedAt);
+                i += 2;
+            }
+        }
+
+        private int GetVotesContentLength(List<Vote> votes)
         {
             int voteCount = votes.Count;
+            int contentLength = Rlp.LengthOf(voteCount);
+            for (int i = 0; i < voteCount; i++)
+            {
+                contentLength += Rlp.LengthOf(votes[i].Signer);
+                contentLength += Rlp.LengthOf((UInt256)votes[i].Block);
+                contentLength += Rlp.LengthOf(votes[i].Address);
+                contentLength += Rlp.LengthOf(votes[i].Authorize);
+            }
+
+            return contentLength;
+        }
+
+        private void EncodeVotes(RlpStream stream, List<Vote> votes, int contentLength)
+        {
+            stream.StartSequence(contentLength);
+            int voteCount = votes.Count;
+            stream.Encode(voteCount);
             Rlp[] rlp = new Rlp[4 * voteCount + 1];
             rlp[0] = Rlp.Encode(voteCount);
             for (int i = 0; i < voteCount; i++)
             {
-                rlp[4 * i + 1] = Rlp.Encode(votes[i].Signer);
-                rlp[4 * i + 2] = Rlp.Encode((UInt256)votes[i].Block);
-                rlp[4 * i + 3] = Rlp.Encode(votes[i].Address);
-                rlp[4 * i + 4] = Rlp.Encode(votes[i].Authorize);
+                stream.Encode(votes[i].Signer);
+                stream.Encode((UInt256)votes[i].Block);
+                stream.Encode(votes[i].Address);
+                stream.Encode(votes[i].Authorize);
             }
-            return rlp;
         }
 
-        private Rlp[] EncodeTally(Dictionary<Address, Tally> tally)
+        private int GetTallyContentLength(Dictionary<Address, Tally> tally)
         {
             int tallyCount = tally.Count;
+            int contentLength = Rlp.LengthOf(tallyCount);
+            int i = 0;
+            foreach (KeyValuePair<Address, Tally> tallyItem in tally)
+            {
+                contentLength += Rlp.LengthOf(tallyItem.Key);
+                contentLength += Rlp.LengthOf(tallyItem.Value.Votes);
+                contentLength += Rlp.LengthOf(tallyItem.Value.Authorize);
+                i++;
+            }
+            return contentLength;
+        }
+
+        private void EncodeTally(RlpStream stream, Dictionary<Address, Tally> tally, int contentLength)
+        {
+            stream.StartSequence(contentLength);
+            int tallyCount = tally.Count;
+            stream.Encode(tallyCount);
             Rlp[] rlp = new Rlp[3 * tallyCount + 1];
             rlp[0] = Rlp.Encode(tallyCount);
             int i = 0;
             foreach (KeyValuePair<Address, Tally> tallyItem in tally)
             {
-                rlp[3 * i + 1] = Rlp.Encode(tallyItem.Key);
-                rlp[3 * i + 2] = Rlp.Encode(tallyItem.Value.Votes);
-                rlp[3 * i + 3] = Rlp.Encode(tallyItem.Value.Authorize);
+                stream.Encode(tallyItem.Key);
+                stream.Encode(tallyItem.Value.Votes);
+                stream.Encode(tallyItem.Value.Authorize);
                 i++;
             }
-            return rlp;
         }
     }
 }

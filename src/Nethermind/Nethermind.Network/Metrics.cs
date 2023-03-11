@@ -1,23 +1,12 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Runtime.Serialization;
 
 namespace Nethermind.Network
 {
+    //TODO: consult on use of metric disabeling flags!
     public static class Metrics
     {
         [Description("Number of incoming connection.")]
@@ -167,6 +156,12 @@ namespace Nethermind.Network
         [Description("Number of eth.65 NewPooledTransactionHashes messages sent")]
         public static long Eth65NewPooledTransactionHashesSent { get; set; }
 
+        [Description("Number of eth.68 NewPooledTransactionHashes messages received")]
+        public static long Eth68NewPooledTransactionHashesReceived { get; set; }
+
+        [Description("Number of eth.68 NewPooledTransactionHashes messages sent")]
+        public static long Eth68NewPooledTransactionHashesSent { get; set; }
+
         [Description("Number of eth.65 GetPooledTransactions messages received")]
         public static long Eth65GetPooledTransactionsReceived { get; set; }
 
@@ -256,5 +251,16 @@ namespace Nethermind.Network
 
         [Description("Number of bytes received through Discovery (UDP).")]
         public static long DiscoveryBytesReceived;
+
+        //EIP-2159: Common Prometheus Metrics Names for Clients
+        [Description("The current number of peers connected.")]
+        [DataMember(Name = "ethereum_peer_count")]
+        //The current number of peers connected changed by threadsafe atomic increment/decrement
+        public static long PeerCount;
+
+        //EIP-2159: Common Prometheus Metrics Names for Clients
+        [Description("The maximum number of peers this node allows to connect.")]
+        [DataMember(Name = "ethereum_peer_limit")]
+        public static long PeerLimit { get; set; }
     }
 }

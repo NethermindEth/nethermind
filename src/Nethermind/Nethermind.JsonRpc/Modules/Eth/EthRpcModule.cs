@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -28,10 +15,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -201,7 +188,7 @@ public partial class EthRpcModule : IEthRpcModule
 
         BlockHeader? header = searchResult.Object;
         Account account = _stateReader.GetAccount(header.StateRoot, address);
-        if (account == null)
+        if (account is null)
         {
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
@@ -299,7 +286,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         Account account = _stateReader.GetAccount(header.StateRoot, address);
-        if (account == null)
+        if (account is null)
         {
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
@@ -335,7 +322,7 @@ public partial class EthRpcModule : IEthRpcModule
     public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
         Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
-        TxHandlingOptions options = rpcTx.Nonce == null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
+        TxHandlingOptions options = rpcTx.Nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
         return SendTx(tx, options);
     }
 
@@ -407,12 +394,12 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         Block? block = searchResult.Object;
-        if (block != null)
+        if (returnFullTransactionObjects && block is not null)
         {
             _blockchainBridge.RecoverTxSenders(block);
         }
 
-        return ResultWrapper<BlockForRpc>.Success(block == null
+        return ResultWrapper<BlockForRpc>.Success(block is null
             ? null
             : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
     }
@@ -422,10 +409,10 @@ public partial class EthRpcModule : IEthRpcModule
         UInt256? baseFee = null;
         _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
         TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
-        if (transaction == null)
+        if (transaction is null)
         {
             (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash);
-            if (transaction == null)
+            if (transaction is null)
             {
                 return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
             }
@@ -507,7 +494,7 @@ public partial class EthRpcModule : IEthRpcModule
     public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
     {
         (TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart) = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
-        if (receipt == null)
+        if (receipt is null)
         {
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
         }
@@ -542,7 +529,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader uncleHeader = block.Uncles[(int)positionIndex];
-        return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(uncleHeader, BlockBody.Empty), false, _specProvider));
+        return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(uncleHeader), false, _specProvider));
     }
 
     public ResultWrapper<UInt256?> eth_newFilter(Filter filter)
@@ -609,26 +596,32 @@ public partial class EthRpcModule : IEthRpcModule
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
     {
-        int id = (int)filterId;
+        CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-        return _blockchainBridge.FilterExists(id)
-            ? ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetFilterLogs(id))
-            : ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+        try
+        {
+            int id = filterId <= int.MaxValue ? (int)filterId : -1;
+            bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
+            if (id < 0 || !filterFound)
+            {
+                cancellationTokenSource.Dispose();
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+            }
+            else
+            {
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
+            }
+        }
+        catch (ResourceNotFoundException exception)
+        {
+            cancellationTokenSource.Dispose();
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(exception.Message, ErrorCodes.ResourceNotFound);
+        }
     }
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
     {
-        IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
-        {
-            using (cancellationTokenSource)
-            {
-                foreach (FilterLog log in logs)
-                {
-                    yield return log;
-                }
-            }
-        }
-
         // because of lazy evaluation of enumerable, we need to do the validation here first
         CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
@@ -709,7 +702,7 @@ public partial class EthRpcModule : IEthRpcModule
         try
         {
             header = _blockFinder.FindHeader(blockParameter);
-            if (header == null)
+            if (header is null)
             {
                 return ResultWrapper<AccountProof>.Fail($"{blockParameter} block not found",
                     ErrorCodes.ResourceNotFound, null);
@@ -747,9 +740,35 @@ public partial class EthRpcModule : IEthRpcModule
 
     private void RecoverTxSenderIfNeeded(Transaction transaction)
     {
-        if (transaction.SenderAddress == null)
+        transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
+    }
+
+    private IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
+    {
+        using (cancellationTokenSource)
         {
-            _blockchainBridge.RecoverTxSender(transaction);
+            foreach (FilterLog log in logs)
+            {
+                yield return log;
+            }
         }
+    }
+
+    public ResultWrapper<AccountForRpc> eth_getAccount(Address accountAddress, BlockParameter? blockParameter)
+    {
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter ?? BlockParameter.Latest);
+        if (searchResult.IsError)
+        {
+            // probably better forward Error of searchResult
+            return ResultWrapper<AccountForRpc>.Fail($"header not found", ErrorCodes.InvalidInput);
+        }
+        BlockHeader header = searchResult.Object;
+        if (!HasStateForBlock(_blockchainBridge, header))
+        {
+            return ResultWrapper<AccountForRpc>.Fail($"No state available for {blockParameter}",
+                ErrorCodes.ResourceUnavailable);
+        }
+        Account account = _stateReader.GetAccount(header.StateRoot, accountAddress);
+        return ResultWrapper<AccountForRpc>.Success(account is null ? null : new AccountForRpc(account));
     }
 }

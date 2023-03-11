@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -31,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
@@ -42,10 +30,10 @@ namespace Nethermind.Network.Test.Rlpx
         private byte[] _frame;
 
         private IFrameCipher _frameCipherA;
-        private IFrameMacProcessor _macProcessorA;
+        private FrameMacProcessor _macProcessorA;
 
         private IFrameCipher _frameCipherB;
-        private IFrameMacProcessor _macProcessorB;
+        private FrameMacProcessor _macProcessorB;
 
         [SetUp]
         public void Setup()
@@ -154,7 +142,7 @@ namespace Nethermind.Network.Test.Rlpx
             message.GenesisHash = Keccak.Zero;
             message.ProtocolVersion = 63;
             message.TotalDifficulty = 10000000000;
-            message.ChainId = 5;
+            message.NetworkId = 5;
 
             StatusMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);

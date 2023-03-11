@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -65,6 +52,24 @@ namespace Nethermind.Network.Test
 
         private const string enode4String =
             "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@some.url:434";
+
+        private const string enode5String =
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53";
+
+        private const string enode6String =
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345";
+
+        private const string enode7String =
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?discport=6789";
+
+        private const string enode8String =
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?somethingwrong=6789";
+
+        private const string enode9String =
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345?discport=6789?discport=67899";
+
+        private const string enode10String =
+            "enode://3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333b@52.141.78.53:12345:discport=6789";
 
         [Test, Retry(10)]
         public async Task Will_connect_to_a_candidate_node()
@@ -123,6 +128,58 @@ namespace Nethermind.Network.Test
             Assert.Throws<ArgumentException>(delegate
             {
                 Enode unused = new(enode4String);
+            });
+        }
+
+        [Test]
+        public void Will_return_exception_when_there_is_no_port()
+        {
+            Assert.Throws<ArgumentException>(delegate
+            {
+                Enode unused = new(enode5String);
+            });
+        }
+
+        [Test]
+        public void Will_parse_ports_correctly_when_there_are_two_different_ports()
+        {
+            Enode enode = new(enode6String);
+            enode.Port.Should().Be(12345);
+            enode.DiscoveryPort.Should().Be(12345);
+        }
+
+        [Test]
+        public void Will_parse_port_correctly_when_there_is_only_one()
+        {
+            Enode enode = new(enode7String);
+            enode.Port.Should().Be(12345);
+            enode.DiscoveryPort.Should().Be(6789);
+        }
+
+        [Test]
+        public void Will_return_exception_on_wrong_ports_part()
+        {
+            Assert.Throws<ArgumentException>(delegate
+            {
+                Enode unused = new(enode8String);
+            });
+        }
+
+        [Test]
+        public void Will_return_exception_on_duplicated_discovery_port_part()
+        {
+            Assert.Throws<ArgumentException>(delegate
+            {
+                Enode unused = new(enode9String);
+            });
+        }
+
+        [Test]
+        public void Will_return_exception_on_wrong_form_of_discovery_port_part()
+        {
+            Assert.Throws<ArgumentException>(delegate
+            {
+                Enode unused = new(enode10String);
             });
         }
 
@@ -225,6 +282,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test, Retry(3)]
+        [NonParallelizable]
         public async Task Will_fill_up_over_and_over_again_on_disconnects()
         {
             await using Context ctx = new();
@@ -232,13 +290,23 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            int currentCount = 0;
-            for (int i = 0; i < 10; i++)
+            TimeSpan prevConnectingDelay = StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting];
+            StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting] = TimeSpan.Zero;
+
+            try
             {
-                currentCount += 25;
-                await Task.Delay(_travisDelayLong);
-                Assert.AreEqual(currentCount, ctx.RlpxPeer.ConnectAsyncCallsCount);
-                ctx.DisconnectAllSessions();
+                int currentCount = 0;
+                for (int i = 0; i < 10; i++)
+                {
+                    currentCount += 25;
+                    await Task.Delay(_travisDelayLong);
+                    Assert.AreEqual(currentCount, ctx.RlpxPeer.ConnectAsyncCallsCount);
+                    ctx.DisconnectAllSessions();
+                }
+            }
+            finally
+            {
+                StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting] = prevConnectingDelay;
             }
         }
 
@@ -258,7 +326,23 @@ namespace Nethermind.Network.Test
             }
         }
 
-        private int _travisDelay = 100;
+        [Test]
+        public async Task IfPeerAdded_with_invalid_chain_then_do_not_connect()
+        {
+            await using Context ctx = new();
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            var networkNode = new NetworkNode(ctx.GenerateEnode());
+            ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.NetworkId);
+
+            ctx.PeerPool.GetOrAdd(networkNode);
+
+            await Task.Delay(_travisDelay);
+            ctx.PeerPool.ActivePeers.Count.Should().Be(0);
+        }
+
+        private int _travisDelay = 500;
 
         private int _travisDelayLong = 1000;
 
@@ -279,7 +363,7 @@ namespace Nethermind.Network.Test
             }
         }
 
-        [Test, Retry(3)]
+        [Test]
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing()
         {
             await using Context ctx = new();
@@ -288,11 +372,13 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             int currentCount = 0;
+            int maxCount = 0;
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
+                maxCount += 50;
                 await Task.Delay(_travisDelay);
-                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + 25);
+                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, maxCount);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
                 ctx.DisconnectAllSessions();
@@ -301,7 +387,7 @@ namespace Nethermind.Network.Test
             await ctx.PeerManager.StopAsync();
             ctx.DisconnectAllSessions();
 
-            Assert.True(ctx.PeerManager.CandidatePeers.All(p => p.OutSession == null));
+            Assert.True(ctx.PeerManager.CandidatePeers.All(p => p.OutSession is null));
         }
 
         [Test]

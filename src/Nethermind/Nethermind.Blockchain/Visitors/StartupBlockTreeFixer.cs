@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -80,7 +66,7 @@ namespace Nethermind.Blockchain.Visitors
 
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            if (_dbBatchProcessed != null)
+            if (_dbBatchProcessed is not null)
             {
                 if (e.Block.Number == _currentDbLoadBatchEnd)
                 {
@@ -116,13 +102,13 @@ namespace Nethermind.Blockchain.Visitors
                 if (_logger.IsInfo) _logger.Info($"Reviewed {_currentLevelNumber - StartLevelInclusive} blocks out of {EndLevelExclusive - StartLevelInclusive}");
             }
 
-            if (_gapStart != null)
+            if (_gapStart is not null)
             {
                 _currentLevel = null;
                 return Task.FromResult(LevelVisitOutcome.DeleteLevel);
             }
 
-            if (chainLevelInfo == null)
+            if (chainLevelInfo is null)
             {
                 _gapStart = _currentLevelNumber;
             }
@@ -136,7 +122,7 @@ namespace Nethermind.Blockchain.Visitors
             bool thisLevelWasProcessed = chainLevelInfo?.BlockInfos.Any(b => b.WasProcessed) ?? false;
             if (thisLevelWasProcessed)
             {
-                if (_processingGapStart != null)
+                if (_processingGapStart is not null)
                 {
                     if (_logger.IsWarn)
                         _logger.Warn(
@@ -220,7 +206,7 @@ namespace Nethermind.Blockchain.Visitors
                     $"Invalid bodies count at level {_currentLevelNumber}: {_bodiesInCurrentLevel}/{expectedVisitedBlocksCount}");
             }
 
-            if (_gapStart != null)
+            if (_gapStart is not null)
             {
                 if (_logger.IsWarn)
                     _logger.Warn(
@@ -242,7 +228,7 @@ namespace Nethermind.Blockchain.Visitors
 
         private void AssertNotVisitingAfterGap()
         {
-            if (_gapStart != null)
+            if (_gapStart is not null)
             {
                 throw new InvalidOperationException(
                     $"Not expecting to visit block at {_currentLevelNumber} because the gap has already been identified.");
@@ -252,11 +238,11 @@ namespace Nethermind.Blockchain.Visitors
         private bool CanSuggestBlocks(Block block)
         {
             _firstBlockVisited = false;
-            if (block?.ParentHash != null)
+            if (block?.ParentHash is not null)
             {
                 BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (parentHeader == null || parentHeader.StateRoot == null ||
-                    _stateDb.Get(parentHeader.StateRoot) == null)
+                if (parentHeader is null || parentHeader.StateRoot is null ||
+                    _stateDb.Get(parentHeader.StateRoot) is null)
                     return false;
             }
             else

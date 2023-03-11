@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
 using DotNetty.Buffers;
@@ -23,20 +10,53 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
-        public byte[] Serialize(BlockBodiesMessage message)
-        {
-            return Rlp.Encode(message.Bodies.Select(b => b == null
-                ? Rlp.OfEmptySequence
-                : Rlp.Encode(
-                    Rlp.Encode(b.Transactions),
-                    Rlp.Encode(b.Uncles))).ToArray()).Bytes;
-        }
+        private readonly TxDecoder _txDecoder = new TxDecoder();
+        private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
+        private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new WithdrawalDecoder();
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
-            byte[] oldWay = Serialize(message);
-            byteBuffer.EnsureWritable(oldWay.Length, true);
-            byteBuffer.WriteBytes(oldWay);
+
+            int totalLength = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(totalLength, true);
+            NettyRlpStream stream = new(byteBuffer);
+            stream.StartSequence(contentLength);
+            foreach (BlockBody? body in message.Bodies)
+            {
+                if (body == null)
+                {
+                    stream.Encode(Rlp.OfEmptySequence);
+                }
+                else
+                {
+                    SerializeBody(stream, body);
+                }
+            }
+        }
+
+        private void SerializeBody(NettyRlpStream stream, BlockBody body)
+        {
+            stream.StartSequence(GetBodyLength(body));
+            stream.StartSequence(GetTxLength(body.Transactions));
+            foreach (Transaction? txn in body.Transactions)
+            {
+                stream.Encode(txn);
+            }
+
+            stream.StartSequence(GetUnclesLength(body.Uncles));
+            foreach (BlockHeader? uncle in body.Uncles)
+            {
+                stream.Encode(uncle);
+            }
+
+            if (body.Withdrawals != null)
+            {
+                stream.StartSequence(GetWithdrawalsLength(body.Withdrawals));
+                foreach (Withdrawal? withdrawal in body.Withdrawals)
+                {
+                    stream.Encode(withdrawal);
+                }
+            }
         }
 
         public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
@@ -47,9 +67,40 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(BlockBodiesMessage message, out int contentLength)
         {
-            byte[] oldWay = Serialize(message);
-            contentLength = oldWay.Length;
-            return contentLength;
+            contentLength = message.Bodies.Select(b => b == null
+                ? Rlp.OfEmptySequence.Length
+                : Rlp.LengthOfSequence(GetBodyLength(b))
+            ).Sum();
+            return Rlp.LengthOfSequence(contentLength);
+        }
+
+        private int GetBodyLength(BlockBody b)
+        {
+            if (b.Withdrawals != null)
+            {
+                return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
+                       Rlp.LengthOfSequence(GetUnclesLength(b.Uncles)) + Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals));
+            }
+            return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
+                Rlp.LengthOfSequence(GetUnclesLength(b.Uncles));
+        }
+
+        private int GetTxLength(Transaction[] transactions)
+        {
+
+            return transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
+        }
+
+        private int GetUnclesLength(BlockHeader[] headers)
+        {
+
+            return headers.Sum(t => _headerDecoder.GetLength(t, RlpBehaviors.None));
+        }
+
+        private int GetWithdrawalsLength(Withdrawal[] withdrawals)
+        {
+
+            return withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
         }
 
         public static BlockBodiesMessage Deserialize(RlpStream rlpStream)
@@ -58,6 +109,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             message.Bodies = rlpStream.DecodeArray(ctx =>
             {
                 int sequenceLength = rlpStream.ReadSequenceLength();
+                int startingPosition = rlpStream.Position;
                 if (sequenceLength == 0)
                 {
                     return null;
@@ -67,7 +119,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 // (just on these delegates)
                 Transaction[] transactions = rlpStream.DecodeArray(_ => Rlp.Decode<Transaction>(ctx));
                 BlockHeader[] uncles = rlpStream.DecodeArray(_ => Rlp.Decode<BlockHeader>(ctx));
-                return new BlockBody(transactions, uncles);
+                Withdrawal[]? withdrawals = null;
+                if (rlpStream.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
+                {
+                    withdrawals = rlpStream.DecodeArray(_ => Rlp.Decode<Withdrawal>(ctx));
+                }
+
+                return new BlockBody(transactions, uncles, withdrawals);
             }, false);
 
             return message;

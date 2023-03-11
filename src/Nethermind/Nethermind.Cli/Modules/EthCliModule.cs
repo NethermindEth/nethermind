@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
 using System.Numerics;
@@ -51,7 +38,7 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getProof")]
-        public JsValue Call(string address, string[] storageKeys, string? blockParameter = null)
+        public JsValue GetProof(string address, string[] storageKeys, string? blockParameter = null)
         {
             return NodeManager.PostJint("eth_getProof", CliParseAddress(address), storageKeys.Select(CliParseHash), blockParameter ?? "latest").Result;
         }
@@ -248,6 +235,12 @@ namespace Nethermind.Cli.Modules
         public JsValue MaxPriorityFeePerGas()
         {
             return NodeManager.PostJint("eth_maxPriorityFeePerGas").Result;
+        }
+
+        [CliFunction("eth", "getAccount")]
+        public JsValue GetAccount(Address accountAddress, string? blockParam = null)
+        {
+            return NodeManager.PostJint("eth_getAccount", accountAddress, blockParam ?? "latest").Result;
         }
 
         public EthCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)

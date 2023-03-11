@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -45,7 +32,7 @@ namespace Nethermind.Serialization.Rlp
                 metadata = (BlockMetadata)rlpStream.DecodeInt();
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 rlpStream.Check(lastCheck);
             }
@@ -64,35 +51,46 @@ namespace Nethermind.Serialization.Rlp
             return blockInfo;
         }
 
-        public void Encode(RlpStream stream, BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Rlp Encode(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Rlp.OfEmptySequence;
+                stream.Encode(Rlp.OfEmptySequence);
+                return;
             }
+
+            int contentLength = GetContentLength(item, rlpBehaviors);
 
             bool hasMetadata = item.Metadata != BlockMetadata.None;
-
-            Rlp[] elements = new Rlp[hasMetadata ? 4 : 3];
-            elements[0] = Rlp.Encode(item.BlockHash);
-            elements[1] = Rlp.Encode(item.WasProcessed);
-            elements[2] = Rlp.Encode(item.TotalDifficulty);
+            stream.StartSequence(contentLength);
+            stream.Encode(item.BlockHash);
+            stream.Encode(item.WasProcessed);
+            stream.Encode(item.TotalDifficulty);
             if (hasMetadata)
             {
-                elements[3] = Rlp.Encode((int)item.Metadata);
+                stream.Encode((int)item.Metadata);
             }
-
-            return Rlp.Encode(elements);
         }
 
-        public int GetLength(BlockInfo item, RlpBehaviors rlpBehaviors)
+        private int GetContentLength(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            bool hasMetadata = item.Metadata != BlockMetadata.None;
+            int contentLength = 0;
+            contentLength += Rlp.LengthOf(item.BlockHash);
+            contentLength += Rlp.LengthOf(item.WasProcessed);
+            contentLength += Rlp.LengthOf(item.TotalDifficulty);
+
+            if (hasMetadata)
+            {
+                contentLength += Rlp.LengthOf((int)item.Metadata);
+            }
+
+            return contentLength;
+        }
+
+        public int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            return item == null ? Rlp.OfEmptySequence.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
 
         public BlockInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -116,7 +114,7 @@ namespace Nethermind.Serialization.Rlp
                 metadata = (BlockMetadata)decoderContext.DecodeInt();
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 decoderContext.Check(lastCheck);
             }

@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net7.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
@@ -13,27 +13,18 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="coverlet.msbuild" Version="3.1.2">
+    <PackageReference Include="coverlet.msbuild">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.2.0" />
-    <PackageReference Include="NUnit" Version="3.13.3" />
-    <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj">
-      <Project>{968435E3-4245-4CE2-A720-7F334BBB46FA}</Project>
-      <Name>Ethereum.Test.Base</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj">
-      <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>
-      <Name>Nethermind.Blockchain</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">
-      <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
-      <Name>Nethermind.Core</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <EmbeddedResource Include="..\..\tests\BasicTests\difficulty*.json">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

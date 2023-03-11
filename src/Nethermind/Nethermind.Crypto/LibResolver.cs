@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Crypto.Bls;

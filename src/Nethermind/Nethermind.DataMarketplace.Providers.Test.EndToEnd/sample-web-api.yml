@@ -1,4 +1,0 @@
-name: sample-web-api
-type: webapi
-url: http://ndm-connector-sample:5000
-method: get

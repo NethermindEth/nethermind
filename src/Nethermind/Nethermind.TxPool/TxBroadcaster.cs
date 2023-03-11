@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -74,6 +60,13 @@ namespace Nethermind.TxPool
         /// </summary>
         private ResettableList<Transaction> _txsToSend;
 
+        /// <summary>
+        /// Used to throttle tx broadcast. Particularly during forward sync where the head changes a lot which triggers
+        /// a lot of broadcast. There are no transaction in pool but its quite spammy on the log.
+        /// </summary>
+        private DateTimeOffset _lastPersistedTxBroadcast = DateTimeOffset.UnixEpoch;
+        private readonly TimeSpan _minTimeBetweenPersistedTxBroadcast = TimeSpan.FromSeconds(1);
+
         private readonly ILogger _logger;
 
         public TxBroadcaster(IComparer<Transaction> comparer,
@@ -112,7 +105,8 @@ namespace Nethermind.TxPool
         private void StartBroadcast(Transaction tx)
         {
             NotifyPeersAboutLocalTx(tx);
-            _persistentTxs.TryInsert(tx.Hash, tx);
+            if (tx.Hash is not null)
+                _persistentTxs.TryInsert(tx.Hash, tx);
         }
 
         private void BroadcastOnce(Transaction tx)
@@ -130,6 +124,14 @@ namespace Nethermind.TxPool
 
         public void BroadcastPersistentTxs()
         {
+            DateTimeOffset now = DateTimeOffset.Now;
+            if (_lastPersistedTxBroadcast + _minTimeBetweenPersistedTxBroadcast > now)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Minimum time between persistent tx broadcast not reached.");
+                return;
+            }
+            _lastPersistedTxBroadcast = now;
+
             if (_txPoolConfig.PeerNotificationThreshold > 0)
             {
                 IList<Transaction> persistentTxsToSend = GetPersistentTxsToSend();
@@ -188,7 +190,7 @@ namespace Nethermind.TxPool
         {
             if (_persistentTxs.Count != 0)
             {
-                bool hasBeenRemoved = _persistentTxs.TryRemove(txHash, out Transaction _);
+                bool hasBeenRemoved = _persistentTxs.TryRemove(txHash, out Transaction? _);
                 if (hasBeenRemoved)
                 {
                     if (_logger.IsTrace) _logger.Trace(
@@ -208,7 +210,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void TimerOnElapsed(object sender, EventArgs args)
+        private void TimerOnElapsed(object? sender, EventArgs args)
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             void NotifyPeers()
@@ -272,7 +274,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPersistentTx(Keccak hash, out Transaction transaction)
+        public bool TryGetPersistentTx(Keccak hash, out Transaction? transaction)
         {
             return _persistentTxs.TryGetValue(hash, out transaction);
         }

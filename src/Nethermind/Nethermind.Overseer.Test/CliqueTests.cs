@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -35,9 +22,9 @@ namespace Nethermind.Overseer.Test
         [Test]
         public async Task One_validator()
         {
-            StartCliqueMiner("val1")
+            StartCliqueMiner("cliqueval1a")
                 .Wait(5000)
-                .Kill("val1");
+                .Kill("cliqueval1a");
 
             await ScenarioCompletion;
         }
@@ -45,11 +32,11 @@ namespace Nethermind.Overseer.Test
         [Test]
         public async Task Two_validators()
         {
-            StartCliqueMiner("val1")
-                .StartCliqueMiner("val2")
+            StartCliqueMiner("cliqueval1b")
+                .StartCliqueMiner("cliqueval2b")
                 .Wait(10000)
-                .Kill("val1")
-                .Kill("val2");
+                .Kill("cliqueval1b")
+                .Kill("cliqueval2b");
 
             await ScenarioCompletion;
         }
@@ -57,24 +44,24 @@ namespace Nethermind.Overseer.Test
         [Test]
         public async Task Clique_vote()
         {
-            StartCliqueMiner("val1")
-                .StartCliqueMiner("val2")
-                .StartCliqueMiner("val3")
-                .StartCliqueMiner("val4")
-                .StartCliqueMiner("val5")
-                .StartCliqueMiner("val6")
-                .StartCliqueMiner("val7")
-                .StartCliqueNode("node1")
+            StartCliqueMiner("cliqueval1c")
+                .StartCliqueMiner("cliqueval2c")
+                .StartCliqueMiner("cliqueval3c")
+                .StartCliqueMiner("cliqueval4c")
+                .StartCliqueMiner("cliqueval5c")
+                .StartCliqueMiner("cliqueval6c")
+                .StartCliqueMiner("cliqueval7c")
+                .StartCliqueNode("cliquenode1c")
                 .SetContext(new CliqueContext(new CliqueState()))
                 .Wait(20000)
-                .SwitchNode("val1")
-                .Propose(Nodes["node1"].Address, true)
-                .SwitchNode("val2")
-                .Propose(Nodes["node1"].Address, true)
-                .SwitchNode("val5")
-                .Propose(Nodes["node1"].Address, true)
-                .SwitchNode("val7")
-                .Propose(Nodes["node1"].Address, true)
+                .SwitchNode("cliqueval1c")
+                .Propose(Nodes["cliquenode1c"].Address, true)
+                .SwitchNode("cliqueval2c")
+                .Propose(Nodes["cliquenode1c"].Address, true)
+                .SwitchNode("cliqueval5c")
+                .Propose(Nodes["cliquenode1c"].Address, true)
+                .SwitchNode("cliqueval7c")
+                .Propose(Nodes["cliquenode1c"].Address, true)
                 .Wait(10000)
                 .LeaveContext()
                 .KillAll();
@@ -103,9 +90,9 @@ namespace Nethermind.Overseer.Test
                 0,0,0,0,0,0,0,1
             }).Address;
 
-            StartCliqueMiner("val1")
-                .StartCliqueMiner("val2")
-                .StartCliqueNode("node3")
+            StartCliqueMiner("cliqueval1d")
+                .StartCliqueMiner("cliqueval2d")
+                .StartCliqueNode("cliquenode3d")
                 .SetContext(new CliqueContext(new CliqueState()))
                 .Wait(5000)
                 .SendTransaction(tx)

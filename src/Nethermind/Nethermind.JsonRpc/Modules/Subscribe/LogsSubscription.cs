@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -50,7 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             IFilterStore filterStore = store ?? throw new ArgumentNullException(nameof(store));
 
-            if (filter != null)
+            if (filter is not null)
             {
                 _filter = filterStore.CreateLogFilter(
                     filter.FromBlock,
@@ -116,22 +102,25 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     TxReceipt receipt = receipts[i];
                     if (_filter.Matches(receipt.Bloom!))
                     {
-                        int transactionLogIndex = 0;
                         for (int j = 0; j < receipt.Logs!.Length; j++)
                         {
                             var receiptLog = receipt.Logs[j];
                             if (_filter.Accepts(receiptLog))
                             {
-                                FilterLog filterLog = new(
-                                    logIndex++,
-                                    transactionLogIndex++,
+                                yield return new FilterLog(
+                                    logIndex,
+                                    j,
                                     receipt,
                                     receiptLog,
                                     removed);
-
-                                yield return filterLog;
                             }
+
+                            logIndex++;
                         }
+                    }
+                    else
+                    {
+                        logIndex += receipt.Logs.Length;
                     }
                 }
             }

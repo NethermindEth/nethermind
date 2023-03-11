@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -67,12 +54,12 @@ namespace Nethermind.Consensus.Ethash
 
         internal async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
         {
-            if (processed.Header.TxRoot == null ||
-                processed.Header.StateRoot == null ||
-                processed.Header.ReceiptsRoot == null ||
-                processed.Header.UnclesHash == null ||
-                processed.Header.Bloom == null ||
-                processed.Header.ExtraData == null)
+            if (processed.Header.TxRoot is null ||
+                processed.Header.StateRoot is null ||
+                processed.Header.ReceiptsRoot is null ||
+                processed.Header.UnclesHash is null ||
+                processed.Header.Bloom is null ||
+                processed.Header.ExtraData is null)
             {
                 throw new InvalidOperationException($"Requested to mine an invalid block {processed.Header}");
             }

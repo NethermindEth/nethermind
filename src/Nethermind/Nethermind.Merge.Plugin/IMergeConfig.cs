@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -26,7 +12,7 @@ namespace Nethermind.Merge.Plugin
     {
         [ConfigItem(
             Description = "Defines whether the Merge plugin is enabled bundles are allowed.",
-            DefaultValue = "false")]
+            DefaultValue = "true")]
         bool Enabled { get; set; }
 
         [ConfigItem(Description = "Final total difficulty is total difficulty of the last PoW block. FinalTotalDifficulty >= TerminalTotalDifficulty.", DefaultValue = "null")]
@@ -47,7 +33,8 @@ namespace Nethermind.Merge.Plugin
         [ConfigItem(Description = "Terminal PoW block number used for transition process.")]
         public long? TerminalBlockNumber { get; set; }
 
-        [ConfigItem(Description = "Seconds per slot.", DefaultValue = "12")]
+        [ConfigItem(Description = "Deprecated since v1.14.7. Please use Blocks.SecondsPerSlot. " +
+            "Seconds per slot.", DefaultValue = "12")]
         public ulong SecondsPerSlot { get; set; }
 
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]

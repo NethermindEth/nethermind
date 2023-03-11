@@ -1,19 +1,7 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -21,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -35,7 +24,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             var serialized = serializer.Serialize(message);
             ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
-            if (txReceipts == null)
+            if (txReceipts is null)
             {
                 Assert.AreEqual(0, deserialized.TxReceipts.Length);
             }
@@ -44,7 +33,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Assert.AreEqual(txReceipts.Length, deserialized.TxReceipts.Length, "length");
                 for (int i = 0; i < txReceipts.Length; i++)
                 {
-                    if (txReceipts[i] == null)
+                    if (txReceipts[i] is null)
                     {
                         Assert.IsNull(deserialized.TxReceipts[i], $"receipts[{i}]");
                     }
@@ -52,7 +41,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                     {
                         for (int j = 0; j < txReceipts[i].Length; j++)
                         {
-                            if (txReceipts[i][j] == null)
+                            if (txReceipts[i][j] is null)
                             {
                                 Assert.IsNull(deserialized.TxReceipts[i][j], $"receipts[{i}][{j}]");
                             }
@@ -69,9 +58,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                                 Assert.AreEqual(0L, deserialized.TxReceipts[i][j].BlockNumber, $"receipts[{i}][{j}].BlockNumber");
                                 Assert.Null(deserialized.TxReceipts[i][j].ContractAddress, $"receipts[{i}][{j}].ContractAddress");
                                 Assert.AreEqual(0L, deserialized.TxReceipts[i][j].GasUsed, $"receipts[{i}][{j}].GasUsed");
-                                Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode, deserialized.TxReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
                                 Assert.AreEqual(txReceipts[i][j].GasUsedTotal, deserialized.TxReceipts[i][j].GasUsedTotal, $"receipts[{i}][{j}].GasUsedTotal");
-                                Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null, deserialized.TxReceipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
+                                if (!txReceipts[i][j].SkipStateAndStatusInRlp)
+                                {
+                                    Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode, deserialized.TxReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
+                                    Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null, deserialized.TxReceipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
+                                }
                             }
                         }
                     }
@@ -122,6 +114,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
             serializer.Deserialize(new byte[0]).TxReceipts.Should().HaveCount(0);
+        }
+
+        [Test]
+        public void Deserialize_non_empty_but_bytebuffer_starts_with_empty()
+        {
+            TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
+            ReceiptsMessage message = new(data);
+            ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
+
+            IByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1);
+            buffer.WriteByte(Rlp.OfEmptySequence[0]);
+            buffer.ReadByte();
+
+            serializer.Serialize(buffer, message);
+            ReceiptsMessage deserialized = serializer.Deserialize(buffer);
+
+            deserialized.TxReceipts.Length.Should().Be(data.Length);
         }
 
         [Test]

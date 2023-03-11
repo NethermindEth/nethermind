@@ -1,19 +1,21 @@
 #!/bin/bash
-#exit when any command fails
-set -e
-LAUNCHER_PATH=$RELEASE_DIRECTORY/launcher
-APP_NAME=Nethermind.Launcher
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
 
-echo =======================================================
-echo Building Nethermind Launcher
-echo =======================================================
+set -e
+
+APP_NAME=Nethermind.Launcher
+LAUNCHER_PATH=$GITHUB_WORKSPACE/launcher
+OUTPUT_PATH=$GITHUB_WORKSPACE/$PUB_DIR
+
+echo "Building Nethermind Launcher"
 
 cd $LAUNCHER_PATH
-npm i
-pkg index.js -t latest-linux-x64 -o $APP_NAME && mv $APP_NAME $RELEASE_DIRECTORY/$LIN_RELEASE
-pkg index.js -t latest-macos-x64 -o $APP_NAME && mv $APP_NAME $RELEASE_DIRECTORY/$OSX_RELEASE && cp $RELEASE_DIRECTORY/$OSX_RELEASE/$APP_NAME $RELEASE_DIRECTORY/$OSX_ARM64_RELEASE/$APP_NAME
-pkg index.js -t latest-win-x64 -o $APP_NAME.exe && mv $APP_NAME.exe $RELEASE_DIRECTORY/$WIN_RELEASE
 
-echo =======================================================
-echo Building Nethermind Launcher completed
-echo =======================================================
+npm i
+pkg index.js -t latest-linux-x64 -o $APP_NAME && mv $APP_NAME $OUTPUT_PATH/linux-x64
+pkg index.js -t latest-win-x64 -o $APP_NAME.exe && mv $APP_NAME.exe $OUTPUT_PATH/win-x64
+pkg index.js -t latest-macos-x64 -o $APP_NAME && mv $APP_NAME $OUTPUT_PATH/osx-x64 && \
+  cp $OUTPUT_PATH/osx-x64/$APP_NAME $OUTPUT_PATH/osx-arm64/$APP_NAME
+
+echo "Build completed"

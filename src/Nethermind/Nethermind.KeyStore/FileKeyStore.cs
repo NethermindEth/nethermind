@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -115,12 +102,12 @@ namespace Nethermind.KeyStore
             }
 
             var serializedKey = ReadKey(address);
-            if (serializedKey == null)
+            if (serializedKey is null)
             {
                 return (null, Result.Fail("Cannot find key"));
             }
             var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(serializedKey);
-            if (keyStoreItem?.Crypto == null)
+            if (keyStoreItem?.Crypto is null)
             {
                 return (null, Result.Fail("Cannot deserialize key"));
             }
@@ -178,7 +165,7 @@ namespace Nethermind.KeyStore
             }
 
             byte[] key = _symmetricEncrypter.Decrypt(cipher, decryptKey, iv, cipherType);
-            if (key == null)
+            if (key is null)
             {
                 return (null, Result.Fail("Error during decryption"));
             }
@@ -201,7 +188,7 @@ namespace Nethermind.KeyStore
         {
             (PrivateKey privateKey, Result result) = GetKey(address, password);
             using var key = privateKey;
-            return (result == Result.Success ? new ProtectedPrivateKey(key, _cryptoRandom) : null, result);
+            return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
         }
 
         public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
@@ -226,7 +213,7 @@ namespace Nethermind.KeyStore
         {
             (PrivateKey privateKey, Result result) = GenerateKey(password);
             using var key = privateKey;
-            return (result == Result.Success ? new ProtectedPrivateKey(key, _cryptoRandom) : null, result);
+            return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
         }
 
         public Result StoreKey(Address address, KeyStoreItem keyStoreItem)
@@ -262,7 +249,7 @@ namespace Nethermind.KeyStore
             var iv = _cryptoRandom.GenerateRandomBytes(_config.IVSize);
 
             var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _config.Cipher);
-            if (cipher == null)
+            if (cipher is null)
             {
                 return Result.Fail("Error during encryption");
             }
@@ -322,7 +309,7 @@ namespace Nethermind.KeyStore
 
         private Result Validate(KeyStoreItem keyStoreItem)
         {
-            if (keyStoreItem.Crypto?.CipherParams == null || keyStoreItem.Crypto.KDFParams == null)
+            if (keyStoreItem.Crypto?.CipherParams is null || keyStoreItem.Crypto.KDFParams is null)
             {
                 return Result.Fail("Incorrect key");
             }

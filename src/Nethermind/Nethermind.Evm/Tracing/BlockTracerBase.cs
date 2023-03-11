@@ -1,22 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
@@ -25,17 +13,17 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly Keccak? _txHash;
 
-        private bool IsTracingEntireBlock => _txHash == null;
+        private bool IsTracingEntireBlock => _txHash is null;
 
         protected BlockTracerBase()
         {
-            TxTraces = new List<TTrace>();
+            TxTraces = new ResettableList<TTrace>();
         }
 
         protected BlockTracerBase(Keccak? txHash)
         {
             _txHash = txHash;
-            TxTraces = new List<TTrace>();
+            TxTraces = new ResettableList<TTrace>();
         }
 
         private TTracer? CurrentTxTracer { get; set; }
@@ -49,7 +37,10 @@ namespace Nethermind.Evm.Tracing
         {
         }
 
-        public abstract void StartNewBlockTrace(Block block);
+        public virtual void StartNewBlockTrace(Block block)
+        {
+            TxTraces.Reset();
+        }
 
         ITxTracer IBlockTracer.StartNewTxTrace(Transaction? tx)
         {
@@ -64,25 +55,22 @@ namespace Nethermind.Evm.Tracing
 
         void IBlockTracer.EndTxTrace()
         {
-            if (CurrentTxTracer != null)
+            if (CurrentTxTracer is not null)
             {
                 TxTraces.Add(OnEnd(CurrentTxTracer));
                 CurrentTxTracer = null;
             }
         }
 
-        public abstract void EndBlockTrace();
+        public virtual void EndBlockTrace() { }
 
         protected virtual bool ShouldTraceTx(Transaction? tx)
         {
             return IsTracingEntireBlock || tx?.Hash == _txHash;
         }
 
-        protected List<TTrace> TxTraces { get; }
+        protected ResettableList<TTrace> TxTraces { get; }
 
-        public IReadOnlyCollection<TTrace> BuildResult()
-        {
-            return TxTraces;
-        }
+        public IReadOnlyCollection<TTrace> BuildResult() => TxTraces;
     }
 }

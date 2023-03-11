@@ -1,20 +1,6 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -22,8 +8,9 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Rlpx;
@@ -47,16 +34,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
-            ISpecProvider specProvider,
+            ForkInfo forkInfo,
             ILogManager logManager)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, specProvider, logManager)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, forkInfo, logManager)
         {
             _pooledTxsRequestor = pooledTxsRequestor;
         }
 
         public override string Name => "eth65";
 
-        public override byte ProtocolVersion => 65;
+        public override byte ProtocolVersion => EthVersions.Eth65;
 
         public override void HandleMessage(ZeroPacket message)
         {
@@ -90,7 +77,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Metrics.Eth65NewPooledTransactionHashesReceived++;
             Stopwatch stopwatch = Stopwatch.StartNew();
 
-            _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes.ToArray());
+            _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes);
 
             stopwatch.Stop();
             if (Logger.IsTrace)
@@ -103,27 +90,35 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Metrics.Eth65GetPooledTransactionsReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            Send(FulfillPooledTransactionsRequest(msg));
+            using ArrayPoolList<Transaction> txsToSend = new(1024);
+            Send(FulfillPooledTransactionsRequest(msg, txsToSend));
             stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
                              $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
-        protected PooledTransactionsMessage FulfillPooledTransactionsRequest(
-            GetPooledTransactionsMessage msg)
+        internal PooledTransactionsMessage FulfillPooledTransactionsRequest(
+            GetPooledTransactionsMessage msg, IList<Transaction> txsToSend)
         {
-            List<Transaction> txs = new();
-            int responseSize = Math.Min(256, msg.Hashes.Count);
-            for (int i = 0; i < responseSize; i++)
+            int packetSizeLeft = TransactionsMessage.MaxPacketSize;
+            for (int i = 0; i < msg.Hashes.Count; i++)
             {
                 if (_txPool.TryGetPendingTransaction(msg.Hashes[i], out Transaction tx))
                 {
-                    txs.Add(tx);
+                    int txSize = tx.GetLength(_txDecoder);
+
+                    if (txSize > packetSizeLeft && txsToSend.Count > 0)
+                    {
+                        break;
+                    }
+
+                    txsToSend.Add(tx);
+                    packetSizeLeft -= txSize;
                 }
             }
 
-            return new PooledTransactionsMessage(txs);
+            return new PooledTransactionsMessage(txsToSend);
         }
 
         public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)

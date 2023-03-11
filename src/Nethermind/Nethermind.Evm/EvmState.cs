@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -71,7 +58,7 @@ namespace Nethermind.Evm
                 Interlocked.Increment(ref _dataStackPoolDepth);
                 if (_dataStackPoolDepth > _maxCallStackDepth)
                 {
-                    throw new Exception();
+                    EvmStack.ThrowEvmStackOverflowException();
                 }
 
                 return new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32];
@@ -87,7 +74,7 @@ namespace Nethermind.Evm
                 Interlocked.Increment(ref _returnStackPoolDepth);
                 if (_returnStackPoolDepth > _maxCallStackDepth)
                 {
-                    throw new Exception();
+                    EvmStack.ThrowEvmStackOverflowException();
                 }
 
                 return new int[EvmStack.ReturnStackSize];
@@ -250,9 +237,16 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            if (DataStack != null) _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
+            if (DataStack is not null)
+            {
+                // Only Dispose once
+                _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
+                DataStack = null;
+                ReturnStack = null;
+            }
             Restore(); // we are trying to restore when disposing
             Memory?.Dispose();
+            Memory = null;
         }
 
         public void InitStacks()
@@ -270,7 +264,7 @@ namespace Nethermind.Evm
 
         public void WarmUp(AccessList? accessList)
         {
-            if (accessList != null)
+            if (accessList is not null)
             {
                 foreach ((Address address, IReadOnlySet<UInt256> storages) in accessList.Data)
                 {

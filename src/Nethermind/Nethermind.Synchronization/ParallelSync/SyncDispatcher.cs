@@ -1,22 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 
@@ -47,7 +35,7 @@ namespace Nethermind.Synchronization.ParallelSync
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
 
-        private TaskCompletionSource<object?>? _dormantStateTask = new();
+        private TaskCompletionSource<object?>? _dormantStateTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 
@@ -69,7 +57,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     if (currentStateLocal == SyncFeedState.Dormant)
                     {
                         if (Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
-                        if (dormantTaskLocal == null)
+                        if (dormantTaskLocal is null)
                         {
                             if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
                         }
@@ -81,7 +69,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         T request = Feed.PrepareRequest(cancellationToken); // just to avoid null refs
-                        if (request == null)
+                        if (request is null)
                         {
                             if (!Feed.IsMultiFeed)
                             {
@@ -95,43 +83,13 @@ namespace Nethermind.Synchronization.ParallelSync
                         SyncPeerAllocation allocation = await Allocate(request);
                         PeerInfo? allocatedPeer = allocation.Current;
                         if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
-                        if (allocatedPeer != null)
+                        if (allocatedPeer is not null)
                         {
                             if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
-                            Task task = Dispatch(allocatedPeer, request, cancellationToken)
-                                .ContinueWith(async t =>
-                            {
-                                if (t.IsFaulted)
-                                {
-                                    if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
-                                }
 
-                                try
-                                {
-                                    if (cancellationToken.IsCancellationRequested)
-                                    {
-                                        if (Logger.IsDebug) Logger.Debug("Ignoring sync response as shutdown is requested.");
-                                        return;
-                                    }
-
-                                    SyncResponseHandlingResult result = await Feed.HandleResponse(request, allocatedPeer);
-                                    ReactToHandlingResult(request, result, allocatedPeer);
-                                }
-                                catch (ObjectDisposedException)
-                                {
-                                    if (Logger.IsInfo) Logger.Info("Ignoring sync response as the DB has already closed.");
-                                }
-                                catch (Exception e)
-                                {
-                                    // possibly clear the response and handle empty response batch here (to avoid missing parts)
-                                    // this practically corrupts sync
-                                    if (Logger.IsError) Logger.Error("Error when handling response", e);
-                                }
-                                finally
-                                {
-                                    Free(allocation);
-                                }
-                            }, cancellationToken);
+                            // Use Task.Run to make sure it queues it instead of running part of it synchronously.
+                            Task task = Task.Run(() => DoDispatch(cancellationToken, allocatedPeer, request,
+                                allocation), cancellationToken);
 
                             if (!Feed.IsMultiFeed)
                             {
@@ -144,7 +102,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         {
                             Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
                             SyncResponseHandlingResult result = await Feed.HandleResponse(request);
-                            ReactToHandlingResult(request, result, null);
+                            await DoHandleResponse(request);
                         }
                     }
                     else if (currentStateLocal == SyncFeedState.Finished)
@@ -157,6 +115,60 @@ namespace Nethermind.Synchronization.ParallelSync
                 {
                     Feed.Finish();
                 }
+            }
+        }
+
+        private async Task DoDispatch(CancellationToken cancellationToken, PeerInfo? allocatedPeer, T request, SyncPeerAllocation allocation)
+        {
+            try
+            {
+                await Dispatch(allocatedPeer, request, cancellationToken);
+            }
+            catch (ConcurrencyLimitReachedException)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{request} - concurrency limit reached. Peer: {allocatedPeer}");
+            }
+            catch (OperationCanceledException)
+            {
+                if (Logger.IsTrace) Logger.Debug($"{request} - Operation was canceled");
+            }
+            catch (Exception e)
+            {
+                if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e}");
+            }
+
+            try
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    if (Logger.IsDebug) Logger.Debug("Ignoring sync response as shutdown is requested.");
+                    return;
+                }
+
+                await DoHandleResponse(request, allocatedPeer);
+            }
+            finally
+            {
+                Free(allocation);
+            }
+        }
+
+        private async Task DoHandleResponse(T request, PeerInfo? allocatedPeer = null)
+        {
+            try
+            {
+                SyncResponseHandlingResult result = await Feed.HandleResponse(request, allocatedPeer);
+                ReactToHandlingResult(request, result, allocatedPeer);
+            }
+            catch (ObjectDisposedException)
+            {
+                if (Logger.IsInfo) Logger.Info("Ignoring sync response as the DB has already closed.");
+            }
+            catch (Exception e)
+            {
+                // possibly clear the response and handle empty response batch here (to avoid missing parts)
+                // this practically corrupts sync
+                if (Logger.IsError) Logger.Error("Error when handling response", e);
             }
         }
 
@@ -173,14 +185,13 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void ReactToHandlingResult(T request, SyncResponseHandlingResult result, PeerInfo? peer)
         {
-            if (peer != null)
+            if (peer is not null)
             {
                 switch (result)
                 {
                     case SyncResponseHandlingResult.Emptish:
                         break;
                     case SyncResponseHandlingResult.Ignored:
-                        Logger.Error($"Feed response was ignored.");
                         break;
                     case SyncResponseHandlingResult.LesserQuality:
                         SyncPeerPool.ReportWeakPeer(peer, Feed.Contexts);
@@ -219,7 +230,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     TaskCompletionSource<object?>? newDormantStateTask = null;
                     if (state == SyncFeedState.Dormant)
                     {
-                        newDormantStateTask = new TaskCompletionSource<object?>();
+                        newDormantStateTask = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
                     }
 
                     var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);

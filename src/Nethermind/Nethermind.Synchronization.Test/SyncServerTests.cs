@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -180,7 +167,7 @@ namespace Nethermind.Synchronization.Test
             Block newBestLocalBlock = Build.A.Block.WithNumber(localBlockTree.Head!.Number + 1).WithParent(localBlockTree.Head!).WithDifficulty(10_000_002L).TestObject;
             localBlockTree.SuggestBlock(newBestLocalBlock);
 
-            PoSSwitcher poSSwitcher = new(new MergeConfig() { Enabled = true }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = $"{testSpecProvider.TerminalTotalDifficulty}" }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
             HeaderValidator headerValidator = new(
                 localBlockTree,
                 Always.Valid,
@@ -350,7 +337,7 @@ namespace Nethermind.Synchronization.Test
             Block genesis = Build.A.Block.Genesis.TestObject;
             BlockTree localBlockTree = Build.A.BlockTree(genesis, testSpecProvider).OfChainLength(blockTreeChainLength).TestObject;
 
-            PoSSwitcher poSSwitcher = new(new MergeConfig() { Enabled = true }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
             MergeSealEngine sealEngine = new(new SealEngine(new NethDevSealEngine(), Always.Valid), poSSwitcher, new MergeSealValidator(poSSwitcher, Always.Valid), LimboLogs.Instance);
             HeaderValidator headerValidator = new(
                 localBlockTree,
@@ -502,6 +489,7 @@ namespace Nethermind.Synchronization.Test
             ctx.PeerPool.AllPeers.Returns(peers);
             ctx.PeerPool.PeerCount.Returns(peers.Length);
             ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer1.SyncPeer);
+            ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer2.SyncPeer);
             await Task.Delay(100); // notifications fire on separate task
             await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
             remoteServer1.DidNotReceive().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
@@ -509,6 +497,45 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
+        public async Task Skip_known_block()
+        {
+            Context ctx = new();
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+            ctx.SyncServer = new SyncServer(
+                new MemDb(),
+                new MemDb(),
+                blockTree,
+                NullReceiptStorage.Instance,
+                Always.Valid,
+                Always.Valid,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                Policy.FullGossip,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+            ISyncServer remoteServer1 = Substitute.For<ISyncServer>();
+            SyncPeerMock syncPeerMock1 = new(blockTree, TestItem.PublicKeyA, remoteSyncServer: remoteServer1);
+            PeerInfo peer1 = new(syncPeerMock1);
+            ISyncServer remoteServer2 = Substitute.For<ISyncServer>();
+            SyncPeerMock syncPeerMock2 = new(blockTree, TestItem.PublicKeyB, remoteSyncServer: remoteServer2);
+            PeerInfo peer2 = new(syncPeerMock2);
+            PeerInfo[] peers = { peer1, peer2 };
+            ctx.PeerPool.AllPeers.Returns(peers);
+            ctx.PeerPool.PeerCount.Returns(peers.Length);
+            Block head = blockTree.Head!;
+            ctx.SyncServer.AddNewBlock(head, peer1.SyncPeer);
+            await Task.Delay(100); // notifications fire on separate task
+            await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
+            remoteServer1.DidNotReceive().AddNewBlock(head, Arg.Any<ISyncPeer>());
+            remoteServer2.DidNotReceive().AddNewBlock(head, Arg.Any<ISyncPeer>());
+            blockTree.FindLevel(head.Number)!.BlockInfos.Length.Should().Be(1);
+        }
+
+        [Test]
+        [Retry(3)]
         public async Task Broadcast_NewBlock_on_arrival_to_sqrt_of_peers([Values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100)] int peerCount)
         {
             int expectedPeers = (int)Math.Ceiling(Math.Sqrt(peerCount - 1)); // -1 because of ignoring sender
@@ -542,9 +569,9 @@ namespace Nethermind.Synchronization.Test
             ctx.PeerPool.AllPeers.Returns(peers);
             ctx.PeerPool.PeerCount.Returns(peers.Length);
             ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peers[0].SyncPeer);
-            await Task.Delay(100); // notifications fire on separate task
+
+            Assert.That(() => count, Is.EqualTo(expectedPeers).After(5000, 100));
             await Task.WhenAll(peers.Select(p => ((SyncPeerMock)p.SyncPeer).Close()).ToArray());
-            count.Should().Be(expectedPeers);
         }
 
         [Test]

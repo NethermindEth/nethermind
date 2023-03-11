@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
 using System.Numerics;
@@ -74,7 +61,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
 
-            Assert.True(trace.Entries.Any(e => e.Error != null));
+            Assert.True(trace.Entries.Any(e => e.Error is not null));
         }
 
         [Test]
@@ -87,7 +74,7 @@ namespace Nethermind.Evm.Test
 
             GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-            Assert.True(trace.Entries.Any(e => e.Error != null));
+            Assert.True(trace.Entries.Any(e => e.Error is not null));
         }
 
         [Test]
@@ -101,7 +88,7 @@ namespace Nethermind.Evm.Test
 
             GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-            Assert.True(trace.Entries.Any(e => e.Error != null));
+            Assert.True(trace.Entries.Any(e => e.Error is not null));
         }
 
         [Test]
@@ -116,7 +103,7 @@ namespace Nethermind.Evm.Test
 
             GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-            Assert.True(trace.Entries.Any(e => e.Error != null));
+            Assert.True(trace.Entries.Any(e => e.Error is not null));
         }
 
         [Test(Description = "Test a case where the trace is created for one transaction and subsequent untraced transactions keep adding entries to the first trace created.")]
@@ -436,7 +423,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.TLOAD)
                 .Done;
 
-            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.CancunBlockTimestamp);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad, receipt.GasSpent, "gas");
         }
 
@@ -452,7 +439,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.TSTORE)
                 .Done;
 
-            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.CancunBlockTimestamp);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.TStore, receipt.GasSpent, "gas");
         }
 
