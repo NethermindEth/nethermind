@@ -73,7 +73,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
         }
 
-        long totalSize = 300.MB();
+        long totalSize = 1024.MB();
         bool noGcRegion = GC.TryStartNoGCRegion(totalSize, true);
 
         try
@@ -94,7 +94,7 @@ public partial class EngineRpcModule : IEngineRpcModule
                 {
                     watch.Stop();
                     Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
-                    if (_gcScheduleTask.IsCompleted) _gcScheduleTask = ScheduleGC();
+                    // if (_gcScheduleTask.IsCompleted) _gcScheduleTask = ScheduleGC();
                     _locker.Release();
                 }
             }
