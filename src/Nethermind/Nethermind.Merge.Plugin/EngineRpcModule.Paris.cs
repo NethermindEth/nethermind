@@ -3,13 +3,12 @@
 
 using System;
 using System.Diagnostics;
-using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin;
@@ -22,7 +21,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler;
     private readonly SemaphoreSlim _locker = new(1, 1);
     private readonly TimeSpan _timeout = TimeSpan.FromSeconds(8);
-    private Task _gcScheduleTask = Task.CompletedTask;
+    private readonly GCKeeper _gcKeeper;
 
     public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
@@ -73,10 +72,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
         }
 
-        long totalSize = 512.MB();
-        bool noGcRegion = GC.TryStartNoGCRegion(totalSize, true);
-
-        try
+        using (_gcKeeper.TryStartNoGCRegion())
         {
             if (await _locker.WaitAsync(_timeout))
             {
@@ -94,7 +90,7 @@ public partial class EngineRpcModule : IEngineRpcModule
                 {
                     watch.Stop();
                     Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
-                    if (_gcScheduleTask.IsCompleted) _gcScheduleTask = ScheduleGC();
+                    _gcKeeper.ScheduleGC();
                     _locker.Release();
                 }
             }
@@ -104,30 +100,5 @@ public partial class EngineRpcModule : IEngineRpcModule
                 return ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout);
             }
         }
-        finally
-        {
-            if (noGcRegion)
-            {
-                if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
-                {
-                    try
-                    {
-                        GC.EndNoGCRegion();
-                    }
-                    catch (InvalidOperationException)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Failed to keep in NoGCRegion with Exception with {totalSize} bytes");
-                    }
-                }
-                else if (_logger.IsWarn) _logger.Warn($"Failed to keep in NoGCRegion with {totalSize} bytes");
-            }
-            else if (_logger.IsWarn) _logger.Warn($"Failed to start NoGCRegion with {totalSize} bytes");
-        }
-    }
-
-    private static async Task ScheduleGC()
-    {
-        await Task.Delay(1000);
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Default, false, true);
     }
 }
