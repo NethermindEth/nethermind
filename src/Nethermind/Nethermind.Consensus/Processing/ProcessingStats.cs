@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.Processing
 
             if (runMicroseconds > 1 * 1000 * 1000)
             {
-                decimal chunkMicroseconds = _processingTimeInMs;
+                decimal chunkMilliseconds = _processingTimeInMs;
                 decimal totalMicroseconds = currentTicks * (1_000_000m / Stopwatch.Frequency);
                 long currentStateDbReads = Db.Metrics.StateDbReads;
                 long currentStateDbWrites = Db.Metrics.StateDbWrites;
@@ -93,14 +93,14 @@ namespace Nethermind.Consensus.Processing
 
                 _totalBlocks += chunkBlocks;
 
-                decimal mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1000 * 1000;
+                decimal mgasPerSecond = chunkMilliseconds == 0 ? -1 : chunkMGas / chunkMilliseconds * 1000;
                 decimal totalMgasPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Mgas / totalMicroseconds * 1000 * 1000;
                 decimal totalTxPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Transactions / totalMicroseconds * 1000 * 1000;
                 decimal totalBlocksPerSecond = totalMicroseconds == 0 ? -1 : _totalBlocks / totalMicroseconds * 1000 * 1000;
-                decimal txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1000m * 1000m;
-                decimal bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1000m * 1000m;
+                decimal txps = chunkMilliseconds == 0 ? -1 : chunkTx / chunkMilliseconds * 1000m;
+                decimal bps = chunkMilliseconds == 0 ? -1 : chunkBlocks / chunkMilliseconds * 1000m;
 
-                if (_logger.IsInfo) _logger.Info($"Processed  {block.Number,9} |  {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms of {(runMicroseconds == 0 ? -1 : runMicroseconds / 1000),7:N0}ms, mgasps {mgasPerSecond,7:F2} total {totalMgasPerSecond,7:F2}, tps {txps,7:F2} total {totalTxPerSecond,7:F2}, bps {bps,7:F2} total {totalBlocksPerSecond,7:F2}, recv queue {recoveryQueueSize}, proc queue {blockQueueSize}");
+                if (_logger.IsInfo) _logger.Info($"Processed  {block.Number,9} |  {(chunkMilliseconds == 0 ? -1 : chunkMilliseconds),7:N0}ms of {(runMicroseconds == 0 ? -1 : runMicroseconds / 1000),7:N0}ms, mgasps {mgasPerSecond,7:F2} total {totalMgasPerSecond,7:F2}, tps {txps,7:F2} total {totalTxPerSecond,7:F2}, bps {bps,7:F2} total {totalBlocksPerSecond,7:F2}, recv queue {recoveryQueueSize}, proc queue {blockQueueSize}");
                 if (_logger.IsTrace)
                 {
                     long currentGen0 = GC.CollectionCount(0);
