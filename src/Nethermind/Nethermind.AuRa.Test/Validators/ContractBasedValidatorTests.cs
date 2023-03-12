@@ -549,7 +549,8 @@ namespace Nethermind.AuRa.Test.Validators
                     block = bt.FindBlock(block.ParentHash, BlockTreeLookupOptions.None);
                 }
             }
-
+            
+            // Warning Ropsten Network is Deprecated
             Address validators = TestItem.Addresses[initialValidatorsIndex * 10];
             InMemoryReceiptStorage inMemoryReceiptStorage = new();
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(RopstenSpecProvider.Instance)

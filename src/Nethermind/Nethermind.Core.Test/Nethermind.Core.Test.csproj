@@ -25,6 +25,7 @@
     <ProjectReference Include="..\Nethermind.Specs.Test\Nethermind.Specs.Test.csproj" />
   </ItemGroup>
   <ItemGroup>
+  // Warning Ropsten Network is Deprecated
     <Content Include="TestRopstenBlocks\*.*">
       <Link>TestRopstenBlocks\%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

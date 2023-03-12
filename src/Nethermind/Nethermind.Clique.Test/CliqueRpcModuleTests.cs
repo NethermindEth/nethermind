@@ -31,6 +31,7 @@ namespace Nethermind.Clique.Test
         {
             CliqueConfig cliqueConfig = new();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
+            // Warning Ropsten Network is Deprecated
             Signer signer = new(BlockchainIds.Ropsten, TestItem.PrivateKeyA, LimboLogs.Instance);
             CliqueBlockProducer producer = new(
                 Substitute.For<ITxSource>(),

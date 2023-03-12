@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         [SetUp]
         public void SetUp()
         {
+            // Warning Ropsten Network is Deprecated
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
             EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
             ReceiptsRecovery receiptsRecovery = new(ethereumEcdsa, specProvider);

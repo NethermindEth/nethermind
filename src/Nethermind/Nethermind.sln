@@ -52,7 +52,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\kovan.json = Chains\kovan.json
 		Chains\poacore.json = Chains\poacore.json
 		Chains\rinkeby.json = Chains\rinkeby.json
-		Chains\ropsten.json = Chains\ropsten.json
 		Chains\spaceneth.json = Chains\spaceneth.json
 		Chains\volta.json = Chains\volta.json
 		Chains\wit.json = Chains\wit.json

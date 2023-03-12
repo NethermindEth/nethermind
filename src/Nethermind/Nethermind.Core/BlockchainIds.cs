@@ -10,6 +10,7 @@ namespace Nethermind.Core
     /// 1: Classic, the (un)forked public Ethereum Classic PoW main network, chain ID 61
     /// 1: Expanse, an alternative Ethereum implementation, chain ID 2
     /// 2: Morden Classic, the public Ethereum Classic PoW testnet
+    // Warning Ropsten Network is Deprecated
     /// 3: Ropsten, the public cross-client Ethereum PoS testnet
     /// 4: Rinkeby, the public Geth-only PoA testnet
     /// 5: Goerli, the public cross-client PoA testnet
@@ -31,7 +32,6 @@ namespace Nethermind.Core
         public const int Olympic = 0;
         public const int Mainnet = 1;
         public const int Morden = 2;
-        public const int Ropsten = 3;
         public const int Rinkeby = 4;
         public const int Goerli = 5;
         public const int RootstockMainnet = 30;
@@ -54,7 +54,6 @@ namespace Nethermind.Core
                 Olympic => nameof(Olympic),
                 Mainnet => nameof(Mainnet),
                 Morden => nameof(Morden),
-                Ropsten => nameof(Ropsten),
                 Rinkeby => nameof(Rinkeby),
                 Goerli => nameof(Goerli),
                 RootstockMainnet => nameof(RootstockMainnet),
