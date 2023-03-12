@@ -13,6 +13,9 @@ using System.Runtime.Loader;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+
+using DotNetty.Common;
+
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -55,6 +58,8 @@ namespace Nethermind.Runner
 
         public static void Main(string[] args)
         {
+            ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
+
             AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
             {
                 ILogger logger = GetCriticalLogger();
