@@ -32,6 +32,7 @@ namespace Nethermind.Consensus.Processing
         private long _maxMemory;
         private long _totalBlocks;
         private bool _isDebugMode = false;
+        private decimal _processingTimeInMs;
 
         public ProcessingStats(ILogger logger)
         {
@@ -44,7 +45,7 @@ namespace Nethermind.Consensus.Processing
 #endif
         }
 
-        public void UpdateStats(Block? block, IBlockTree blockTreeCtx, int recoveryQueueSize, int blockQueueSize)
+        public void UpdateStats(Block? block, IBlockTree blockTreeCtx, int recoveryQueueSize, int blockQueueSize, long lastBlockProcessingTimeInMs)
         {
             if (block is null)
             {
@@ -57,6 +58,8 @@ namespace Nethermind.Consensus.Processing
             {
                 _lastBlockNumber = block.Number;
             }
+
+            _processingTimeInMs += lastBlockProcessingTimeInMs;
 
             Metrics.Mgas += block.GasUsed / 1_000_000m;
             Metrics.Transactions += block.Transactions.Length;
@@ -72,14 +75,13 @@ namespace Nethermind.Consensus.Processing
             Metrics.BestKnownBlockNumber = blockTreeCtx.BestKnownNumber;
 
             long currentTicks = _processingStopwatch.ElapsedTicks;
-            decimal totalMicroseconds = currentTicks * (1_000_000m / Stopwatch.Frequency);
-            decimal chunkMicroseconds = (currentTicks - _lastElapsedProcessingTicks) * (1_000_000m / Stopwatch.Frequency);
-
             long runningTicks = _runStopwatch.ElapsedTicks;
             decimal runMicroseconds = (runningTicks - _lastElapsedRunningTicks) * (1_000_000m / Stopwatch.Frequency);
 
             if (runMicroseconds > 1 * 1000 * 1000)
             {
+                decimal chunkMicroseconds = _processingTimeInMs;
+                decimal totalMicroseconds = currentTicks * (1_000_000m / Stopwatch.Frequency);
                 long currentStateDbReads = Db.Metrics.StateDbReads;
                 long currentStateDbWrites = Db.Metrics.StateDbWrites;
                 long currentTreeNodeRlp = Trie.Metrics.TreeNodeRlpEncodings + Trie.Metrics.TreeNodeRlpDecodings;
@@ -99,7 +101,7 @@ namespace Nethermind.Consensus.Processing
                 decimal bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1000m * 1000m;
 
                 if (_logger.IsInfo) _logger.Info($"Processed  {block.Number,9} |  {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms of {(runMicroseconds == 0 ? -1 : runMicroseconds / 1000),7:N0}ms, mgasps {mgasPerSecond,7:F2} total {totalMgasPerSecond,7:F2}, tps {txps,7:F2} total {totalTxPerSecond,7:F2}, bps {bps,7:F2} total {totalBlocksPerSecond,7:F2}, recv queue {recoveryQueueSize}, proc queue {blockQueueSize}");
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
                     long currentGen0 = GC.CollectionCount(0);
                     long currentGen1 = GC.CollectionCount(1);
@@ -122,6 +124,7 @@ namespace Nethermind.Consensus.Processing
                 _lastTreeNodeRlp = currentTreeNodeRlp;
                 _lastEvmExceptions = evmExceptions;
                 _lastSelfDestructs = currentSelfDestructs;
+                _processingTimeInMs = 0;
             }
         }
 
