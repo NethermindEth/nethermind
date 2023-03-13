@@ -6,5 +6,5 @@ namespace Nethermind.Merge.Plugin.GC;
 public interface IGCStrategy
 {
     bool ShouldTryToPreventGCDuringBlockProcessing();
-    int ShouldForceGCBetweenBlockProcessing();
+    int GCGenerationToCollectBetweenBlockProcessing();
 }
