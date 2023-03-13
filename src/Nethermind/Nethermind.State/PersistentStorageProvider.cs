@@ -32,8 +32,8 @@ namespace Nethermind.State
 
         // state root aware caching
         private readonly LruCache<StorageCell, byte[]> _cellCache = new(16 * 1024, "Storage Cell Cache");
-        private static readonly Keccak _noCache = Keccak.Compute(new byte[]{0});
-        private Keccak _stateRoot = Keccak.Compute(new byte[]{1});
+        private static readonly Keccak _noCache = Keccak.Compute(new byte[] { 0 });
+        private Keccak _stateRoot = Keccak.Compute(new byte[] { 1 });
 
         public PersistentStorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
             : base(logManager)
