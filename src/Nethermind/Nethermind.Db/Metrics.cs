@@ -60,6 +60,12 @@ namespace Nethermind.Db
         [Description("Number of State DB duplicate writes during full pruning.")]
         public static int StateDbInPruningWrites;
 
+        [Description("Number of storge trie reads served from cache.")]
+        public static long StorageTreeCacheReads { get; set; }
+
+        [Description("Number of storge trie cache invalidations that drop the whole cache.")]
+        public static long StorageTreeCacheInvalidations { get; set; }
+
         [Description("Number of storge trie reads.")]
         public static long StorageTreeReads { get; set; }
 

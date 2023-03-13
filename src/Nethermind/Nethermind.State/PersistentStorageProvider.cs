@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -29,12 +30,19 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
+        // state root aware caching
+        private readonly LruCache<StorageCell, byte[]> _cellCache = new(16 * 1024, "Storage Cell Cache");
+        private static readonly Keccak _noCache = Keccak.Compute(new byte[]{0});
+        private Keccak _stateRoot = _noCache;
+
         public PersistentStorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
             : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+
+            stateProvider.StateRootCommitted += (_, args) => _stateRoot = args.RootKeccak;
         }
 
         /// <summary>
@@ -81,7 +89,6 @@ namespace Nethermind.State
 
             return _originalValues[storageCell];
         }
-
 
         /// <summary>
         /// Called by Commit
@@ -162,7 +169,13 @@ namespace Nethermind.State
                         StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
                         Db.Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageCell.Address);
+
+                        // set in the tree
                         tree.Set(change.StorageCell.Index, change.Value);
+
+                        // and in the cache
+                        _cellCache.Set(change.StorageCell, change.Value);
+
                         if (isTracing)
                         {
                             trace![change.StorageCell] = new ChangeTrace(change.Value);
@@ -228,10 +241,34 @@ namespace Nethermind.State
 
         private byte[] LoadFromTree(in StorageCell storageCell)
         {
+            byte[] value;
+            if (!ReferenceEquals(_stateRoot, _noCache))
+            {
+                if (_stateProvider.StateRoot == _stateRoot)
+                {
+                    if (_cellCache.TryGet(storageCell, out value))
+                    {
+                        Db.Metrics.StorageTreeCacheInvalidations++;
+                        return value;
+                    }
+                }
+                else
+                {
+                    // this should happen only on reorg
+                    _stateRoot = Keccak.Zero;
+                    Db.Metrics.StorageTreeCacheInvalidations++;
+                    _cellCache.Clear();
+                }
+            }
+
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
             Db.Metrics.StorageTreeReads++;
-            byte[] value = tree.Get(storageCell.Index);
+            value = tree.Get(storageCell.Index);
+
+            // cache write-through
+            _cellCache.Set(storageCell, value);
+
             PushToRegistryOnly(storageCell, value);
             return value;
         }
@@ -279,6 +316,9 @@ namespace Nethermind.State
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+
+            // it's ok to not clear the _cellCache here, as the follow up calls should not happen?
+            // _cellCache
         }
     }
 }

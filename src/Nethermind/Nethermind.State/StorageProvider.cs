@@ -9,10 +9,10 @@ namespace Nethermind.State
 {
     public class StorageProvider : IStorageProvider
     {
-        PersistentStorageProvider _persistentStorageProvider;
-        TransientStorageProvider _transientStorageProvider;
+        readonly PersistentStorageProvider _persistentStorageProvider;
+        readonly TransientStorageProvider _transientStorageProvider;
 
-        public StorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
+        public StorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager)
         {
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
