@@ -28,18 +28,36 @@ public class GCKeeper
         size ??= _defaultSize;
         if (_igcStrategy.ShouldTryToPreventGCDuringBlockProcessing())
         {
-            bool noGcRegion = System.GC.TryStartNoGCRegion(size.Value, true);
-            return new NoGCRegion(this, noGcRegion ? FailCause.None : FailCause.GC, size, _logger);
+            FailCause failCause = FailCause.None;
+            try
+            {
+                if (!System.GC.TryStartNoGCRegion(size.Value, true))
+                {
+                    failCause = FailCause.GCFailedToStartNoGCRegion;
+                }
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                failCause = FailCause.TotalSizeExceededTheEphemeralSegmentSize;
+            }
+            catch (InvalidOperationException)
+            {
+                failCause = FailCause.AlreadyInNoGCRegion;
+            }
+
+            return new NoGCRegion(this, failCause, size, _logger);
         }
 
-        return new NoGCRegion(this, FailCause.Strategy, size, _logger);
+        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, _logger);
     }
 
     private enum FailCause
     {
         None,
-        Strategy,
-        GC,
+        StrategyDisallowed,
+        GCFailedToStartNoGCRegion,
+        TotalSizeExceededTheEphemeralSegmentSize,
+        AlreadyInNoGCRegion
     }
 
     private class NoGCRegion : IDisposable
@@ -90,6 +108,9 @@ public class GCKeeper
         int gcToCollect = Math.Min(_igcStrategy.GCGenerationToCollectBetweenBlockProcessing(), System.GC.MaxGeneration);
         if (gcToCollect >= 0)
         {
+            // This should give time to finalize response in Engine API
+            // Normally we should get block every 12s (5s on some chains)
+            // Lets say we process block in 2s, then delay 1s, then invoke GC
             await Task.Delay(1000);
             if (_logger.IsWarn) _logger.Warn($"Forcing GC collection of gen {gcToCollect}");
             System.GC.Collect(gcToCollect, GCCollectionMode.Default, false, false);
