@@ -67,12 +67,12 @@ public class GCKeeper
                     }
                     catch (InvalidOperationException)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Failed to keep in NoGCRegion with Exception with {_size} bytes");
+                        if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with Exception with {_size} bytes");
                     }
                 }
-                else if (_logger.IsWarn) _logger.Warn($"Failed to keep in NoGCRegion with {_size} bytes");
+                else if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with {_size} bytes");
             }
-            else if (_logger.IsWarn) _logger.Warn($"Failed to start NoGCRegion with {_size} bytes with cause {_failCause.FastToString()}");
+            else if (_logger.IsDebug) _logger.Debug($"Failed to start NoGCRegion with {_size} bytes with cause {_failCause.FastToString()}");
         }
     }
 
