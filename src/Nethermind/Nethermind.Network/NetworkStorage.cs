@@ -52,14 +52,13 @@ namespace Nethermind.Network
                 if (nodes is not null)
                 {
                     // Already updated
-                    goto ReturnValue;
+                    return nodes;
                 }
 
                 List<NetworkNode> nodeList = _nodesList;
                 if (nodeList.Count > 0)
                 {
-                    nodes = _nodes = nodeList.ToArray();
-                    goto ReturnValue;
+                    return (_nodes = nodeList.ToArray());
                 }
 
                 foreach (byte[]? nodeRlp in _fullDb.Values)
@@ -83,15 +82,13 @@ namespace Nethermind.Network
 
                 if (nodeList.Count == 0)
                 {
-                    nodes = Array.Empty<NetworkNode>();
+                    return Array.Empty<NetworkNode>();
                 }
                 else
                 {
-                    nodes = _nodes = nodeList.ToArray();
+                    return (_nodes = nodeList.ToArray());
                 }
             }
-ReturnValue:
-            return nodes;
         }
 
         public void UpdateNode(NetworkNode node)
