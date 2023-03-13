@@ -21,5 +21,9 @@ namespace Nethermind.Merge.Plugin
         public ulong SecondsPerSlot { get; set; } = 12;
 
         public string? BuilderRelayUrl { get; set; }
+
+        public bool DisableGCDuringBlockProcessing { get; set; } = true;
+
+        public int ForceGCBetweenBLocks { get; set; } = 2;
     }
 }

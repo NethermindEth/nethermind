@@ -5,12 +5,6 @@ namespace Nethermind.Merge.Plugin.GC;
 
 public interface IGCStrategy
 {
-    bool ShouldControlGCToReducePauses();
-}
-
-class NoGCStrategy : IGCStrategy
-{
-    public static readonly NoGCStrategy Instance = new NoGCStrategy();
-
-    public bool ShouldControlGCToReducePauses() => false;
+    bool ShouldTryToPreventGCDuringBlockProcessing();
+    int ShouldForceGCBetweenBlockProcessing();
 }

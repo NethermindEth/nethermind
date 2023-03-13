@@ -42,5 +42,12 @@ namespace Nethermind.Merge.Plugin
 
         [ConfigItem(Description = "URL to Builder Relay. If set when building blocks nethermind will send them to the relay.", DefaultValue = "null")]
         string? BuilderRelayUrl { get; set; }
+
+        [ConfigItem(Description = "Reduces block EngineApi latency by disabling Garbage Collection during EngineApi calls.", DefaultValue = "true")]
+        public bool DisableGCDuringBlockProcessing { get; set; }
+
+        [ConfigItem(Description = "On lightly used nodes reduces memory usage by forcing Garbage Collection between EngineApi calls. " +
+                                  "On highly busy nodes (JSON RPC) may increase latency. Value corresponds to generation to be cleared. -1 disables it.", DefaultValue = "2")]
+        public int ForceGCBetweenBLocks { get; set; }
     }
 }

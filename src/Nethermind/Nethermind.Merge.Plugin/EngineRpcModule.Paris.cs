@@ -72,33 +72,30 @@ public partial class EngineRpcModule : IEngineRpcModule
             return ResultWrapper<PayloadStatusV1>.Fail(error, ErrorCodes.InvalidParams);
         }
 
-        using (_gcKeeper.TryStartNoGCRegion())
+        if (await _locker.WaitAsync(_timeout))
         {
-            if (await _locker.WaitAsync(_timeout))
+            Stopwatch watch = Stopwatch.StartNew();
+            using IDisposable region = _gcKeeper.TryStartNoGCRegion();
+            try
             {
-                Stopwatch watch = Stopwatch.StartNew();
-                try
-                {
-                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
-                }
-                catch (Exception exception)
-                {
-                    if (_logger.IsError) _logger.Error($"engine_newPayloadV{version} failed: {exception}");
-                    return ResultWrapper<PayloadStatusV1>.Fail(exception.Message);
-                }
-                finally
-                {
-                    watch.Stop();
-                    Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
-                    _gcKeeper.ScheduleGC();
-                    _locker.Release();
-                }
+                return await _newPayloadV1Handler.HandleAsync(executionPayload);
             }
-            else
+            catch (Exception exception)
             {
-                if (_logger.IsWarn) _logger.Warn($"engine_newPayloadV{version} timed out");
-                return ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout);
+                if (_logger.IsError) _logger.Error($"engine_newPayloadV{version} failed: {exception}");
+                return ResultWrapper<PayloadStatusV1>.Fail(exception.Message);
             }
+            finally
+            {
+                watch.Stop();
+                Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
+                _locker.Release();
+            }
+        }
+        else
+        {
+            if (_logger.IsWarn) _logger.Warn($"engine_newPayloadV{version} timed out");
+            return ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout);
         }
     }
 }
