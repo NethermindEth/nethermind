@@ -26,13 +26,13 @@ public class GCKeeper
     public IDisposable TryStartNoGCRegion(long? size = null)
     {
         size ??= _defaultSize;
-        if (_igcStrategy.ShouldControlGCToReducePauses())
+        if (_igcStrategy.ShouldTryToPreventGCDuringBlockProcessing())
         {
             bool noGcRegion = System.GC.TryStartNoGCRegion(size.Value, true);
-            return new NoGCRegion(noGcRegion ? FailCause.None : FailCause.GC, size, _logger);
+            return new NoGCRegion(this, noGcRegion ? FailCause.None : FailCause.GC, size, _logger);
         }
 
-        return new NoGCRegion(FailCause.Strategy, size, _logger);
+        return new NoGCRegion(this, FailCause.Strategy, size, _logger);
     }
 
     private enum FailCause
@@ -44,12 +44,14 @@ public class GCKeeper
 
     private class NoGCRegion : IDisposable
     {
+        private readonly GCKeeper _gcKeeper;
         private readonly FailCause _failCause;
         private readonly long? _size;
         private readonly ILogger _logger;
 
-        internal NoGCRegion(FailCause failCause, long? size, ILogger logger)
+        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, ILogger logger)
         {
+            _gcKeeper = gcKeeper;
             _failCause = failCause;
             _size = size;
             _logger = logger;
@@ -73,20 +75,23 @@ public class GCKeeper
                 else if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with {_size} bytes");
             }
             else if (_logger.IsDebug) _logger.Debug($"Failed to start NoGCRegion with {_size} bytes with cause {_failCause.FastToString()}");
+
+            _gcKeeper.ScheduleGC();
         }
     }
 
-    public void ScheduleGC()
+    private void ScheduleGC()
     {
         if (_gcScheduleTask.IsCompleted) _gcScheduleTask = ScheduleGCInternal();
     }
 
     private async Task ScheduleGCInternal()
     {
-        if (_igcStrategy.ShouldControlGCToReducePauses())
+        int gcToCollect = Math.Min(_igcStrategy.ShouldForceGCBetweenBlockProcessing(), System.GC.MaxGeneration);
+        if (gcToCollect >= 0)
         {
             await Task.Delay(1000);
-            System.GC.Collect(System.GC.MaxGeneration, GCCollectionMode.Default, false, true);
+            System.GC.Collect(gcToCollect, GCCollectionMode.Default, false, true);
         }
     }
 }

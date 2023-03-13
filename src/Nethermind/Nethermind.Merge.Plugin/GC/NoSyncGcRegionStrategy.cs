@@ -8,11 +8,14 @@ namespace Nethermind.Merge.Plugin.GC;
 public class NoSyncGcRegionStrategy : IGCStrategy
 {
     private readonly ISyncModeSelector _syncModeSelector;
+    private readonly IMergeConfig _mergeConfig;
 
-    public NoSyncGcRegionStrategy(ISyncModeSelector syncModeSelector)
+    public NoSyncGcRegionStrategy(ISyncModeSelector syncModeSelector, IMergeConfig mergeConfig)
     {
         _syncModeSelector = syncModeSelector;
+        _mergeConfig = mergeConfig;
     }
 
-    public bool ShouldControlGCToReducePauses() => _syncModeSelector.Current == SyncMode.WaitingForBlock;
+    public bool ShouldTryToPreventGCDuringBlockProcessing() => _mergeConfig.DisableGCDuringBlockProcessing && _syncModeSelector.Current == SyncMode.WaitingForBlock;
+    public int ShouldForceGCBetweenBlockProcessing() => _mergeConfig.ForceGCBetweenBLocks;
 }
