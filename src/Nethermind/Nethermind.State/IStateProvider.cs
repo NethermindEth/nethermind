@@ -14,6 +14,8 @@ namespace Nethermind.State
     {
         void RecalculateStateRoot();
 
+        public Keccak LastStateRoot { get; }
+
         new Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);

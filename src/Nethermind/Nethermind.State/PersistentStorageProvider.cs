@@ -33,7 +33,7 @@ namespace Nethermind.State
         // state root aware caching
         private readonly LruCache<StorageCell, byte[]> _cellCache = new(16 * 1024, "Storage Cell Cache");
         private static readonly Keccak _noCache = Keccak.Compute(new byte[]{0});
-        private Keccak _stateRoot = _noCache;
+        private Keccak _stateRoot = Keccak.Compute(new byte[]{1});
 
         public PersistentStorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
             : base(logManager)
@@ -52,6 +52,7 @@ namespace Nethermind.State
         {
             base.Reset();
             _storages.Reset();
+            _cellCache.Clear();
             _originalValues.Clear();
             _committedThisRound.Clear();
         }
@@ -241,33 +242,34 @@ namespace Nethermind.State
 
         private byte[] LoadFromTree(in StorageCell storageCell)
         {
-            byte[] value;
+            byte[]? value = null;
             if (!ReferenceEquals(_stateRoot, _noCache))
             {
-                if (_stateProvider.StateRoot == _stateRoot)
+                if (_stateProvider.LastStateRoot == _stateRoot)
                 {
                     if (_cellCache.TryGet(storageCell, out value))
                     {
-                        Db.Metrics.StorageTreeCacheInvalidations++;
-                        return value;
+                        Db.Metrics.StorageTreeCacheReads++;
                     }
                 }
                 else
                 {
                     // this should happen only on reorg
-                    _stateRoot = Keccak.Zero;
+                    _stateRoot = _noCache;
                     Db.Metrics.StorageTreeCacheInvalidations++;
                     _cellCache.Clear();
                 }
             }
 
-            StorageTree tree = GetOrCreateStorage(storageCell.Address);
+            if (value == null)
+            {
+                StorageTree tree = GetOrCreateStorage(storageCell.Address);
+                Db.Metrics.StorageTreeReads++;
+                value = tree.Get(storageCell.Index);
 
-            Db.Metrics.StorageTreeReads++;
-            value = tree.Get(storageCell.Index);
-
-            // cache write-through
-            _cellCache.Set(storageCell, value);
+                // cache write-through
+                _cellCache.Set(storageCell, value);
+            }
 
             PushToRegistryOnly(storageCell, value);
             return value;
@@ -317,8 +319,9 @@ namespace Nethermind.State
             // TODO: how does it work with pruning?
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
 
-            // it's ok to not clear the _cellCache here, as the follow up calls should not happen?
-            // _cellCache
+            // TODO: big penalty on clearing storage, potentially, could benefit from less a-bomb cleanup
+            // for a given address only
+            _cellCache.Clear();
         }
     }
 }
