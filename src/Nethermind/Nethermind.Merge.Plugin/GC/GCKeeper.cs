@@ -92,7 +92,7 @@ public class GCKeeper
         {
             await Task.Delay(1000);
             if (_logger.IsWarn) _logger.Warn($"Forcing GC collection of gen {gcToCollect}");
-            System.GC.Collect(gcToCollect, GCCollectionMode.Default, false, true);
+            System.GC.Collect(gcToCollect, GCCollectionMode.Default, false, false);
         }
     }
 }
