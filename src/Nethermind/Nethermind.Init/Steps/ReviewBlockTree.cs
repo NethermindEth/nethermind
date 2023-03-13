@@ -63,7 +63,7 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _api.DbProvider!.StateDb, _logger!);
+                StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _api.ReadOnlyTrieStore!, _logger!);
                 await _api.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)

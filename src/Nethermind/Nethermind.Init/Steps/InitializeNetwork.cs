@@ -39,6 +39,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Steps;
 
@@ -107,7 +108,7 @@ public class InitializeNetwork : IStep
             _api.BlockTree!,
             _api.ReceiptStorage!,
             _api.DbProvider.StateDb,
-            _api.ReadOnlyTrieStore!,
+            new TrieStoreByPath(_api.DbProvider.StateDb, Trie.Pruning.No.Pruning, Persist.EveryBlock, _api.LogManager),
             progressTracker,
             _syncConfig,
             _api.LogManager);
@@ -271,7 +272,7 @@ public class InitializeNetwork : IStep
     }
 
     protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
-        => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, No.BeaconSync, _api.BetterPeerStrategy!, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
+        => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, Synchronization.No.BeaconSync, _api.BetterPeerStrategy!, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
 
     private Task StartDiscovery()
     {

@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.Visitors
 {
@@ -19,7 +20,7 @@ namespace Nethermind.Blockchain.Visitors
     {
         public const int DefaultBatchSize = 4000;
         private readonly IBlockTree _blockTree;
-        private readonly IDb _stateDb;
+        private readonly ITrieNodeResolver _stateNodeResolver;
         private readonly ILogger _logger;
         private long _startNumber;
         private long _blocksToLoad;
@@ -42,12 +43,12 @@ namespace Nethermind.Blockchain.Visitors
         public StartupBlockTreeFixer(
             ISyncConfig syncConfig,
             IBlockTree blockTree,
-            IDb stateDb,
+            ITrieNodeResolver stateNodeResolver,
             ILogger logger,
             long batchSize = DefaultBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _stateDb = stateDb;
+            _stateNodeResolver = stateNodeResolver;
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             _batchSize = batchSize;
@@ -242,7 +243,7 @@ namespace Nethermind.Blockchain.Visitors
             {
                 BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (parentHeader is null || parentHeader.StateRoot is null ||
-                    _stateDb.Get(parentHeader.StateRoot) is null)
+                    !_stateNodeResolver.ExistsInDB(parentHeader.StateRoot, Array.Empty<byte>()))
                     return false;
             }
             else

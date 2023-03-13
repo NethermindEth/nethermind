@@ -15,7 +15,7 @@ namespace Nethermind.Trie.ByPath;
 public class FullLeafHistory : ILeafHistoryStrategy
 {
     private ConcurrentDictionary<long, ConcurrentDictionary<byte[], TrieNode>> _leafNodesByBlock = new();
-    private ConcurrentDictionary<Keccak, long> _rootHashToBlock = new();
+    private ConcurrentDictionary<Keccak, HashSet<long>> _rootHashToBlock = new();
     private Tuple<long, Keccak> latestBlock;
     private int _maxNumberOfBlocks;
 
@@ -35,8 +35,9 @@ public class FullLeafHistory : ILeafHistoryStrategy
 
     public byte[]? GetLeafNode(Keccak rootHash, byte[] path)
     {
-        if (_rootHashToBlock.TryGetValue(rootHash, out long blockNo))
+        if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
         {
+            long blockNo = blocks.Min();
             if (_leafNodesByBlock.TryGetValue(blockNo, out ConcurrentDictionary<byte[], TrieNode> leafDictionary))
             {
                 if (leafDictionary.TryGetValue(path, out TrieNode node))
@@ -67,7 +68,10 @@ public class FullLeafHistory : ILeafHistoryStrategy
     public void SetRootHashForBlock(long blockNo, Keccak? rootHash)
     {
         rootHash ??= Keccak.EmptyTreeHash;
-        _rootHashToBlock[rootHash] = blockNo;
+        if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
+            blocks.Add(blockNo);
+        else
+            _rootHashToBlock[rootHash] = new HashSet<long>(new[] { blockNo });
 
         if (blockNo >= (latestBlock?.Item1 ?? 0))
         {
