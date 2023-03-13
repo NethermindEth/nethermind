@@ -91,6 +91,7 @@ public class GCKeeper
         if (gcToCollect >= 0)
         {
             await Task.Delay(1000);
+            if (_logger.IsWarn) _logger.Warn($"Forcing GC collection of gen {gcToCollect}");
             System.GC.Collect(gcToCollect, GCCollectionMode.Default, false, true);
         }
     }
