@@ -17,5 +17,5 @@ public class NoSyncGcRegionStrategy : IGCStrategy
     }
 
     public bool ShouldTryToPreventGCDuringBlockProcessing() => _mergeConfig.DisableGCDuringBlockProcessing && _syncModeSelector.Current == SyncMode.WaitingForBlock;
-    public int ShouldForceGCBetweenBlockProcessing() => _mergeConfig.ForceGCBetweenBLocks;
+    public int GCGenerationToCollectBetweenBlockProcessing() => _mergeConfig.ForceGCBetweenBLocks;
 }

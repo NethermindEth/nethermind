@@ -87,7 +87,7 @@ public class GCKeeper
 
     private async Task ScheduleGCInternal()
     {
-        int gcToCollect = Math.Min(_igcStrategy.ShouldForceGCBetweenBlockProcessing(), System.GC.MaxGeneration);
+        int gcToCollect = Math.Min(_igcStrategy.GCGenerationToCollectBetweenBlockProcessing(), System.GC.MaxGeneration);
         if (gcToCollect >= 0)
         {
             await Task.Delay(1000);
