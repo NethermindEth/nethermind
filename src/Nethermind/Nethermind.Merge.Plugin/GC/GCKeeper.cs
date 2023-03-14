@@ -112,7 +112,7 @@ public class GCKeeper
             // Normally we should get block every 12s (5s on some chains)
             // Lets say we process block in 2s, then delay 1s, then invoke GC
             await Task.Delay(1000);
-            if (_logger.IsWarn) _logger.Warn($"Forcing GC collection of gen {gcToCollect}");
+            if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {gcToCollect}");
             System.GC.Collect(gcToCollect, GCCollectionMode.Default, blocking: false, compacting: true);
         }
     }
