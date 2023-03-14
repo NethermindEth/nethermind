@@ -31,16 +31,18 @@ namespace Nethermind.State
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
         // state root aware caching
-        private readonly LruCache<StorageCell, byte[]> _cellCache = new(16 * 1024, "Storage Cell Cache");
-        private static readonly Keccak _noCache = Keccak.Compute(new byte[] { 0 });
+        private const int DefaultCellCacheSize = 16 * 1024;
+        private readonly LruCache<StorageCell, byte[]>? _cellCache;
+        private static readonly Keccak _noCacheStateRoot = Keccak.Compute(new byte[] { 0 });
         private Keccak _stateRoot = Keccak.Compute(new byte[] { 1 });
 
-        public PersistentStorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
+        public PersistentStorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager, int cellCacheSize = DefaultCellCacheSize)
             : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _cellCache = cellCacheSize > 0 ? new LruCache<StorageCell, byte[]>(cellCacheSize, "Storage Cell Cache") : null;
 
             stateProvider.StateRootCommitted += (_, args) => _stateRoot = args.RootKeccak;
         }
@@ -52,7 +54,7 @@ namespace Nethermind.State
         {
             base.Reset();
             _storages.Reset();
-            _cellCache.Clear();
+            _cellCache?.Clear();
             _originalValues.Clear();
             _committedThisRound.Clear();
         }
@@ -175,7 +177,7 @@ namespace Nethermind.State
                         tree.Set(change.StorageCell.Index, change.Value);
 
                         // and in the cache
-                        _cellCache.Set(change.StorageCell, change.Value);
+                        _cellCache?.Set(change.StorageCell, change.Value);
 
                         if (isTracing)
                         {
@@ -242,37 +244,46 @@ namespace Nethermind.State
 
         private byte[] LoadFromTree(in StorageCell storageCell)
         {
-            byte[]? value = null;
-            if (!ReferenceEquals(_stateRoot, _noCache))
-            {
-                if (_stateProvider.LastStateRoot == _stateRoot)
-                {
-                    if (_cellCache.TryGet(storageCell, out value))
-                    {
-                        Db.Metrics.StorageTreeCacheReads++;
-                    }
-                }
-                else
-                {
-                    // this should happen only on reorg
-                    _stateRoot = _noCache;
-                    Db.Metrics.StorageTreeCacheInvalidations++;
-                    _cellCache.Clear();
-                }
-            }
-
-            if (value == null)
+            if (!TryLoadFromCache(storageCell, out byte[]? value))
             {
                 StorageTree tree = GetOrCreateStorage(storageCell.Address);
                 Db.Metrics.StorageTreeReads++;
                 value = tree.Get(storageCell.Index);
 
                 // cache write-through
-                _cellCache.Set(storageCell, value);
+                _cellCache?.Set(storageCell, value);
             }
 
             PushToRegistryOnly(storageCell, value);
             return value;
+        }
+
+        /// <summary>
+        /// Tries to retrieve the storage cell from an LRU cache.
+        /// </summary>
+        private bool TryLoadFromCache(StorageCell storageCell, out byte[]? value)
+        {
+            if (_cellCache != null && !ReferenceEquals(_stateRoot, _noCacheStateRoot))
+            {
+                if (_stateProvider.LastStateRoot == _stateRoot)
+                {
+                    if (_cellCache.TryGet(storageCell, out value))
+                    {
+                        Db.Metrics.StorageTreeCacheReads++;
+                        return true;
+                    }
+                }
+                else
+                {
+                    // this should happen only on reorg
+                    _stateRoot = _noCacheStateRoot;
+                    Db.Metrics.StorageTreeCacheInvalidations++;
+                    _cellCache.Clear();
+                }
+            }
+
+            value = default;
+            return false;
         }
 
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)
@@ -321,7 +332,7 @@ namespace Nethermind.State
 
             // TODO: big penalty on clearing storage, potentially, could benefit from less a-bomb cleanup
             // for a given address only
-            _cellCache.Clear();
+            _cellCache?.Clear();
         }
     }
 }

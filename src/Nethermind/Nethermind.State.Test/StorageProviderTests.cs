@@ -8,9 +8,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -411,6 +413,48 @@ namespace Nethermind.Store.Test
             _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)));
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Recently_used_StorageCells_are_cached_across_blocks(bool useCellCache)
+        {
+            MockedTrieStore trieStore =
+                new(new TrieStore(new MemDb(), No.Pruning, new ConstantInterval(1), LimboLogs.Instance));
+
+            Context ctx = new(trieStore);
+            IStateProvider state = ctx.StateProvider;
+            PersistentStorageProvider storage = new(trieStore, ctx.StateProvider, LimboLogs.Instance,
+                useCellCache ? 1 : 0);
+
+            byte[] expected = new byte[32];
+            TestContext.CurrentContext.Random.NextBytes(expected);
+
+            const int block1 = 1;
+
+            StorageCell cell = new(ctx.Address1, UInt256.One);
+            storage.Set(cell, expected);
+
+            // make the changes captured in tries, persistent
+            storage.Commit();
+            state.Commit(SpuriousDragon.Instance);
+
+            // make transient changes represented in the tries
+            storage.CommitTrees(block1);
+            state.CommitTree(block1);
+
+            using IDisposable scope = trieStore.Arm();
+            {
+                if (useCellCache)
+                {
+                    byte[] actual = storage.Get(cell);
+                    CollectionAssert.AreEqual(expected, actual);
+                }
+                else
+                {
+                    Assert.Throws<Exception>(() => storage.Get(cell));
+                }
+            }
+        }
+
         private class Context
         {
             public IStateProvider StateProvider { get; }
@@ -418,12 +462,103 @@ namespace Nethermind.Store.Test
             public readonly Address Address1 = new(Keccak.Compute("1"));
             public readonly Address Address2 = new(Keccak.Compute("2"));
 
-            public Context()
+            public Context(ITrieStore store = null)
             {
-                StateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
+                StateProvider = new StateProvider(store ?? new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);
+            }
+        }
+
+        private class MockedTrieStore : ITrieStore
+        {
+            private readonly ITrieStore _store;
+            private int _armed;
+
+            public MockedTrieStore(ITrieStore store)
+            {
+                _store = store;
+            }
+
+            /// <summary>
+            /// Arms the mock into the throwing state
+            /// </summary>
+            public IDisposable Arm()
+            {
+                _armed++;
+                return new Armed(this);
+            }
+
+            class Armed : IDisposable
+            {
+                private readonly MockedTrieStore _store;
+
+                public Armed(MockedTrieStore store) => _store = store;
+
+                public void Dispose() => _store._armed--;
+            }
+
+            private void ThrowOnArmed()
+            {
+                if (_armed > 0) throw new Exception("Should not call!");
+            }
+
+            public TrieNode FindCachedOrUnknown(Keccak hash)
+            {
+                ThrowOnArmed();
+                return _store.FindCachedOrUnknown(hash);
+            }
+
+            public byte[] LoadRlp(Keccak hash)
+            {
+                ThrowOnArmed();
+                return _store.LoadRlp(hash);
+            }
+
+            public byte[] this[ReadOnlySpan<byte> key]
+            {
+                get
+                {
+                    ThrowOnArmed();
+                    return _store[key];
+                }
+            }
+
+            public void Dispose()
+            {
+                ThrowOnArmed();
+                _store.Dispose();
+            }
+
+            public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
+            {
+                ThrowOnArmed();
+                _store.CommitNode(blockNumber, nodeCommitInfo);
+            }
+
+            public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode root)
+            {
+                ThrowOnArmed();
+                _store.FinishBlockCommit(trieType, blockNumber, root);
+            }
+
+            public bool IsPersisted(Keccak keccak)
+            {
+                ThrowOnArmed();
+                return _store.IsPersisted(keccak);
+            }
+
+            public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
+            {
+                ThrowOnArmed();
+                return _store.AsReadOnly(keyValueStore);
+            }
+
+            public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
+            {
+                add => _store.ReorgBoundaryReached += value;
+                remove => _store.ReorgBoundaryReached -= value;
             }
         }
     }

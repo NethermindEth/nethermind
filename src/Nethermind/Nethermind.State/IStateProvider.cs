@@ -6,10 +6,18 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Trie;
 
 namespace Nethermind.State
 {
+    /// <summary>
+    /// Represents the STATE aspect of the Ethereum, acting as a persistent and a transient state provider.
+    /// </summary>
+    /// <remarks>
+    /// The semantics of commiting the state is as follows:
+    /// 1. <see cref="Commit()"/> commits the transient state to the underlying trie but does not flush it.
+    /// 2. <see cref="CommitTree"/> flushes the trie and makes it use <see cref="ITrieStore"/>
+    /// to make it persistent.
+    /// </remarks>
     public interface IStateProvider : IReadOnlyStateProvider, IJournal<int>
     {
         void RecalculateStateRoot();
@@ -40,12 +48,21 @@ namespace Nethermind.State
 
         /* snapshots */
 
+        /// <summary>
+        /// Commits the state of the world represented by this state provider to the underlying trie.
+        /// </summary>
         void Commit(IReleaseSpec releaseSpec, bool isGenesis = false);
 
+        /// <summary>
+        /// Commits the state of the world represented by this state provider to the underlying trie.
+        /// </summary>
         void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer, bool isGenesis = false);
 
         void Reset();
 
+        /// <summary>
+        /// Commits the underlying trie with all the changes that were applied by earlier <see cref="Commit"/> calls.
+        /// </summary>
         void CommitTree(long blockNumber);
 
         /// <summary>

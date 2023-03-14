@@ -2,13 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
     /// <summary>
-    /// Interface for the StorageProvider
-    /// Includes both persistent and transient storage
+    /// Represents the STORAGE aspect of Ethereum, acting as a persistent and a transient storage provider.
     /// </summary>
+    /// <remarks>
+    /// The semantics of commiting the storage is as follows:
+    /// 1. <see cref="Commit()"/> commits the transient changes to underlying tries but does not flush them.
+    /// 2. <see cref="CommitTrees"/> flushes underlying tries and makes them use <see cref="ITrieStore"/>
+    /// to make them persistent.
+    /// </remarks>
     public interface IStorageProvider : IJournal<Snapshot.Storage>
     {
         /// <summary>
@@ -52,20 +58,18 @@ namespace Nethermind.State
         void Reset();
 
         /// <summary>
-        /// Commit persisent storage trees
+        /// Commits underlying tries with all the changes that were applied by earlier <see cref="Commit"/> calls.
         /// </summary>
-        /// <param name="blockNumber">Current block number</param>
         void CommitTrees(long blockNumber);
 
         /// <summary>
-        /// Commit persistent storage
+        /// Commits the storage represented by this storage provider to underlying tries.
         /// </summary>
         void Commit();
 
         /// <summary>
-        /// Commit persistent storage
+        /// Commits the storage represented by this storage provider to underlying tries.
         /// </summary>
-        /// <param name="stateTracer">State tracer</param>
         void Commit(IStorageTracer stateTracer);
 
         /// <summary>
