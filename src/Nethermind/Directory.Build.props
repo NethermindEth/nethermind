@@ -9,7 +9,7 @@
     <Copyright>Demerzel Solutions Limited</Copyright>
     <Product>Nethermind</Product>
     <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit.Substring(0, 8))</SourceRevisionId>
-    <VersionPrefix>1.17.1</VersionPrefix>
+    <VersionPrefix>1.17.2</VersionPrefix>
     <VersionSuffix></VersionSuffix>
   </PropertyGroup>
 
