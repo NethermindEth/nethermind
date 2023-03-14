@@ -415,6 +415,7 @@ namespace Nethermind.Store.Test
 
         [TestCase(true)]
         [TestCase(false)]
+        [TestCase(false)]
         public void Recently_used_StorageCells_are_cached_across_blocks(bool useCellCache)
         {
             MockedTrieStore trieStore =

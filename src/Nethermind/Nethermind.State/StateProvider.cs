@@ -59,8 +59,6 @@ namespace Nethermind.State
         {
             _tree.UpdateRootHash();
             _needsStateRootUpdate = false;
-
-            StateRootCommitted?.Invoke(this, new StateRootCommittedEventArgs(_tree.RootHash));
         }
 
         public Keccak StateRoot
@@ -76,8 +74,6 @@ namespace Nethermind.State
             }
             set => _tree.RootHash = value;
         }
-
-        public Keccak LastStateRoot => _tree.RootHash;
 
         private readonly StateTree _tree;
 
@@ -277,8 +273,6 @@ namespace Nethermind.State
                 witnessingStore.Touch(codeHash.Bytes);
             }
         }
-
-        public event EventHandler<StateRootCommittedEventArgs>? StateRootCommitted;
 
         public Keccak UpdateCode(ReadOnlyMemory<byte> code)
         {

@@ -24,27 +24,28 @@ namespace Nethermind.State
         private readonly IStateProvider _stateProvider;
         private readonly ILogManager? _logManager;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
+
         /// <summary>
         /// EIP-1283
         /// </summary>
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
+
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
         // state root aware caching
         private const int DefaultCellCacheSize = 16 * 1024;
         private readonly LruCache<StorageCell, byte[]>? _cellCache;
-        private static readonly Keccak _noCacheStateRoot = Keccak.Compute(new byte[] { 0 });
-        private Keccak _stateRoot = Keccak.Compute(new byte[] { 1 });
 
-        public PersistentStorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager, int cellCacheSize = DefaultCellCacheSize)
+        public PersistentStorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager,
+            int cellCacheSize = DefaultCellCacheSize)
             : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _cellCache = cellCacheSize > 0 ? new LruCache<StorageCell, byte[]>(cellCacheSize, "Storage Cell Cache") : null;
-
-            stateProvider.StateRootCommitted += (_, args) => _stateRoot = args.RootKeccak;
+            _cellCache = cellCacheSize > 0
+                ? new LruCache<StorageCell, byte[]>(cellCacheSize, "Storage Cell Cache")
+                : null;
         }
 
         /// <summary>
@@ -76,7 +77,8 @@ namespace Nethermind.State
         {
             if (!_originalValues.ContainsKey(storageCell))
             {
-                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+                throw new InvalidOperationException(
+                    "Get original should only be called after get within the same caching round");
             }
 
             if (_transactionChangesSnapshots.TryPeek(out int snapshot))
@@ -104,12 +106,14 @@ namespace Nethermind.State
 
             if (_changes[_currentPosition] is null)
             {
-                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
+                throw new InvalidOperationException(
+                    $"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
             }
 
             if (_changes[_currentPosition + 1] is not null)
             {
-                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
+                throw new InvalidOperationException(
+                    $"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
             }
 
             HashSet<Address> toUpdateRoots = new();
@@ -154,7 +158,8 @@ namespace Nethermind.State
                 int forAssertion = _intraBlockCache[change.StorageCell].Pop();
                 if (forAssertion != _currentPosition - i)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
+                    throw new InvalidOperationException(
+                        $"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
                 }
 
                 switch (change.ChangeType)
@@ -166,7 +171,8 @@ namespace Nethermind.State
                     case ChangeType.Update:
                         if (_logger.IsTrace)
                         {
-                            _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
+                            _logger.Trace(
+                                $"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
                         StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
@@ -261,25 +267,12 @@ namespace Nethermind.State
         /// <summary>
         /// Tries to retrieve the storage cell from an LRU cache.
         /// </summary>
-        private bool TryLoadFromCache(StorageCell storageCell, out byte[]? value)
+        private bool TryLoadFromCache(in StorageCell storageCell, out byte[]? value)
         {
-            if (_cellCache != null && !ReferenceEquals(_stateRoot, _noCacheStateRoot))
+            if (_cellCache != null && _cellCache.TryGet(storageCell, out value))
             {
-                if (_stateProvider.LastStateRoot == _stateRoot)
-                {
-                    if (_cellCache.TryGet(storageCell, out value))
-                    {
-                        Db.Metrics.StorageTreeCacheReads++;
-                        return true;
-                    }
-                }
-                else
-                {
-                    // this should happen only on reorg
-                    _stateRoot = _noCacheStateRoot;
-                    Db.Metrics.StorageTreeCacheInvalidations++;
-                    _cellCache.Clear();
-                }
+                Db.Metrics.StorageTreeCacheReads++;
+                return true;
             }
 
             value = default;

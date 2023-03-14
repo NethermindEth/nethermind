@@ -59,7 +59,6 @@ namespace Nethermind.State
             KeccakHash.ComputeHashBytesToSpan(key, key);
         }
 
-
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Keccak? storageRoot = null)
         {
