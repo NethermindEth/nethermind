@@ -43,17 +43,17 @@ public static class Verifier
 {
     public static (bool, UpdateHint?) VerifyVerkleProof(VerkleProof proof, List<byte[]> keys, List<byte[]?> values, Banderwagon root)
     {
-        List<Banderwagon> commSortedByPath = new List<Banderwagon> { root };
+        List<Banderwagon> commSortedByPath = new() { root };
         commSortedByPath.AddRange(proof.CommsSorted);
 
-        SortedSet<byte[]> stems = new SortedSet<byte[]>(keys.Select(x => x[..31]), Bytes.Comparer);
-        SortedDictionary<byte[], (ExtPresent, byte)> depthsAndExtByStem = new SortedDictionary<byte[], (ExtPresent, byte)>(Bytes.Comparer);
-        SortedSet<byte[]> stemsWithExtension = new SortedSet<byte[]>(Bytes.Comparer);
-        SortedSet<byte[]> otherStemsUsed = new SortedSet<byte[]>(Bytes.Comparer);
-        SortedSet<List<byte>> allPaths = new SortedSet<List<byte>>(new ListComparer());
-        SortedSet<(List<byte>, byte)> allPathsAndZs = new SortedSet<(List<byte>, byte)>(new ListWithByteComparer());
-        SortedDictionary<(List<byte>, byte), FrE> leafValuesByPathAndZ = new SortedDictionary<(List<byte>, byte), FrE>(new ListWithByteComparer());
-        SortedDictionary<List<byte>, byte[]> otherStemsByPrefix = new SortedDictionary<List<byte>, byte[]>(new ListComparer());
+        SortedSet<byte[]> stems = new(keys.Select(x => x[..31]), Bytes.Comparer);
+        SortedDictionary<byte[], (ExtPresent, byte)> depthsAndExtByStem = new(Bytes.Comparer);
+        SortedSet<byte[]> stemsWithExtension = new(Bytes.Comparer);
+        SortedSet<byte[]> otherStemsUsed = new(Bytes.Comparer);
+        SortedSet<List<byte>> allPaths = new(new ListComparer());
+        SortedSet<(List<byte>, byte)> allPathsAndZs = new(new ListWithByteComparer());
+        SortedDictionary<(List<byte>, byte), FrE> leafValuesByPathAndZ = new(new ListWithByteComparer());
+        SortedDictionary<List<byte>, byte[]> otherStemsByPrefix = new(new ListComparer());
 
 
         foreach (((byte[] stem, byte depth), ExtPresent extPresent) in stems.Zip(proof.VerifyHint.Depths).Zip(proof.VerifyHint.ExtensionPresent))
@@ -136,7 +136,7 @@ public static class Verifier
                         allPathsAndZs.Add((new List<byte>(stem[..depth]), openingIndex));
                         leafValuesByPathAndZ.Add((new List<byte>(stem[..depth]), 1), FrE.FromBytesReduced(stem.Reverse().ToArray()));
 
-                        List<byte> suffixTreePath = new List<byte>(stem[..depth]);
+                        List<byte> suffixTreePath = new(stem[..depth]);
                         suffixTreePath.Add(openingIndex);
 
                         allPaths.Add(suffixTreePath);
@@ -175,22 +175,22 @@ public static class Verifier
         Debug.Assert(proof.VerifyHint.DifferentStemNoProof.SequenceEqual(otherStemsUsed));
         Debug.Assert(commSortedByPath.Count == allPaths.Count);
 
-        SortedDictionary<List<byte>, Banderwagon> commByPath = new SortedDictionary<List<byte>, Banderwagon>(new ListComparer());
+        SortedDictionary<List<byte>, Banderwagon> commByPath = new(new ListComparer());
         foreach ((List<byte> path, Banderwagon comm) in allPaths.Zip(commSortedByPath))
         {
             commByPath[path] = comm;
         }
 
-        SortedDictionary<(List<byte>, byte), Banderwagon> commByPathAndZ = new SortedDictionary<(List<byte>, byte), Banderwagon>(new ListWithByteComparer());
+        SortedDictionary<(List<byte>, byte), Banderwagon> commByPathAndZ = new(new ListWithByteComparer());
         foreach ((List<byte> path, byte z) in allPathsAndZs)
         {
             commByPathAndZ[(path, z)] = commByPath[path];
         }
 
-        SortedDictionary<(List<byte>, byte), FrE> ysByPathAndZ = new SortedDictionary<(List<byte>, byte), FrE>(new ListWithByteComparer());
+        SortedDictionary<(List<byte>, byte), FrE> ysByPathAndZ = new(new ListWithByteComparer());
         foreach ((List<byte> path, byte z) in allPathsAndZs)
         {
-            List<byte> childPath = new List<byte>(path.ToArray())
+            List<byte> childPath = new(path.ToArray())
             {
                 z
             };
@@ -207,23 +207,23 @@ public static class Verifier
         IEnumerable<FrE> zs = allPathsAndZs.Select(elem => FrE.SetElement(elem.Item2));
         SortedDictionary<(List<byte>, byte), FrE>.ValueCollection ys = ysByPathAndZ.Values;
 
-        List<VerkleVerifierQuery> queries = new List<VerkleVerifierQuery>(cs.Count);
+        List<VerkleVerifierQuery> queries = new(cs.Count);
 
         foreach (((FrE y, FrE z), Banderwagon comm) in ys.Zip(zs).Zip(cs))
         {
-            VerkleVerifierQuery query = new VerkleVerifierQuery(comm, z, y);
+            VerkleVerifierQuery query = new(comm, z, y);
             queries.Add(query);
         }
 
-        UpdateHint updateHint = new UpdateHint()
+        UpdateHint updateHint = new()
         {
             DepthAndExtByStem = depthsAndExtByStem,
             CommByPath = commByPath,
             DifferentStemNoProof = otherStemsByPrefix
         };
 
-        Transcript proverTranscript = new Transcript("vt");
-        MultiProof proofVerifier = new MultiProof(CRS.Instance, PreComputeWeights.Init());
+        Transcript proverTranscript = new("vt");
+        MultiProof proofVerifier = new(CRS.Instance, PreComputeWeights.Init());
 
         return (proofVerifier.CheckMultiProof(proverTranscript, queries.ToArray(), proof.Proof), updateHint);
     }

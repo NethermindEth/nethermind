@@ -17,12 +17,12 @@ namespace Nethermind.Verkle.Tree.Proofs;
 public class VerkleProver
 {
     private readonly IVerkleStore _stateDb;
-    private readonly Dictionary<byte[], FrE[]> _proofBranchPolynomialCache = new Dictionary<byte[], FrE[]>(Bytes.EqualityComparer);
-    private readonly Dictionary<byte[], SuffixPoly> _proofStemPolynomialCache = new Dictionary<byte[], SuffixPoly>(Bytes.EqualityComparer);
+    private readonly Dictionary<byte[], FrE[]> _proofBranchPolynomialCache = new(Bytes.EqualityComparer);
+    private readonly Dictionary<byte[], SuffixPoly> _proofStemPolynomialCache = new(Bytes.EqualityComparer);
 
     public VerkleProver(IDbProvider dbProvider)
     {
-        VerkleStateStore stateDb = new VerkleStateStore(dbProvider);
+        VerkleStateStore stateDb = new(dbProvider);
         _stateDb = new CompositeVerkleStateStore(stateDb);
     }
 
@@ -36,16 +36,16 @@ public class VerkleProver
         _proofBranchPolynomialCache.Clear();
         _proofStemPolynomialCache.Clear();
 
-        HashSet<Banderwagon> commsSorted = new HashSet<Banderwagon>();
-        SortedDictionary<byte[], byte> depthsByStem = new SortedDictionary<byte[], byte>(Bytes.Comparer);
-        SortedDictionary<byte[], ExtPresent> extPresentByStem = new SortedDictionary<byte[], ExtPresent>(Bytes.Comparer);
+        HashSet<Banderwagon> commsSorted = new();
+        SortedDictionary<byte[], byte> depthsByStem = new(Bytes.Comparer);
+        SortedDictionary<byte[], ExtPresent> extPresentByStem = new(Bytes.Comparer);
 
-        List<byte[]> extPresent = new List<byte[]>();
-        List<byte[]> extNone = new List<byte[]>();
-        List<byte[]> extDifferent = new List<byte[]>();
+        List<byte[]> extPresent = new();
+        List<byte[]> extNone = new();
+        List<byte[]> extDifferent = new();
 
         // generate prover path for keys
-        Dictionary<byte[], SortedSet<byte>> neededOpenings = new Dictionary<byte[], SortedSet<byte>>(Bytes.EqualityComparer);
+        Dictionary<byte[], SortedSet<byte>> neededOpenings = new(Bytes.EqualityComparer);
 
         foreach (byte[] key in keys)
         {
@@ -91,8 +91,8 @@ public class VerkleProver
             }
         }
 
-        List<VerkleProverQuery> queries = new List<VerkleProverQuery>();
-        SortedSet<byte[]> stemWithNoProofSet = new SortedSet<byte[]>();
+        List<VerkleProverQuery> queries = new();
+        SortedSet<byte[]> stemWithNoProofSet = new();
 
         foreach (KeyValuePair<byte[], SortedSet<byte>> elem in neededOpenings)
         {
@@ -116,10 +116,10 @@ public class VerkleProver
             commsSorted.Add(query._nodeCommitPoint);
         }
 
-        MultiProof proofConstructor = new MultiProof(CRS.Instance, PreComputeWeights.Init());
+        MultiProof proofConstructor = new(CRS.Instance, PreComputeWeights.Init());
 
 
-        Transcript proverTranscript = new Transcript("vt");
+        Transcript proverTranscript = new("vt");
         VerkleProofStruct proof = proofConstructor.MakeMultiProof(proverTranscript, queries);
 
         foreach (byte[] stem in extPresent)
@@ -152,7 +152,7 @@ public class VerkleProver
 
     private IEnumerable<VerkleProverQuery> AddBranchCommitmentsOpening(byte[] branchPath, IEnumerable<byte> branchChild)
     {
-        List<VerkleProverQuery> queries = new List<VerkleProverQuery>();
+        List<VerkleProverQuery> queries = new();
         if (!_proofBranchPolynomialCache.TryGetValue(branchPath, out FrE[] poly)) throw new EvaluateException();
         InternalNode? node = _stateDb.GetBranch(branchPath);
         queries.AddRange(branchChild.Select(childIndex => new VerkleProverQuery(new LagrangeBasis(poly), node!._internalCommitment.Point, FrE.SetElement(childIndex), poly[childIndex])));
@@ -162,7 +162,7 @@ public class VerkleProver
     private IEnumerable<VerkleProverQuery> AddStemCommitmentsOpenings(byte[] stemPath, SortedSet<byte> stemChild, out bool stemWithNoProof)
     {
         stemWithNoProof = false;
-        List<VerkleProverQuery> queries = new List<VerkleProverQuery>();
+        List<VerkleProverQuery> queries = new();
         SuffixTree? suffix = _stateDb.GetStem(stemPath);
         queries.AddRange(AddExtensionCommitmentOpenings(stemPath, stemChild, suffix));
         if (stemChild.Count == 0)
@@ -202,8 +202,8 @@ public class VerkleProver
                     throw new Exception("unreachable");
             }
 
-            VerkleProverQuery openAtValLow = new VerkleProverQuery(new LagrangeBasis(poly), commitment, FrE.SetElement(valueLowerIndex), valueLow);
-            VerkleProverQuery openAtValUpper = new VerkleProverQuery(new LagrangeBasis(poly), commitment, FrE.SetElement(valueUpperIndex), valueHigh);
+            VerkleProverQuery openAtValLow = new(new LagrangeBasis(poly), commitment, FrE.SetElement(valueLowerIndex), valueLow);
+            VerkleProverQuery openAtValUpper = new(new LagrangeBasis(poly), commitment, FrE.SetElement(valueUpperIndex), valueHigh);
 
             queries.Add(openAtValLow);
             queries.Add(openAtValUpper);
@@ -216,7 +216,7 @@ public class VerkleProver
 
     private IEnumerable<VerkleProverQuery> OpenBranchCommitment(Dictionary<byte[], SortedSet<byte>> branchProof)
     {
-        List<VerkleProverQuery> queries = new List<VerkleProverQuery>();
+        List<VerkleProverQuery> queries = new();
         foreach (KeyValuePair<byte[], SortedSet<byte>> proofData in branchProof)
         {
             if (!_proofBranchPolynomialCache.TryGetValue(proofData.Key, out FrE[] poly)) throw new EvaluateException();
@@ -229,7 +229,7 @@ public class VerkleProver
     private IEnumerable<VerkleProverQuery> OpenStemCommitment(Dictionary<byte[], SortedSet<byte>> stemProof, out List<byte[]> stemWithNoProof)
     {
         stemWithNoProof = new List<byte[]>();
-        List<VerkleProverQuery> queries = new List<VerkleProverQuery>();
+        List<VerkleProverQuery> queries = new();
 
         foreach (KeyValuePair<byte[], SortedSet<byte>> proofData in stemProof)
         {
@@ -271,8 +271,8 @@ public class VerkleProver
                         throw new Exception("unreachable");
                 }
 
-                VerkleProverQuery openAtValLow = new VerkleProverQuery(new LagrangeBasis(poly), commitment, FrE.SetElement(valueLowerIndex), valueLow);
-                VerkleProverQuery openAtValUpper = new VerkleProverQuery(new LagrangeBasis(poly), commitment, FrE.SetElement(valueUpperIndex), valueHigh);
+                VerkleProverQuery openAtValLow = new(new LagrangeBasis(poly), commitment, FrE.SetElement(valueLowerIndex), valueLow);
+                VerkleProverQuery openAtValUpper = new(new LagrangeBasis(poly), commitment, FrE.SetElement(valueUpperIndex), valueHigh);
 
                 queries.Add(openAtValLow);
                 queries.Add(openAtValUpper);
@@ -285,7 +285,7 @@ public class VerkleProver
 
     private IEnumerable<VerkleProverQuery> AddExtensionCommitmentOpenings(byte[] stem, IEnumerable<byte> value, SuffixTree? suffix)
     {
-        List<VerkleProverQuery> queries = new List<VerkleProverQuery>();
+        List<VerkleProverQuery> queries = new();
         FrE[] extPoly = new FrE[256];
         for (int i = 0; i < 256; i++)
         {
@@ -296,8 +296,8 @@ public class VerkleProver
         extPoly[2] = suffix.C1.PointAsField;
         extPoly[3] = suffix.C2.PointAsField;
 
-        VerkleProverQuery openAtOne = new VerkleProverQuery(new LagrangeBasis(extPoly), suffix.ExtensionCommitment.Point, FrE.SetElement(0), FrE.One);
-        VerkleProverQuery openAtStem = new VerkleProverQuery(new LagrangeBasis(extPoly), suffix.ExtensionCommitment.Point, FrE.SetElement(1), FrE.FromBytesReduced(stem.Reverse().ToArray()));
+        VerkleProverQuery openAtOne = new(new LagrangeBasis(extPoly), suffix.ExtensionCommitment.Point, FrE.SetElement(0), FrE.One);
+        VerkleProverQuery openAtStem = new(new LagrangeBasis(extPoly), suffix.ExtensionCommitment.Point, FrE.SetElement(1), FrE.FromBytesReduced(stem.Reverse().ToArray()));
         queries.Add(openAtOne);
         queries.Add(openAtStem);
 
@@ -311,13 +311,13 @@ public class VerkleProver
 
         if (openC1)
         {
-            VerkleProverQuery openAtC1 = new VerkleProverQuery(new LagrangeBasis(extPoly), suffix.ExtensionCommitment.Point, FrE.SetElement(2), suffix.C1.PointAsField);
+            VerkleProverQuery openAtC1 = new(new LagrangeBasis(extPoly), suffix.ExtensionCommitment.Point, FrE.SetElement(2), suffix.C1.PointAsField);
             queries.Add(openAtC1);
         }
 
         if (openC2)
         {
-            VerkleProverQuery openAtC2 = new VerkleProverQuery(new LagrangeBasis(extPoly), suffix.ExtensionCommitment.Point, FrE.SetElement(3), suffix.C2.PointAsField);
+            VerkleProverQuery openAtC2 = new(new LagrangeBasis(extPoly), suffix.ExtensionCommitment.Point, FrE.SetElement(3), suffix.C2.PointAsField);
             queries.Add(openAtC2);
         }
 
@@ -343,8 +343,8 @@ public class VerkleProver
     {
         if (_proofStemPolynomialCache.ContainsKey(stem)) return;
 
-        List<FrE> c1Hashes = new List<FrE>(256);
-        List<FrE> c2Hashes = new List<FrE>(256);
+        List<FrE> c1Hashes = new(256);
+        List<FrE> c2Hashes = new(256);
         for (int i = 0; i < 128; i++)
         {
             (FrE valueLow, FrE valueHigh) = VerkleUtils.BreakValueInLowHigh(_stateDb.GetLeaf(stem.Append((byte)i).ToArray()));
