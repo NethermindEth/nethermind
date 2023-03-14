@@ -87,6 +87,73 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         }
 
         [Test]
+        public async Task Will_dispatch_when_only_partially_processed_dependency()
+        {
+            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(2001).TestObject;
+
+            BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+
+            ISyncReport syncReport = Substitute.For<ISyncReport>();
+            syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
+            syncReport.HeadersInQueue.Returns(new MeasuredProgress());
+
+            BlockHeader pivot = remoteBlockTree.FindHeader(2000, BlockTreeLookupOptions.None)!;
+            HeadersSyncFeed feed = new(
+                Substitute.For<ISyncModeSelector>(),
+                blockTree,
+                Substitute.For<ISyncPeerPool>(),
+                new SyncConfig
+                {
+                    FastSync = true,
+                    FastBlocks = true,
+                    PivotNumber = pivot.Number.ToString(),
+                    PivotHash = pivot.Hash.ToString(),
+                    PivotTotalDifficulty = pivot.TotalDifficulty.ToString(),
+                },
+                syncReport,
+                LimboLogs.Instance);
+            feed.InitializeFeed();
+
+            void FulfillBatch(HeadersSyncBatch batch)
+            {
+                batch.Response = remoteBlockTree.FindHeaders(
+                    remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
+                    false);
+            }
+
+            // First batch need to be handled first before handle dependencies can do anything
+            HeadersSyncBatch? batch1 = await feed.PrepareRequest();
+            FulfillBatch(batch1);
+            feed.HandleResponse(batch1);
+
+            HeadersSyncBatch? batch2 = await feed.PrepareRequest();
+            HeadersSyncBatch? batch3 = await feed.PrepareRequest();
+            HeadersSyncBatch? batch4 = await feed.PrepareRequest();
+            HeadersSyncBatch? batch5 = await feed.PrepareRequest();
+
+            FulfillBatch(batch2);
+            FulfillBatch(batch3);
+            FulfillBatch(batch4);
+            FulfillBatch(batch5);
+
+            // Disconnected chain
+            feed.HandleResponse(batch3);
+            feed.HandleResponse(batch4);
+            feed.HandleResponse(batch5);
+
+            // Batch2 would get processed
+            feed.HandleResponse(batch2);
+
+            // HandleDependantBatch would start from batch3, stopped at batch4, not processing batch5
+            HeadersSyncBatch? newBatch = await feed.PrepareRequest();
+            blockTree.LowestInsertedHeader!.Number.Should().Be(batch4.StartNumber);
+
+            // New batch would be at end of batch 5 (batch 6).
+            newBatch.EndNumber.Should().Be(batch5.StartNumber - 1);
+        }
+
+        [Test]
         public async Task Can_reset_and_not_hang_when_a_batch_is_processing()
         {
             IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();

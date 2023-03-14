@@ -276,12 +276,16 @@ namespace Nethermind.Synchronization.FastBlocks
         private void HandleDependentBatches(CancellationToken cancellationToken)
         {
             long? lowest = LowestInsertedBlockHeader?.Number;
-            while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
+            long processedBatchCount = 0;
+            const long maxBatchToProcess = 2;
+            while (lowest.HasValue && processedBatchCount < maxBatchToProcess && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
             {
                 MarkDirty();
                 InsertHeaders(dependentBatch!);
                 lowest = LowestInsertedBlockHeader?.Number;
                 cancellationToken.ThrowIfCancellationRequested();
+
+                processedBatchCount++;
             }
         }
 
@@ -290,7 +294,10 @@ namespace Nethermind.Synchronization.FastBlocks
             _resetLock.EnterReadLock();
             try
             {
-                HandleDependentBatches(cancellationToken);
+                do
+                {
+                    HandleDependentBatches(cancellationToken);
+                } while (_pending.IsEmpty && !ShouldBuildANewBatch());
 
                 if (_pending.TryDequeue(out HeadersSyncBatch? batch))
                 {
