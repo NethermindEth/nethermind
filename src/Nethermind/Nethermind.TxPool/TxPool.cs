@@ -3,13 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -50,6 +50,8 @@ namespace Nethermind.TxPool
         private readonly ILogger _logger;
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
+
+        private readonly Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> _updateBucket;
 
         /// <summary>
         /// Indexes transactions
@@ -121,6 +123,9 @@ namespace Nethermind.TxPool
             postHashFilters.Add(new DeployedCodeFilter(_specProvider, _accounts));
 
             _postHashFilters = postHashFilters.ToArray();
+
+            // Capture closures once rather than per invocation
+            _updateBucket = UpdateBucket;
 
             int? reportMinutes = txPoolConfig.ReportMinutes;
             if (_logger.IsInfo && reportMinutes.HasValue)
@@ -208,33 +213,34 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void RemoveProcessedTransactions(IReadOnlyList<Transaction> blockTransactions)
+        private void RemoveProcessedTransactions(Transaction[] blockTransactions)
         {
-            long transactionsInBlock = blockTransactions.Count;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             long eip1559Txs = 0;
 
-            for (int i = 0; i < transactionsInBlock; i++)
+            for (int i = 0; i < blockTransactions.Length; i++)
             {
-                Keccak txHash = blockTransactions[i].Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
+                Transaction transaction = blockTransactions[i];
+                Keccak txHash = transaction.Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
 
-                if (!IsKnown(txHash!))
+                if (!IsKnown(txHash))
                 {
                     discoveredForHashCache++;
                 }
 
-                if (!RemoveIncludedTransaction(blockTransactions[i]))
+                if (!RemoveIncludedTransaction(transaction))
                 {
                     discoveredForPendingTxs++;
                 }
 
-                if (blockTransactions[i].IsEip1559)
+                if (transaction.IsEip1559)
                 {
                     eip1559Txs++;
                 }
             }
 
+            long transactionsInBlock = blockTransactions.Length;
             if (transactionsInBlock != 0)
             {
                 Metrics.DarkPoolRatioLevel1 = (float)discoveredForHashCache / transactionsInBlock;
@@ -297,7 +303,7 @@ namespace Nethermind.TxPool
                 return accepted;
             }
 
-            return AddCore(tx, startBroadcast);
+            return AddCore(tx, state, startBroadcast);
         }
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, TxFilteringState state)
@@ -325,7 +331,7 @@ namespace Nethermind.TxPool
             return AcceptTxResult.Accepted;
         }
 
-        private AcceptTxResult AddCore(Transaction tx, bool isPersistentBroadcast)
+        private AcceptTxResult AddCore(Transaction tx, TxFilteringState state, bool isPersistentBroadcast)
         {
             lock (_locker)
             {
@@ -335,7 +341,7 @@ namespace Nethermind.TxPool
                 bool inserted = _transactions.TryInsert(tx.Hash!, tx, out Transaction? removed);
                 if (inserted)
                 {
-                    _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
+                    _transactions.UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
                     Metrics.PendingTransactionsAdded++;
                     if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
 
@@ -364,12 +370,11 @@ namespace Nethermind.TxPool
             return AcceptTxResult.Accepted;
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucketWithAddedTransaction(
-            Address address, IReadOnlyCollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucketWithAddedTransaction(
+            Address address, Account account, EnhancedSortedSet<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
-                Account account = _accounts.GetAccount(address);
                 UInt256 balance = account.Balance;
                 long currentNonce = (long)(account.Nonce);
 
@@ -380,8 +385,8 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateGasBottleneck(
-            IReadOnlyCollection<Transaction> transactions, long currentNonce, UInt256 balance)
+        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateGasBottleneck(
+            EnhancedSortedSet<Transaction> transactions, long currentNonce, UInt256 balance)
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
@@ -413,18 +418,13 @@ namespace Nethermind.TxPool
 
                     if (tx.GasBottleneck != gasBottleneck)
                     {
-                        yield return (tx, SetGasBottleneckChange(gasBottleneck));
+                        yield return (tx, gasBottleneck);
                     }
 
                     previousTxBottleneck = gasBottleneck;
                     i++;
                 }
             }
-        }
-
-        private static Action<Transaction> SetGasBottleneckChange(UInt256 gasBottleneck)
-        {
-            return t => t.GasBottleneck = gasBottleneck;
         }
 
         private void UpdateBuckets()
@@ -434,18 +434,26 @@ namespace Nethermind.TxPool
                 // ensure the capacity of the pool
                 if (_transactions.Count > _txPoolConfig.Size)
                     if (_logger.IsWarn) _logger.Warn($"TxPool exceeds the config size {_transactions.Count}/{_txPoolConfig.Size}");
-                _transactions.UpdatePool(UpdateBucket);
+                _transactions.UpdatePool(_accounts, _updateBucket);
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucket(Address address, IReadOnlyCollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucket(Address address, Account account, EnhancedSortedSet<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
-                Account? account = _accounts.GetAccount(address);
                 UInt256 balance = account.Balance;
                 long currentNonce = (long)(account.Nonce);
-                Transaction? tx = transactions.FirstOrDefault(t => t.Nonce == currentNonce);
+                Transaction? tx = null;
+                foreach (Transaction txn in transactions)
+                {
+                    if (txn.Nonce == currentNonce)
+                    {
+                        tx = txn;
+                        break;
+                    }
+                }
+
                 bool shouldBeDumped = false;
 
                 if (tx is null)
@@ -597,12 +605,12 @@ namespace Nethermind.TxPool
 
         private void TimerOnElapsed(object? sender, EventArgs e)
         {
-            WriteTxnPoolReport(_logger);
+            WriteTxPoolReport(_logger);
 
             _timer!.Enabled = true;
         }
 
-        private static void WriteTxnPoolReport(ILogger logger)
+        private static void WriteTxPoolReport(ILogger logger)
         {
             if (!logger.IsInfo)
             {

@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Resettables;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Comparison;
 
@@ -60,6 +62,67 @@ namespace Nethermind.TxPool.Collections
             for (int i = 0; i < _transactionsToRemove.Count; i++)
             {
                 TryRemove(_transactionsToRemove[i].Hash!);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void UpdatePool(IAccountStateProvider accounts, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        {
+            foreach ((Address address, EnhancedSortedSet<Transaction> bucket) in _buckets)
+            {
+                if (bucket.Count > 0)
+                {
+                    Account? account = accounts.GetAccount(address);
+                    UpdateGroup(address, account, bucket, changingElements);
+                }
+            }
+        }
+
+        private void UpdateGroup(Address groupKey, Account groupValue, EnhancedSortedSet<Transaction> bucket, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        {
+            _transactionsToRemove.Clear();
+            Transaction? lastElement = bucket.Max;
+
+            foreach ((Transaction tx, UInt256? changedGasBottleneck) in changingElements(groupKey, groupValue, bucket))
+            {
+                if (changedGasBottleneck is null)
+                {
+                    _transactionsToRemove.Add(tx);
+                }
+                else if (Equals(lastElement, tx))
+                {
+                    bool reAdd = _worstSortedValues.Remove(tx);
+                    tx.GasBottleneck = changedGasBottleneck;
+                    if (reAdd)
+                    {
+                        _worstSortedValues.Add(tx, tx.Hash!);
+                    }
+
+                    UpdateWorstValue();
+                }
+                else
+                {
+                    tx.GasBottleneck = changedGasBottleneck;
+                }
+            }
+
+            ReadOnlySpan<Transaction> txs = CollectionsMarshal.AsSpan(_transactionsToRemove);
+            for (int i = 0; i < txs.Length; i++)
+            {
+                TryRemove(txs[i].Hash!);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void UpdateGroup(Address groupKey, Account groupValue, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        {
+            if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
+            if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<Transaction>? bucket))
+            {
+                if (bucket.Count > 0)
+                {
+                    UpdateGroup(groupKey, groupValue, bucket, changingElements);
+                }
             }
         }
     }

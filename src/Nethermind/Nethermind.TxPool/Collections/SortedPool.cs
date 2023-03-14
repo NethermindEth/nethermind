@@ -26,9 +26,9 @@ namespace Nethermind.TxPool.Collections
         private readonly IComparer<TValue> _groupComparer;
 
         // group buckets, keep the items grouped by group key and sorted in group
-        private readonly IDictionary<TGroupKey, EnhancedSortedSet<TValue>> _buckets;
+        protected readonly Dictionary<TGroupKey, EnhancedSortedSet<TValue>> _buckets;
 
-        private readonly IDictionary<TKey, TValue> _cacheMap;
+        private readonly Dictionary<TKey, TValue> _cacheMap;
         private bool _isFull = false;
 
         // comparer for worst elements in buckets
@@ -411,8 +411,10 @@ namespace Nethermind.TxPool.Collections
         {
             foreach ((TGroupKey groupKey, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
-                changingElements(groupKey, bucket);
-                UpdateGroup(groupKey, bucket, changingElements);
+                if (bucket.Count > 0)
+                {
+                    UpdateGroup(groupKey, bucket, changingElements);
+                }
             }
         }
 
@@ -422,7 +424,10 @@ namespace Nethermind.TxPool.Collections
             if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
-                UpdateGroup(groupKey, bucket, changingElements);
+                if (bucket.Count > 0)
+                {
+                    UpdateGroup(groupKey, bucket, changingElements);
+                }
             }
         }
 
