@@ -177,14 +177,14 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.HomesteadBlockNumber.Should().Be(0L);
             chainSpec.DaoForkBlockNumber.Should().Be(null);
             chainSpec.TangerineWhistleBlockNumber.Should().Be(0L);
-            chainSpec.SpuriousDragonBlockNumber.Should().Be(RopstenSpecProvider.SpuriousDragonBlockNumber);
-            chainSpec.ByzantiumBlockNumber.Should().Be(RopstenSpecProvider.ByzantiumBlockNumber);
-            chainSpec.ConstantinopleBlockNumber.Should().Be(RopstenSpecProvider.ConstantinopleBlockNumber);
-            chainSpec.ConstantinopleFixBlockNumber.Should().Be(RopstenSpecProvider.ConstantinopleFixBlockNumber);
-            chainSpec.IstanbulBlockNumber.Should().Be(RopstenSpecProvider.IstanbulBlockNumber);
-            chainSpec.MuirGlacierNumber.Should().Be(RopstenSpecProvider.MuirGlacierBlockNumber);
-            chainSpec.BerlinBlockNumber.Should().Be(RopstenSpecProvider.BerlinBlockNumber);
-            chainSpec.LondonBlockNumber.Should().Be(RopstenSpecProvider.LondonBlockNumber);
+            chainSpec.SpuriousDragonBlockNumber.Should().Be(MainnetSpecProvider.SpuriousDragonBlockNumber);
+            chainSpec.ByzantiumBlockNumber.Should().Be(MainnetSpecProvider.ByzantiumBlockNumber);
+            chainSpec.ConstantinopleBlockNumber.Should().Be(MainnetSpecProvider.ConstantinopleBlockNumber);
+            chainSpec.ConstantinopleFixBlockNumber.Should().Be(MainnetSpecProvider.ConstantinopleFixBlockNumber);
+            chainSpec.IstanbulBlockNumber.Should().Be(MainnetSpecProvider.IstanbulBlockNumber);
+            chainSpec.MuirGlacierNumber.Should().Be(MainnetSpecProvider.MuirGlacierBlockNumber);
+            chainSpec.BerlinBlockNumber.Should().Be(MainnetSpecProvider.BerlinBlockNumber);
+            chainSpec.LondonBlockNumber.Should().Be(MainnetSpecProvider.LondonBlockNumber);
         }
 
         [Test]

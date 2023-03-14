@@ -90,8 +90,8 @@ namespace Nethermind.Evm.Test
 
         private class Ropsten : Eip1344Tests
         {
-            protected override long BlockNumber => RopstenSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
+            protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+            protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
             [Test]
             public void given_ropsten_network_chain_id_opcode_puts_expected_value_onto_the_stack()

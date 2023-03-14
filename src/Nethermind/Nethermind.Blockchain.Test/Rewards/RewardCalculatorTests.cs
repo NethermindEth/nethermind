@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block block = Build.A.Block.WithNumber(3).WithUncles(uncle, uncle2).TestObject;
 
             // Warning Ropsten Network is Deprecated
-            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(MainnetSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
             Assert.AreEqual(3, rewards.Length);
@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block block = Build.A.Block.WithNumber(3).WithUncles(uncle).TestObject;
 
             // Warning Ropsten Network is Deprecated
-            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(MainnetSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
             Assert.AreEqual(2, rewards.Length);
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block block = Build.A.Block.WithNumber(3).TestObject;
 
             // Warning Ropsten Network is Deprecated
-            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(MainnetSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
             Assert.AreEqual(1, rewards.Length);
@@ -61,13 +61,13 @@ namespace Nethermind.Blockchain.Test.Rewards
         public void Byzantium_reward_two_uncles()
         {   
             // Warning Ropsten Network is Deprecated
-            long blockNumber = RopstenSpecProvider.ByzantiumBlockNumber;
+            long blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
             Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).TestObject;
 
             // Warning Ropsten Network is Deprecated
-            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(MainnetSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
             Assert.AreEqual(3, rewards.Length);
@@ -80,13 +80,13 @@ namespace Nethermind.Blockchain.Test.Rewards
         public void Constantinople_reward_two_uncles()
         {   
             // Warning Ropsten Network is Deprecated
-            long blockNumber = RopstenSpecProvider.ConstantinopleBlockNumber;
+            long blockNumber = MainnetSpecProvider.ConstantinopleBlockNumber;
             Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).TestObject;
 
             // Warning Ropsten Network is Deprecated
-            RewardCalculator calculator = new(RopstenSpecProvider.Instance);
+            RewardCalculator calculator = new(MainnetSpecProvider.Instance);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
             Assert.AreEqual(3, rewards.Length);

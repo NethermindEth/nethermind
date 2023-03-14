@@ -41,7 +41,7 @@ public class TxBroadcasterTests
     public void Setup()
     {
         _logManager = LimboLogs.Instance;
-        _specProvider = RopstenSpecProvider.Instance;
+        _specProvider = MainnetSpecProvider.Instance;
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
         _blockTree = Substitute.For<IBlockTree>();
         _comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
@@ -155,7 +155,7 @@ public class TxBroadcasterTests
         const int currentBaseFeeInGwei = 250;
         _headInfo.CurrentBaseFee.Returns(currentBaseFeeInGwei.GWei());
         Block headBlock = Build.A.Block
-            .WithNumber(RopstenSpecProvider.LondonBlockNumber)
+            .WithNumber(MainnetSpecProvider.LondonBlockNumber)
             .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
             .TestObject;
         _blockTree.Head.Returns(headBlock);
@@ -204,7 +204,7 @@ public class TxBroadcasterTests
         const int currentBaseFeeInGwei = 250;
         _headInfo.CurrentBaseFee.Returns(currentBaseFeeInGwei.GWei());
         Block headBlock = Build.A.Block
-            .WithNumber(RopstenSpecProvider.LondonBlockNumber)
+            .WithNumber(MainnetSpecProvider.LondonBlockNumber)
             .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
             .TestObject;
         _blockTree.Head.Returns(headBlock);

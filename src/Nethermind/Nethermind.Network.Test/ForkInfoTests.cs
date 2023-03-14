@@ -153,7 +153,7 @@ namespace Nethermind.Network.Test
         [TestCase(12_000_000, 0ul, "0x7119B6B3", 0ul, "Future London block")]
         public void Fork_id_and_hash_as_expected_on_ropsten(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
         {
-            Test(head, headTimestamp, KnownHashes.RopstenGenesis, forkHashHex, next, description, RopstenSpecProvider.Instance, "ropsten.json");
+            Test(head, headTimestamp, KnownHashes.RopstenGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "ropsten.json");
         }
 
         [TestCase(0, 0ul, "0xFE3366E7", 1735371ul, "Sepolia genesis")]

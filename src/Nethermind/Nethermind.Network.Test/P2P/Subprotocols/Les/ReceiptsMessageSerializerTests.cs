@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
             Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = new(data);
             ReceiptsMessage receiptsMessage = new(ethMessage, 1, 2000);
 
-            ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
+            ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
             // Eth.ReceiptsMessageSerializer intentionally excludes fields when deserializing.
             // I think it's probably best to not copy the test logic checking for this here.

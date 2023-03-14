@@ -9,9 +9,9 @@ using NUnit.Framework;
 namespace Nethermind.Specs.Test
 {
     [TestFixture]
-    public class RopstenSpecProviderTests
+    public class MainnetSpecProviderTests
     {
-        private readonly ISpecProvider _specProvider = RopstenSpecProvider.Instance;
+        private readonly ISpecProvider _specProvider = MainnetSpecProvider.Instance;
 
         [TestCase(9_812_188, false)]
         [TestCase(9_812_189, true)]

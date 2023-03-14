@@ -8,7 +8,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs
 {
-    public class RopstenSpecProvider : ISpecProvider
+    public class MainnetSpecProvider : ISpecProvider
     {
         private ForkActivation? _theMergeBlock;
         private UInt256? _terminalTotalDifficulty = 50000000000000000;
@@ -64,8 +64,8 @@ namespace Nethermind.Specs
             (ForkActivation)LondonBlockNumber
         };
 
-        public RopstenSpecProvider() { }
+        public MainnetSpecProvider() { }
 
-        public static readonly RopstenSpecProvider Instance = new();
+        public static readonly MainnetSpecProvider Instance = new();
     }
 }
