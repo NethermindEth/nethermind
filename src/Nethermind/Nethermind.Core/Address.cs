@@ -155,7 +155,7 @@ namespace Nethermind.Core
             long l1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long)));
             int i2 = Unsafe.ReadUnaligned<int>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 2));
             l0 ^= l1 ^ i2;
-            return (int)l0 ^ (int)(l0 >> 32);
+            return (int)(l0 ^ (l0 >> 32));
         }
 
         public static bool operator ==(Address? a, Address? b)
