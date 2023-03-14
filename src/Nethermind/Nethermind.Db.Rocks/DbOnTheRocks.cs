@@ -126,7 +126,17 @@ public class DbOnTheRocks : IDbWithSpan
 
             if (dbConfig.EnableMetricsUpdater)
             {
-                new DbMetricsUpdater(Name, DbOptions, db, dbConfig, _logger).StartUpdating();
+                new DbMetricsUpdater(Name, DbOptions, db, null, dbConfig, _logger).StartUpdating();
+                if (columnFamilies != null)
+                {
+                    foreach (ColumnFamilies.Descriptor columnFamily in columnFamilies)
+                    {
+                        if (db.TryGetColumnFamily(columnFamily.Name, out ColumnFamilyHandle handle))
+                        {
+                            new DbMetricsUpdater(Name + "_" + columnFamily.Name, DbOptions, db, handle, dbConfig, _logger).StartUpdating();
+                        }
+                    }
+                }
             }
 
             return db;
