@@ -126,6 +126,11 @@ namespace Nethermind.Evm.Test
             byte[][] blobVersionedHashes = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
+
+            // checking if account exists - because creating new accounts overwrites already existing accounts,
+            // thus overwriting storage roots - essentially clearing the storage slots
+            // earlier it used to work - because the cache mapping address:storageTree was never cleared on account of
+            // Storage.CommitTrees() not being called. But now the WorldState.CommitTrees which also calls Storage.CommitTrees, clearing the cache.
             if (!TestState.AccountExists(senderRecipientAndMiner.Sender))
                 TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
             else
