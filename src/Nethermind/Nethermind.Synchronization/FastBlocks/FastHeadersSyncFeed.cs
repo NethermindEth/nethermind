@@ -334,7 +334,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     LogStateOnPrepare();
                 }
 
-            	return batch;
+                return batch;
             }
             finally
             {
@@ -414,26 +414,26 @@ namespace Nethermind.Synchronization.FastBlocks
                     return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
                 }
 
-	            if (batch.RequestSize == 0)
-	            {
-	                return SyncResponseHandlingResult.OK; // 1
-	            }
+                if (batch.RequestSize == 0)
+                {
+                    return SyncResponseHandlingResult.OK; // 1
+                }
 
-	            try
-	            {
-	                await _blockProcessingQueue.Emptied();
+                try
+                {
+                    await _blockProcessingQueue.Emptied();
 
-	                lock (_handlerLock)
-	                {
-	                    batch.MarkHandlingStart();
-	                    int added = InsertHeaders(batch);
-	                    return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
-	                }
-	            }
-	            finally
-	            {
-	                batch.MarkHandlingEnd();
-	                _sent.TryRemove(batch);
+                    lock (_handlerLock)
+                    {
+                        batch.MarkHandlingStart();
+                        int added = InsertHeaders(batch);
+                        return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
+                    }
+                }
+                finally
+                {
+                    batch.MarkHandlingEnd();
+                    _sent.TryRemove(batch);
                 }
             }
             finally

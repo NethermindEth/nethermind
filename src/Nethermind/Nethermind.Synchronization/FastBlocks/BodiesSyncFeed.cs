@@ -124,7 +124,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override async ValueTask<SyncResponseHandlingResult> HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)
         {
-        	if (batch is null)
+            if (batch is null)
             {
                 if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                 return SyncResponseHandlingResult.InternalError;
