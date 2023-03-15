@@ -120,7 +120,7 @@ namespace Nethermind.TxPool
                 postHashFilters.Add(incomingTxFilter);
             }
 
-            postHashFilters.Add(new DeployedCodeFilter(_specProvider, _accounts));
+            postHashFilters.Add(new DeployedCodeFilter(_specProvider));
 
             _postHashFilters = postHashFilters.ToArray();
 
