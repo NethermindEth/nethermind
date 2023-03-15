@@ -13,12 +13,12 @@ namespace Nethermind.Core.Extensions
 {
     public static class SpanExtensions
     {
-        public static string ToHexString(this in Span<byte> span, bool withZeroX)
+        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
         {
-            return ToHexViaLookup(span, withZeroX, false, false);
+            return ToHexString(span, withZeroX, false, false);
         }
 
-        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
+        public static string ToHexString(this in Span<byte> span, bool withZeroX)
         {
             return ToHexViaLookup(span, withZeroX, false, false);
         }
@@ -28,14 +28,19 @@ namespace Nethermind.Core.Extensions
             return ToHexViaLookup(span, withZeroX, noLeadingZeros, false);
         }
 
+        public static string ToHexString(this in ReadOnlySpan<byte> span)
+        {
+            return ToHexString(span, false, false, false);
+        }
+
         public static string ToHexString(this in Span<byte> span)
         {
             return ToHexViaLookup(span, false, false, false);
         }
 
-        public static string ToHexString(this in ReadOnlySpan<byte> span)
+        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
         {
-            return ToHexViaLookup(span, false, false, false);
+            return ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
         }
 
         public static string ToHexString(this in Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
@@ -129,5 +134,7 @@ namespace Nethermind.Core.Extensions
 
         public static bool IsNullOrEmpty<T>(this in Span<T> span) => span.Length == 0;
         public static bool IsNull<T>(this in Span<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
+        public static bool IsNullOrEmpty<T>(this in ReadOnlySpan<T> span) => span.Length == 0;
+        public static bool IsNull<T>(this in ReadOnlySpan<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
     }
 }

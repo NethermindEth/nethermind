@@ -15,6 +15,7 @@ using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
 using System.Text;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -23,7 +24,7 @@ namespace Nethermind.Core.Extensions
     public static unsafe partial class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
-
+        public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
@@ -37,6 +38,13 @@ namespace Nethermind.Core.Extensions
             {
                 return obj.GetSimplifiedHashCode();
             }
+        }
+
+        private class SpanBytesEqualityComparer : ISpanEqualityComparer<byte>
+        {
+            public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
+
+            public int GetHashCode(ReadOnlySpan<byte> obj) => GetSimplifiedHashCode(obj);
         }
 
         public class BytesComparer : Comparer<byte[]>
@@ -134,19 +142,6 @@ namespace Nethermind.Core.Extensions
             if ((b & 8) == 8) return 4;
             if ((b & 4) == 4) return 3;
             return (b & 2) == 2 ? 2 : b;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool AreEqual(Span<byte> a1, Span<byte> a2)
-        {
-            if (Unsafe.AreSame(ref MemoryMarshal.GetReference(a1), ref MemoryMarshal.GetReference(a2)) &&
-                a1.Length == a2.Length)
-            {
-                return true;
-            }
-
-            // this works for nulls
-            return a1.SequenceEqual(a2);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -486,6 +481,11 @@ namespace Nethermind.Core.Extensions
         }
 
         public static void StreamHex(this byte[] bytes, StreamWriter streamWriter)
+        {
+            bytes.AsSpan().StreamHex(streamWriter);
+        }
+
+        public static void StreamHex(this Span<byte> bytes, StreamWriter streamWriter)
         {
             for (int i = 0; i < bytes.Length; i++)
             {
@@ -940,7 +940,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
-        public static int GetSimplifiedHashCode(this Span<byte> bytes)
+        public static int GetSimplifiedHashCode(this ReadOnlySpan<byte> bytes)
         {
             const int fnvPrime = 0x01000193;
 

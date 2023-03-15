@@ -18,14 +18,16 @@ public partial class DbMetricsUpdater
     private readonly RocksDb _db;
     private readonly IDbConfig _dbConfig;
     private readonly ILogger _logger;
+    private readonly ColumnFamilyHandle? _columnFamilyHandle;
     private Timer? _timer;
 
-    public DbMetricsUpdater(string dbName, DbOptions dbOptions, RocksDb db, IDbConfig dbConfig, ILogger logger)
+    public DbMetricsUpdater(string dbName, DbOptions dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, ILogger logger)
     {
         _dbName = dbName;
         _dbOptions = dbOptions;
         _db = db;
         _dbConfig = dbConfig;
+        _columnFamilyHandle = cf;
         _logger = logger;
     }
 
@@ -41,7 +43,15 @@ public partial class DbMetricsUpdater
         try
         {
             // It seems that currently there is no other option with .NET api to extract the compaction statistics than through the dumped string
-            var compactionStatsString = _db.GetProperty("rocksdb.stats");
+            var compactionStatsString = "";
+            if (_columnFamilyHandle != null)
+            {
+                compactionStatsString = _db.GetProperty("rocksdb.stats", _columnFamilyHandle);
+            }
+            else
+            {
+                compactionStatsString = _db.GetProperty("rocksdb.stats");
+            }
             ProcessCompactionStats(compactionStatsString);
 
             if (_dbConfig.EnableDbStatistics)
