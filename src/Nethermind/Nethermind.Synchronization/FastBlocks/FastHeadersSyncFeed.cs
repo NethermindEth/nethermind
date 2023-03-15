@@ -291,7 +291,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool HasDependencyToProcess
         {
-            get {
+            get
+            {
                 long? lowest = LowestInsertedBlockHeader?.Number;
                 return lowest != null && _dependencies.ContainsKey(lowest.Value - 1);
             }
