@@ -709,7 +709,6 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
             }
-            _nextHeaderHashUpdate.Set();
         }
     }
 }
