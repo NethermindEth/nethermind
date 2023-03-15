@@ -25,7 +25,7 @@ namespace Nethermind.Merge.Plugin
         public bool PrioritizeBlockLatency { get; set; } = true;
 
         public int GCGenerationToCollect { get; set; } = 1;
-        
+
         public bool AggressivelyCompactMemory { get; set; } = true;
     }
 }
