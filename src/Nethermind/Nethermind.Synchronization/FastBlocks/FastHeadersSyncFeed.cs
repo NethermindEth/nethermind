@@ -239,7 +239,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (noBatchesLeft)
             {
-                if (AllHeadersDownloaded || isImmediateSync && AnyHeaderDownloaded)
+                if ((AllHeadersDownloaded || (isImmediateSync && AnyHeaderDownloaded)) && CurrentState != SyncFeedState.Finished)
                 {
                     FinishAndCleanUp();
                 }
@@ -277,7 +277,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             long? lowest = LowestInsertedBlockHeader?.Number;
             long processedBatchCount = 0;
-            const long maxBatchToProcess = 2;
+            const long maxBatchToProcess = 4;
             while (lowest.HasValue && processedBatchCount < maxBatchToProcess && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
             {
                 MarkDirty();
@@ -289,6 +289,14 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
+        private bool HasDependencyToProcess
+        {
+            get {
+                long? lowest = LowestInsertedBlockHeader?.Number;
+                return lowest != null && _dependencies.ContainsKey(lowest.Value - 1);
+            }
+        }
+
         public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {
             _resetLock.EnterReadLock();
@@ -297,7 +305,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 do
                 {
                     HandleDependentBatches(cancellationToken);
-                } while (_pending.IsEmpty && !ShouldBuildANewBatch());
+                } while (_pending.IsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
 
                 if (_pending.TryDequeue(out HeadersSyncBatch? batch))
                 {

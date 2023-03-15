@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -128,29 +129,32 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             feed.HandleResponse(batch1);
 
             HeadersSyncBatch? batch2 = await feed.PrepareRequest();
-            HeadersSyncBatch? batch3 = await feed.PrepareRequest();
-            HeadersSyncBatch? batch4 = await feed.PrepareRequest();
-            HeadersSyncBatch? batch5 = await feed.PrepareRequest();
-
             FulfillBatch(batch2);
-            FulfillBatch(batch3);
-            FulfillBatch(batch4);
-            FulfillBatch(batch5);
 
-            // Disconnected chain
-            feed.HandleResponse(batch3);
-            feed.HandleResponse(batch4);
-            feed.HandleResponse(batch5);
+            int maxHeaderBatchToProcess = 4;
+
+            HeadersSyncBatch[] batches = Enumerable.Range(0, maxHeaderBatchToProcess + 1).Select((_) =>
+            {
+                HeadersSyncBatch? batch = feed.PrepareRequest().Result;
+                FulfillBatch(batch);
+                return batch;
+            }).ToArray();
+
+            // Disconnected chain so they all go to dependencies
+            foreach (HeadersSyncBatch headersSyncBatch in batches)
+            {
+                feed.HandleResponse(headersSyncBatch);
+            }
 
             // Batch2 would get processed
             feed.HandleResponse(batch2);
 
-            // HandleDependantBatch would start from batch3, stopped at batch4, not processing batch5
+            // HandleDependantBatch would start from first batch in batches, stopped at second last, not processing the last one
             HeadersSyncBatch? newBatch = await feed.PrepareRequest();
-            blockTree.LowestInsertedHeader!.Number.Should().Be(batch4.StartNumber);
+            blockTree.LowestInsertedHeader!.Number.Should().Be(batches[^2].StartNumber);
 
             // New batch would be at end of batch 5 (batch 6).
-            newBatch.EndNumber.Should().Be(batch5.StartNumber - 1);
+            newBatch.EndNumber.Should().Be(batches[^1].StartNumber - 1);
         }
 
         [Test]
