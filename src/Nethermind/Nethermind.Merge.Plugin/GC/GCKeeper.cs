@@ -113,7 +113,7 @@ public class GCKeeper
             // Lets say we process block in 2s, then delay 1s, then invoke GC
             await Task.Delay(1000);
             if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
-            System.GC.Collect(generation, GCCollectionMode.Optimized, blocking: false, compacting: compacting);
+            System.GC.Collect(generation, GCCollectionMode.Default, blocking: false, compacting: compacting);
         }
     }
 }
