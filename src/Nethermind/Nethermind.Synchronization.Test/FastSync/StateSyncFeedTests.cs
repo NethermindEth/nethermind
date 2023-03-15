@@ -374,7 +374,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             StateSyncBatch? request = ctx.Feed.PrepareRequest();
             request.Should().NotBeNull();
 
-            ctx.Feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>()))
+            (await ctx.Feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>())))
                 .Should().Be(SyncResponseHandlingResult.LesserQuality);
         }
 
@@ -400,7 +400,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             StateSyncBatch? request = ctx.Feed.PrepareRequest();
             request.Should().NotBeNull();
 
-            ctx.Feed.HandleResponse(request)
+            (await ctx.Feed.HandleResponse(request))
                 .Should().Be(SyncResponseHandlingResult.NotAssigned);
         }
 

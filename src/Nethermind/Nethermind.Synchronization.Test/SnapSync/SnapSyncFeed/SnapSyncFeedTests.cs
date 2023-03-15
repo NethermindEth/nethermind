@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
@@ -17,7 +18,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed;
 public class SnapSyncFeedTests
 {
     [Test]
-    public void WhenAccountRequestEmpty_ReturnNoProgress()
+    public async Task WhenAccountRequestEmpty_ReturnNoProgress()
     {
         ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
         Synchronization.SnapSync.SnapSyncFeed feed = new(
@@ -32,6 +33,7 @@ public class SnapSyncFeedTests
 
         PeerInfo peer = new PeerInfo(Substitute.For<ISyncPeer>());
 
-        feed.HandleResponse(response, peer).Should().Be(SyncResponseHandlingResult.NoProgress);
+        (await feed.HandleResponse(response, peer))
+            .Should().Be(SyncResponseHandlingResult.NoProgress);
     }
 }
