@@ -521,7 +521,11 @@ namespace Nethermind.Synchronization.FastBlocks
                     // response needs to be cached until predecessors arrive
                     if (header.Hash != _nextHeaderHash)
                     {
-                        if (header.Number == (LowestInsertedBlockHeader?.Number ?? _pivotNumber + 1) - 1)
+                        // If the header is at the exact block number, but the hash does not match, then its a different branch.
+                        // However, if the header hash does match the parent of the LowestInsertedBlockHeader, then its just
+                        // `_nextHeaderHash` not updated as the `BlockTree.Insert` has not returned yet.
+                        // We just let it go to the dependency graph.
+                        if (header.Number == (LowestInsertedBlockHeader?.Number ?? _pivotNumber + 1) - 1 && header.Hash != LowestInsertedBlockHeader?.ParentHash)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
                             if (batch.ResponseSourcePeer is not null)
@@ -693,7 +697,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return insertOutcome;
         }
 
-        private void SetExpectedNextHeaderToParent(BlockHeader header)
+        protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
             ulong nextHeaderDiff = 0;
             _nextHeaderHash = header.ParentHash!;
