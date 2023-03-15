@@ -59,6 +59,7 @@ namespace Nethermind.TxPool
         private ulong _txIndex;
 
         private readonly ITimer? _timer;
+        private Transaction[]? _transactionSnapshot;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -156,6 +157,8 @@ namespace Nethermind.TxPool
             // TODO: I think this is dangerous if many blocks are processed one after another
             try
             {
+                // Clear snapshot
+                _transactionSnapshot = null;
                 _hashCache.ClearCurrentBlockCache();
                 _headBlocksChannel.Writer.TryWrite(e);
             }
@@ -261,7 +264,7 @@ namespace Nethermind.TxPool
             PeerInfo peerInfo = new(peer);
             if (_broadcaster.AddPeer(peerInfo))
             {
-                _broadcaster.BroadcastOnce(peerInfo, _transactions.GetSnapshot());
+                _broadcaster.BroadcastOnce(peerInfo, _transactionSnapshot ??= _transactions.GetSnapshot());
 
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
             }
@@ -300,10 +303,18 @@ namespace Nethermind.TxPool
             if (!accepted)
             {
                 Metrics.PendingTransactionsDiscarded++;
-                return accepted;
+            }
+            else
+            {
+                accepted = AddCore(tx, state, startBroadcast);
+                if (accepted)
+                {
+                    // Clear snapshot
+                    _transactionSnapshot = null;
+                }
             }
 
-            return AddCore(tx, state, startBroadcast);
+            return accepted;
         }
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, TxFilteringState state)
