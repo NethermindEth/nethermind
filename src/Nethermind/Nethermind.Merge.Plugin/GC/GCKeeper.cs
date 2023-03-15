@@ -26,7 +26,7 @@ public class GCKeeper
     public IDisposable TryStartNoGCRegion(long? size = null)
     {
         size ??= _defaultSize;
-        if (_igcStrategy.ShouldTryToPreventGCDuringBlockProcessing())
+        if (_igcStrategy.CanStartNoGCRegion())
         {
             FailCause failCause = FailCause.None;
             try
@@ -105,15 +105,15 @@ public class GCKeeper
 
     private async Task ScheduleGCInternal()
     {
-        int gcToCollect = Math.Min(_igcStrategy.GCGenerationToCollectBetweenBlockProcessing(), System.GC.MaxGeneration);
-        if (gcToCollect >= 0)
+        (int generation, bool compacting) = _igcStrategy.GetForcedGCParams();
+        if (generation >= 0)
         {
             // This should give time to finalize response in Engine API
             // Normally we should get block every 12s (5s on some chains)
             // Lets say we process block in 2s, then delay 1s, then invoke GC
             await Task.Delay(1000);
-            if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {gcToCollect}");
-            System.GC.Collect(gcToCollect, GCCollectionMode.Default, blocking: false, compacting: true);
+            if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
+            System.GC.Collect(generation, GCCollectionMode.Optimized, blocking: false, compacting: compacting);
         }
     }
 }
