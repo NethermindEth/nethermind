@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -21,20 +22,19 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
+using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Specs.Test;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using Nethermind.Config;
 
 namespace Nethermind.Core.Test.Blockchain;
 
@@ -120,6 +120,7 @@ public class TestBlockchain : IDisposable
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
+
         byte[] code = Bytes.FromHexString("0xabcd");
         Keccak codeHash = Keccak.Compute(code);
         State.UpdateCode(code);
@@ -378,8 +379,12 @@ public class TestBlockchain : IDisposable
     public virtual void Dispose()
     {
         BlockProducer?.StopAsync();
-        CodeDb?.Dispose();
-        StateDb?.Dispose();
+        if (DbProvider != null)
+        {
+            CodeDb?.Dispose();
+            StateDb?.Dispose();
+        }
+
         _trieStoreWatcher?.Dispose();
         DbProvider?.Dispose();
     }

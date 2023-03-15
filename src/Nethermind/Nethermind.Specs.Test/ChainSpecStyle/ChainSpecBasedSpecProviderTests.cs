@@ -243,7 +243,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)GoerliSpecProvider.BerlinBlockNumber,
                 (ForkActivation)(GoerliSpecProvider.LondonBlockNumber - 1),
                 (ForkActivation)GoerliSpecProvider.LondonBlockNumber,
-                (ForkActivation)100000000, // far in the future
+                new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp),
+                new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp + 100000000) // far in future
             };
 
             CompareSpecProviders(goerli, provider, forkActivationsToTest);
@@ -532,12 +533,63 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
 
         [Test]
+        public void Eip150_and_Eip2537_fork_by_block_number()
+        {
+            ChainSpec chainSpec = new()
+            {
+                Parameters = new ChainParameters
+                {
+                    MaxCodeSizeTransition = 10,
+                    Eip2537Transition = 20,
+                    MaxCodeSize = 1
+                }
+            };
+
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+            provider.GetSpec((ForkActivation)9).IsEip170Enabled.Should().BeFalse();
+            provider.GetSpec((ForkActivation)10).IsEip170Enabled.Should().BeTrue();
+            provider.GetSpec((ForkActivation)11).IsEip170Enabled.Should().BeTrue();
+            provider.GetSpec((ForkActivation)11).MaxCodeSize.Should().Be(1);
+            provider.GetSpec((ForkActivation)9).MaxCodeSize.Should().Be(long.MaxValue);
+
+            provider.GetSpec((ForkActivation)19).IsEip2537Enabled.Should().BeFalse();
+            provider.GetSpec((ForkActivation)20).IsEip2537Enabled.Should().BeTrue();
+            provider.GetSpec((ForkActivation)21).IsEip2537Enabled.Should().BeTrue();
+        }
+
+        [Test]
+        public void Eip150_and_Eip2537_fork_by_timestamp()
+        {
+            ChainSpec chainSpec = new()
+            {
+                Parameters = new ChainParameters
+                {
+                    MaxCodeSizeTransitionTimestamp = 10,
+                    Eip2537TransitionTimestamp = 20,
+                    MaxCodeSize = 1
+                }
+            };
+
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+            provider.GetSpec((100, 9)).IsEip170Enabled.Should().BeFalse();
+            provider.GetSpec((100, 10)).IsEip170Enabled.Should().BeTrue();
+            provider.GetSpec((100, 11)).IsEip170Enabled.Should().BeTrue();
+            provider.GetSpec((100, 11)).MaxCodeSize.Should().Be(1);
+            provider.GetSpec((100, 9)).MaxCodeSize.Should().Be(long.MaxValue);
+
+            provider.GetSpec((100, 19)).IsEip2537Enabled.Should().BeFalse();
+            provider.GetSpec((100, 20)).IsEip2537Enabled.Should().BeTrue();
+            provider.GetSpec((100, 21)).IsEip2537Enabled.Should().BeTrue();
+        }
+
+        [Test]
         public void Eip_transitions_loaded_correctly()
         {
             const long maxCodeTransition = 1;
             const long maxCodeSize = 1;
 
-            var currentTimestamp = Timestamper.Default.UnixTime.Seconds;
             ChainSpec chainSpec = new()
             {
                 Ethash =

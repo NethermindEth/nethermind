@@ -63,6 +63,6 @@ namespace Nethermind.Trie.Pruning
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
-        public byte[]? this[byte[] key] => _trieStore[key];
+        public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
     }
 }

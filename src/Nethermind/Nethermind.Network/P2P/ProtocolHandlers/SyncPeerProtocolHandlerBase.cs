@@ -424,8 +424,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         #region IPeerWithSatelliteProtocol
 
-        private IDictionary<string, object>? _protocolHandlers;
-        private IDictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
+        private Dictionary<string, object>? _protocolHandlers;
+        private Dictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
         {

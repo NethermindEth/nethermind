@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
@@ -33,7 +34,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 {
     protected override MergeTestBlockchain CreateBaseBlockChain(
         IMergeConfig? mergeConfig = null,
-        IPayloadPreparationService? mockedPayloadService = null)
+        IPayloadPreparationService? mockedPayloadService = null,
+        ILogManager? logManager = null)
         => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService);
 
     protected override Keccak ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
@@ -127,7 +129,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 ),
                 TimerFactory.Default,
                 LogManager,
-                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
+                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
+                50000 // by default we want to avoid cleanup payload effects in testing
             );
 
             IAuRaStepCalculator auraStepCalculator = Substitute.For<IAuRaStepCalculator>();

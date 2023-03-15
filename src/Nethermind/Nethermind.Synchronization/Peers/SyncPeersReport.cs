@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public void WriteShortReport()
+        public void WriteAllocatedReport()
         {
             lock (_writeLock)
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.Peers
                     return;
                 }
 
-                _logger.Info(MakeReportForPeer(OrderedPeers.Where(p => !p.CanBeAllocated(AllocationContexts.All)), $"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}"));
+                _logger.Info(MakeReportForPeer(OrderedPeers.Where(p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}"));
             }
         }
 

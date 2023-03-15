@@ -240,7 +240,7 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 node = SaveOrReplaceInDirtyNodesCache(nodeCommitInfo, node);
-                node.LastSeen = Math.Max(blockNumber, node.LastSeen);
+                node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
 
                 if (!_pruningStrategy.PruningEnabled)
                 {
@@ -713,7 +713,7 @@ namespace Nethermind.Trie.Pruning
                 SaveNodeDirectly(blockNumber, currentNode, _currentBatch);
 
                 currentNode.IsPersisted = true;
-                currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen);
+                currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
 
                 PersistedNodesCount++;
             }
@@ -917,10 +917,10 @@ namespace Nethermind.Trie.Pruning
             return false;
         }
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get => _pruningStrategy.PruningEnabled
-                   && _dirtyNodes.AllNodes.TryGetValue(key, out TrieNode? trieNode)
+                   && _dirtyNodes.AllNodes.TryGetValue(key.ToArray(), out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp is not null

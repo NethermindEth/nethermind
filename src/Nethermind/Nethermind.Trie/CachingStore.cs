@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
 {
@@ -24,12 +27,12 @@ namespace Nethermind.Trie
         public CachingStore(IKeyValueStoreWithBatching wrappedStore, int maxCapacity)
         {
             _wrappedStore = wrappedStore ?? throw new ArgumentNullException(nameof(wrappedStore));
-            _cache = new LruCache<byte[], byte[]>(maxCapacity, "RLP Cache");
+            _cache = new SpanLruCache<byte, byte[]>(maxCapacity, 0, "RLP Cache", Bytes.SpanEqualityComparer);
         }
 
-        private readonly LruCache<byte[], byte[]> _cache;
+        private readonly SpanLruCache<byte, byte[]> _cache;
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get
             {
@@ -57,7 +60,7 @@ namespace Nethermind.Trie
 
         public void PersistCache(IKeyValueStore pruningContext)
         {
-            IDictionary<byte[], byte[]> clone = _cache.Clone();
+            KeyValuePair<byte[], byte[]>[] clone = _cache.ToArray();
             Task.Run(() =>
             {
                 foreach (KeyValuePair<byte[], byte[]> kvp in clone)
