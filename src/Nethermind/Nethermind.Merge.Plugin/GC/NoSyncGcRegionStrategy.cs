@@ -19,6 +19,6 @@ public class NoSyncGcRegionStrategy : IGCStrategy
         _gcParams = (Math.Min(System.GC.MaxGeneration, mergeConfig.GCGenerationToCollect), mergeConfig.AggressivelyCompactMemory);
     }
 
-    public bool CanStartNoGCRegion() =>  _canStartNoGCRegion && _syncModeSelector.Current == SyncMode.WaitingForBlock;
+    public bool CanStartNoGCRegion() => _canStartNoGCRegion && _syncModeSelector.Current == SyncMode.WaitingForBlock;
     public (int, bool) GetForcedGCParams() => _gcParams;
 }
