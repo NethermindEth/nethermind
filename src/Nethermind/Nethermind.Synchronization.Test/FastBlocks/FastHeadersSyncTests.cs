@@ -82,6 +82,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()
                 },
                 syncReport,
+                Substitute.For<IBlockProcessingQueue>(),
                 LimboLogs.Instance,
                 hangOnBlockNumberAfterInsert: 425,
                 hangLatch: hangLatch
@@ -97,10 +98,10 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 batch.ResponseSourcePeer = peerInfo;
             }
 
-            HeadersSyncBatch? batch1 = await feed.PrepareRequest();
-            HeadersSyncBatch? batch2 = await feed.PrepareRequest();
-            HeadersSyncBatch? batch3 = await feed.PrepareRequest();
-            HeadersSyncBatch? batch4 = await feed.PrepareRequest();
+            HeadersSyncBatch batch1 = feed.PrepareRequest()!;
+            HeadersSyncBatch batch2 = feed.PrepareRequest()!;
+            HeadersSyncBatch batch3 = feed.PrepareRequest()!;
+            HeadersSyncBatch batch4 = feed.PrepareRequest()!;
 
             FulfillBatch(batch1);
             FulfillBatch(batch2);
@@ -192,6 +193,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     PivotTotalDifficulty = pivot.TotalDifficulty.ToString(),
                 },
                 syncReport,
+                Substitute.For<IBlockProcessingQueue>(),
                 LimboLogs.Instance);
             feed.InitializeFeed();
 
@@ -203,18 +205,18 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             }
 
             // First batch need to be handled first before handle dependencies can do anything
-            HeadersSyncBatch? batch1 = await feed.PrepareRequest();
+            HeadersSyncBatch batch1 = feed.PrepareRequest();
             FulfillBatch(batch1);
             feed.HandleResponse(batch1);
 
-            HeadersSyncBatch? batch2 = await feed.PrepareRequest();
+            HeadersSyncBatch batch2 = feed.PrepareRequest();
             FulfillBatch(batch2);
 
             int maxHeaderBatchToProcess = 4;
 
             HeadersSyncBatch[] batches = Enumerable.Range(0, maxHeaderBatchToProcess + 1).Select((_) =>
             {
-                HeadersSyncBatch? batch = feed.PrepareRequest().Result;
+                HeadersSyncBatch? batch = feed.PrepareRequest();
                 FulfillBatch(batch);
                 return batch;
             }).ToArray();
@@ -229,7 +231,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             feed.HandleResponse(batch2);
 
             // HandleDependantBatch would start from first batch in batches, stopped at second last, not processing the last one
-            HeadersSyncBatch? newBatch = await feed.PrepareRequest();
+            HeadersSyncBatch? newBatch = feed.PrepareRequest();
             blockTree.LowestInsertedHeader!.Number.Should().Be(batches[^2].StartNumber);
 
             // New batch would be at end of batch 5 (batch 6).
