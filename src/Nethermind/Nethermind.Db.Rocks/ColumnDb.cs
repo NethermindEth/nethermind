@@ -13,7 +13,7 @@ public class ColumnDb : IDbWithSpan
 {
     private readonly RocksDb _rocksDb;
     private readonly DbOnTheRocks _mainDb;
-    private readonly ColumnFamilyHandle _columnFamily;
+    internal readonly ColumnFamilyHandle _columnFamily;
 
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {

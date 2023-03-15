@@ -21,7 +21,7 @@ namespace Nethermind.Db.FullPruning
     /// When <see cref="IPruningContext"/> returned in <see cref="TryStartPruning"/> is <see cref="IDisposable.Dispose"/>d it will delete the pruning DB if the pruning was not successful.
     /// It uses <see cref="IRocksDbFactory"/> to create new pruning DB's. Check <see cref="FullPruningInnerDbFactory"/> to see how inner sub DB's are organised.
     /// </remarks>
-    public class FullPruningDb : IDb, IFullPruningDb
+    public class FullPruningDb : IDb, IFullPruningDb, ITunableDb
     {
         private readonly RocksDbSettings _settings;
         private readonly IRocksDbFactory _dbFactory;
@@ -268,6 +268,14 @@ namespace Nethermind.Db.FullPruning
                     _batch[key] = value;
                     _db.Duplicate(_clonedBatch, key, value);
                 }
+            }
+        }
+
+        public void Tune(ITunableDb.TuneType type)
+        {
+            if (_currentDb is ITunableDb tunableDb)
+            {
+                tunableDb.Tune(type);
             }
         }
     }
