@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Test.Synchronization;
 using Nethermind.Specs;
 using Nethermind.State.Witnesses;
 using Nethermind.Stats;

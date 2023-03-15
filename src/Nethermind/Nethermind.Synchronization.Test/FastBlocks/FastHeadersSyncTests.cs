@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Test.Synchronization;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;

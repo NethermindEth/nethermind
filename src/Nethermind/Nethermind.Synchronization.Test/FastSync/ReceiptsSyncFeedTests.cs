@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Test.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Stats.Model;

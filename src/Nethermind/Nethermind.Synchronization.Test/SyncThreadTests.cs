@@ -43,6 +43,7 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
+using Nethermind.Merge.Plugin.Test.Synchronization;
 
 namespace Nethermind.Synchronization.Test
 {
