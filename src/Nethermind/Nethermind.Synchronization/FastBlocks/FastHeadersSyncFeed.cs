@@ -239,7 +239,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (noBatchesLeft)
             {
-                if (AllHeadersDownloaded || isImmediateSync && AnyHeaderDownloaded)
+                if ((AllHeadersDownloaded || (isImmediateSync && AnyHeaderDownloaded)) && CurrentState != SyncFeedState.Finished)
                 {
                     FinishAndCleanUp();
                 }
@@ -276,12 +276,25 @@ namespace Nethermind.Synchronization.FastBlocks
         private void HandleDependentBatches(CancellationToken cancellationToken)
         {
             long? lowest = LowestInsertedBlockHeader?.Number;
-            while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
+            long processedBatchCount = 0;
+            const long maxBatchToProcess = 4;
+            while (lowest.HasValue && processedBatchCount < maxBatchToProcess && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
             {
                 MarkDirty();
                 InsertHeaders(dependentBatch!);
                 lowest = LowestInsertedBlockHeader?.Number;
                 cancellationToken.ThrowIfCancellationRequested();
+
+                processedBatchCount++;
+            }
+        }
+
+        private bool HasDependencyToProcess
+        {
+            get
+            {
+                long? lowest = LowestInsertedBlockHeader?.Number;
+                return lowest != null && _dependencies.ContainsKey(lowest.Value - 1);
             }
         }
 
@@ -290,7 +303,10 @@ namespace Nethermind.Synchronization.FastBlocks
             _resetLock.EnterReadLock();
             try
             {
-                HandleDependentBatches(cancellationToken);
+                do
+                {
+                    HandleDependentBatches(cancellationToken);
+                } while (_pending.IsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
 
                 if (_pending.TryDequeue(out HeadersSyncBatch? batch))
                 {
