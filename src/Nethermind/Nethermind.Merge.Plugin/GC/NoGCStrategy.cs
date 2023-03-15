@@ -7,6 +7,6 @@ class NoGCStrategy : IGCStrategy
 {
     public static readonly NoGCStrategy Instance = new();
 
-    public bool ShouldTryToPreventGCDuringBlockProcessing() => false;
-    public int GCGenerationToCollectBetweenBlockProcessing() => -1;
+    public bool CanStartNoGCRegion() => false;
+    public (int, bool) GetForcedGCParams() => (-1, false);
 }

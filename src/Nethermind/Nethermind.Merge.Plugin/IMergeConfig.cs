@@ -44,10 +44,12 @@ namespace Nethermind.Merge.Plugin
         string? BuilderRelayUrl { get; set; }
 
         [ConfigItem(Description = "Reduces block EngineApi latency by disabling Garbage Collection during EngineApi calls.", DefaultValue = "true")]
-        public bool DisableGCDuringBlockProcessing { get; set; }
+        public bool PrioritizeBlockLatency { get; set; }
 
-        [ConfigItem(Description = "On lightly used nodes reduces memory usage by forcing Garbage Collection between EngineApi calls. " +
-                                  "On highly busy nodes (JSON RPC) may increase latency. Value corresponds to generation to be cleared. -1 disables it.", DefaultValue = "2")]
-        public int ForceGCBetweenBLocks { get; set; }
+        [ConfigItem(Description = "Reduces memory usage by forcing Garbage Collection between EngineApi calls. Accept values [-1,2]. -1 disables it.", DefaultValue = "1")]
+        public int GCGenerationToCollect { get; set; }
+
+        [ConfigItem(Description = "Reduces process used memory.", DefaultValue = "true")]
+        public bool AggressivelyCompactMemory { get; set; }
     }
 }

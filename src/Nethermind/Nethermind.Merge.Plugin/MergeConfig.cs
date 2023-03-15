@@ -22,8 +22,10 @@ namespace Nethermind.Merge.Plugin
 
         public string? BuilderRelayUrl { get; set; }
 
-        public bool DisableGCDuringBlockProcessing { get; set; } = true;
+        public bool PrioritizeBlockLatency { get; set; } = true;
 
-        public int ForceGCBetweenBLocks { get; set; } = 2;
+        public int GCGenerationToCollect { get; set; } = 1;
+        
+        public bool AggressivelyCompactMemory { get; set; } = true;
     }
 }
