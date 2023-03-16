@@ -329,9 +329,10 @@ namespace Nethermind.Consensus.Processing
 
         public async ValueTask Emptied()
         {
-            if (_emptiedQueueTaskCompletionSource is not null)
+            TaskCompletionSource source = _emptiedQueueTaskCompletionSource;
+            if (source is not null)
             {
-                Task task = _emptiedQueueTaskCompletionSource.Task;
+                Task task = source.Task;
                 if (!task.IsCompleted)
                 {
                     await task;
