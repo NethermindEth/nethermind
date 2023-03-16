@@ -44,8 +44,7 @@ namespace Nethermind.Monitoring.Metrics
                     attribute => attribute.Label,
                     attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
 
-            // TODO: move the description to the metadata as it can be an instrument
-            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
+            string description = TryGetInstrument(member, out Instrument instrument) ? instrument.Description : member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = BuildGaugeName(member);
 
             return CreateGauge(name, description, staticLabels);
@@ -64,6 +63,31 @@ namespace Nethermind.Monitoring.Metrics
                 throw new NotSupportedException("Developer error: a requested static description field was not initialised!");
 
             return value.ToString();
+        }
+
+        /// <summary>
+        /// Tries to retrieve <see cref="Instrument"/> hidden in the member value.
+        /// </summary>
+        private static bool TryGetInstrument(MemberInfo member, out Instrument instrument)
+        {
+            if (member is PropertyInfo property && property.PropertyType.IsAssignableTo(typeof(Instrument)))
+            {
+                instrument = (Instrument)property.GetValue(null);
+                return true;
+            }
+
+            if (member is FieldInfo field)
+            {
+                if (field.FieldType.IsAssignableTo(typeof(Instrument)))
+                {
+                    instrument = (Instrument)field.GetValue(null);
+                    return true;
+                }
+
+            }
+
+            instrument = default;
+            return false;
         }
 
         private void EnsurePropertiesCached(Type type)
@@ -91,23 +115,18 @@ namespace Nethermind.Monitoring.Metrics
                     return () => measurement;
                 }
 
+                if (TryGetInstrument(member, out Instrument instrument))
+                {
+                    return BuildInstrumentAccessor(instrument);
+                }
+
                 if (member is PropertyInfo property)
                 {
-                    if (property.PropertyType.IsAssignableTo(typeof(Instrument)))
-                    {
-                        return BuildInstrumentAccessor((Instrument)property.GetValue(null));
-                    }
-
                     return () => Convert.ToDouble(property.GetValue(null));
                 }
 
                 if (member is FieldInfo field)
                 {
-                    if (field.FieldType.IsAssignableTo(typeof(Instrument)))
-                    {
-                        return BuildInstrumentAccessor((Instrument)field.GetValue(null));
-                    }
-
                     return () => Convert.ToDouble(field.GetValue(null));
                 }
 

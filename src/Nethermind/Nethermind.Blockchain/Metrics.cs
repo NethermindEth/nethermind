@@ -52,9 +52,10 @@ namespace Nethermind.Blockchain
         [Description("Indicator if blocks can be produced")]
         public static long CanProduceBlocks;
 
-        [Description("Number of ms to process the last processed block.")]
         public static readonly Histogram<long> LastBlockProcessingTimeInMs =
-            _meter.CreateHistogram<long>(nameof(LastBlockProcessingTimeInMs), unit: "ms");
+            _meter.CreateHistogram<long>(nameof(LastBlockProcessingTimeInMs),
+                unit: "ms",
+                description: "Number of ms to process the last processed block.");
 
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [Description("The current height of the canonical chain.")]
