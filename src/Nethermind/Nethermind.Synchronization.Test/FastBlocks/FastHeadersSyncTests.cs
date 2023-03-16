@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -16,6 +17,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -47,6 +49,77 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             HeadersSyncBatch? batch1 = await feed.PrepareRequest();
             HeadersSyncBatch? batch2 = await feed.PrepareRequest();
             HeadersSyncBatch? batch3 = await feed.PrepareRequest();
+        }
+
+        [Test]
+        public async Task When_next_header_hash_update_is_delayed_do_not_drop_peer()
+        {
+            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
+
+            BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+
+            ISyncReport syncReport = Substitute.For<ISyncReport>();
+            syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
+            syncReport.HeadersInQueue.Returns(new MeasuredProgress());
+
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+            PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+
+            ManualResetEventSlim hangLatch = new(false);
+            BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
+            ResettableHeaderSyncFeed feed = new(
+                Substitute.For<ISyncModeSelector>(),
+                blockTree,
+                syncPeerPool,
+                new SyncConfig
+                {
+                    FastSync = true,
+                    FastBlocks = true,
+                    PivotNumber = "1000",
+                    PivotHash = pivot.Hash.Bytes.ToHexString(),
+                    PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()
+                },
+                syncReport,
+                LimboLogs.Instance,
+                hangOnBlockNumberAfterInsert: 425,
+                hangLatch: hangLatch
+            );
+
+            feed.InitializeFeed();
+
+            void FulfillBatch(HeadersSyncBatch batch)
+            {
+                batch.Response = remoteBlockTree.FindHeaders(
+                    remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
+                    false);
+                batch.ResponseSourcePeer = peerInfo;
+            }
+
+            HeadersSyncBatch? batch1 = await feed.PrepareRequest();
+            HeadersSyncBatch? batch2 = await feed.PrepareRequest();
+            HeadersSyncBatch? batch3 = await feed.PrepareRequest();
+            HeadersSyncBatch? batch4 = await feed.PrepareRequest();
+
+            FulfillBatch(batch1);
+            FulfillBatch(batch2);
+            FulfillBatch(batch3);
+            FulfillBatch(batch4);
+
+            // Need to be triggered via `HandleDependencies` as there is a lock for `HandleResponse` that prevent this.
+            feed.HandleResponse(batch1);
+            feed.HandleResponse(batch3);
+            feed.HandleResponse(batch2);
+            Task.Factory.StartNew(() =>
+            {
+                feed.PrepareRequest();
+            }, TaskCreationOptions.LongRunning);
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+
+            feed.HandleResponse(batch4);
+
+            syncPeerPool.DidNotReceive().ReportBreachOfProtocol(peerInfo, Arg.Any<InitiateDisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]
@@ -84,6 +157,76 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             feed.HandleResponse(batch2);
             feed.HandleResponse(batch1);
+        }
+
+        [Test]
+        public async Task Will_dispatch_when_only_partially_processed_dependency()
+        {
+            IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(2001).TestObject;
+
+            BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+
+            ISyncReport syncReport = Substitute.For<ISyncReport>();
+            syncReport.FastBlocksHeaders.Returns(new MeasuredProgress());
+            syncReport.HeadersInQueue.Returns(new MeasuredProgress());
+
+            BlockHeader pivot = remoteBlockTree.FindHeader(2000, BlockTreeLookupOptions.None)!;
+            HeadersSyncFeed feed = new(
+                Substitute.For<ISyncModeSelector>(),
+                blockTree,
+                Substitute.For<ISyncPeerPool>(),
+                new SyncConfig
+                {
+                    FastSync = true,
+                    FastBlocks = true,
+                    PivotNumber = pivot.Number.ToString(),
+                    PivotHash = pivot.Hash.ToString(),
+                    PivotTotalDifficulty = pivot.TotalDifficulty.ToString(),
+                },
+                syncReport,
+                LimboLogs.Instance);
+            feed.InitializeFeed();
+
+            void FulfillBatch(HeadersSyncBatch batch)
+            {
+                batch.Response = remoteBlockTree.FindHeaders(
+                    remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
+                    false);
+            }
+
+            // First batch need to be handled first before handle dependencies can do anything
+            HeadersSyncBatch? batch1 = await feed.PrepareRequest();
+            FulfillBatch(batch1);
+            feed.HandleResponse(batch1);
+
+            HeadersSyncBatch? batch2 = await feed.PrepareRequest();
+            FulfillBatch(batch2);
+
+            int maxHeaderBatchToProcess = 4;
+
+            HeadersSyncBatch[] batches = Enumerable.Range(0, maxHeaderBatchToProcess + 1).Select((_) =>
+            {
+                HeadersSyncBatch? batch = feed.PrepareRequest().Result;
+                FulfillBatch(batch);
+                return batch;
+            }).ToArray();
+
+            // Disconnected chain so they all go to dependencies
+            foreach (HeadersSyncBatch headersSyncBatch in batches)
+            {
+                feed.HandleResponse(headersSyncBatch);
+            }
+
+            // Batch2 would get processed
+            feed.HandleResponse(batch2);
+
+            // HandleDependantBatch would start from first batch in batches, stopped at second last, not processing the last one
+            HeadersSyncBatch? newBatch = await feed.PrepareRequest();
+            blockTree.LowestInsertedHeader!.Number.Should().Be(batches[^2].StartNumber);
+
+            // New batch would be at end of batch 5 (batch 6).
+            newBatch.EndNumber.Should().Be(batches[^1].StartNumber - 1);
         }
 
         [Test]
@@ -201,7 +344,8 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         private class ResettableHeaderSyncFeed : HeadersSyncFeed
         {
             private ManualResetEventSlim? _hangLatch;
-            private long? _hangOnBlockNumber;
+            private readonly long? _hangOnBlockNumber;
+            private readonly long? _hangOnBlockNumberAfterInsert;
 
             public ResettableHeaderSyncFeed(
                 ISyncModeSelector syncModeSelector,
@@ -211,11 +355,13 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 ISyncReport? syncReport,
                 ILogManager? logManager,
                 long? hangOnBlockNumber = null,
+                long? hangOnBlockNumberAfterInsert = null,
                 ManualResetEventSlim? hangLatch = null,
                 bool alwaysStartHeaderSync = false
             ) : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync)
             {
                 _hangOnBlockNumber = hangOnBlockNumber;
+                _hangOnBlockNumberAfterInsert = hangOnBlockNumberAfterInsert;
                 _hangLatch = hangLatch;
             }
 
@@ -231,7 +377,18 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 {
                     _hangLatch.Wait();
                 }
-                return base.InsertToBlockTree(header);
+
+                AddBlockResult insertOutcome = _blockTree.Insert(header);
+                if (header.Number == _hangOnBlockNumberAfterInsert)
+                {
+                    _hangLatch.Wait();
+                }
+                if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
+                {
+                    SetExpectedNextHeaderToParent(header);
+                }
+
+                return insertOutcome;
             }
         }
 

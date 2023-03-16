@@ -5,6 +5,7 @@ using System;
 using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Synchronization
 {
@@ -47,6 +48,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool StrictMode { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;
         public bool NonValidatorNode { get; set; } = false;
+        public ITunableDb.TuneType TuneDbMode { get; set; } = ITunableDb.TuneType.Default;
 
         public override string ToString()
         {

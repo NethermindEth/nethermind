@@ -12,10 +12,12 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class BalanceZeroFilter : IIncomingTxFilter
     {
+        private readonly bool _thereIsPriorityContract;
         private readonly ILogger _logger;
 
-        public BalanceZeroFilter(ILogger logger)
+        public BalanceZeroFilter(bool thereIsPriorityContract, ILogger logger)
         {
+            _thereIsPriorityContract = thereIsPriorityContract;
             _logger = logger;
         }
 
@@ -25,7 +27,7 @@ namespace Nethermind.TxPool.Filters
             UInt256 balance = account.Balance;
 
             bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
-            if (!tx.IsFree() && balance.IsZero)
+            if (!_thereIsPriorityContract && !tx.IsFree() && balance.IsZero)
             {
                 Metrics.PendingTransactionsZeroBalance++;
                 return isNotLocal ?

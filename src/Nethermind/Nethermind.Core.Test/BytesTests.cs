@@ -92,6 +92,7 @@ namespace Nethermind.Core.Test
             }
             Assert.AreEqual(expectedResult.ToLower(), bytes.ToHexString(with0x, noLeadingZeros));
             Assert.AreEqual(expectedResult.ToLower(), bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: false));
+            Assert.AreEqual(expectedResult.ToLower(), new ReadOnlySpan<byte>(bytes).ToHexString(with0x, noLeadingZeros));
 
             Assert.AreEqual(expectedResult, bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true));
             Assert.AreEqual(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true),
