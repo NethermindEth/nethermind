@@ -5,12 +5,15 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
@@ -25,6 +28,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly string _dataDir;
     private readonly ManualPruningTrigger _pruningTrigger;
     private NodeInfo _nodeInfo = null!;
+    private IChainLevelInfoRepository _chainLevelInfoRepository;
 
     public AdminRpcModule(
         IBlockTree blockTree,
@@ -33,7 +37,8 @@ public class AdminRpcModule : IAdminRpcModule
         IStaticNodesManager staticNodesManager,
         IEnode enode,
         string dataDir,
-        ManualPruningTrigger pruningTrigger)
+        ManualPruningTrigger pruningTrigger,
+        IChainLevelInfoRepository chainLevelInfoRepository)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -42,6 +47,8 @@ public class AdminRpcModule : IAdminRpcModule
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _pruningTrigger = pruningTrigger;
+        _chainLevelInfoRepository = chainLevelInfoRepository ??
+                                    throw new ArgumentNullException(nameof(chainLevelInfoRepository));
 
         BuildNodeInfo();
     }
@@ -127,5 +134,14 @@ public class AdminRpcModule : IAdminRpcModule
     public ResultWrapper<PruningStatus> admin_prune()
     {
         return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
+    }
+
+    public ResultWrapper<bool> admin_dbSetBlockTotalDifficulty(BlockParameter block, UInt256 totalDifficulty)
+    {
+        long blockNumber = block.BlockNumber!.Value;
+        ChainLevelInfo level = _chainLevelInfoRepository.LoadLevel(blockNumber);
+        level!.BlockInfos[0].TotalDifficulty = totalDifficulty;
+        _chainLevelInfoRepository.PersistLevel(blockNumber, level);
+        return ResultWrapper<bool>.Success(true);
     }
 }
