@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -411,10 +412,9 @@ namespace Nethermind.TxPool.Collections
         {
             foreach ((TGroupKey groupKey, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
-                if (bucket.Count > 0)
-                {
-                    UpdateGroup(groupKey, bucket, changingElements);
-                }
+                Debug.Assert(bucket.Count > 0);
+
+                UpdateGroup(groupKey, bucket, changingElements);
             }
         }
 
@@ -424,10 +424,9 @@ namespace Nethermind.TxPool.Collections
             if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
-                if (bucket.Count > 0)
-                {
-                    UpdateGroup(groupKey, bucket, changingElements);
-                }
+                Debug.Assert(bucket.Count > 0);
+
+                UpdateGroup(groupKey, bucket, changingElements);
             }
         }
 
