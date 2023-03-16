@@ -74,11 +74,18 @@ namespace Nethermind.Monitoring.Metrics
             {
                 Func<double> BuildInstrumentAccessor(Instrument instrument)
                 {
-                    // c
-                    long measurement = 0;
+                    double measurement = 0;
                     MeterListener listener = new();
 
+                    // the api is strongly typed by a generic over struct, need to register all or check whether Instrument<T>
+                    listener.SetMeasurementEventCallback<double>((_, actual, _, _) => measurement = actual);
+                    listener.SetMeasurementEventCallback<float>((_, actual, _, _) => measurement = actual);
                     listener.SetMeasurementEventCallback<long>((_, actual, _, _) => measurement = actual);
+                    listener.SetMeasurementEventCallback<int>((_, actual, _, _) => measurement = actual);
+                    listener.SetMeasurementEventCallback<short>((_, actual, _, _) => measurement = actual);
+                    listener.SetMeasurementEventCallback<byte>((_, actual, _, _) => measurement = actual);
+                    listener.SetMeasurementEventCallback<decimal>((_, actual, _, _) => measurement = (double)actual);
+
                     listener.EnableMeasurementEvents(instrument!);
 
                     return () => measurement;
