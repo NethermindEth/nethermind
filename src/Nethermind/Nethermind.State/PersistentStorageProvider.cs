@@ -33,7 +33,16 @@ namespace Nethermind.State
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
         // state root aware caching
-        private const int DefaultCellCacheSize = 16 * 1024;
+        private const int SingeCacheEntryRoughEstimate =
+            32 + // StorageCell.Index
+            20 + MemorySizes.SmallObjectOverhead + MemorySizes.ArrayOverhead + // Storage.Access
+            32 + MemorySizes.ArrayOverhead + // value + MemorySizes.ArrayOverhead
+            MemorySizes.SmallObjectOverhead + MemorySizes.RefSize +
+            MemorySizes.RefSize + // LinkedListNode, plus its refs
+            MemorySizes.SmallObjectOverhead; // for dictionary
+
+        // this should take no more than 8MB
+        private const int DefaultCellCacheSize = 32 * 1024;
         private readonly LruCache<StorageCell, byte[]>? _cellCache;
 
         public PersistentStorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager,
