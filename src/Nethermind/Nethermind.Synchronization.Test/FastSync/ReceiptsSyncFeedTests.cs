@@ -146,7 +146,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public void Should_finish_on_start_when_receipts_not_stored()
+        public async Task Should_finish_on_start_when_receipts_not_stored()
         {
             _feed = new ReceiptsSyncFeed(
                 _selector,
@@ -159,7 +159,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 new EmptyBlockProcessingQueue(),
                 LimboLogs.Instance);
 
-            ReceiptsSyncBatch? request = _feed.PrepareRequest();
+            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             request.Should().BeNull();
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         }
@@ -204,32 +204,32 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public void Returns_same_batch_until_filled()
+        public async Task Returns_same_batch_until_filled()
         {
             LoadScenario(_256BodiesWithOneTxEach);
-            ReceiptsSyncBatch request = _feed.PrepareRequest();
+            ReceiptsSyncBatch request = await _feed.PrepareRequest();
             _feed.HandleResponse(request);
-            ReceiptsSyncBatch request2 = _feed.PrepareRequest();
+            ReceiptsSyncBatch request2 = await _feed.PrepareRequest();
             request2!.MinNumber.Should().Be(request!.MinNumber);
         }
 
         [Test]
-        public void Can_create_a_final_batch()
+        public async Task Can_create_a_final_batch()
         {
             LoadScenario(_64BodiesWithOneTxEachFollowedByEmpty);
-            ReceiptsSyncBatch request = _feed.PrepareRequest();
+            ReceiptsSyncBatch request = await _feed.PrepareRequest();
             request.Should().NotBeNull();
             request!.MinNumber.Should().Be(1024);
             request.Prioritized.Should().Be(true);
         }
 
         [Test]
-        public void When_configured_to_skip_receipts_then_finishes_immediately()
+        public async Task When_configured_to_skip_receipts_then_finishes_immediately()
         {
             LoadScenario(_256BodiesWithOneTxEach);
             _syncConfig.DownloadReceiptsInFastSync = false;
 
-            ReceiptsSyncBatch request = _feed.PrepareRequest();
+            ReceiptsSyncBatch request = await _feed.PrepareRequest();
             request.Should().BeNull();
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
             _measuredProgress.HasEnded.Should().BeTrue();
@@ -287,7 +287,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public void Can_create_receipts_batches_for_all_bodies_inserted_and_then_generate_null_batches_for_other_peers()
+        public async Task Can_create_receipts_batches_for_all_bodies_inserted_and_then_generate_null_batches_for_other_peers()
         {
             LoadScenario(_256BodiesWithOneTxEach);
 
@@ -297,7 +297,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             List<ReceiptsSyncBatch> batches = new();
             for (int i = 0; i < 100; i++)
             {
-                batches.Add(_feed.PrepareRequest());
+                batches.Add(await _feed.PrepareRequest());
             }
 
             for (int i = 0; i < 2; i++)
@@ -316,7 +316,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public async Task If_receipts_root_comes_invalid_then_reports_breach_of_protocol()
         {
             LoadScenario(_1024BodiesWithOneTxEach);
-            ReceiptsSyncBatch batch = _feed.PrepareRequest();
+            ReceiptsSyncBatch batch = await _feed.PrepareRequest();
             batch!.Response = new TxReceipt[batch.Infos.Length][];
 
             // default receipts that we use when constructing receipt root for tests have stats code 0
@@ -342,10 +342,10 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public void Can_sync_final_batch()
+        public async Task Can_sync_final_batch()
         {
             LoadScenario(_64BodiesWithOneTxEach);
-            ReceiptsSyncBatch batch = _feed.PrepareRequest();
+            ReceiptsSyncBatch batch = await _feed.PrepareRequest();
 
             FillBatchResponses(batch);
             _feed.HandleResponse(batch);

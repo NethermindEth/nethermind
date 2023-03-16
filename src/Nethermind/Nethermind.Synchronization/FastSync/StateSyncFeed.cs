@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.FastSync
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public override StateSyncBatch? PrepareRequest(CancellationToken token = default)
+        public override ValueTask<StateSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
             try
             {
@@ -52,15 +52,15 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (!continueProcessing)
                 {
-                    return EmptyBatch;
+                    return new(EmptyBatch);
                 }
 
-                return _treeSync.PrepareRequest(_syncModeSelector.Current);
+                return new(_treeSync.PrepareRequest(_syncModeSelector.Current));
             }
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return EmptyBatch;
+                return new(EmptyBatch);
             }
         }
 

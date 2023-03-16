@@ -196,7 +196,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             private int _pendingRequests;
 
-            public override TestBatch? PrepareRequest(CancellationToken token = default)
+            public override ValueTask<TestBatch?> PrepareRequest(CancellationToken token = default)
             {
                 TestBatch testBatch;
                 if (Returned.TryDequeue(out TestBatch? returned))
@@ -217,7 +217,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             Finish();
                         }
 
-                        return null;
+                        return new((TestBatch?)null);
                     }
 
                     lock (Results)
@@ -231,7 +231,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     Console.WriteLine($"Incrementing Pending Requests {Interlocked.Increment(ref _pendingRequests)} ({start})");
                 }
 
-                return testBatch;
+                return new(testBatch);
             }
         }
 

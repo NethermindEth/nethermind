@@ -123,7 +123,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         HeadersSyncQueueReport.MarkEnd();
     }
 
-    public override HeadersSyncBatch? PrepareRequest(CancellationToken cancellationToken = default)
+    public override ValueTask<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
     {
         if (_pivotNumber != ExpectedPivotNumber)
         {

@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.SnapSync
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
-        public override SnapSyncBatch? PrepareRequest(CancellationToken token = default)
+        public override ValueTask<SnapSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
             try
             {
@@ -55,15 +55,15 @@ namespace Nethermind.Synchronization.SnapSync
                         Finish();
                     }
 
-                    return EmptyBatch;
+                    return new(EmptyBatch);
                 }
 
-                return request;
+                return new(request);
             }
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return EmptyBatch;
+                return new(EmptyBatch);
             }
         }
 

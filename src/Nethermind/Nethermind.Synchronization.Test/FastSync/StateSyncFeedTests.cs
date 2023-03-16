@@ -371,7 +371,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
-            StateSyncBatch? request = ctx.Feed.PrepareRequest();
+            StateSyncBatch? request = await ctx.Feed.PrepareRequest();
             request.Should().NotBeNull();
 
             (await ctx.Feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>())))
@@ -397,7 +397,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
-            StateSyncBatch? request = ctx.Feed.PrepareRequest();
+            StateSyncBatch? request = await ctx.Feed.PrepareRequest();
             request.Should().NotBeNull();
 
             (await ctx.Feed.HandleResponse(request))

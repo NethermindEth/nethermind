@@ -13,7 +13,7 @@ namespace Nethermind.Synchronization.ParallelSync
         int FeedId { get; }
         SyncFeedState CurrentState { get; }
         event EventHandler<SyncFeedStateEventArgs> StateChanged;
-        T PrepareRequest(CancellationToken token = default);
+        ValueTask<T?> PrepareRequest(CancellationToken token = default);
         ValueTask<SyncResponseHandlingResult> HandleResponse(T response, PeerInfo? peer = null);
 
         /// <summary>

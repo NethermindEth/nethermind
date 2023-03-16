@@ -102,18 +102,20 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.BodiesInQueue.MarkEnd();
         }
 
-        public override BodiesSyncBatch? PrepareRequest(CancellationToken token = default)
+        public override async ValueTask<BodiesSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
             BodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
-                BlockInfo?[] infos = new BlockInfo[_requestSize];
-                _syncStatusList.GetInfosForBatch(infos);
-                if (infos[0] is not null)
+                await _blockProcessingQueue.Emptied();
+                if (ShouldBuildANewBatch())
                 {
-                    batch = new BodiesSyncBatch(infos);
-                    batch.MinNumber = infos[0].BlockNumber;
-                    batch.Prioritized = true;
+                    BlockInfo?[] infos = new BlockInfo[_requestSize];
+                    _syncStatusList.GetInfosForBatch(infos);
+                    if (infos[0] is not null)
+                    {
+                        batch = new BodiesSyncBatch(infos) { MinNumber = infos[0].BlockNumber, Prioritized = true };
+                    }
                 }
             }
 

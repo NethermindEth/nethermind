@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.Blocks
         private static DownloaderOptions BuildOptions() => DownloaderOptions.WithBodies | DownloaderOptions.Process;
 
         // ReSharper disable once RedundantTypeArgumentsOfMethod
-        public override BlocksRequest? PrepareRequest(CancellationToken token = default) => _blocksRequest;
+        public override ValueTask<BlocksRequest?> PrepareRequest(CancellationToken token = default) => new(_blocksRequest);
 
         public override ValueTask<SyncResponseHandlingResult> HandleResponse(BlocksRequest? response, PeerInfo peer = null)
         {

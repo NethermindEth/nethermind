@@ -195,7 +195,7 @@ public class BeaconHeadersSyncTests
             feed.PrepareRequest();
         }
 
-        HeadersSyncBatch? result = feed.PrepareRequest();
+        HeadersSyncBatch? result = await feed.PrepareRequest();
         result.Should().BeNull();
     }
 
@@ -232,7 +232,7 @@ public class BeaconHeadersSyncTests
             feed.PrepareRequest();
         }
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1001).TestObject);
-        HeadersSyncBatch? result = feed.PrepareRequest();
+        HeadersSyncBatch? result = await feed.PrepareRequest();
         result.Should().BeNull();
         feed.CurrentState.Should().Be(SyncFeedState.Dormant);
         measuredProgress.CurrentValue.Should().Be(999);
@@ -298,7 +298,7 @@ public class BeaconHeadersSyncTests
         ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
         blockTree.BestKnownNumber.Should().Be(6);
         BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 2);
-        HeadersSyncBatch result = ctx.Feed.PrepareRequest();
+        HeadersSyncBatch result = await ctx.Feed.PrepareRequest();
         result.Should().BeNull();
         blockTree.BestKnownNumber.Should().Be(6);
         ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
@@ -306,7 +306,7 @@ public class BeaconHeadersSyncTests
     }
 
     [Test]
-    public void Feed_connect_invalid_chain()
+    public async Task Feed_connect_invalid_chain()
     {
         Context ctx = new();
         IInvalidChainTracker invalidChainTracker = new InvalidChainTracker.InvalidChainTracker(ctx.PoSSwitcher,
@@ -317,7 +317,7 @@ public class BeaconHeadersSyncTests
         ctx.BeaconPivot = PreparePivot(99, new SyncConfig(), ctx.BlockTree,
             syncedBlockTree.FindHeader(99, BlockTreeLookupOptions.None));
         ctx.Feed.InitializeFeed();
-        HeadersSyncBatch batch = ctx.Feed.PrepareRequest();
+        HeadersSyncBatch batch = await ctx.Feed.PrepareRequest();
         batch.Response = syncedBlockTree.FindHeaders(syncedBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0, false);
         ctx.Feed.HandleResponse(batch);
 
@@ -355,7 +355,7 @@ public class BeaconHeadersSyncTests
         ctx.Feed.InitializeFeed();
 
         // First batch, should be enough to merge chain
-        HeadersSyncBatch? request = ctx.Feed.PrepareRequest();
+        HeadersSyncBatch? request = await ctx.Feed.PrepareRequest();
         request.Should().NotBeNull();
         request.Response = Enumerable.Range((int)request.StartNumber, request.RequestSize)
             .Select((blockNumber) => ctx.RemoteBlockTree.FindHeader(blockNumber))
@@ -368,7 +368,7 @@ public class BeaconHeadersSyncTests
         ctx.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
 
         // The sync feed must adapt to this
-        request = ctx.Feed.PrepareRequest();
+        request = await ctx.Feed.PrepareRequest();
         request.Should().NotBeNull();
 
         // We respond it again
@@ -379,7 +379,7 @@ public class BeaconHeadersSyncTests
 
         // It should complete successfully
         ctx.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
-        request = ctx.Feed.PrepareRequest();
+        request = await ctx.Feed.PrepareRequest();
         request.Should().BeNull();
     }
 
@@ -399,7 +399,7 @@ public class BeaconHeadersSyncTests
 
         BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, endLowestBeaconHeader);
 
-        HeadersSyncBatch result = ctx.Feed.PrepareRequest();
+        HeadersSyncBatch result = await ctx.Feed.PrepareRequest();
         result.Should().BeNull();
         // check headers are inserted into block tree during sync
         blockTree.FindHeader(pivot.PivotNumber - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
@@ -421,7 +421,7 @@ public class BeaconHeadersSyncTests
         long lowestHeaderNumber = pivot.PivotNumber;
         while (lowestHeaderNumber > endLowestBeaconHeader)
         {
-            HeadersSyncBatch batch = ctx.Feed.PrepareRequest();
+            HeadersSyncBatch batch = await ctx.Feed.PrepareRequest();
             batch.Should().NotBeNull();
             BuildHeadersSyncBatchResponse(batch, syncedBlockTree);
             ctx.Feed.HandleResponse(batch);

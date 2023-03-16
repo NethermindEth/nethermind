@@ -302,8 +302,10 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public override HeadersSyncBatch? PrepareRequest(CancellationToken cancellationToken = default)
+        public override async ValueTask<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {
+            await _blockProcessingQueue.Emptied();
+
             _resetLock.EnterReadLock();
             try
             {
