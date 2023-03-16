@@ -68,7 +68,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     else if (currentStateLocal == SyncFeedState.Active)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        T request = Feed.PrepareRequest(cancellationToken); // just to avoid null refs
+                        T request = Feed.PrepareRequest(cancellationToken) ?? default; // just to avoid null refs
                         if (request is null)
                         {
                             if (!Feed.IsMultiFeed)
@@ -101,7 +101,6 @@ namespace Nethermind.Synchronization.ParallelSync
                         else
                         {
                             Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
-                            SyncResponseHandlingResult result = await Feed.HandleResponse(request);
                             await DoHandleResponse(request);
                         }
                     }
