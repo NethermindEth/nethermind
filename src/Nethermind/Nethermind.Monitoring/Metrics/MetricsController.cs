@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
@@ -35,16 +36,17 @@ namespace Nethermind.Monitoring.Metrics
             _metricTypes.Add(type);
         }
 
-        private static Gauge CreateMemberInfoMetricsGauge(MemberInfo propertyInfo)
+        private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member)
         {
-            Dictionary<string, string> staticLabels = propertyInfo
+            Dictionary<string, string> staticLabels = member
                 .GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
                 .ToDictionary(
                     attribute => attribute.Label,
                     attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
 
-            string description = propertyInfo.GetCustomAttribute<DescriptionAttribute>()?.Description;
-            string name = BuildGaugeName(propertyInfo);
+            // TODO: move the description to the metadata as it can be an instrument
+            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
+            string name = BuildGaugeName(member);
 
             return CreateGauge(name, description, staticLabels);
         }
@@ -70,13 +72,35 @@ namespace Nethermind.Monitoring.Metrics
 
             static Func<double> GetValueAccessor(MemberInfo member)
             {
+                Func<double> BuildInstrumentAccessor(Instrument instrument)
+                {
+                    // c
+                    long measurement = 0;
+                    MeterListener listener = new();
+
+                    listener.SetMeasurementEventCallback<long>((_, actual, _, _) => measurement = actual);
+                    listener.EnableMeasurementEvents(instrument!);
+
+                    return () => measurement;
+                }
+
                 if (member is PropertyInfo property)
                 {
+                    if (property.PropertyType.IsAssignableTo(typeof(Instrument)))
+                    {
+                        return BuildInstrumentAccessor((Instrument)property.GetValue(null));
+                    }
+
                     return () => Convert.ToDouble(property.GetValue(null));
                 }
 
                 if (member is FieldInfo field)
                 {
+                    if (field.FieldType.IsAssignableTo(typeof(Instrument)))
+                    {
+                        return BuildInstrumentAccessor((Instrument)field.GetValue(null));
+                    }
+
                     return () => Convert.ToDouble(field.GetValue(null));
                 }
 

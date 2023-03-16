@@ -377,7 +377,7 @@ namespace Nethermind.Consensus.Processing
             bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
             if (!readonlyChain)
             {
-                Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
+                Metrics.LastBlockProcessingTimeInMs.Record(_stopwatch.ElapsedMilliseconds);
             }
 
             if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
@@ -385,7 +385,7 @@ namespace Nethermind.Consensus.Processing
                 if (_logger.IsTrace) _logger.Trace($"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
                 _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
 
-                Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
+                Metrics.LastBlockProcessingTimeInMs.Record(_stopwatch.ElapsedMilliseconds);
             }
 
             if (!readonlyChain)

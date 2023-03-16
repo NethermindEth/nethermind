@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -497,12 +498,16 @@ namespace Nethermind.Blockchain.Test
         [Explicit("Does not work on CI")]
         public void Will_update_metrics_on_processing()
         {
-            long metricsBefore = Metrics.LastBlockProcessingTimeInMs;
+            using MeterListener listener = new();
+            long reported = 0;
+
+            listener.SetMeasurementEventCallback<long>((_, value, _, _) => reported = value);
+            listener.EnableMeasurementEvents(Metrics.LastBlockProcessingTimeInMs);
+
             When.ProcessingBlocks
                 .FullyProcessed(_block0).BecomesGenesis();
 
-            long metricsAfter = Metrics.LastBlockProcessingTimeInMs;
-            metricsAfter.Should().NotBe(metricsBefore);
+            reported.Should().BeGreaterThan(0);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Diagnostics.Metrics;
 using System.Runtime.Serialization;
 using Nethermind.Int256;
+// ReSharper disable InconsistentNaming
 
 namespace Nethermind.Blockchain
 {
     public static class Metrics
     {
+        private static readonly Meter _meter = new Meter("Blockchain");
+
         [Description("Total MGas processed")]
         public static decimal Mgas { get; set; }
 
@@ -49,7 +53,8 @@ namespace Nethermind.Blockchain
         public static long CanProduceBlocks;
 
         [Description("Number of ms to process the last processed block.")]
-        public static long LastBlockProcessingTimeInMs;
+        public static readonly Histogram<long> LastBlockProcessingTimeInMs =
+            _meter.CreateHistogram<long>(nameof(LastBlockProcessingTimeInMs), unit: "ms");
 
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [Description("The current height of the canonical chain.")]
