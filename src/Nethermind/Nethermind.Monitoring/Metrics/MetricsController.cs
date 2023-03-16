@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
@@ -19,8 +18,7 @@ namespace Nethermind.Monitoring.Metrics
     {
         private readonly int _intervalSeconds;
         private Timer _timer;
-        private readonly Dictionary<Type, (PropertyInfo, string)[]> _propertiesCache = new();
-        private readonly Dictionary<Type, (FieldInfo, string)[]> _fieldsCache = new();
+        private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
         private readonly Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
         private readonly HashSet<Type> _metricTypes = new();
 
@@ -29,14 +27,9 @@ namespace Nethermind.Monitoring.Metrics
         public void RegisterMetrics(Type type)
         {
             EnsurePropertiesCached(type);
-            foreach ((PropertyInfo propertyInfo, string gaugeName) in _propertiesCache[type])
+            foreach ((MemberInfo member, string gaugeName, _) in _membersCache[type])
             {
-                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(propertyInfo);
-            }
-
-            foreach ((FieldInfo fieldInfo, string gaugeName) in _fieldsCache[type])
-            {
-                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(fieldInfo);
+                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(member);
             }
 
             _metricTypes.Add(type);
@@ -75,18 +68,28 @@ namespace Nethermind.Monitoring.Metrics
         {
             static bool NotEnumerable(Type t) => !t.IsAssignableTo(typeof(System.Collections.IEnumerable));
 
-            if (!_propertiesCache.ContainsKey(type))
+            static Func<double> GetValueAccessor(MemberInfo member)
             {
-                _propertiesCache[type] = type.GetProperties()
-                    .Where(p => NotEnumerable(p.PropertyType))
-                    .Select(p => (p, GetGaugeNameKey(type.Name, p.Name))).ToArray();
+                if (member is PropertyInfo property)
+                {
+                    return () => Convert.ToDouble(property.GetValue(null));
+                }
+
+                if (member is FieldInfo field)
+                {
+                    return () => Convert.ToDouble(field.GetValue(null));
+                }
+
+                throw new NotImplementedException($"Type of {member} is not handled");
             }
 
-            if (!_fieldsCache.ContainsKey(type))
+            if (!_membersCache.ContainsKey(type))
             {
-                _fieldsCache[type] = type.GetFields()
-                    .Where(f => NotEnumerable(f.FieldType))
-                    .Select(f => (f, GetGaugeNameKey(type.Name, f.Name))).ToArray();
+                _membersCache[type] = type.GetProperties()
+                    .Where(p => NotEnumerable(p.PropertyType))
+                    .Concat<MemberInfo>(type.GetFields().Where(f => NotEnumerable(f.FieldType)))
+                    .Select(member => (member, GetGaugeNameKey(type.Name, member.Name), GetValueAccessor(member)))
+                    .ToArray();
             }
 
             if (!_dynamicPropCache.ContainsKey(type))
@@ -130,16 +133,9 @@ namespace Nethermind.Monitoring.Metrics
         {
             EnsurePropertiesCached(type);
 
-            foreach ((PropertyInfo propertyInfo, string gaugeName) in _propertiesCache[type])
+            foreach ((MemberInfo _, string gaugeName, Func<double> accessor) in _membersCache[type])
             {
-                double value = Convert.ToDouble(propertyInfo.GetValue(null));
-                ReplaceValueIfChanged(value, gaugeName);
-            }
-
-            foreach ((FieldInfo fieldInfo, string gaugeName) in _fieldsCache[type])
-            {
-                double value = Convert.ToDouble(fieldInfo.GetValue(null));
-                ReplaceValueIfChanged(value, gaugeName);
+                ReplaceValueIfChanged(accessor(), gaugeName);
             }
 
             if (_dynamicPropCache.TryGetValue(type, out var dict))
