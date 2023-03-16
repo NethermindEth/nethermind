@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
@@ -30,20 +31,20 @@ namespace Nethermind.Monitoring.Metrics
             EnsurePropertiesCached(type);
             foreach ((PropertyInfo propertyInfo, string gaugeName) in _propertiesCache[type])
             {
-                _gauges[gaugeName] = CreateMemberInfoMectricsGauge(propertyInfo);
+                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(propertyInfo);
             }
 
             foreach ((FieldInfo fieldInfo, string gaugeName) in _fieldsCache[type])
             {
-                _gauges[gaugeName] = CreateMemberInfoMectricsGauge(fieldInfo);
+                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(fieldInfo);
             }
 
             _metricTypes.Add(type);
         }
 
-        private Gauge CreateMemberInfoMectricsGauge(MemberInfo propertyInfo)
+        private static Gauge CreateMemberInfoMetricsGauge(MemberInfo propertyInfo)
         {
-            var staticLabels = propertyInfo
+            Dictionary<string, string> staticLabels = propertyInfo
                 .GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
                 .ToDictionary(
                     attribute => attribute.Label,
@@ -72,16 +73,20 @@ namespace Nethermind.Monitoring.Metrics
 
         private void EnsurePropertiesCached(Type type)
         {
+            static bool NotEnumerable(Type t) => !t.IsAssignableTo(typeof(System.Collections.IEnumerable));
+
             if (!_propertiesCache.ContainsKey(type))
             {
-                _propertiesCache[type] = type.GetProperties().Where(p => !p.PropertyType.IsAssignableTo(typeof(System.Collections.IEnumerable))).Select(
-                    p => (p, GetGaugeNameKey(type.Name, p.Name))).ToArray();
+                _propertiesCache[type] = type.GetProperties()
+                    .Where(p => NotEnumerable(p.PropertyType))
+                    .Select(p => (p, GetGaugeNameKey(type.Name, p.Name))).ToArray();
             }
 
             if (!_fieldsCache.ContainsKey(type))
             {
-                _fieldsCache[type] = type.GetFields().Where(f => !f.FieldType.IsAssignableTo(typeof(System.Collections.IEnumerable))).Select(
-                    f => (f, GetGaugeNameKey(type.Name, f.Name))).ToArray();
+                _fieldsCache[type] = type.GetFields()
+                    .Where(f => NotEnumerable(f.FieldType))
+                    .Select(f => (f, GetGaugeNameKey(type.Name, f.Name))).ToArray();
             }
 
             if (!_dynamicPropCache.ContainsKey(type))
@@ -146,7 +151,7 @@ namespace Nethermind.Monitoring.Metrics
 
                     if (ReplaceValueIfChanged(value, gaugeName) is null)
                     {
-                        var gauge = CreateGauge(BuildGaugeName(kvp.Key));
+                        Gauge gauge = CreateGauge(BuildGaugeName(kvp.Key));
                         _gauges[gaugeName] = gauge;
                         gauge.Set(value);
                     }
@@ -155,7 +160,7 @@ namespace Nethermind.Monitoring.Metrics
 
             Gauge ReplaceValueIfChanged(double value, string gaugeName)
             {
-                if (_gauges.TryGetValue(gaugeName, out var gauge))
+                if (_gauges.TryGetValue(gaugeName, out Gauge gauge))
                 {
                     if (Math.Abs(gauge.Value - value) > double.Epsilon)
                         gauge.Set(value);
