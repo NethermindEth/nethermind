@@ -14,6 +14,9 @@ namespace Nethermind.Monitoring.Config
         [ConfigItem(Description = "If 'true',the node publishes various metrics to Prometheus Pushgateway at given interval.", DefaultValue = "false")]
         bool Enabled { get; }
 
+        [ConfigItem(Description = "If 'true',the node publishes metrics using .NET diagnostics that can be collected with dotnet-counters.", DefaultValue = "false")]
+        bool CountersEnabled { get; }
+
         [ConfigItem(Description = "Prometheus Pushgateway URL.", DefaultValue = "")]
         string PushGatewayUrl { get; }
 

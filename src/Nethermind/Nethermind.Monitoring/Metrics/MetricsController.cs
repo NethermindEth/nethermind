@@ -24,16 +24,27 @@ namespace Nethermind.Monitoring.Metrics
         private readonly HashSet<Type> _metricTypes = new();
 
         public readonly Dictionary<string, Gauge> _gauges = new();
+        private readonly bool _useCounters;
 
         public void RegisterMetrics(Type type)
         {
-            EnsurePropertiesCached(type);
-            foreach ((MemberInfo member, string gaugeName, _) in _membersCache[type])
+            if (_metricTypes.Add(type) == false)
             {
-                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(member);
+                return;
             }
 
-            _metricTypes.Add(type);
+            Meter meter = new(type.Namespace!.Split(".")[^1]);
+
+            EnsurePropertiesCached(type);
+            foreach ((MemberInfo member, string gaugeName, Func<double> observer) in _membersCache[type])
+            {
+                if (_useCounters)
+                {
+                    CreateDiagnosticsMetricsObservableGauge(meter, member, observer);
+                }
+
+                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(member);
+            }
         }
 
         private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member)
@@ -48,6 +59,13 @@ namespace Nethermind.Monitoring.Metrics
             string name = BuildGaugeName(member);
 
             return CreateGauge(name, description, staticLabels);
+        }
+
+        private static ObservableGauge<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
+        {
+            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
+            string name = member.GetCustomAttribute<DataMemberAttribute>()?.Name ?? member.Name;
+            return meter.CreateObservableGauge(name, observer, description: description);
         }
 
         private static string GetStaticMemberInfo(Type givenInformer, string givenName)
@@ -116,6 +134,7 @@ namespace Nethermind.Monitoring.Metrics
         public MetricsController(IMetricsConfig metricsConfig)
         {
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
+            _useCounters = metricsConfig.CountersEnabled;
         }
 
         public void StartUpdating() => _timer = new Timer(UpdateMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
