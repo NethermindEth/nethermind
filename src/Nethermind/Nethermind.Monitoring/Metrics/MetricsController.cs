@@ -10,6 +10,7 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
+using Nethermind.Core.Attributes;
 using Nethermind.Monitoring.Config;
 using Prometheus;
 
@@ -33,7 +34,7 @@ namespace Nethermind.Monitoring.Metrics
                 return;
             }
 
-            Meter meter = new(type.Namespace!.Split(".")[^1]);
+            Meter meter = new(type.Namespace);
 
             EnsurePropertiesCached(type);
             foreach ((MemberInfo member, string gaugeName, Func<double> observer) in _membersCache[type])
@@ -61,10 +62,16 @@ namespace Nethermind.Monitoring.Metrics
             return CreateGauge(name, description, staticLabels);
         }
 
-        private static ObservableGauge<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
+        private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
         {
             string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = member.GetCustomAttribute<DataMemberAttribute>()?.Name ?? member.Name;
+
+            if (member.GetCustomAttribute<CounterMetricAttribute>() != null)
+            {
+                return meter.CreateObservableCounter(name, observer, description: description);
+            }
+
             return meter.CreateObservableGauge(name, observer, description: description);
         }
 
