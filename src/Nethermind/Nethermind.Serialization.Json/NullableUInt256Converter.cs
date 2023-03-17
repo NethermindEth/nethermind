@@ -3,10 +3,11 @@
 
 using System;
 using Nethermind.Int256;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+    using Newtonsoft.Json;
+
     public class NullableUInt256Converter : JsonConverter<UInt256?>
     {
         private UInt256Converter _uInt256Converter;
@@ -40,6 +41,36 @@ namespace Nethermind.Serialization.Json
             }
 
             return _uInt256Converter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
+        }
+    }
+}
+
+namespace Nethermind.Serialization.Json
+{
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
+    public class NullableUInt256JsonConverter : JsonConverter<ulong?>
+    {
+        private readonly UInt256JsonConverter _converter = new();
+
+        public override ulong? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => throw new NotImplementedException();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            ulong? value,
+            JsonSerializerOptions options)
+        {
+            if (!value.HasValue)
+            {
+                writer.WriteNullValue();
+                return;
+            }
+
+            _converter.Write(writer, value.GetValueOrDefault(), options);
         }
     }
 }

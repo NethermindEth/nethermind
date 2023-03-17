@@ -4,10 +4,11 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+    using Newtonsoft.Json;
+
     public class BloomConverter : JsonConverter<Bloom>
     {
         public override void WriteJson(JsonWriter writer, Bloom value, JsonSerializer serializer)
@@ -19,6 +20,28 @@ namespace Nethermind.Serialization.Json
         {
             string s = (string)reader.Value;
             return s is null ? null : new Bloom(Bytes.FromHexString(s));
+        }
+    }
+}
+
+namespace Nethermind.Serialization.Json
+{
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
+    public class BloomJsonConverter : JsonConverter<Bloom>
+    {
+        public override Bloom Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => throw new NotImplementedException();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            Bloom bloom,
+            JsonSerializerOptions options)
+        {
+            ByteArrayJsonConverter.Convert(writer, bloom.Bytes, skipLeadingZeros: false);
         }
     }
 }

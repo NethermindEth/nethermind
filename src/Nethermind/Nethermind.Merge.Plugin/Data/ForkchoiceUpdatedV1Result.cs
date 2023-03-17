@@ -52,6 +52,7 @@ namespace Nethermind.Merge.Plugin.Data
         /// Identifier of the payload build process or null if there is none.
         /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
         public string? PayloadId { get; set; }
 
         public static implicit operator Task<ForkchoiceUpdatedV1Result>(ForkchoiceUpdatedV1Result result) => Task.FromResult(result);

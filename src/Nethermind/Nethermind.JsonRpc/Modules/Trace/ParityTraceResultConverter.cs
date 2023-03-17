@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+
 using Nethermind.Evm.Tracing.ParityStyle;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
+    using Newtonsoft.Json;
+
     public class ParityTraceResultConverter : JsonConverter<ParityTraceResult>
     {
         public override void WriteJson(JsonWriter writer, ParityTraceResult value, JsonSerializer serializer)

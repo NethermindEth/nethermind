@@ -60,17 +60,21 @@ public class TransactionForRpc
     public UInt256? Nonce { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     public Keccak? BlockHash { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     public long? BlockNumber { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     public long? TransactionIndex { get; set; }
 
     public Address? From { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     public Address? To { get; set; }
 
     public UInt256? Value { get; set; }
@@ -83,6 +87,7 @@ public class TransactionForRpc
     public byte[]? Data { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     public byte[]? Input { get; set; }
 
     public UInt256? ChainId { get; set; }

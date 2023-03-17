@@ -8,7 +8,7 @@ namespace Nethermind.JsonRpc.Data
 {
     public class AccessListForRpc
     {
-        public AccessListForRpc(AccessListItemForRpc[] accessList, in UInt256 gasUsed)
+        public AccessListForRpc(AccessListItemForRpc[] accessList, UInt256 gasUsed)
         {
             AccessList = accessList;
             GasUsed = gasUsed;

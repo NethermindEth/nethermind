@@ -86,7 +86,5 @@ namespace Nethermind.JsonRpc.Modules.Eth
             new SyncingResultConverter(),
             new ProofConverter()
         };
-
-        public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
     }
 }

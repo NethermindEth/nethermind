@@ -5,10 +5,11 @@ using System;
 using System.Globalization;
 using System.Numerics;
 using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+    using Newtonsoft.Json;
+
     public class BigIntegerConverter : JsonConverter<BigInteger>
     {
         private readonly NumberConversion _conversion;

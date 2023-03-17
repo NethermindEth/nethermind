@@ -29,5 +29,6 @@ public class ExecutionPayloadBodyV1Result
     public IList<IList<byte>> Transactions { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     public IList<Withdrawal>? Withdrawals { get; set; }
 }

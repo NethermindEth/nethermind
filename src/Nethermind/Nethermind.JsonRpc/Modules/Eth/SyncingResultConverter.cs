@@ -4,10 +4,11 @@
 using System;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Trace;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
+    using Newtonsoft.Json;
+
     public class SyncingResultConverter : JsonConverter<SyncingResult>
     {
         public override void WriteJson(JsonWriter writer, SyncingResult value, JsonSerializer serializer)

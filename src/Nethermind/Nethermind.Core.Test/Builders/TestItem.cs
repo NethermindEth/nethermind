@@ -108,13 +108,8 @@ namespace Nethermind.Core.Test.Builders
 
         public static T CloneObject<T>(T value)
         {
-            using var stream = new MemoryStream();
-
-            JsonSerializer.Serialize(stream, value);
-
-            stream.Position = 0;
-
-            return JsonSerializer.Deserialize<T>(stream)!;
+            string data = Newtonsoft.Json.JsonConvert.SerializeObject(value);
+            return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(data)!;
         }
 
         public static Address GetRandomAddress(Random? random = null)

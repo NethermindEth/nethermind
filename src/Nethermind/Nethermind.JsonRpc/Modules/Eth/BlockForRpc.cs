@@ -84,9 +84,11 @@ public class BlockForRpc
     public long GasUsed { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     public Keccak Hash { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     public Bloom LogsBloom { get; set; }
     public Address Miner { get; set; }
     public Keccak MixHash { get; set; }
@@ -99,6 +101,7 @@ public class BlockForRpc
     public bool ShouldSerializeNonce() => !_isAuRaBlock;
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
     public long? Number { get; set; }
     public Keccak ParentHash { get; set; }
     public Keccak ReceiptsRoot { get; set; }
@@ -108,6 +111,7 @@ public class BlockForRpc
     public long Size { get; set; }
     public Keccak StateRoot { get; set; }
     [JsonConverter(typeof(NullableLongConverter), NumberConversion.Raw)]
+    [System.Text.Json.Serialization.JsonConverter(typeof(NullableRawLongJsonConverter))]
     public long? Step { get; set; }
     public bool ShouldSerializeStep() => _isAuRaBlock;
     public UInt256 TotalDifficulty { get; set; }

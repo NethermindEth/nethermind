@@ -5,10 +5,11 @@ using System;
 using System.Globalization;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+    using Newtonsoft.Json;
+
     public class UInt256Converter : JsonConverter<UInt256>
     {
         private readonly NumberConversion _conversion;
@@ -90,6 +91,38 @@ namespace Nethermind.Serialization.Json
             {
                 return UInt256.Parse(s, NumberStyles.HexNumber);
             }
+        }
+    }
+}
+
+namespace Nethermind.Serialization.Json
+{
+    using System.Runtime.CompilerServices;
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
+    public class UInt256JsonConverter : JsonConverter<UInt256>
+    {
+        public override UInt256 Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => throw new NotImplementedException();
+
+        [SkipLocalsInit]
+        public override void Write(
+            Utf8JsonWriter writer,
+            UInt256 value,
+            JsonSerializerOptions options)
+        {
+            if (value.IsZero)
+            {
+                writer.WriteRawValue("\"0x0\"");
+                return;
+            }
+
+            Span<byte> bytes = stackalloc byte[32];
+            value.ToBigEndian(bytes);
+            ByteArrayJsonConverter.Convert(writer, bytes);
         }
     }
 }

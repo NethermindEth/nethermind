@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Filters
                 int filterId = filter.Id;
                 List<Keccak> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
                 transactions.Add(e.Transaction.Hash);
-                if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filterId}' contains {transactions.Count} transactions.");
+                if (_logger.IsDebug) _logger.Debug($"Filter with id: {filterId} contains {transactions.Count} transactions.");
 
             }
         }
@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain.Filters
                 int filterId = filter.Id;
                 List<Keccak> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
                 transactions.Remove(e.Transaction.Hash);
-                if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filterId}' contains {transactions.Count} transactions.");
+                if (_logger.IsDebug) _logger.Debug($"Filter with id: {filterId} contains {transactions.Count} transactions.");
 
             }
         }
@@ -194,7 +194,7 @@ namespace Nethermind.Blockchain.Filters
 
             List<Keccak> blocks = _blockHashes.GetOrAdd(filter.Id, i => new List<Keccak>());
             blocks.Add(block.Hash);
-            if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {blocks.Count} blocks.");
+            if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
 
         private void StoreLogs(LogFilter filter, TxReceipt txReceipt, ref long logIndex)
@@ -220,7 +220,7 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {logs.Count} logs.");
+            if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {logs.Count} logs.");
         }
 
         private FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, int transactionLogIndex)

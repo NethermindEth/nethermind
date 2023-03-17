@@ -21,6 +21,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public int After { get; set; }
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
         public int? Count { get; set; }
     }
 }

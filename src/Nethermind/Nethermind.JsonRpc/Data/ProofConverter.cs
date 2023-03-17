@@ -5,50 +5,52 @@ using System;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.State.Proofs;
-using Newtonsoft.Json;
+
+/// <summary>
+///{
+///  "id": 1,
+///  "jsonrpc": "2.0",
+///  "method": "eth_getProof",
+///  "params": [
+///    "0x7F0d15C7FAae65896648C8273B6d7E43f58Fa842",
+///    [  "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421" ],
+///    "latest"
+///  ]
+///}
+///  
+///{
+///  "id": 1,
+///  "jsonrpc": "2.0",
+///  "result": {
+///    "accountProof": [
+///    "0xf90211a...0701bc80",
+///    "0xf90211a...0d832380",
+///    "0xf90211a...5fb20c80",
+///    "0xf90211a...0675b80",
+///    "0xf90151a0...ca08080"
+///    ],
+///  "balance": "0x0",
+///  "codeHash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+///  "nonce": "0x0",
+///  "storageHash": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+///  "storageProof": [
+///  {
+///    "key": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+///    "proof": [
+///    "0xf90211a...0701bc80",
+///    "0xf90211a...0d832380"
+///    ],
+///    "value": "0x1"
+///  }
+///  ]
+///  }
+///}
+/// </summary>
 
 namespace Nethermind.JsonRpc.Data
 {
-    /// <summary>
-    ///{
-    ///  "id": 1,
-    ///  "jsonrpc": "2.0",
-    ///  "method": "eth_getProof",
-    ///  "params": [
-    ///    "0x7F0d15C7FAae65896648C8273B6d7E43f58Fa842",
-    ///    [  "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421" ],
-    ///    "latest"
-    ///  ]
-    ///}
-    ///  
-    ///{
-    ///  "id": 1,
-    ///  "jsonrpc": "2.0",
-    ///  "result": {
-    ///    "accountProof": [
-    ///    "0xf90211a...0701bc80",
-    ///    "0xf90211a...0d832380",
-    ///    "0xf90211a...5fb20c80",
-    ///    "0xf90211a...0675b80",
-    ///    "0xf90151a0...ca08080"
-    ///    ],
-    ///  "balance": "0x0",
-    ///  "codeHash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
-    ///  "nonce": "0x0",
-    ///  "storageHash": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-    ///  "storageProof": [
-    ///  {
-    ///    "key": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-    ///    "proof": [
-    ///    "0xf90211a...0701bc80",
-    ///    "0xf90211a...0d832380"
-    ///    ],
-    ///    "value": "0x1"
-    ///  }
-    ///  ]
-    ///  }
-    ///}
-    /// </summary>
+    using Newtonsoft.Json;
+
     public class ProofConverter : JsonConverter<AccountProof>
     {
         public override void WriteJson(JsonWriter writer, AccountProof value, JsonSerializer serializer)

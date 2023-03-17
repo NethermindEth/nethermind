@@ -4,10 +4,11 @@
 using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+    using Newtonsoft.Json;
+
     public class KeccakConverter : JsonConverter<Keccak>
     {
         public override void WriteJson(JsonWriter writer, Keccak value, JsonSerializer serializer)
@@ -26,6 +27,28 @@ namespace Nethermind.Serialization.Json
         {
             string s = (string)reader.Value;
             return string.IsNullOrWhiteSpace(s) ? null : new Keccak(Bytes.FromHexString(s));
+        }
+    }
+}
+
+namespace Nethermind.Serialization.Json
+{
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
+    public class KeccakJsonConverter : JsonConverter<Keccak>
+    {
+        public override Keccak Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => throw new NotImplementedException();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            Keccak keccak,
+            JsonSerializerOptions options)
+        {
+            ByteArrayJsonConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: false);
         }
     }
 }

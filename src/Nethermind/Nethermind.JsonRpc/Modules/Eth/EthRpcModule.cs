@@ -601,7 +601,7 @@ public partial class EthRpcModule : IEthRpcModule
             if (id < 0 || !filterFound)
             {
                 cancellationTokenSource.Dispose();
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
             }
             else
             {
@@ -658,7 +658,7 @@ public partial class EthRpcModule : IEthRpcModule
         {
             cancellationTokenSource.Dispose();
 
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"'From' block '{fromBlockNumber}' is later than 'to' block '{toBlockNumber}'.", ErrorCodes.InvalidParams);
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"From block {fromBlockNumber} is later than to block {toBlockNumber}.", ErrorCodes.InvalidParams);
         }
 
         try

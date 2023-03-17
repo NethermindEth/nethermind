@@ -60,19 +60,19 @@ namespace Nethermind.Blockchain.Find
 
             if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
             {
-                throw new ArgumentException($"'From' block '{fromBlock.Number}' is later than 'to' block '{toBlock.Number}'.");
+                throw new ArgumentException($"From block {fromBlock.Number} is later than to block {toBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
             if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Hash!))
             {
-                throw new ResourceNotFoundException($"Receipt not available for 'From' block '{fromBlock.Number}'.");
+                throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
             if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Hash!))
             {
-                throw new ResourceNotFoundException($"Receipt not available for 'To' block '{toBlock.Number}'.");
+                throw new ResourceNotFoundException($"Receipt not available for To block {toBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 

@@ -17,6 +17,6 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
         string serialized = ctx.Test.TestEthRpc("eth_feeHistory", blockCount.ToString(), blockParameter, "[0,10.5,20,60,90]");
-        serialized.Should().Be(expected);
+        Assert.AreEqual(expected, serialized);
     }
 }

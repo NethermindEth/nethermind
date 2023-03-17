@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+    using Newtonsoft.Json;
+
     public class NullableLongConverter : JsonConverter<long?>
     {
         private LongConverter _longConverter;
@@ -39,6 +40,60 @@ namespace Nethermind.Serialization.Json
             }
 
             return _longConverter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
+        }
+    }
+}
+
+namespace Nethermind.Serialization.Json
+{
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
+    public class NullableLongJsonConverter : JsonConverter<long?>
+    {
+        private LongJsonConverter _converter = new();
+
+        public override long? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => throw new NotImplementedException();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            long? value,
+            JsonSerializerOptions options)
+        {
+            if (!value.HasValue)
+            {
+                writer.WriteNullValue();
+            }
+            else
+            {
+                _converter.Write(writer, value.GetValueOrDefault(), options);
+            }
+        }
+    }
+
+    public class NullableRawLongJsonConverter : JsonConverter<long?>
+    {
+        public override long? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => throw new NotImplementedException();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            long? value,
+            JsonSerializerOptions options)
+        {
+            if (!value.HasValue)
+            {
+                writer.WriteNullValue();
+            }
+            else
+            {
+                writer.WriteNumberValue(value.GetValueOrDefault());
+            }
         }
     }
 }

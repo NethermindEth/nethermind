@@ -66,6 +66,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public Keccak BlockHash { get; set; }
 
         [JsonConverter(typeof(LongConverter), NumberConversion.Raw)]
+        [System.Text.Json.Serialization.JsonConverter(typeof(LongRawJsonConverter))]
         public long BlockNumber { get; set; }
 
         public ParityTraceResult Result { get; set; }
