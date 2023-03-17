@@ -211,7 +211,7 @@ namespace Nethermind.Network.P2P
 
                 if (IsClosing)
                 {
-                    return -1;
+                    return 1;
                 }
             }
 

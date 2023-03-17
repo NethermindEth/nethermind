@@ -64,13 +64,13 @@ namespace Nethermind.Core
         public static void ReportOutgoingMessage(IPEndPoint? nodeInfo, string protocol, string info, int size)
         {
             if (!IsEnabled) return;
-            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} <<< {protocol,6} {size,6} {info}");
+            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} <<< {protocol,7} {size,6} {info}");
         }
 
         public static void ReportIncomingMessage(IPEndPoint? nodeInfo, string protocol, string info, int size)
         {
             if (!IsEnabled) return;
-            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} >>> {protocol,6} {size,6} {info}");
+            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} >>> {protocol,7} {size,6} {info}");
         }
 
         public static void ReportConnect(IPEndPoint? nodeInfo, string clientId)
