@@ -16,15 +16,18 @@ namespace Nethermind.Init.Steps.Migrations;
 
 public class TotalDifficultyFixMigration : IDatabaseMigration
 {
-    private IApiWithNetwork _api;
+    private readonly IApiWithNetwork _api;
+    private readonly ILogger _logger;
+    private readonly ISyncConfig _syncConfig;
+
     private Task? _fixTask;
     private CancellationTokenSource? _cancellationTokenSource;
-    private ILogger _logger;
 
-    public TotalDifficultyFixMigration(IApiWithNetwork api)
+    public TotalDifficultyFixMigration(IApiWithNetwork api, ISyncConfig syncConfig)
     {
         _api = api;
         _logger = _api.LogManager.GetClassLogger();
+        _syncConfig = syncConfig;
     }
 
     public async ValueTask DisposeAsync()
@@ -35,14 +38,12 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
 
     public void Run()
     {
-        ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-
-        if (syncConfig.FixTotalDifficulty)
+        if (_syncConfig.FixTotalDifficulty)
         {
             _cancellationTokenSource = new CancellationTokenSource();
             CancellationToken token = _cancellationTokenSource.Token;
 
-            _fixTask = Task.Run(() => RunMigration(syncConfig.FixTotalDifficultyStartingBlock, syncConfig.FixTotalDifficultyLastBlock, token), token)
+            _fixTask = Task.Run(() => RunMigration(_syncConfig.FixTotalDifficultyStartingBlock, _syncConfig.FixTotalDifficultyLastBlock, token), token)
                 .ContinueWith(x =>
                     {
                         if (x.IsFaulted && _logger.IsError)
