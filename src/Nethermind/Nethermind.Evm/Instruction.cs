@@ -125,6 +125,7 @@ namespace Nethermind.Evm
         PUSH31 = 0x7e,
         PUSH32 = 0x7f,
 
+        DUPN = 0xb5,
         DUP1 = 0x80,
         DUP2 = 0x81,
         DUP3 = 0x82,
@@ -142,6 +143,7 @@ namespace Nethermind.Evm
         DUP15 = 0x8e,
         DUP16 = 0x8f,
 
+        SWAPN = 0xb6,
         SWAP1 = 0x90,
         SWAP2 = 0x91,
         SWAP3 = 0x92,
@@ -284,7 +286,6 @@ namespace Nethermind.Evm
             Instruction.JUMPDEST => (0, 0, 0),
             Instruction.RJUMP => (0, 0, 2),
             Instruction.RJUMPI => (1, 0, 2),
-            Instruction.RJUMPV => (1, 0, 4),
             Instruction.DATAHASH => (1, 1, 0),
             >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, instruction - Instruction.PUSH0),
             >= Instruction.DUP1 and <= Instruction.DUP16 => (instruction - Instruction.DUP1 + 1, instruction - Instruction.DUP1 + 2, 0),
@@ -304,6 +305,9 @@ namespace Nethermind.Evm
             Instruction.STATICCALL => (6, 1, 0),
             Instruction.REVERT => (2, 0, 0),
             Instruction.INVALID => (0, 0, 0),
+            Instruction.RJUMPV => (1, 0, -1), // -1 indicates this is a dynamic multi-bytes opcode
+            Instruction.SWAPN => (-1, -1, 1),
+            Instruction.DUPN => (-1, -1, 1),
             _ => throw new NotImplementedException($"Instruction {instruction} not implemented")
         };
 

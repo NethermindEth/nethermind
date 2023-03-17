@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using FastEnumUtility;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
@@ -383,6 +384,17 @@ internal static class EvmObjectFormat
                     }
                 }
 
+                if (opcode is Instruction.DUPN or Instruction.SWAPN)
+                {
+                    if (postInstructionByte + ONE_BYTE_LENGTH > code.Length)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-663 : {opcode.FastToString()} Argument underflow");
+                        return false;
+                    }
+
+                    // var argCount = code[postInstructionByte];
+                }
+
                 if (opcode is Instruction.RJUMPV)
                 {
                     if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
@@ -532,11 +544,23 @@ internal static class EvmObjectFormat
                     }
 
                     int posPostOpcode = pos + 1;
-                    if (opcode is Instruction.CALLF)
+
+                    switch (opcode)
                     {
-                        ushort sectionIndex = code.Slice(posPostOpcode, TWO_BYTE_LENGTH).ReadEthUInt16();
-                        inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
-                        outputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                        case Instruction.CALLF:
+                            ushort sectionIndex = code.Slice(posPostOpcode, TWO_BYTE_LENGTH).ReadEthUInt16();
+                            inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+                            outputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                            break;
+                        case Instruction.DUPN:
+                            byte imm = code[posPostOpcode];
+                            inputs = 17 + imm;
+                            outputs = inputs + 1;
+                            break;
+                        case Instruction.SWAPN:
+                            imm = code[posPostOpcode];
+                            outputs = inputs = 17 + imm + 1;
+                            break;
                     }
 
                     if (stackHeight < inputs)

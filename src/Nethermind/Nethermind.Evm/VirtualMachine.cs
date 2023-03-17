@@ -2306,6 +2306,18 @@ namespace Nethermind.Evm
                             stack.Dup(instruction - Instruction.DUP1 + 1);
                             break;
                         }
+                    case Instruction.DUPN:
+                        {
+                            if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            byte imm = codeSection[programCounter];
+                            stack.Dup(imm + 17);
+                            break;
+                        }
                     case Instruction.SWAP1:
                     case Instruction.SWAP2:
                     case Instruction.SWAP3:
@@ -2330,6 +2342,18 @@ namespace Nethermind.Evm
                             }
 
                             stack.Swap(instruction - Instruction.SWAP1 + 2);
+                            break;
+                        }
+                    case Instruction.SWAPN:
+                        {
+                            if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+
+                            byte imm = codeSection[programCounter];
+                            stack.Swap(imm + 17 + 1);
                             break;
                         }
                     case Instruction.LOG0:
