@@ -15,7 +15,6 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
-using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -54,8 +53,7 @@ public class AdminModuleTests
             staticNodesManager,
             enode,
             _exampleDataDir,
-            new ManualPruningTrigger(),
-            Substitute.For<IChainLevelInfoRepository>());
+            new ManualPruningTrigger());
 
         _serializer = new EthereumJsonSerializer();
     }

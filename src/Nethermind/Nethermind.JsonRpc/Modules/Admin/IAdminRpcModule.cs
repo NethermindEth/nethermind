@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
-using Nethermind.Int256;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Admin
@@ -68,11 +66,5 @@ namespace Nethermind.JsonRpc.Modules.Admin
             ExampleResponse = "\"Starting\"",
             IsImplemented = true)]
         ResultWrapper<PruningStatus> admin_prune();
-
-        [JsonRpcMethod(Description = "Runs full pruning if enabled.",
-            EdgeCaseHint = "",
-            ExampleResponse = "\"Starting\"",
-            IsImplemented = true)]
-        ResultWrapper<bool> admin_dbSetBlockTotalDifficulty(BlockParameter block, UInt256 totalDifficulty);
     }
 }

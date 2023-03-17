@@ -173,8 +173,7 @@ namespace Nethermind.Init.Steps
                 _api.StaticNodesManager,
                 _api.Enode,
                 initConfig.BaseDbPath,
-                pruningTrigger,
-                _api.ChainLevelInfoRepository!);
+                pruningTrigger);
             rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
             if (_api.TxPoolInfoProvider is null) throw new StepDependencyException(nameof(_api.TxPoolInfoProvider));
