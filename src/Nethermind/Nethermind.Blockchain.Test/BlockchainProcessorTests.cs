@@ -498,16 +498,13 @@ namespace Nethermind.Blockchain.Test
         [Explicit("Does not work on CI")]
         public void Will_update_metrics_on_processing()
         {
-            using MeterListener listener = new();
-            long reported = 0;
-
-            listener.SetMeasurementEventCallback<long>((_, value, _, _) => reported = value);
-            listener.EnableMeasurementEvents(Metrics.LastBlockProcessingTimeInMs);
+            long metricsBefore = Metrics.LastBlockProcessingTimeInMs;
 
             When.ProcessingBlocks
                 .FullyProcessed(_block0).BecomesGenesis();
 
-            reported.Should().BeGreaterThan(0);
+            long metricsAfter = Metrics.LastBlockProcessingTimeInMs;
+            metricsAfter.Should().NotBe(metricsBefore);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

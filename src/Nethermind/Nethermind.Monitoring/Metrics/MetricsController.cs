@@ -44,7 +44,7 @@ namespace Nethermind.Monitoring.Metrics
                     attribute => attribute.Label,
                     attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
 
-            string description = TryGetInstrument(member, out Instrument instrument) ? instrument.Description : member.GetCustomAttribute<DescriptionAttribute>()?.Description;
+            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = BuildGaugeName(member);
 
             return CreateGauge(name, description, staticLabels);
@@ -65,61 +65,12 @@ namespace Nethermind.Monitoring.Metrics
             return value.ToString();
         }
 
-        /// <summary>
-        /// Tries to retrieve <see cref="Instrument"/> hidden in the member value.
-        /// </summary>
-        private static bool TryGetInstrument(MemberInfo member, out Instrument instrument)
-        {
-            if (member is PropertyInfo property && property.PropertyType.IsAssignableTo(typeof(Instrument)))
-            {
-                instrument = (Instrument)property.GetValue(null);
-                return true;
-            }
-
-            if (member is FieldInfo field)
-            {
-                if (field.FieldType.IsAssignableTo(typeof(Instrument)))
-                {
-                    instrument = (Instrument)field.GetValue(null);
-                    return true;
-                }
-
-            }
-
-            instrument = default;
-            return false;
-        }
-
         private void EnsurePropertiesCached(Type type)
         {
             static bool NotEnumerable(Type t) => !t.IsAssignableTo(typeof(System.Collections.IEnumerable));
 
             static Func<double> GetValueAccessor(MemberInfo member)
             {
-                Func<double> BuildInstrumentAccessor(Instrument instrument)
-                {
-                    double measurement = 0;
-                    MeterListener listener = new();
-
-                    // the api is strongly typed by a generic over struct, need to register all or check whether Instrument<T>
-                    listener.SetMeasurementEventCallback<double>((_, actual, _, _) => measurement = actual);
-                    listener.SetMeasurementEventCallback<float>((_, actual, _, _) => measurement = actual);
-                    listener.SetMeasurementEventCallback<long>((_, actual, _, _) => measurement = actual);
-                    listener.SetMeasurementEventCallback<int>((_, actual, _, _) => measurement = actual);
-                    listener.SetMeasurementEventCallback<short>((_, actual, _, _) => measurement = actual);
-                    listener.SetMeasurementEventCallback<byte>((_, actual, _, _) => measurement = actual);
-                    listener.SetMeasurementEventCallback<decimal>((_, actual, _, _) => measurement = (double)actual);
-
-                    listener.EnableMeasurementEvents(instrument!);
-
-                    return () => measurement;
-                }
-
-                if (TryGetInstrument(member, out Instrument instrument))
-                {
-                    return BuildInstrumentAccessor(instrument);
-                }
-
                 if (member is PropertyInfo property)
                 {
                     return () => Convert.ToDouble(property.GetValue(null));
