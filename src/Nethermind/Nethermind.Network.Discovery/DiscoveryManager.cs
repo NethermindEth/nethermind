@@ -61,15 +61,6 @@ public class DiscoveryManager : IDiscoveryManager
                 return;
             }
 
-            if (msg is PingMsg pingMsg)
-            {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "MANAGER disc v4", $"Ping {pingMsg.SourceAddress?.Address} -> {pingMsg.DestinationAddress?.Address}");
-            }
-            else
-            {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "MANAGER disc v4", msg.MsgType.ToString());
-            }
-
             switch (msgType)
             {
                 case MsgType.Neighbors:
