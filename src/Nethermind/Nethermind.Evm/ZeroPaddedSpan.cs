@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Evm
 {
-    public ref struct ZeroPaddedSpan
+    public readonly ref struct ZeroPaddedSpan
     {
         public static ZeroPaddedSpan Empty => new(Span<byte>.Empty, 0, PadDirection.Right);
 
@@ -16,9 +16,9 @@ namespace Nethermind.Evm
             PaddingLength = paddingLength;
         }
 
-        public PadDirection PadDirection;
-        public ReadOnlySpan<byte> Span;
-        public int PaddingLength;
+        public readonly PadDirection PadDirection;
+        public readonly ReadOnlySpan<byte> Span;
+        public readonly int PaddingLength;
         public int Length => Span.Length + PaddingLength;
 
         /// <summary>
