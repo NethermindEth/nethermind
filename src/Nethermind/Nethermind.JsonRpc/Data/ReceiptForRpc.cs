@@ -47,9 +47,11 @@ namespace Nethermind.JsonRpc.Data
         public Address From { get; set; }
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
         public Address To { get; set; }
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
         public Address ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom? LogsBloom { get; set; }

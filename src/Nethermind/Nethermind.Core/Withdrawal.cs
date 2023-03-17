@@ -31,9 +31,11 @@ public class Withdrawal
     /// Gets or sets the withdrawal amount in GWei.
     /// </summary>
     [JsonProperty(PropertyName = "amount")]
+    [System.Text.Json.Serialization.JsonPropertyName("amount")]
     public ulong AmountInGwei { get; set; }
 
     [JsonIgnore]
+    [System.Text.Json.Serialization.JsonIgnore]
     public UInt256 AmountInWei => AmountInGwei * 1.GWei();
 
     public override string ToString() => ToString(string.Empty);

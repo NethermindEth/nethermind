@@ -92,6 +92,8 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             [JsonConverter(typeof(IdConverter))]
             [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+            [System.Text.Json.Serialization.JsonConverter(typeof(IdJsonConverter))]
+            [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
             public object Id { get; set; } = null!;
 
             public string Something { get; set; } = null!;
@@ -101,6 +103,8 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             [JsonConverter(typeof(IdConverter))]
             [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+            [System.Text.Json.Serialization.JsonConverter(typeof(IdJsonConverter))]
+            [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
             public decimal Id { get; set; }
 
             public string Something { get; set; } = null!;

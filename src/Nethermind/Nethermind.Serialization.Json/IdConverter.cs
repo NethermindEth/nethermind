@@ -3,10 +3,11 @@
 
 using System;
 using System.Numerics;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+    using Newtonsoft.Json;
+
     public class IdConverter : JsonConverter
     {
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
@@ -42,6 +43,50 @@ namespace Nethermind.Serialization.Json
                     return null;
                 default:
                     throw new NotSupportedException($"{reader.TokenType}");
+            }
+        }
+
+        public override bool CanConvert(Type objectType)
+        {
+            return true;
+        }
+    }
+}
+
+namespace Nethermind.Serialization.Json
+{
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
+    public class IdJsonConverter : JsonConverter<object>
+    {
+        public override object Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => throw new NotImplementedException();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            object value,
+            JsonSerializerOptions options)
+        {
+
+            switch (value)
+            {
+                case int typedValue:
+                    writer.WriteNumberValue(typedValue);
+                    break;
+                case long typedValue:
+                    writer.WriteNumberValue(typedValue);
+                    break;
+                case BigInteger typedValue:
+                    writer.WriteNumberValue((decimal)typedValue);
+                    break;
+                case string typedValue:
+                    writer.WriteStringValue(typedValue);
+                    break;
+                default:
+                    throw new NotSupportedException();
             }
         }
 

@@ -608,6 +608,63 @@ namespace Nethermind.Core.Extensions
             });
         }
 
+        public static void OutputBytesToByteHex(this ReadOnlySpan<byte> bytes, Span<byte> hex, bool extraNibble)
+        {
+            int toProcess = bytes.Length;
+            if (hex.Length != (toProcess * 2) - (extraNibble ? 1 : 0))
+            {
+                ThrowArgumentOutOfRangeException();
+            }
+
+            ref byte input = ref MemoryMarshal.GetReference(bytes);
+            ref ushort lookup32 = ref Lookup16[0];
+            ref ushort output = ref Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex));
+            if (extraNibble)
+            {
+                // Odd number of hex bytes, handle the first
+                // seperately so loop can work in pairs
+                ushort val = Unsafe.Add(ref lookup32, input);
+                Unsafe.As<ushort, byte>(ref output) = (byte)(val >> 8);
+
+                output = ref Unsafe.AddByteOffset(ref output, 1);
+                input = ref Unsafe.Add(ref input, 1);
+                toProcess--;
+            }
+
+            while (toProcess >= 8)
+            {
+                output = Unsafe.Add(ref lookup32, input);
+                Unsafe.Add(ref output, 1) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 1));
+                Unsafe.Add(ref output, 2) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 2));
+                Unsafe.Add(ref output, 3) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 3));
+                Unsafe.Add(ref output, 4) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 4));
+                Unsafe.Add(ref output, 5) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 5));
+                Unsafe.Add(ref output, 6) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 6));
+                Unsafe.Add(ref output, 7) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 7));
+
+                output = ref Unsafe.Add(ref output, 8);
+                input = ref Unsafe.Add(ref input, 8);
+
+                toProcess -= 8;
+            }
+
+            while (toProcess > 0)
+            {
+                output = Unsafe.Add(ref lookup32, input);
+
+                output = ref Unsafe.Add(ref output, 1);
+                input = ref Unsafe.Add(ref input, 1);
+
+                toProcess -= 1;
+            }
+
+            [DoesNotReturn]
+            static void ThrowArgumentOutOfRangeException()
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+        }
+
         internal static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
         {
             if (withZeroX)
@@ -790,6 +847,19 @@ namespace Nethermind.Core.Extensions
         }
 
         internal static uint[] Lookup32 = CreateLookup32("x2");
+        internal static ushort[] Lookup16 = CreateLookup16("x2");
+
+        private static ushort[] CreateLookup16(string format)
+        {
+            ushort[] result = new ushort[256];
+            for (int i = 0; i < 256; i++)
+            {
+                string s = i.ToString(format);
+                result[i] = (ushort)(s[0] + (s[1] << 8));
+            }
+
+            return result;
+        }
 
         private static uint[] CreateLookup32(string format)
         {
@@ -803,7 +873,7 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        internal static int CountLeadingZeros(ReadOnlySpan<byte> bytes)
+        public static int CountLeadingZeros(this ReadOnlySpan<byte> bytes)
         {
             int leadingZeros = 0;
             for (int i = 0; i < bytes.Length; i++)

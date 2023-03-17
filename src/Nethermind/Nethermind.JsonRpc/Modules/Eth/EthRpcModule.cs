@@ -568,7 +568,7 @@ public partial class EthRpcModule : IEthRpcModule
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: {filterId} does not exist.");
                 }
 
             case FilterType.PendingTransactionFilter:
@@ -576,7 +576,7 @@ public partial class EthRpcModule : IEthRpcModule
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
                             .GetPendingTransactionFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: {filterId} does not exist.");
                 }
 
             case FilterType.LogFilter:
@@ -584,7 +584,7 @@ public partial class EthRpcModule : IEthRpcModule
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(
                             _blockchainBridge.GetLogFilterChanges(id).ToArray())
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: {filterId} does not exist.");
                 }
 
             default:
@@ -606,7 +606,7 @@ public partial class EthRpcModule : IEthRpcModule
             if (id < 0 || !filterFound)
             {
                 cancellationTokenSource.Dispose();
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
             }
             else
             {
@@ -663,7 +663,7 @@ public partial class EthRpcModule : IEthRpcModule
         {
             cancellationTokenSource.Dispose();
 
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"'From' block '{fromBlockNumber}' is later than 'to' block '{toBlockNumber}'.", ErrorCodes.InvalidParams);
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"From block {fromBlockNumber} is later than to block {toBlockNumber}.", ErrorCodes.InvalidParams);
         }
 
         try

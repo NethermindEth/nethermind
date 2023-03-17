@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+    using Newtonsoft.Json;
+
     public class NullableULongConverter : JsonConverter<ulong?>
     {
         private readonly ULongConverter _ulongConverter;
@@ -40,6 +41,36 @@ namespace Nethermind.Serialization.Json
             }
 
             return _ulongConverter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
+        }
+    }
+}
+
+namespace Nethermind.Serialization.Json
+{
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
+    public class NullableULongJsonConverter : JsonConverter<ulong?>
+    {
+        private readonly ULongJsonConverter _converter = new();
+
+        public override ulong? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => throw new NotImplementedException();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            ulong? value,
+            JsonSerializerOptions options)
+        {
+            if (!value.HasValue)
+            {
+                writer.WriteNullValue();
+                return;
+            }
+
+            _converter.Write(writer, value.GetValueOrDefault(), options);
         }
     }
 }

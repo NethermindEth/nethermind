@@ -15,6 +15,7 @@ namespace Nethermind.JsonRpc
         public string[]? Params { get; set; }
 
         [JsonConverter(typeof(IdConverter))]
+        [System.Text.Json.Serialization.JsonConverter(typeof(IdJsonConverter))]
         public object Id { get; set; }
 
         public override string ToString()

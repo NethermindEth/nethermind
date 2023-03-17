@@ -26,16 +26,13 @@ namespace Nethermind.JsonRpc.Modules
             ModuleType = attribute.ModuleType;
         }
 
-        // ReSharper disable once StaticMemberInGenericType
-        private static IReadOnlyCollection<JsonConverter> _noConverters = new List<JsonConverter>();
-
         public abstract T Create();
 
         public string ModuleType { get; }
 
         public virtual IReadOnlyCollection<JsonConverter> GetConverters()
         {
-            return _noConverters;
+            return Array.Empty<JsonConverter>();
         }
     }
 

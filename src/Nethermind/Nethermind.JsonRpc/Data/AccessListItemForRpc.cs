@@ -23,6 +23,7 @@ namespace Nethermind.JsonRpc.Data
         public Address Address { get; set; }
 
         [JsonProperty(ItemConverterType = typeof(StorageCellIndexConverter))]
+        [System.Text.Json.Serialization.JsonConverter(typeof(StorageCellIndexJsonConverter))]
         public UInt256[]? StorageKeys { get; set; }
 
         public static AccessListItemForRpc[] FromAccessList(AccessList accessList) =>

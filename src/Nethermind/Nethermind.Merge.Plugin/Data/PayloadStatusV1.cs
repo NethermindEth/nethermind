@@ -32,12 +32,14 @@ namespace Nethermind.Merge.Plugin.Data
         /// Hash of the most recent valid block in the branch defined by payload and its ancestors.
         /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
         public Keccak? LatestValidHash { get; set; }
 
         /// <summary>
         /// Message providing additional details on the validation error if the payload is classified as <see cref="PayloadStatus.Invalid"/>.
         /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
         public string? ValidationError { get; set; }
     }
 }

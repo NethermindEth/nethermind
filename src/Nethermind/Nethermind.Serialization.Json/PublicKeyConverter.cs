@@ -21,3 +21,25 @@ namespace Nethermind.Serialization.Json
         }
     }
 }
+
+namespace Nethermind.Serialization.Json
+{
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
+    public class PublicKeyJsonConverter : JsonConverter<PublicKey>
+    {
+        public override PublicKey Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => throw new NotImplementedException();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            PublicKey publicKey,
+            JsonSerializerOptions options)
+        {
+            ByteArrayJsonConverter.Convert(writer, publicKey.Bytes);
+        }
+    }
+}

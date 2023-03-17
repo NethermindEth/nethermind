@@ -4,10 +4,10 @@
 using System;
 using System.Globalization;
 using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+    using Newtonsoft.Json;
     public class ULongConverter : JsonConverter<ulong>
     {
         private readonly NumberConversion _conversion;
@@ -73,6 +73,41 @@ namespace Nethermind.Serialization.Json
             }
 
             return ulong.Parse(s, NumberStyles.Integer);
+        }
+    }
+}
+
+
+namespace Nethermind.Serialization.Json
+{
+    using System.Buffers.Binary;
+    using System.Runtime.CompilerServices;
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
+    public class ULongJsonConverter : JsonConverter<ulong>
+    {
+        public override ulong Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => throw new NotImplementedException();
+
+        [SkipLocalsInit]
+        public override void Write(
+            Utf8JsonWriter writer,
+            ulong value,
+            JsonSerializerOptions options)
+        {
+            if (value == 0)
+            {
+                writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
+            }
+            else
+            {
+                Span<byte> bytes = stackalloc byte[8];
+                BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
+                ByteArrayJsonConverter.Convert(writer, bytes, skipLeadingZeros: true);
+            }
         }
     }
 }
