@@ -239,7 +239,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (noBatchesLeft)
             {
-                if (AllHeadersDownloaded || isImmediateSync && AnyHeaderDownloaded)
+                if ((AllHeadersDownloaded || (isImmediateSync && AnyHeaderDownloaded)) && CurrentState != SyncFeedState.Finished)
                 {
                     FinishAndCleanUp();
                 }
@@ -276,12 +276,25 @@ namespace Nethermind.Synchronization.FastBlocks
         private void HandleDependentBatches(CancellationToken cancellationToken)
         {
             long? lowest = LowestInsertedBlockHeader?.Number;
-            while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
+            long processedBatchCount = 0;
+            const long maxBatchToProcess = 4;
+            while (lowest.HasValue && processedBatchCount < maxBatchToProcess && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
             {
                 MarkDirty();
                 InsertHeaders(dependentBatch!);
                 lowest = LowestInsertedBlockHeader?.Number;
                 cancellationToken.ThrowIfCancellationRequested();
+
+                processedBatchCount++;
+            }
+        }
+
+        private bool HasDependencyToProcess
+        {
+            get
+            {
+                long? lowest = LowestInsertedBlockHeader?.Number;
+                return lowest != null && _dependencies.ContainsKey(lowest.Value - 1);
             }
         }
 
@@ -290,7 +303,10 @@ namespace Nethermind.Synchronization.FastBlocks
             _resetLock.EnterReadLock();
             try
             {
-                HandleDependentBatches(cancellationToken);
+                do
+                {
+                    HandleDependentBatches(cancellationToken);
+                } while (_pending.IsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
 
                 if (_pending.TryDequeue(out HeadersSyncBatch? batch))
                 {
@@ -521,7 +537,11 @@ namespace Nethermind.Synchronization.FastBlocks
                     // response needs to be cached until predecessors arrive
                     if (header.Hash != _nextHeaderHash)
                     {
-                        if (header.Number == (LowestInsertedBlockHeader?.Number ?? _pivotNumber + 1) - 1)
+                        // If the header is at the exact block number, but the hash does not match, then its a different branch.
+                        // However, if the header hash does match the parent of the LowestInsertedBlockHeader, then its just
+                        // `_nextHeaderHash` not updated as the `BlockTree.Insert` has not returned yet.
+                        // We just let it go to the dependency graph.
+                        if (header.Number == (LowestInsertedBlockHeader?.Number ?? _pivotNumber + 1) - 1 && header.Hash != LowestInsertedBlockHeader?.ParentHash)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
                             if (batch.ResponseSourcePeer is not null)
@@ -693,7 +713,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return insertOutcome;
         }
 
-        private void SetExpectedNextHeaderToParent(BlockHeader header)
+        protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
             ulong nextHeaderDiff = 0;
             _nextHeaderHash = header.ParentHash!;

@@ -250,7 +250,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     CancellationTokenSource.Dispose();
                 }
 
-                public byte[]? this[byte[] key]
+                public byte[]? this[ReadOnlySpan<byte> key]
                 {
                     get => _context[key];
                     set => _context[key] = value;
