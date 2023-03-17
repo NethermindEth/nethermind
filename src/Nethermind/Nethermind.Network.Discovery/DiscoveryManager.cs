@@ -150,15 +150,6 @@ public class DiscoveryManager : IDiscoveryManager
         if (_logger.IsTrace) _logger.Trace($"Sending msg: {discoveryMsg}");
         try
         {
-            if (discoveryMsg is PingMsg pingMessage)
-            {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(pingMessage.FarAddress, "HANDLER disc v4", $"Ping {pingMessage.SourceAddress?.Address} -> {pingMessage.DestinationAddress?.Address}", -1);
-            }
-            else
-            {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMsg.FarAddress, "HANDLER disc v4", discoveryMsg.MsgType.ToString(), -1);
-            }
-
             _msgSender?.SendMsg(discoveryMsg);
         }
         catch (Exception e)
