@@ -181,7 +181,11 @@
     "eip3198Transition": "0xC5D488",
     "eip3529Transition": "0xC5D488",
     "eip3541Transition": "0xC5D488",
-    "terminalTotalDifficulty": "C70D808A128D7380000"
+	"eip3651TransitionTimestamp": "0x64373057",
+	"eip3855TransitionTimestamp": "0x64373057",
+	"eip3860TransitionTimestamp": "0x64373057",
+	"eip4895TransitionTimestamp": "0x64373057",
+    "terminalTotalDifficulty": "C70D808A128D7380000"	
   },
   "genesis": {
     "seal": {
