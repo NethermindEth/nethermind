@@ -96,7 +96,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
     {
         if (sendFullTx)
         {
-            base.SendNewTransactions(txs, sendFullTx);
+            base.SendNewTransactionsCore(txs, sendFullTx);
             return;
         }
 

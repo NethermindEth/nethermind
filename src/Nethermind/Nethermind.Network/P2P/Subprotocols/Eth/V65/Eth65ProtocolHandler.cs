@@ -130,7 +130,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         {
             if (sendFullTx)
             {
-                base.SendNewTransactions(txs, true);
+                base.SendNewTransactionsCore(txs, true);
                 return;
             }
 
