@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -460,7 +461,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
             }
 
             _handler.SendNewTransactions(txs);
@@ -492,7 +493,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
             }
 
             _handler.SendNewTransactions(txs);
@@ -514,7 +515,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.WithData(new byte[dataSize]).WithNonce((UInt256)i).SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
             }
 
             Transaction tx = txs[0];
