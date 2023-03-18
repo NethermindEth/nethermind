@@ -92,7 +92,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
                          $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
     }
 
-    public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
+    protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
     {
         if (sendFullTx)
         {

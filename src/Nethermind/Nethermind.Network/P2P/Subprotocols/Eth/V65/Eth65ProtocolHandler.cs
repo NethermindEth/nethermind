@@ -77,6 +77,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Metrics.Eth65NewPooledTransactionHashesReceived++;
             Stopwatch stopwatch = Stopwatch.StartNew();
 
+            foreach (Keccak hash in msg.Hashes)
+            {
+                NotifiedTransactions.Set(hash);
+            }
+
             _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes);
 
             stopwatch.Stop();
@@ -121,7 +126,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             return new PooledTransactionsMessage(txsToSend);
         }
 
-        public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
+        protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {
             if (sendFullTx)
             {

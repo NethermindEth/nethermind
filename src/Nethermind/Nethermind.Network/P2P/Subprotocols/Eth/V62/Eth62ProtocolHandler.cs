@@ -79,12 +79,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             BlockHeader head = SyncServer.Head;
-            StatusMessage statusMessage = new();
-            statusMessage.NetworkId = SyncServer.NetworkId;
-            statusMessage.ProtocolVersion = ProtocolVersion;
-            statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
-            statusMessage.BestHash = head.Hash!;
-            statusMessage.GenesisHash = SyncServer.Genesis.Hash!;
+            StatusMessage statusMessage = new()
+            {
+                NetworkId = SyncServer.NetworkId,
+                ProtocolVersion = ProtocolVersion,
+                TotalDifficulty = head.TotalDifficulty ?? head.Difficulty,
+                BestHash = head.Hash!,
+                GenesisHash = SyncServer.Genesis.Hash!
+            };
+
             EnrichStatusMessage(statusMessage);
 
             Metrics.StatusesSent++;
@@ -282,6 +285,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             tx.DeliveredBy = Node.Id;
             tx.Timestamp = _timestamper.UnixTime.Seconds;
+            if (tx.Hash is not null)
+            {
+                NotifiedTransactions.Set(tx.Hash);
+            }
+
             AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _floodController.Report(accepted);
 
