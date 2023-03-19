@@ -54,7 +54,7 @@ namespace Nethermind.Crypto
 
             private IDataProtector GetMachineProtector(byte[] optionalEntropy)
             {
-                var provider = DataProtectionProvider.Create(AppName);
+                var provider = DataProtectionProvider.Create(Path.Combine(_keyStoreDir, AppName));
                 var purpose = CreatePurpose(optionalEntropy);
                 return provider.CreateProtector(purpose);
             }
