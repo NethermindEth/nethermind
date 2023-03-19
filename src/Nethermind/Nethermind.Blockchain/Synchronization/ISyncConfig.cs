@@ -47,10 +47,10 @@ namespace Nethermind.Blockchain.Synchronization
         string PivotTotalDifficulty { get; }
 
         [ConfigItem(Description = "Number of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
-        string PivotNumber { get; set; }
+        string? PivotNumber { get; set; }
 
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
-        string PivotHash { get; set; }
+        string? PivotHash { get; set; }
 
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Synchronization
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
-        Keccak PivotHashParsed => PivotHash is null ? null : new Keccak(Bytes.FromHexString(PivotHash));
+        Keccak? PivotHashParsed => PivotHash is null ? null : new Keccak(Bytes.FromHexString(PivotHash));
 
         [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest body downloaded in fast sync when DownloadBodiesInFastSync is enabled. Actual values used will be Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier))", DefaultValue = "0")]
         public long AncientBodiesBarrier { get; set; }
