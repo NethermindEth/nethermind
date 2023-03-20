@@ -75,12 +75,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         protected virtual void Handle(NewPooledTransactionHashesMessage msg)
         {
             Metrics.Eth65NewPooledTransactionHashesReceived++;
-            Stopwatch stopwatch = Stopwatch.StartNew();
 
-            foreach (Keccak hash in msg.Hashes)
-            {
-                NotifiedTransactions.Set(hash);
-            }
+            AddNotifiedTransactions(msg.Hashes);
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
 
             _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes);
 
@@ -88,6 +86,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
                              $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected void AddNotifiedTransactions(IReadOnlyList<Keccak> hashes)
+        {
+            foreach (Keccak hash in hashes)
+            {
+                NotifiedTransactions.Set(hash);
+            }
         }
 
         private void Handle(GetPooledTransactionsMessage msg)
