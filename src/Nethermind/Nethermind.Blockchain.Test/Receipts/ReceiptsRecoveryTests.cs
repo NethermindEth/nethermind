@@ -19,7 +19,7 @@ public class ReceiptsRecoveryTests
     [SetUp]
     public void Setup()
     {
-        // Warning Ropsten Network is Deprecated
+        
         MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
         EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
 

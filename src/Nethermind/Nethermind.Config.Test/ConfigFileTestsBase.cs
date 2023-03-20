@@ -117,7 +117,7 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> CliqueConfigs
             => RinkebyConfigs.Union(GoerliConfigs);
             
-        // Warning Ropsten Network is Deprecated
+        
         [ConfigFileGroup("ethhash")]
         protected IEnumerable<string> EthashConfigs
             => MainnetConfigs.Union(RopstenConfigs);
