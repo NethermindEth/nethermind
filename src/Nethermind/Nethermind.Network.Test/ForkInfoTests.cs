@@ -90,8 +90,8 @@ namespace Nethermind.Network.Test
         }
 
         [TestCase(15_050_000, 0ul, "0xf0afd0e3", 21_000_000ul, "First Gray Glacier")]
-        [TestCase(21_000_000, 0ul, "0x3f5fd195", 0ul, "First Merge Fork Id test")]
-        [TestCase(21_811_000, 0ul, "0x3f5fd195", 0ul, "Future Merge Fork Id test")]
+        [TestCase(21_000_000, 0ul, "0x3f5fd195", 1681338455UL, "First Merge Fork Id test")]
+        [TestCase(21_811_000, 0ul, "0x3f5fd195", 1681338455UL, "Future Merge Fork Id test")]
         public void Fork_id_and_hash_as_expected_with_merge_fork_id(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
