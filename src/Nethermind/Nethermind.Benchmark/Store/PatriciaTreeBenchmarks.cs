@@ -30,13 +30,13 @@ namespace Nethermind.Benchmarks.Store
         private static readonly Keccak _keccak7 = new("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab00000000");
         private static readonly Keccak _keccak8 = new("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab11111111");
         private static readonly Keccak _keccak9 = new("1111111111111111111111111111111111111111111111111111111111111111");
-        private static readonly Keccak _keccak10 = new ("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd");
-        private static readonly Keccak _keccak11 = new ("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111");
-        private static readonly Keccak _keccak12 = new ("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000");
-        private static readonly Keccak _keccak13 = new ("111111111111111111111111111111111111111111111111111111111ddddddd");
-        private static readonly Keccak _keccak14 = new ("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000");
-        private static readonly Keccak _keccak15 = new ("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111");
-        private static readonly Keccak _keccak16 = new ("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222");
+        private static readonly Keccak _keccak10 = new("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd");
+        private static readonly Keccak _keccak11 = new("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111");
+        private static readonly Keccak _keccak12 = new("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000");
+        private static readonly Keccak _keccak13 = new("111111111111111111111111111111111111111111111111111111111ddddddd");
+        private static readonly Keccak _keccak14 = new("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000");
+        private static readonly Keccak _keccak15 = new("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111");
+        private static readonly Keccak _keccak16 = new("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222");
 
         private StateTree _tree;
 
