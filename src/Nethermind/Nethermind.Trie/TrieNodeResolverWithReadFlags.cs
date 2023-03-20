@@ -7,7 +7,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public class TrieNodeResolverWithReadFlags: ITrieNodeResolver
+public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
 {
     private ITrieStore _baseResolver;
     private ReadFlags _flags;
