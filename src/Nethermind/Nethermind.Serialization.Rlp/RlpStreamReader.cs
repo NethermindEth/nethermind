@@ -16,17 +16,18 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class RlpStreamReader
+    public struct RlpStreamReader
     {
         public long MemorySize => MemorySizes.SmallObjectOverhead
                                   + MemorySizes.Align(MemorySizes.ArrayOverhead + Length)
                                   + MemorySizes.Align(sizeof(int));
 
-
         public RlpStreamReader(byte[] data) => Data = data;
 
         private string Description =>
             Data?.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
+
+        public bool IsNull => Data is null;
 
         public byte[]? Data { get; }
 
@@ -358,6 +359,14 @@ namespace Nethermind.Serialization.Rlp
             }
 
             throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
+        }
+
+        public void NullSafeSkipItem()
+        {
+            if (IsNull is false)
+            {
+                SkipItem();
+            }
         }
 
         public void SkipItem()
