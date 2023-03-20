@@ -823,13 +823,18 @@ namespace Nethermind.Trie.Pruning
 
         public byte[]? this[ReadOnlySpan<byte> key]
         {
-            get => _pruningStrategy.PruningEnabled
+            get => Get(key);
+        }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.HintCacheMiss)
+        {
+            return _pruningStrategy.PruningEnabled
                    && _dirtyNodes.AllNodes.TryGetValue(new Keccak(key.ToArray()), out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp is not null
                 ? trieNode.FullRlp
-                : _currentBatch?[key] ?? _keyValueStore[key];
+                : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
         }
     }
 }
