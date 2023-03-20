@@ -63,10 +63,10 @@ namespace Nethermind.Specs
         public const ulong CancunBlockTimestamp = ulong.MaxValue - 3;
         public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;
         public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
-        public static ForkActivation ShanghaiActivation = (15_050_000, ShanghaiBlockTimestamp);
-        public static ForkActivation CancunActivation = (15_050_000, CancunBlockTimestamp);
-        public static ForkActivation PragueActivation = (15_050_000, PragueBlockTimestamp);
-        public static ForkActivation OsakaActivation = (15_050_000, OsakaBlockTimestamp);
+        public static ForkActivation ShanghaiActivation = (15_050_001, ShanghaiBlockTimestamp);
+        public static ForkActivation CancunActivation = (15_050_002, CancunBlockTimestamp);
+        public static ForkActivation PragueActivation = (15_050_003, PragueBlockTimestamp);
+        public static ForkActivation OsakaActivation = (15_050_004, OsakaBlockTimestamp);
 
         public ulong NetworkId => Core.BlockchainIds.Mainnet;
         public ulong ChainId => NetworkId;
