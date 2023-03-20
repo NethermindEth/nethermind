@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                _trieStorePool.Return(store);
+                _pathBasedTrieStorePool.Return(store);
             }
         }
 
@@ -203,7 +203,7 @@ namespace Nethermind.Synchronization.SnapSync
         public void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response)
         {
             int respLength = response.Length;
-            ITrieStore store = _trieStorePool.Get();
+            ITrieStore store = _pathBasedTrieStorePool.Get();
             try
             {
                 for (int reqi = 0; reqi < request.Paths.Length; reqi++)
@@ -260,7 +260,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                _trieStorePool.Return(store);
+                _pathBasedTrieStorePool.Return(store);
             }
         }
 

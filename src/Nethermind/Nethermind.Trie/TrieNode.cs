@@ -84,20 +84,6 @@ namespace Nethermind.Trie
             }
         }
 
-        private TrieNode? StorageRoot
-        {
-            get
-            {
-                return _data?[2] as TrieNode;
-            }
-            set
-            {
-                if (_data is null)
-                    InitData();
-                _data![2] = value;
-            }
-        }
-
         public byte[]? Key
         {
             get => _data?[0] as byte[];
@@ -563,7 +549,10 @@ namespace Nethermind.Trie
             }
             else if (childOrRef is Keccak reference)
             {
-                child = tree.FindCachedOrUnknown(reference);
+                if (tree.Capability == TrieNodeResolverCapability.Hash)
+                    child = tree.FindCachedOrUnknown(reference);
+                else
+                    child = tree.FindCachedOrUnknown(childPath);
             }
             else
             {
@@ -670,17 +659,19 @@ namespace Nethermind.Trie
 
         public TrieNode CloneWithChangedKey(byte[] key)
         {
+            Debug.Assert(NodeType != NodeType.Leaf || PathToNode is null || key.Length + PathToNode.Length == 64);
+
             TrieNode trieNode = Clone();
             trieNode.Key = key;
             trieNode.PathToNode = PathToNode;
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKey(byte[] path, Span<byte> fullPath)
+        public TrieNode CloneWithChangedKey(byte[] key, Span<byte> pathToNode)
         {
             TrieNode trieNode = Clone();
-            trieNode.Key = path;
-            trieNode.PathToNode = fullPath.ToArray();
+            trieNode.Key = key;
+            trieNode.PathToNode = pathToNode.ToArray();
             return trieNode;
         }
 
@@ -722,12 +713,13 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(byte[] path, byte[]? changedValue, byte[] changedFullPath)
+        public TrieNode CloneWithChangedKeyAndValue(byte[] key, byte[]? changedValue, byte[] changedPathToNode)
         {
+            Debug.Assert(key.Length + changedPathToNode.Length == 64);
             TrieNode trieNode = Clone();
-            trieNode.Key = path;
+            trieNode.Key = key;
             trieNode.Value = changedValue;
-            trieNode.PathToNode = changedFullPath;
+            trieNode.PathToNode = changedPathToNode;
             return trieNode;
         }
 

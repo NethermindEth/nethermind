@@ -234,7 +234,7 @@ namespace Nethermind.Trie.Pruning
                     throw new TrieStoreException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
                 }
 
-                if (node!.LastSeen != TrieNode.LastSeenNotSet)
+                if (node!.LastSeen.HasValue)
                 {
                     throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
                 }
@@ -892,8 +892,8 @@ namespace Nethermind.Trie.Pruning
         {
             keyValueStore ??= _keyValueStore;
 
-            byte[] pathBytes = trieNode.FullPath.Length < 64 ?
-                Nibbles.ToEncodedStorageBytes(trieNode.FullPath) : Nibbles.ToBytes(trieNode.FullPath);
+            byte[] fullPath = trieNode.FullPath;
+            byte[] pathBytes = fullPath.Length < 64 ? Nibbles.ToEncodedStorageBytes(fullPath) : Nibbles.ToBytes(fullPath);
             if (trieNode.IsLeaf && (trieNode.Key.Length < 64 || trieNode.PathToNode.Length == 0))
             {
                 byte[] pathToNodeBytes = Nibbles.ToEncodedStorageBytes(trieNode.PathToNode);

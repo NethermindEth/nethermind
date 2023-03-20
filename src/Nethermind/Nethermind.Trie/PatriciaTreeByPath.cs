@@ -29,7 +29,7 @@ namespace Nethermind.Trie
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
         public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
-        public static readonly byte[] EmptyKeyPath = new byte[0];
+        public static readonly byte[] EmptyKeyPath = Array.Empty<byte>();
 
         public TrieType TrieType { get; protected set; }
 
@@ -552,7 +552,7 @@ namespace Nethermind.Trie
                             else if (childNode.IsLeaf)
                             {
                                 byte[] newKey = Bytes.Concat((byte)childNodeIndex, childNode.Key);
-                                TrieNode extendedLeaf = childNode.CloneWithChangedKey(newKey);
+                                TrieNode extendedLeaf = childNode.CloneWithChangedKey(newKey, node.PathToNode);
                                 if (_logger.IsTrace)
                                     _logger.Trace(
                                         $"Extending branch child {childNodeIndex} {childNode} into {extendedLeaf}");
@@ -583,7 +583,7 @@ namespace Nethermind.Trie
                     if (nextNode.IsLeaf)
                     {
                         byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
-                        TrieNode extendedLeaf = nextNode.CloneWithChangedKey(newKey);
+                        TrieNode extendedLeaf = nextNode.CloneWithChangedKey(newKey, node.PathToNode);
                         if (_logger.IsTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedLeaf}");
 
