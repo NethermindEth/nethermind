@@ -283,7 +283,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {
-            tx.DeliveredBy = Node.Id;
             tx.Timestamp = _timestamper.UnixTime.Seconds;
             if (tx.Hash is not null)
             {
