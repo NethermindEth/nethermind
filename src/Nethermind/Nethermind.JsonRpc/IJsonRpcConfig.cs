@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc
         int? EnginePort { get; set; }
 
         [ConfigItem(
-            Description = "Defines which RPC modules should be enabled Execution Engine port. Built in modules are: Admin, Baseline, Clique, Consensus, Db, Debug, Deposit, Erc20, Eth, Evm, Health Mev, NdmConsumer, NdmProvider, Net, Nft, Parity, Personal, Proof, Subscribe, Trace, TxPool, Vault, Web3.",
+            Description = "Defines which RPC modules should be enabled Execution Engine port. Built in modules are: Admin, Clique, Consensus, Db, Debug, Deposit, Erc20, Eth, Evm, Health Mev, NdmConsumer, NdmProvider, Net, Nft, Parity, Personal, Proof, Subscribe, Trace, TxPool, Vault, Web3.",
             DefaultValue = "[Net, Eth, Subscribe, Web3]")]
         string[] EngineEnabledModules { get; set; }
 
