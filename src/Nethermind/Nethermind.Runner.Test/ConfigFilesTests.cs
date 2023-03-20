@@ -288,7 +288,7 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => p.Should().StartWith(startWith));
         }
 
-        [TestCase("", "Data/static-nodes.json")]
+        [TestCase("^", "Data/static-nodes.json")]
         public void Static_nodes_path_is_default(string configWildcard, string staticNodesPath)
         {
             Test<IInitConfig, string>(configWildcard, c => c.StaticNodesPath, staticNodesPath);
