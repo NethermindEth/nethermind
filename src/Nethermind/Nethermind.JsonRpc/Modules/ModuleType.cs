@@ -56,7 +56,6 @@ namespace Nethermind.JsonRpc.Modules
             Trace,
             TxPool,
             Web3,
-            Baseline,
             Vault,
             Deposit,
             Health,
