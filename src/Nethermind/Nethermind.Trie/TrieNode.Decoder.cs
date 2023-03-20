@@ -185,7 +185,7 @@ namespace Nethermind.Trie
             private static void WriteChildrenRlp(ITrieNodeResolver tree, TrieNode item, Span<byte> destination)
             {
                 int position = 0;
-                RlpStream rlpStream = item._rlpStream;
+                RlpStreamReader rlpStream = item._rlpStream;
                 item.InitData();
                 item.SeekChild(0);
                 for (int i = 0; i < BranchesCount; i++)

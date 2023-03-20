@@ -31,7 +31,7 @@ namespace Nethermind.Trie
         private static TrieNodeDecoder _nodeDecoder = new();
         private static AccountDecoder _accountDecoder = new();
         private static Action<TrieNode> _markPersisted => tn => tn.IsPersisted = true;
-        private RlpStream? _rlpStream;
+        private RlpStreamReader? _rlpStream;
         private object?[]? _data;
 
         private const int DataStorageRootIndex = 2;
@@ -192,7 +192,7 @@ namespace Nethermind.Trie
             FullRlp = rlp;
             IsDirty = isDirty;
 
-            _rlpStream = rlp.AsRlpStream();
+            _rlpStream = new RlpStreamReader(rlp);
         }
 
         public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp)
@@ -259,7 +259,7 @@ namespace Nethermind.Trie
                     return;
                 }
 
-                _rlpStream = FullRlp.AsRlpStream();
+                _rlpStream = new RlpStreamReader(FullRlp);
                 if (_rlpStream is null)
                 {
                     throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
@@ -321,7 +321,7 @@ namespace Nethermind.Trie
             if (FullRlp is null || IsDirty)
             {
                 FullRlp = RlpEncode(tree);
-                _rlpStream = FullRlp.AsRlpStream();
+                _rlpStream = new RlpStreamReader(FullRlp);
             }
 
             /* nodes that are descendants of other nodes are stored inline
@@ -586,7 +586,7 @@ namespace Nethermind.Trie
             if (FullRlp is not null)
             {
                 trieNode.FullRlp = FullRlp;
-                trieNode._rlpStream = FullRlp.AsRlpStream();
+                trieNode._rlpStream = new RlpStreamReader(FullRlp);
             }
 
             return trieNode;
@@ -779,7 +779,7 @@ namespace Nethermind.Trie
             SeekChild(_rlpStream, itemToSetOn);
         }
 
-        private void SeekChild(RlpStream rlpStream, int itemToSetOn)
+        private void SeekChild(RlpStreamReader rlpStream, int itemToSetOn)
         {
             rlpStream.Reset();
             rlpStream.SkipLength();
@@ -808,7 +808,7 @@ namespace Nethermind.Trie
                 if (_data![i] is null)
                 {
                     // Allows to load children in parallel
-                    RlpStream rlpStream = new(_rlpStream!.Data!);
+                    RlpStreamReader rlpStream = new(_rlpStream!.Data!);
                     SeekChild(rlpStream, i);
                     int prefix = rlpStream!.ReadByte();
 
