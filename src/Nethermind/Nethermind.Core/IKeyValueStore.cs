@@ -24,7 +24,8 @@ namespace Nethermind.Core
     {
         None,
 
-        // Hint that the workload is likely to not going to benefit from caching and should skip any cache handling.
+        // Hint that the workload is likely to not going to benefit from caching and should skip any cache handling
+        // to reduce CPU usage
         HintCacheMiss,
     }
 }

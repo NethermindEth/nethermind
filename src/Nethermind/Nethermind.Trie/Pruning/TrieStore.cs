@@ -826,7 +826,7 @@ namespace Nethermind.Trie.Pruning
             get => Get(key);
         }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.HintCacheMiss)
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
                    && _dirtyNodes.AllNodes.TryGetValue(new Keccak(key.ToArray()), out TrieNode? trieNode)
