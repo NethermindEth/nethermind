@@ -48,25 +48,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public override void HandleMessage(ZeroPacket message)
         {
             base.HandleMessage(message);
+
+            int size = message.Content.ReadableBytes;
             switch (message.PacketType)
             {
                 case Eth65MessageCode.PooledTransactions:
                     PooledTransactionsMessage pooledTxMsg
                         = Deserialize<PooledTransactionsMessage>(message.Content);
                     Metrics.Eth65PooledTransactionsReceived++;
-                    ReportIn(pooledTxMsg);
+                    ReportIn(pooledTxMsg, size);
                     Handle(pooledTxMsg);
                     break;
                 case Eth65MessageCode.GetPooledTransactions:
                     GetPooledTransactionsMessage getPooledTxMsg
                         = Deserialize<GetPooledTransactionsMessage>(message.Content);
-                    ReportIn(getPooledTxMsg);
+                    ReportIn(getPooledTxMsg, size);
                     Handle(getPooledTxMsg);
                     break;
                 case Eth65MessageCode.NewPooledTransactionHashes:
                     NewPooledTransactionHashesMessage newPooledTxMsg =
                         Deserialize<NewPooledTransactionHashesMessage>(message.Content);
-                    ReportIn(newPooledTxMsg);
+                    ReportIn(newPooledTxMsg, size);
                     Handle(newPooledTxMsg);
                     break;
             }

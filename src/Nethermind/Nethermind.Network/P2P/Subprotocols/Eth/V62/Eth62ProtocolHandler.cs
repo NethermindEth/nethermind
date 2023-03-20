@@ -101,12 +101,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public override void HandleMessage(ZeroPacket message)
         {
+            int size = message.Content.ReadableBytes;
+
             bool CanAcceptBlockGossip()
             {
                 if (_gossipPolicy.ShouldDisconnectGossipingNodes)
                 {
                     const string postFinalized = $"NewBlock message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.";
-                    ReportIn(postFinalized);
+                    ReportIn(postFinalized, size);
                     Disconnect(InitiateDisconnectReason.GossipingInPoS, postFinalized);
                     return false;
                 }
@@ -114,7 +116,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 if (_gossipPolicy.ShouldDiscardBlocks)
                 {
                     const string postTransition = $"NewBlock message received after TERMINAL_TOTAL_DIFFICULTY PoS block. Ignoring Message.";
-                    ReportIn(postTransition);
+                    ReportIn(postTransition, size);
                     return false;
                 }
 
@@ -127,14 +129,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
             }
 
-            int size = message.Content.ReadableBytes;
             if (Logger.IsTrace) Logger.Trace($"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
 
             switch (packetType)
             {
                 case Eth62MessageCode.Status:
                     StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
-                    ReportIn(statusMsg);
+                    ReportIn(statusMsg, size);
                     Handle(statusMsg);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
@@ -143,7 +144,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     {
                         NewBlockHashesMessage newBlockHashesMessage =
                             Deserialize<NewBlockHashesMessage>(message.Content);
-                        ReportIn(newBlockHashesMessage);
+                        ReportIn(newBlockHashesMessage, size);
                         Handle(newBlockHashesMessage);
                     }
                     break;
@@ -152,34 +153,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     if (_floodController.IsAllowed())
                     {
                         TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
-                        ReportIn(txMsg);
+                        ReportIn(txMsg, size);
                         Handle(txMsg);
                     }
                     else
                     {
                         const string txFlooding = $"Ignoring {nameof(TransactionsMessage)} because of message flooding.";
-                        ReportIn(txFlooding);
+                        ReportIn(txFlooding, size);
                     }
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage
                         = Deserialize<GetBlockHeadersMessage>(message.Content);
-                    ReportIn(getBlockHeadersMessage);
+                    ReportIn(getBlockHeadersMessage, size);
                     Handle(getBlockHeadersMessage);
                     break;
                 case Eth62MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
-                    ReportIn(headersMsg);
+                    ReportIn(headersMsg, size);
                     Handle(headersMsg, size);
                     break;
                 case Eth62MessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
-                    ReportIn(getBodiesMsg);
+                    ReportIn(getBodiesMsg, size);
                     Handle(getBodiesMsg);
                     break;
                 case Eth62MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
-                    ReportIn(bodiesMsg);
+                    ReportIn(bodiesMsg, size);
                     HandleBodies(bodiesMsg, size);
                     break;
                 case Eth62MessageCode.NewBlock:
@@ -187,7 +188,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     if (CanAcceptBlockGossip())
                     {
                         NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
-                        ReportIn(newBlockMsg);
+                        ReportIn(newBlockMsg, size);
                         Handle(newBlockMsg);
                     }
                     break;
