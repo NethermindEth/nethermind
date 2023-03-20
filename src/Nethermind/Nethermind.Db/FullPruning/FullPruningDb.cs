@@ -187,6 +187,9 @@ namespace Nethermind.Db.FullPruning
             public bool DuplicateReads { get; }
             private readonly FullPruningDb _db;
 
+            private long _counter = 0;
+            private ConcurrentBag<IBatch> _batches = new();
+
             public PruningContext(FullPruningDb db, IDb cloningDb, bool duplicateReads)
             {
                 CloningDb = cloningDb;
@@ -198,12 +201,34 @@ namespace Nethermind.Db.FullPruning
             public byte[]? this[ReadOnlySpan<byte> key]
             {
                 get => CloningDb[key];
-                set => _db.Duplicate(CloningDb, key, value);
+                set
+                {
+                    if (!_batches.TryTake(out IBatch currentBatch))
+                    {
+                        currentBatch = CloningDb.StartBatch();
+                    }
+
+                    _db.Duplicate(currentBatch, key, value);
+                    long val = Interlocked.Increment(ref _counter);
+                    if (val % 10000 == 0)
+                    {
+                        currentBatch.Dispose();
+                    }
+                    else
+                    {
+                        _batches.Add(currentBatch);
+                    }
+                }
             }
 
             /// <inheritdoc />
             public void Commit()
             {
+                foreach (IBatch batch in _batches)
+                {
+                    batch.Dispose();
+                }
+
                 _db.FinishPruning();
                 _committed = true; // we mark the context as committed.
             }

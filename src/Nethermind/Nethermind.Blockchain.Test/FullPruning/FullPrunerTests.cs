@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -9,6 +10,7 @@ using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
@@ -30,6 +32,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             TestContext test = CreateTest();
             bool contextDisposed = await test.WaitForPruning();
             contextDisposed.Should().BeTrue();
+            test.ShouldCopyAllValues();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -138,14 +141,14 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 BlockTree.NewHeadBlock += (_, e) => _head = e.Block.Number;
                 _clearPrunedDb = clearPrunedDb;
-                TrieDb = new MemDb();
-                CopyDb = new MemDb();
+                TrieDb = new TestMemDb();
+                CopyDb = new TestMemDb();
                 IRocksDbFactory rocksDbFactory = Substitute.For<IRocksDbFactory>();
                 rocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(TrieDb, CopyDb);
 
                 PatriciaTree trie = Build.A.Trie(TrieDb).WithAccountsByIndex(0, 100).TestObject;
                 _stateRoot = trie.RootHash;
-                StateReader = new StateReader(new TrieStore(TrieDb, LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+                StateReader = new StateReader(new TrieStore(TrieDb, LimboLogs.Instance), new TestMemDb(), LimboLogs.Instance);
                 FullPruningDb = new TestFullPruningDb(new RocksDbSettings("test", "test"), rocksDbFactory, successfulPruning, clearPrunedDb);
 
                 Pruner = new(FullPruningDb, PruningTrigger, new PruningConfig(), BlockTree, StateReader, LimboLogs.Instance);
@@ -189,6 +192,14 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     BlockTree.Head.Returns(head);
                     BlockTree.FindHeader(number).Returns(head.Header);
                     BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(head));
+                }
+            }
+
+            public void ShouldCopyAllValues()
+            {
+                foreach (KeyValuePair<byte[], byte[]?> keyValuePair in TrieDb.GetAll())
+                {
+                    CopyDb[keyValuePair.Key].Should().BeEquivalentTo(keyValuePair.Value);
                 }
             }
         }

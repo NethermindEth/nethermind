@@ -69,4 +69,9 @@ public class TestMemDb : MemDb
     {
         _removedKeys.Count(cond).Should().Be(times);
     }
+
+    public override IBatch StartBatch()
+    {
+        return new InMemoryBatch(this);
+    }
 }
