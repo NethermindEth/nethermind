@@ -18,11 +18,7 @@ namespace Nethermind.Serialization.Rlp
 {
     public struct RlpStreamReader
     {
-        public long MemorySize => MemorySizes.SmallObjectOverhead
-                                  + MemorySizes.Align(MemorySizes.ArrayOverhead + Length)
-                                  + MemorySizes.Align(sizeof(int));
-
-        public RlpStreamReader(byte[] data) => Data = data;
+        public RlpStreamReader(byte[]? data) => Data = data;
 
         private string Description =>
             Data?.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
@@ -33,7 +29,7 @@ namespace Nethermind.Serialization.Rlp
 
         public int Position { get; set; }
 
-        public int Length => Data!.Length;
+        private int Length => Data!.Length;
 
         public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
         {
