@@ -48,7 +48,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transactions published locally (initiated by this node users) or reorganised.
         /// </summary>
-        private readonly SortedPool<Keccak, Transaction, Address> _persistentTxs;
+        private readonly SortedPool<ValueKeccak, Transaction, Address> _persistentTxs;
 
         /// <summary>
         /// Transactions added by external peers between timer elapses.
