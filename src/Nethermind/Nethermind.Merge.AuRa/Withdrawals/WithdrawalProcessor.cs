@@ -34,6 +34,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
         var count = block.Withdrawals.Length;
+        // TODO: Consider using ArrayPoolList<T>
         var amounts = new ulong[count];
         var addresses = new Address[count];
 
@@ -47,7 +48,6 @@ public class WithdrawalProcessor : IWithdrawalProcessor
             if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.AmountInWei / (BigInteger)Unit.Ether:N3}GNO to account {withdrawal.Address}");
         }
 
-        // TODO: check for a failure to invalidate block
         _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
 
         if (_logger.IsTrace) _logger.Trace($"Withdrawals applied for block {block}");
