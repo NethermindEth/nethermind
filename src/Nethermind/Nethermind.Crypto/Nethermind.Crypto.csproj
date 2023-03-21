@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Ckzg.Bindings" />
+    <PackageReference Include="Ckzg.Bindings" Version="0.1.2.6" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />

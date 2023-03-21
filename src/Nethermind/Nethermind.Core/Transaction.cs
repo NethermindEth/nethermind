@@ -117,9 +117,9 @@ namespace Nethermind.Core
         public byte[][]? BlobVersionedHashes { get; set; } // eip4844
 
         // Network form of blob transaction fields
-        public byte[][]? BlobKzgs { get; set; }
-        public byte[][]? Blobs { get; set; }
-        public byte[]? Proof { get; set; }
+        public byte[]? BlobKzgs { get; set; }
+        public byte[]? Blobs { get; set; }
+        public byte[]? BlobProofs { get; set; }
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
@@ -168,8 +168,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
-            builder.AppendLine($"{indent}Data:      {(Data ?? new byte[0]).ToHexString()}");
-            builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? new byte[0]).ToHexString()}");
+            builder.AppendLine($"{indent}Data:      {(Data ?? Array.Empty<byte>()).ToHexString()}");
+            builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? Array.Empty<byte>()).ToHexString()}");
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");

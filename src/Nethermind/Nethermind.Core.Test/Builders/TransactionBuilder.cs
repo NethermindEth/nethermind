@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
