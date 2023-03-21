@@ -513,7 +513,10 @@ public partial class EngineModuleTests
         PostMergeBlockProducer blockProducer = chain.PostMergeBlockProducer!;
         PayloadAttributes payloadAttributes = new()
         {
-            Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero, Withdrawals = new List<Withdrawal>() { TestItem.WithdrawalA_1Eth }
+            Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = new List<Withdrawal>() { TestItem.WithdrawalA_1Eth }
         };
         Block emptyBlock = blockProducer.PrepareEmptyBlock(chain.BlockTree.Head!.Header, payloadAttributes);
         Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV2(new ExecutionPayload(emptyBlock));
