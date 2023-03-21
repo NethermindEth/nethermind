@@ -450,6 +450,7 @@ public partial class EngineModuleTests
                     File.Delete(file);
             }
         }
+
         result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
 
 
@@ -481,5 +482,44 @@ public partial class EngineModuleTests
         }
 
         secondBlock.Result.Data.Status.Should().Be(PayloadStatus.Valid);
+    }
+
+    [Test]
+    public async Task Empty_block_is_valid_V1()
+    {
+        using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(London.Instance));
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak blockX = chain.BlockTree.HeadHash;
+        await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
+
+        PostMergeBlockProducer blockProducer = chain.PostMergeBlockProducer!;
+        Block emptyBlock = blockProducer.PrepareEmptyBlock(chain.BlockTree.Head!.Header, new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
+        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(new ExecutionPayload(emptyBlock));
+        result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
+    }
+
+    [Test]
+    public async Task Empty_block_is_valid_with_withdrawals_V2()
+    {
+        using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak blockX = chain.BlockTree.HeadHash;
+        await rpc.engine_forkchoiceUpdatedV2(
+            new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
+
+        PostMergeBlockProducer blockProducer = chain.PostMergeBlockProducer!;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = new List<Withdrawal>() { TestItem.WithdrawalA_1Eth }
+        };
+        Block emptyBlock = blockProducer.PrepareEmptyBlock(chain.BlockTree.Head!.Header, payloadAttributes);
+        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV2(new ExecutionPayload(emptyBlock));
+        result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 }

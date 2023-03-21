@@ -1624,7 +1624,6 @@ namespace Nethermind.TxPool.Test
                 .WithGasPrice(gasPrice)
                 .WithData(data)
                 .To(to)
-                .DeliveredBy(privateKey.PublicKey)
                 .SignedAndResolved(_ethereumEcdsa, privateKey)
                 .TestObject;
 

@@ -109,6 +109,7 @@ namespace Nethermind.Runner
         private static void Run(string[] args)
         {
             _logger.Info("Nethermind starting initialization.");
+            _logger.Info($"Client version: {ProductInfo.ClientId}");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
             AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
@@ -160,8 +161,6 @@ namespace Nethermind.Runner
                 NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
                 _logger = logManager.GetClassLogger();
-                if (_logger.IsDebug) _logger.Debug(ProductInfo.ClientId);
-
                 ConfigureSeqLogger(configProvider);
                 SetFinalDbPath(dbBasePath.HasValue() ? dbBasePath.Value() : null, initConfig);
                 LogMemoryConfiguration();

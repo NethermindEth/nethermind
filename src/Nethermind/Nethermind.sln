@@ -44,7 +44,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83BB-6092-45A4-B751-D05D4A6ED995}"
 	ProjectSection(SolutionItems) = preProject
 		Chains\AuRaTest.json = Chains\AuRaTest.json
-		Chains\baseline.json = Chains\baseline.json
 		Chains\energyweb.json = Chains\energyweb.json
 		Chains\foundation.json = Chains\foundation.json
 		Chains\genesis.json = Chains\genesis.json

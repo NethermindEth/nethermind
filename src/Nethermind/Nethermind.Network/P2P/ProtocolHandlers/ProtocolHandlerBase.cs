@@ -50,13 +50,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             catch (RlpException e)
             {
                 if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
-                ReportIn($"{typeof(T).Name} - Deserialization exception");
+                ReportIn($"{typeof(T).Name} - Deserialization exception", data.Length);
                 throw;
             }
         }
 
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
         {
+            int size = data.ReadableBytes;
             try
             {
                 int originalReaderIndex = data.ReaderIndex;
@@ -71,7 +72,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             catch (RlpException e)
             {
                 if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
-                ReportIn($"{typeof(T).Name} - Deserialization exception");
+                ReportIn($"{typeof(T).Name} - Deserialization exception", size);
                 throw;
             }
         }
@@ -80,8 +81,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, message.ToString());
-            Session.DeliverMessage(message);
+            int size = Session.DeliverMessage(message);
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, message.ToString(), size);
         }
 
         protected async Task CheckProtocolInitTimeout()
@@ -110,21 +111,21 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _initCompletionSource?.SetResult(msg);
         }
 
-        protected void ReportIn(MessageBase msg)
+        protected void ReportIn(MessageBase msg, int size)
         {
             if (Logger.IsTrace || NetworkDiagTracer.IsEnabled)
             {
-                ReportIn(msg.ToString());
+                ReportIn(msg.ToString(), size);
             }
         }
 
-        protected void ReportIn(string messageInfo)
+        protected void ReportIn(string messageInfo, int size)
         {
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {messageInfo}");
 
             if (NetworkDiagTracer.IsEnabled)
-                NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo);
+                NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo, size);
         }
 
         public abstract void Dispose();
