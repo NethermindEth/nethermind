@@ -30,8 +30,12 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    [Test]
-    public virtual async Task Should_process_block_as_expected_V2()
+    [TestCase(
+        "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133",
+        "0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68",
+        "0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51",
+        "0x6454408c425ddd96")]
+    public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash, string stateRoot, string payloadId)
     {
         using MergeTestBlockchain chain = await CreateShanghaiBlockChain(new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -61,7 +65,7 @@ public partial class EngineModuleTests
             chain.JsonSerializer.Serialize(fcuState),
             chain.JsonSerializer.Serialize(payloadAttrs)
         };
-        string expectedPayloadId = "0x6454408c425ddd96";
+        string expectedPayloadId = payloadId;
 
         string response = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -75,14 +79,14 @@ public partial class EngineModuleTests
                 PayloadId = expectedPayloadId,
                 PayloadStatus = new PayloadStatusV1
                 {
-                    LatestValidHash = new("0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133"),
+                    LatestValidHash = new(latestValidHash),
                     Status = PayloadStatus.Valid,
                     ValidationError = null
                 }
             }
         }));
 
-        Keccak blockHash = new("0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68");
+        Keccak expectedBlockHash = new(blockHash);
         Block block = new(
             new(
                 startingHead,
@@ -98,10 +102,10 @@ public partial class EngineModuleTests
                 BaseFeePerGas = 0,
                 Bloom = Bloom.Empty,
                 GasUsed = 0,
-                Hash = blockHash,
+                Hash = expectedBlockHash,
                 MixHash = prevRandao,
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
-                StateRoot = new("0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51"),
+                StateRoot = new(stateRoot),
             },
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
@@ -129,7 +133,7 @@ public partial class EngineModuleTests
             Id = successResponse.Id,
             Result = new PayloadStatusV1
             {
-                LatestValidHash = blockHash,
+                LatestValidHash = expectedBlockHash,
                 Status = PayloadStatus.Valid,
                 ValidationError = null
             }
@@ -137,8 +141,8 @@ public partial class EngineModuleTests
 
         fcuState = new
         {
-            headBlockHash = blockHash.ToString(true),
-            safeBlockHash = blockHash.ToString(true),
+            headBlockHash = expectedBlockHash.ToString(true),
+            safeBlockHash = expectedBlockHash.ToString(true),
             finalizedBlockHash = startingHead.ToString(true)
         };
         @params = new[]
@@ -159,7 +163,7 @@ public partial class EngineModuleTests
                 PayloadId = null,
                 PayloadStatus = new PayloadStatusV1
                 {
-                    LatestValidHash = blockHash,
+                    LatestValidHash = expectedBlockHash,
                     Status = PayloadStatus.Valid,
                     ValidationError = null
                 }
@@ -239,7 +243,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task getPayloadV2_empty_block_should_have_zero_value()
+    public virtual async Task getPayloadV2_empty_block_should_have_zero_value()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -258,7 +262,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task getPayloadV2_received_fees_should_be_equal_to_block_value_in_result()
+    public virtual async Task getPayloadV2_received_fees_should_be_equal_to_block_value_in_result()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockChain();
@@ -295,7 +299,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task getPayloadV2_should_fail_on_unknown_payload()
+    public virtual async Task getPayloadV2_should_fail_on_unknown_payload()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockChain();
