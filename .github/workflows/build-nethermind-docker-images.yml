@@ -1,9 +1,6 @@
 name: '[BUILD] Docker images and publish'
 
 on:
-  repository_dispatch:
-    types:
-      - build_docker_image
   workflow_dispatch:
     inputs:
       repo:
