@@ -165,8 +165,21 @@ namespace Nethermind.Blockchain
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
+
+        /// <summary>
+        /// A block is marked as canon
+        /// </summary>
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
+
+        /// <summary>
+        /// A block is now set as head
+        /// </summary>
         event EventHandler<BlockEventArgs> NewHeadBlock;
+
+        /// <summary>
+        /// A branch is now set as canon. This is different from `BlockAddedToMain` as it is fired only once for the
+        /// the whole branch.
+        /// </summary>
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
 
         int DeleteChainSlice(in long startNumber, long? endNumber = null);
