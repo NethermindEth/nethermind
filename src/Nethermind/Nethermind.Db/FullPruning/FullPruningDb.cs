@@ -188,7 +188,7 @@ namespace Nethermind.Db.FullPruning
             private readonly FullPruningDb _db;
 
             private long _counter = 0;
-            private ConcurrentBag<IBatch> _batches = new();
+            private ConcurrentQueue<IBatch> _batches = new();
 
             public PruningContext(FullPruningDb db, IDb cloningDb, bool duplicateReads)
             {
@@ -203,7 +203,7 @@ namespace Nethermind.Db.FullPruning
                 get => CloningDb[key];
                 set
                 {
-                    if (!_batches.TryTake(out IBatch currentBatch))
+                    if (!_batches.TryDequeue(out IBatch currentBatch))
                     {
                         currentBatch = CloningDb.StartBatch();
                     }
@@ -216,7 +216,7 @@ namespace Nethermind.Db.FullPruning
                     }
                     else
                     {
-                        _batches.Add(currentBatch);
+                        _batches.Enqueue(currentBatch);
                     }
                 }
             }
