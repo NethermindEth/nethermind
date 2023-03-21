@@ -18,8 +18,9 @@ namespace Nethermind.Trie;
 
 public class BatchedTrieVisitor
 {
-    // Why? Because TryPopRange need an array.
+    // Not using shared pool so GC can reclaim them later.
     private ArrayPool<(ValueKeccak, SmallTrieVisitContext)> _valueKeccakPool = ArrayPool<(ValueKeccak, SmallTrieVisitContext)>.Create();
+    private ArrayPool<(TrieNode, SmallTrieVisitContext)> _trieNodePool = ArrayPool<(TrieNode, SmallTrieVisitContext)>.Create();
     private int _maxJobSize;
 
     public void BatchedAccept(
@@ -107,7 +108,7 @@ public class BatchedTrieVisitor
                 theShard = nodeToProcess[shardIdx];
             } while (theShard.Count == 0);
 
-            ArrayPoolList<(TrieNode, SmallTrieVisitContext)> finalBatch = new(_maxJobSize);
+            ArrayPoolList<(TrieNode, SmallTrieVisitContext)> finalBatch = new(_trieNodePool, _maxJobSize);
 
             if (activeItems < targetCurrentItems || theShard.Count < _maxJobSize)
             {
