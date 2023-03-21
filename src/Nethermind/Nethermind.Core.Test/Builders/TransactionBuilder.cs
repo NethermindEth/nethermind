@@ -143,6 +143,30 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public TransactionBuilder<T> WithBlobVersionedHashes(int count)
+        {
+            TestObjectInternal.BlobVersionedHashes = Enumerable.Range(0, count).Select(x => new byte[32]).ToArray();
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobs(byte[] blobs)
+        {
+            TestObjectInternal.Blobs = blobs;
+
+            return this;
+        }
+        public TransactionBuilder<T> WithBlobKzgs(byte[] blobKzgs)
+        {
+            TestObjectInternal.BlobKzgs = blobKzgs;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithProofs(byte[] proofs)
+        {
+            TestObjectInternal.BlobProofs = proofs;
+            return this;
+        }
+
         public TransactionBuilder<T> WithSignature(Signature signature)
         {
             TestObjectInternal.Signature = signature;
