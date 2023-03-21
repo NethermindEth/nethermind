@@ -189,7 +189,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     Block head = Build.A.Block.WithStateRoot(_stateRoot).WithNumber(number).TestObject;
                     BlockTree.Head.Returns(head);
                     BlockTree.FindHeader(number).Returns(head.Header);
-                    BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() {head}, true));
+                    BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() { head }, true));
                 }
             }
         }

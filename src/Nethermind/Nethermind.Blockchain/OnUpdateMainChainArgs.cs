@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain;
 
-public class OnUpdateMainChainArgs: EventArgs
+public class OnUpdateMainChainArgs : EventArgs
 {
     public IReadOnlyList<Block> Blocks { get; }
 
