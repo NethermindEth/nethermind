@@ -126,6 +126,7 @@ jobs:
           echo "The workflow has not completed successfully. Exiting."
           exit 1
         fi
+        echo "The workflow completed successfully! Exiting."
           
   trigger_node_and_vm_creation:
     needs: create_docker_image
