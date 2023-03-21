@@ -1027,7 +1027,7 @@ namespace Nethermind.Trie
             visitor.VisitTree(rootHash, trieVisitContext);
 
             ITrieNodeResolver resolver = TrieStore;
-            if (visitingOptions.FullDbScan)
+            if (visitor.IsFullDbScan)
             {
                 resolver = new TrieNodeResolverWithReadFlags(TrieStore, ReadFlags.HintCacheMiss);
             }

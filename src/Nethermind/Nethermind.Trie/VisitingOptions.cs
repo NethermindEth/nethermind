@@ -21,10 +21,5 @@ namespace Nethermind.Trie
         /// Maximum number of threads that will be used to visit the trie.
         /// </summary>
         public int MaxDegreeOfParallelism { get; init; } = 1;
-
-        /// <summary>
-        /// Specify that this is a full table scan and should optimize for it.
-        /// </summary>
-        public bool FullDbScan { get; set; }
     }
 }

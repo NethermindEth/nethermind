@@ -169,11 +169,7 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 pruning.MarkStart();
                 using CopyTreeVisitor copyTreeVisitor = new(pruning, _logManager);
-                VisitingOptions visitingOptions = new()
-                {
-                    MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
-                    FullDbScan = true,
-                };
+                VisitingOptions visitingOptions = new() { MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism };
                 _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
 
                 if (!pruning.CancellationTokenSource.IsCancellationRequested)
