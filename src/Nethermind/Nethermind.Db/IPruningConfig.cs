@@ -44,6 +44,11 @@ namespace Nethermind.Db
             DefaultValue = "0")]
         int FullPruningMaxDegreeOfParallelism { get; set; }
 
+        [ConfigItem(
+            Description = "[EXPERIMENTAL] Set the memory budget used for the trie visit. Increasing this significantly reduces read ops requirement at expense of RAM.",
+            DefaultValue = "0")]
+        int FullPruningMemoryBudgetMb { get; set; }
+
         [ConfigItem(Description = "In order to not exhaust disk writes, there is a minimum delay between allowed full pruning operations.", DefaultValue = "240")]
         int FullPruningMinimumDelayHours { get; set; }
 
