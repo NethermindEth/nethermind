@@ -108,7 +108,7 @@ namespace Nethermind.Runner
 
         private static void Run(string[] args)
         {
-            _logger.Info("Nethermind starting initialization.");
+            _logger.Info($"Nethermind starting initialization. Version {ProductInfo.Version}");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
             AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
