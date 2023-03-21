@@ -22,6 +22,100 @@ namespace Nethermind.Trie
     {
         private const int BranchesCount = 16;
 
+        internal void AcceptResolvedNode(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, BatchedTrieVisitor.SmallTrieVisitContext trieVisitContext, IList<(TrieNode, BatchedTrieVisitor.SmallTrieVisitContext)> nextToVisit)
+        {
+            switch (NodeType)
+            {
+                case NodeType.Branch:
+                    {
+                        visitor.VisitBranch(this, trieVisitContext.ToVisitContext());
+                        trieVisitContext.Level++;
+
+                        // single threaded route
+                        for (int i = 0; i < BranchesCount; i++)
+                        {
+                            TrieNode child = GetChild(nodeResolver, i);
+                            if (child is not null)
+                            {
+                                child.ResolveKey(nodeResolver, false);
+                                if (visitor.ShouldVisit(child.Keccak!))
+                                {
+                                    BatchedTrieVisitor.SmallTrieVisitContext childCtx = trieVisitContext; // Copy
+                                    childCtx.BranchChildIndex = (byte?)i;
+
+                                    nextToVisit.Add((child, childCtx));
+                                }
+
+                                if (child.IsPersisted)
+                                {
+                                    UnresolveChild(i);
+                                }
+                            }
+                        }
+
+                        break;
+                    }
+                case NodeType.Extension:
+                    {
+                        visitor.VisitExtension(this, trieVisitContext.ToVisitContext());
+                        TrieNode child = GetChild(nodeResolver, 0);
+                        if (child is null)
+                        {
+                            throw new InvalidDataException($"Child of an extension {Key} should not be null.");
+                        }
+
+                        child.ResolveKey(nodeResolver, false);
+                        if (visitor.ShouldVisit(child.Keccak!))
+                        {
+                            trieVisitContext.Level++;
+                            trieVisitContext.BranchChildIndex = null;
+
+                            nextToVisit.Add((child, trieVisitContext));
+                        }
+
+                        break;
+                    }
+
+                case NodeType.Leaf:
+                    {
+                        visitor.VisitLeaf(this, trieVisitContext.ToVisitContext(), Value);
+
+                        if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
+                        {
+                            Account account = _accountDecoder.Decode(Value.AsRlpStream());
+                            if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
+                            {
+                                trieVisitContext.Level++;
+                                trieVisitContext.BranchChildIndex = null;
+                                visitor.VisitCode(account.CodeHash, trieVisitContext.ToVisitContext());
+                                trieVisitContext.Level--;
+                            }
+
+                            if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
+                            {
+                                trieVisitContext.IsStorage = true;
+                                trieVisitContext.Level++;
+                                trieVisitContext.BranchChildIndex = null;
+
+                                if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
+                                {
+                                    nextToVisit.Add((storageRoot!, trieVisitContext));
+                                }
+                                else
+                                {
+                                    visitor.VisitMissingNode(account.StorageRoot, trieVisitContext.ToVisitContext());
+                                }
+                            }
+                        }
+
+                        break;
+                    }
+
+                default:
+                    throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
+            }
+        }
+
         internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, TrieVisitContext trieVisitContext)
         {
             try

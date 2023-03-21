@@ -21,5 +21,13 @@ namespace Nethermind.Trie
         /// Maximum number of threads that will be used to visit the trie.
         /// </summary>
         public int MaxDegreeOfParallelism { get; init; } = 1;
+
+        /// <summary>
+        /// Specify memory budget to run a batched trie visitor. Significantly reduce write amplification as memory budget
+        /// increase. Not effective below a certain amount, and above a certain amount, it has no measurable difference
+        /// or the size of the db can't fill a queue of that size. For goerli, its 512MB to 6GB. For mainnet, its 2GB to
+        /// 12 GB. Effect may be larger on system with lower RAM due to bigger portion of uncached files.
+        /// </summary>
+        public long FullScanMemoryBudget { get; set; }
     }
 }

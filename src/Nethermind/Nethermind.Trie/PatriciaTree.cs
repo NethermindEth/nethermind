@@ -1024,15 +1024,22 @@ namespace Nethermind.Trie
                 }
             }
 
-            visitor.VisitTree(rootHash, trieVisitContext);
-
             ITrieNodeResolver resolver = TrieStore;
             if (visitor.IsFullDbScan)
             {
                 resolver = new TrieNodeResolverWithReadFlags(TrieStore, ReadFlags.HintCacheMiss);
             }
 
-            rootRef?.Accept(visitor, resolver, trieVisitContext);
+            if (visitingOptions.FullScanMemoryBudget != 0)
+            {
+                BatchedTrieVisitor batchedTrieVisitor = new();
+                batchedTrieVisitor.BatchedAccept(visitor, resolver, rootRef.Keccak, trieVisitContext, visitingOptions);
+            }
+            else
+            {
+                visitor.VisitTree(rootHash, trieVisitContext);
+                rootRef?.Accept(visitor, resolver, trieVisitContext);
+            }
         }
 
         [DoesNotReturn]
