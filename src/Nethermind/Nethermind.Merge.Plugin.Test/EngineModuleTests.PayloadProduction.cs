@@ -510,7 +510,7 @@ public partial class EngineModuleTests
     public async Task Empty_block_is_valid_with_withdrawals_V2()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(London.Instance));
+        using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak blockX = chain.BlockTree.HeadHash;
         await rpc.engine_forkchoiceUpdatedV2(
