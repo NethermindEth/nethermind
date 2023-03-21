@@ -163,8 +163,10 @@ public class BatchedTrieVisitor
                 (TrieNode trieNode, SmallTrieVisitContext ctx) = batchResult[i];
                 if (trieNode.NodeType == NodeType.Unknown && trieNode.FullRlp != null)
                 {
-                    // Inline node. Seems rare, so its fine to create new list for this.
+                    // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
+                    // to queue, so we'll just process it inline.
                     ArrayPoolList<(TrieNode, SmallTrieVisitContext)> recursiveResult = new(1);
+                    trieNode.ResolveNode(resolver);
                     Interlocked.Increment(ref activeItems);
                     trieNode.AcceptResolvedNode(visitor, resolver, ctx, recursiveResult);
                     OnBatchResult(recursiveResult);
