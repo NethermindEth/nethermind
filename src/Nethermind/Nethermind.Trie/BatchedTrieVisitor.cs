@@ -33,7 +33,9 @@ public class BatchedTrieVisitor
         _maxJobSize = 128;
 
         // The keccak + context itself should be 40 byte. But the node of the concurrent stack seems to total to this
-        // according to dotmemory. Might wanna try something other than ConcurrentStack.
+        // according to dotmemory. Might wanna try something other than ConcurrentStack. Tried Stack with lock,
+        // modified ArrayPool and ConcurrentQueue. Curiously, ConcurrentStack seems to work the best probably because
+        // other technique create LOHs.
         long recordSize = 112;
 
         // Generally, at first, we want to attempt to maximize number of partition. This tend to increase throughput
@@ -106,11 +108,11 @@ public class BatchedTrieVisitor
                 }
 
                 theShard = nodeToProcess[shardIdx];
-            } while (theShard.Count == 0);
+            } while (theShard.IsEmpty);
 
             ArrayPoolList<(TrieNode, SmallTrieVisitContext)> finalBatch = new(_trieNodePool, _maxJobSize);
 
-            if (activeItems < targetCurrentItems || theShard.Count < _maxJobSize)
+            if (activeItems < targetCurrentItems)
             {
                 for (int i = 0; i < _maxJobSize; i++)
                 {
