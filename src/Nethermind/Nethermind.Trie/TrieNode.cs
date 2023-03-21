@@ -113,7 +113,7 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        RlpStreamReader reader = new(FullRlp);
+                        Rlp.ValueDecoderContext reader = new(FullRlp);
                         SeekChild(ref reader, BranchesCount);
                         _data![BranchesCount] = reader.DecodeByteArray();
                     }
@@ -256,7 +256,7 @@ namespace Nethermind.Trie
                     return;
                 }
 
-                RlpStreamReader reader = new(FullRlp);
+                Rlp.ValueDecoderContext reader = new(FullRlp);
 
                 Metrics.TreeNodeRlpDecodings++;
                 reader.ReadSequenceLength();
@@ -379,7 +379,7 @@ namespace Nethermind.Trie
                 return null;
             }
 
-            RlpStreamReader reader = new(FullRlp);
+            Rlp.ValueDecoderContext reader = new(FullRlp);
             SeekChild(ref reader, i);
 
             (int _, int length) = reader.PeekPrefixAndContentLength();
@@ -396,7 +396,7 @@ namespace Nethermind.Trie
 
             if (FullRlp is not null && _data?[i] is null)
             {
-                RlpStreamReader reader = new(FullRlp);
+                Rlp.ValueDecoderContext reader = new(FullRlp);
                 SeekChild(ref reader, i);
                 return reader!.PeekNextRlpLength() == 1;
             }
@@ -759,23 +759,25 @@ namespace Nethermind.Trie
             }
         }
 
-        private void SeekChild(ref RlpStreamReader reader, int itemToSetOn)
+        private void SeekChild(ref Rlp.ValueDecoderContext context, int itemToSetOn)
         {
-            if (reader.IsNull)
+            if (context.IsEmpty)
+            {
                 return;
+            }
 
-            reader.Reset();
-            reader.SkipLength();
+            context.Reset();
+            context.SkipLength();
 
             if (IsExtension)
             {
-                reader.SkipItem();
+                context.SkipItem();
                 itemToSetOn--;
             }
 
             for (int i = 0; i < itemToSetOn; i++)
             {
-                reader.SkipItem();
+                context.SkipItem();
             }
         }
 
@@ -792,7 +794,7 @@ namespace Nethermind.Trie
                 if (_data![i] is null)
                 {
                     // Allows to load children in parallel
-                    RlpStreamReader reader = new(FullRlp);
+                    Rlp.ValueDecoderContext reader = new(FullRlp);
                     SeekChild(ref reader, i);
 
                     int prefix = reader.ReadByte();
