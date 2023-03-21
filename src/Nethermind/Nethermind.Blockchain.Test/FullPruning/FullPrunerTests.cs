@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -136,7 +137,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             public TestContext(bool successfulPruning, bool clearPrunedDb = false)
             {
-                BlockTree.NewHeadBlock += (_, e) => _head = e.Block.Number;
+                BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
                 _clearPrunedDb = clearPrunedDb;
                 TrieDb = new MemDb();
                 CopyDb = new MemDb();
@@ -188,7 +189,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     Block head = Build.A.Block.WithStateRoot(_stateRoot).WithNumber(number).TestObject;
                     BlockTree.Head.Returns(head);
                     BlockTree.FindHeader(number).Returns(head.Header);
-                    BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(head));
+                    BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() { head }, true));
                 }
             }
         }

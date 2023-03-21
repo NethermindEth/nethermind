@@ -1357,6 +1357,8 @@ namespace Nethermind.Blockchain
                 bool lastProcessedBlock = i == blocks.Count - 1;
                 MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
             }
+
+            OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
         }
 
         public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
@@ -1939,6 +1941,8 @@ namespace Nethermind.Blockchain
         }
 
         public event EventHandler<BlockReplacementEventArgs>? BlockAddedToMain;
+
+        public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain;
 
         public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock;
 
