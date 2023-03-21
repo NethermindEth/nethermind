@@ -36,24 +36,34 @@ namespace Nethermind.Trie
         {
             get
             {
-                if (!_cache.TryGet(key, out byte[] value))
-                {
-                    value = _wrappedStore[key];
-                    _cache.Set(key, value);
-                }
-                else
-                {
-                    // TODO: a hack assuming that we cache only one thing, accepted unanimously by Lukasz, Marek, and Tomasz
-                    Pruning.Metrics.LoadedFromRlpCacheNodesCount++;
-                }
-
-                return value;
+                return Get(key);
             }
             set
             {
                 _cache.Set(key, value);
                 _wrappedStore[key] = value;
             }
+        }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if ((flags & ReadFlags.HintCacheMiss) == ReadFlags.HintCacheMiss)
+            {
+                return _wrappedStore[key];
+            }
+
+            if (!_cache.TryGet(key, out byte[] value))
+            {
+                value = _wrappedStore[key];
+                _cache.Set(key, value);
+            }
+            else
+            {
+                // TODO: a hack assuming that we cache only one thing, accepted unanimously by Lukasz, Marek, and Tomasz
+                Pruning.Metrics.LoadedFromRlpCacheNodesCount++;
+            }
+
+            return value;
         }
 
         public IBatch StartBatch() => _wrappedStore.StartBatch();

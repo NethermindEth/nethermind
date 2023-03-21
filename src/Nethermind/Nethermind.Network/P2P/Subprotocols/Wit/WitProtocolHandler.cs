@@ -67,12 +67,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             {
                 case WitMessageCode.GetBlockWitnessHashes:
                     GetBlockWitnessHashesMessage requestMsg = Deserialize<GetBlockWitnessHashesMessage>(message.Content);
-                    ReportIn(requestMsg);
+                    ReportIn(requestMsg, size);
                     Handle(requestMsg);
                     break;
                 case WitMessageCode.BlockWitnessHashes:
                     BlockWitnessHashesMessage responseMsg = Deserialize<BlockWitnessHashesMessage>(message.Content);
-                    ReportIn(responseMsg);
+                    ReportIn(responseMsg, size);
                     Handle(responseMsg, size);
                     break;
             }

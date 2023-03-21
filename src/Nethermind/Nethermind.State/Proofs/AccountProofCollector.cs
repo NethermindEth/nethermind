@@ -134,6 +134,8 @@ namespace Nethermind.State.Proofs
             return _accountProof;
         }
 
+        public bool IsFullDbScan => false;
+
         public bool ShouldVisit(Keccak nextNode)
         {
             if (_storageNodeInfos.TryGetValue(nextNode, out StorageNodeInfo value))

@@ -173,12 +173,6 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> DeliveredBy(PublicKey publicKey)
-        {
-            TestObjectInternal.DeliveredBy = publicKey;
-            return this;
-        }
-
         protected override void BeforeReturn()
         {
             base.BeforeReturn();

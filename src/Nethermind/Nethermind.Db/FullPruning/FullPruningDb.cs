@@ -67,6 +67,17 @@ namespace Nethermind.Db.FullPruning
             }
         }
 
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? value = _currentDb.Get(key, flags); // we are reading from the main DB
+            if (_pruningContext?.DuplicateReads == true)
+            {
+                Duplicate(_pruningContext.CloningDb, key, value);
+            }
+
+            return value;
+        }
+
         private void Duplicate(IKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value)
         {
             db[key] = value;
