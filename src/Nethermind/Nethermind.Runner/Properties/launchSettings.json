@@ -1,27 +1,20 @@
 {
   "profiles": {
-    "Aura (test miner)": {
+    "Chiado": {
       "commandName": "Project",
-      "commandLineArgs": "-c AuraTest -dd %NETHERMIND_DATA_DIR% --Init.IsMining true --JsonRpc.Enabled true --KeyStore.TestNodeKey 0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38",
+      "commandLineArgs": "-c chiado -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Aura (test miner 2)": {
+    "Chiado (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "-c AuraTest -dd %NETHERMIND_DATA_DIR% --Init.IsMining true --JsonRpc.Enabled true --JsonRpc.Port 8548 --KeyStore.TestNodeKey 0xcb807c162517bfb179adfeee0d440b81e0bba770e377be4f887e0a4e6c27575d --Network.DiscoveryPort 30305 --Network.P2PPort 30305",
+      "commandLineArgs": "-c chiado_archive -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Aura (test downloader)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c AuraTest -dd %NETHERMIND_DATA_DIR% --Init.IsMining false --JsonRpc.Enabled true --JsonRpc.Port 8547 --KeyStore.TestNodeKey 0x57e4b69f7ba48336b5669d17f5141b24ebcbf998fe2bc86bed2c673487d4b4ac --Network.DiscoveryPort 30304 --Network.P2PPort 30304",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Eip4844 Local Trace": {
+    "EIP-4844 local trace": {
       "commandName": "Project",
       "commandLineArgs": "-c eip4844_local -dd %NETHERMIND_DATA_DIR% --log TRACE",
       "environmentVariables": {
@@ -31,6 +24,20 @@
     "Energy Web": {
       "commandName": "Project",
       "commandLineArgs": "-c energyweb -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Gnosis": {
+      "commandName": "Project",
+      "commandLineArgs": "-c gnosis -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Gnosis (archive)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c gnosis_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -84,27 +91,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Rinkeby": {
-      "commandName": "Project",
-      "commandLineArgs": "-c rinkeby -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Ropsten": {
-      "commandName": "Project",
-      "commandLineArgs": "-c ropsten -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Ropsten (archive)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c ropsten_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Sepolia": {
       "commandName": "Project",
       "commandLineArgs": "-c sepolia -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
@@ -133,52 +119,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Gnosis": {
-      "commandName": "Project",
-      "commandLineArgs": "-c gnosis -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Gnosis (archive)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c gnosis_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Docker": {
-      "commandName": "Docker",
-      "commandLineArgs": "-c goerli -dd /data --JsonRpc.EngineHost 0.0.0.0 --JsonRpc.EnginePort 8551 --JsonRpc.Host 0.0.0.0"
-    },
-    "Chiado": {
-      "commandName": "Project",
-      "commandLineArgs": "-c chiado -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Chiado (archive)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c chiado_archive -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Withdrawals (Devnet)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c withdrawals_devnet -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Withdrawals (Hive tests)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c withdrawals_hivetests -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Zhejiang": {
       "commandName": "Project",
       "commandLineArgs": "-c zhejiang -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.JwtSecretFile %NETHERMIND_DATA_DIR%\\jwtsecret",
@@ -192,6 +132,10 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
+    },
+    "Docker": {
+      "commandName": "Docker",
+      "commandLineArgs": "-c goerli -dd /data --JsonRpc.EngineHost 0.0.0.0 --JsonRpc.EnginePort 8551 --JsonRpc.Host 0.0.0.0"
     }
   }
 }

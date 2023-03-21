@@ -111,9 +111,6 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <None Remove="configs\gnosis_withdrawals_devnet.cfg" />
-  </ItemGroup>
-  <ItemGroup>
     <_ContentIncludedByDefault Remove="Contracts\EntryPoint.json" />
   </ItemGroup>
 
