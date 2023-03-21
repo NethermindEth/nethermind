@@ -40,7 +40,7 @@ on:
           - fullSync.json
           - fuzzer.json
       timeout:
-        description: "Timeout in hours before triggering the deletion of smoke test instances"
+        description: "Timeout in hours before triggering the deletion of smoke test instances. Maximum time of node lifetime can be 72 hours."
         default: "24"
         required: true
       additional_nethermind_flags:
