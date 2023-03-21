@@ -48,7 +48,7 @@ on:
         default: ""
         required: false
       additional_cl_flags:
-        description: "Provide any additional flags to the CL client in space-separated format."
+        description: "Provide any additional flags to the CL client in space-separated format. Example: \"clflag1=1 clflag2=2\"."
         default: ""
         required: false
       
@@ -57,47 +57,44 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Trigger Docker Build Action
-      uses: actions/github-script@v5
-      with:
-        script: |
-          await github.request('POST /repos/{owner}/{repo}/dispatches', {
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            event_type: 'build_docker_image',
-            client_payload: {
-              branch: '${{ github.ref }}',
-              inputs: {
-                repo: 'nethermindeth/nethermind',
-                tag: '${{ github.ref }}',
-                dockerfile: 'Dockerfile'
-              }
+      env:
+        REPOSITORY_DISPATCH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+      run: |
+        curl -X POST \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer $REPOSITORY_DISPATCH_TOKEN" \
+          "https://api.github.com/repos/NethermindEth/nethermind/actions/workflows/build-nethermind-docker-images.yml/dispatches" \
+          -d '{
+            "ref": "${{ github.ref }}",
+            "inputs": {
+              "repo": "nethermindeth/nethermind",
+              "tag": "${{ github.ref }}",
+              "dockerfile": "Dockerfile"
             }
-          })
+          }'
           
   trigger_node_and_vm_creation:
     runs-on: ubuntu-latest
     steps:
     - name: Trigger Another Repo Action
-      uses: actions/github-script@v5
-      with:
-        script: |
-          await github.request('POST /repos/{owner}/{repo}/dispatches', {
-            owner: context.repo.owner,
-            repo: 'post-merge-smoke-tests',
-            event_type: 'run_single_node',
-            client_payload: {
-              branch: 'main',
-              inputs: {
-                github_username: '${{ github.actor }}',
-                config_file: ${{ inputs.config_file }},
-                nethermind_branch: ${{ inputs.nethermind_branch }},
-                network: ${{ inputs.network }},
-                cl_client: ${{ inputs.cl_client }},
-                cl_custom_image: ${{ inputs.cl_custom_image }},
-                timeout: ${{ inputs.v }},
-                additional_nethermind_flags: ${{ inputs.additional_nethermind_flags }},
-                additional_cl_flags: ${{ inputs.additional_cl_flags }}
-              }
+      env:
+        REPOSITORY_DISPATCH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+      run: |
+        curl -X POST \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer $REPOSITORY_DISPATCH_TOKEN" \
+          "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/workflows/run-single-node.yml/dispatches" \
+          -d '{
+            "ref": "main",
+            "inputs": {
+              "github_username": "${{ github.actor }}",
+              "config_file": "${{ inputs.config_file }}",
+              "nethermind_branch": "${{ inputs.nethermind_branch }}",
+              "network": "${{ inputs.network }}",
+              "cl_client": "${{ inputs.cl_client }}",
+              "cl_custom_image": "${{ inputs.cl_custom_image }}",
+              "timeout": "${{ inputs.timeout }}",
+              "additional_nethermind_flags": "${{ inputs.additional_nethermind_flags }}",
+              "additional_cl_flags": "${{ inputs.additional_cl_flags }}"
             }
-          })        
-        token: ${{ secrets.POST_MERGE_SMOKE_TESTS_WORKFLOW_TOKEN }}
+          }'
