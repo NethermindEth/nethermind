@@ -9,6 +9,8 @@ namespace Nethermind.Trie
     {
         public bool HasRoot { get; set; } = true;
 
+        public bool IsFullDbScan => false;
+
         public bool ShouldVisit(Keccak nextNode)
         {
             return false;

@@ -89,10 +89,6 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> SpacenethConfigs
             => Configs.Where(config => config.Contains("spaceneth"));
 
-        [ConfigFileGroup("baseline")]
-        protected IEnumerable<string> BaselineConfigs
-            => Configs.Where(config => config.Contains("baseline"));
-
         [ConfigFileGroup("mainnet")]
         protected IEnumerable<string> MainnetConfigs
             => Configs.Where(config => config.Contains("mainnet"));

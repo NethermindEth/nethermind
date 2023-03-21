@@ -909,7 +909,7 @@ namespace Nethermind.Trie
         private byte[] TraverseNext(in TraverseContext traverseContext, int extensionLength, TrieNode next)
         {
             // Move large struct creation out of flow so doesn't force additional stack space
-            // in calling method even if not used 
+            // in calling method even if not used
             TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
             return TraverseNode(next, in newContext);
         }
@@ -1025,7 +1025,14 @@ namespace Nethermind.Trie
             }
 
             visitor.VisitTree(rootHash, trieVisitContext);
-            rootRef?.Accept(visitor, TrieStore, trieVisitContext);
+
+            ITrieNodeResolver resolver = TrieStore;
+            if (visitor.IsFullDbScan)
+            {
+                resolver = new TrieNodeResolverWithReadFlags(TrieStore, ReadFlags.HintCacheMiss);
+            }
+
+            rootRef?.Accept(visitor, resolver, trieVisitContext);
         }
 
         [DoesNotReturn]

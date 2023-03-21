@@ -261,10 +261,9 @@ namespace Nethermind.TxPool
 
         public void AddPeer(ITxPoolPeer peer)
         {
-            PeerInfo peerInfo = new(peer);
-            if (_broadcaster.AddPeer(peerInfo))
+            if (_broadcaster.AddPeer(peer))
             {
-                _broadcaster.BroadcastOnce(peerInfo, _transactionSnapshot ??= _transactions.GetSnapshot());
+                _broadcaster.BroadcastOnce(peer, _transactionSnapshot ??= _transactions.GetSnapshot());
 
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
             }

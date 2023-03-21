@@ -93,12 +93,13 @@ namespace Nethermind.AccountAbstraction.Network
 
         public void HandleMessage(ZeroPacket message)
         {
+            int size = message.Content.ReadableBytes;
             switch (message.PacketType)
             {
                 case AaMessageCode.UserOperations:
                     Metrics.UserOperationsMessagesReceived++;
                     UserOperationsMessage uopMsg = Deserialize<UserOperationsMessage>(message.Content);
-                    ReportIn(uopMsg);
+                    ReportIn(uopMsg, size);
                     Handle(uopMsg);
                     break;
             }
