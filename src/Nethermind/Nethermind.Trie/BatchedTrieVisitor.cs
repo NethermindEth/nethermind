@@ -30,7 +30,10 @@ public class BatchedTrieVisitor
         VisitingOptions visitingOptions)
     {
         _maxJobSize = 128;
-        long recordSize = 40 * 4; // The keccak + context itself is 40 byte. But the gen2 gc measurement is 4 times higher for some reason.
+
+        // The keccak + context itself should be 40 byte. But the node of the concurrent stack seems to total to this
+        // according to dotmemory. Might wanna try something other than ConcurrentStack.
+        long recordSize = 112;
 
         // Generally, at first, we want to attempt to maximize number of partition. This tend to increase throughput
         // compared to increasing job size.
