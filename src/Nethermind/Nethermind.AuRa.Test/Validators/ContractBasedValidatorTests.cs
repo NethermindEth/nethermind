@@ -27,11 +27,12 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Newtonsoft.Json;
+
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Core.Specs;
+using System.Text.Json;
 
 namespace Nethermind.AuRa.Test.Validators
 {
@@ -667,7 +668,7 @@ namespace Nethermind.AuRa.Test.Validators
 
             public string TestName { get; set; }
 
-            public override string ToString() => JsonConvert.SerializeObject(this);
+            public override string ToString() => JsonSerializer.Serialize(this);
 
             public bool TryDoReorganisations(int blockNumber, out ChainInfo last)
             {

@@ -22,7 +22,6 @@ namespace Nethermind.Evm.Tracing.GethStyle
         [JsonConverter(typeof(LongRawJsonConverter))]
         public long Pc { get; set; }
 
-        [Newtonsoft.Json.JsonProperty(PropertyName = "op")]
         [JsonPropertyName("op")]
         public string? Operation { get; set; }
 

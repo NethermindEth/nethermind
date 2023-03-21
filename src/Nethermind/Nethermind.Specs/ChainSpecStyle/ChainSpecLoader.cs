@@ -13,7 +13,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
-using Newtonsoft.Json.Linq;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Globalization;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -27,8 +30,8 @@ public class ChainSpecLoader : IChainSpecLoader
     public ChainSpecLoader(IJsonSerializer serializer)
     {
         _serializer = serializer;
-        _serializer.RegisterConverter(new StepDurationJsonConverter());
-        _serializer.RegisterConverter(new BlockRewardJsonConverter());
+        //_serializer.RegisterConverter(new StepDurationJsonConverter());
+        //_serializer.RegisterConverter(new BlockRewardJsonConverter());
     }
 
     public ChainSpec Load(byte[] data) => Load(Encoding.UTF8.GetString(data));
@@ -59,33 +62,33 @@ public class ChainSpecLoader : IChainSpecLoader
         }
     }
 
-    private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
-    {
-        long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JObject>> predicate)
+        private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
-            if (allocation is null) return null;
-            KeyValuePair<string, JObject>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
-            if (pricing.Length > 0)
+            long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
             {
-                string key = pricing[0].Key;
-                return long.TryParse(key, out long transition) ? transition : Convert.ToInt64(key, 16);
-            }
+                var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
+                if (allocation is null) return null;
+                KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
+                if (pricing.Length > 0)
+                {
+                    string key = pricing[0].Key;
+                    return long.TryParse(key, out long transition) ? transition : Convert.ToInt64(key, 16);
+                }
 
             return null;
         }
 
-        long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
-        {
-            bool GetForExpectedPricing(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath)?.Value<long>() == expectedValue;
-            return GetTransitions(builtInName, GetForExpectedPricing);
-        }
+            long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
+            {
+                bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o) => o.Value.TryGetProperty(innerPath, out JsonElement value) ? value.GetInt64() == expectedValue : false;
+                return GetTransitions(builtInName, GetForExpectedPricing);
+            }
 
-        long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
-        {
-            bool GetForInnerPathExistence(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath) is not null;
-            return GetTransitions(builtInName, GetForInnerPathExistence);
-        }
+            long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
+            {
+                bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o) => o.Value.TryGetProperty(innerPath, out _);
+                return GetTransitions(builtInName, GetForInnerPathExistence);
+            }
 
         ValidateParams(chainSpecJson.Params);
 
@@ -302,19 +305,23 @@ public class ChainSpecLoader : IChainSpecLoader
                 BlockRewards = chainSpecJson.Engine.Ethash.BlockReward
             };
 
-            chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
-            if (chainSpecJson.Engine.Ethash.DifficultyBombDelays is not null)
-            {
-                foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
+                chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
+                if (chainSpecJson.Engine.Ethash.DifficultyBombDelays is not null)
                 {
-                    chainSpec.Ethash.DifficultyBombDelays.Add(LongConverter.FromString(reward.Key), reward.Value);
+                    foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
+                    {
+                        long key = reward.Key.StartsWith("0x") ?
+                            long.Parse(reward.Key.AsSpan(2), NumberStyles.HexNumber) :
+                            long.Parse(reward.Key);
+
+                        chainSpec.Ethash.DifficultyBombDelays.Add(key, reward.Value);
+                    }
                 }
             }
-        }
-        else if (chainSpecJson.Engine?.NethDev is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.NethDev;
-        }
+            else if (chainSpecJson.Engine?.NethDev is not null)
+            {
+                chainSpec.SealEngineType = SealEngineType.NethDev;
+            }
 
         var customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
 

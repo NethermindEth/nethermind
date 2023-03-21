@@ -1,10 +1,19 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using FastEnumUtility;
+
+using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts.Json;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Abi
 {
+    [JsonConverter(typeof(AbiDefinitionConverter))]
     public class AbiDefinition
     {
         private readonly List<AbiFunctionDescription> _constructors = new();
@@ -63,5 +72,72 @@ namespace Nethermind.Abi
         public AbiErrorDescription GetError(string name, bool camelCase = false) => _errors[camelCase ? GetName(name) : name];
 
         public static string GetName(string name) => char.IsUpper(name[0]) ? char.ToLowerInvariant(name[0]) + name[1..] : name;
+    }
+}
+
+
+namespace Nethermind.Blockchain.Contracts.Json
+{
+    public class AbiDefinitionConverter : JsonConverter<AbiDefinition>
+    {
+        public override void Write(Utf8JsonWriter writer, AbiDefinition value, JsonSerializerOptions op)
+        {
+            writer.WriteStartArray();
+            foreach (AbiBaseDescription item in value.Items)
+            {
+                JsonSerializer.Serialize(writer, item, op);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        public override AbiDefinition? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions op)
+        {
+            AbiDefinition value = new();
+            if (!JsonDocument.TryParseValue(ref reader, out JsonDocument? document))
+                return null;
+            JsonElement topLevelToken, abiToken;
+            topLevelToken = document.RootElement;
+            if (topLevelToken.ValueKind == JsonValueKind.Object)
+            {
+                abiToken = topLevelToken.GetProperty("abi");
+                if (topLevelToken.TryGetProperty("bytecode", out JsonElement bytecodeBase64))
+                    value.SetBytecode(Bytes.FromHexString(bytecodeBase64.GetString()!));
+                if (topLevelToken.TryGetProperty("deployedBytecode", out JsonElement deployedBytecodeBase64))
+                    value.SetDeployedBytecode(Bytes.FromHexString(deployedBytecodeBase64.GetString()!));
+            }
+            else
+            {
+                abiToken = topLevelToken;
+            }
+            foreach (JsonElement definitionToken in abiToken.EnumerateArray())
+            {
+                if (!definitionToken.TryGetProperty("type"u8, out JsonElement typeToken))
+                    continue;
+                AbiDescriptionType type = FastEnum.Parse<AbiDescriptionType>(typeToken.GetString(), true);
+                switch (type)
+                {
+                    case AbiDescriptionType.Event:
+                        AbiEventDescription? eventDescription = definitionToken.Deserialize(typeof(AbiEventDescription), op) as AbiEventDescription;
+                        if (eventDescription != null)
+                            value.Add(eventDescription);
+                        break;
+                    case AbiDescriptionType.Error:
+                        AbiErrorDescription? errorDescription = definitionToken.Deserialize<AbiErrorDescription>(op);
+                        if (errorDescription != null)
+                            value.Add(errorDescription);
+                        break;
+                    default:
+                        AbiFunctionDescription? functionDescription = definitionToken.Deserialize(typeof(AbiFunctionDescription), op) as AbiFunctionDescription;
+                        if (functionDescription != null)
+                            value.Add(functionDescription);
+                        break;
+                }
+            }
+            return value;
+        }
     }
 }

@@ -4,18 +4,22 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+
 using FluentAssertions;
 using FluentAssertions.Equivalency;
 using FluentAssertions.Json;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test
@@ -73,8 +77,8 @@ namespace Nethermind.JsonRpc.Test
         public async Task CompareGethBlockTrace(Uri uri1, Uri uri2, Keccak? blockHash = null, GethTraceOptions? gethTraceOptions = null)
         {
             gethTraceOptions ??= GethTraceOptions.Default;
-            using IConsensusDataSource<IEnumerable<GethLikeTxTrace>> receipt1Source = GetSource<IEnumerable<GethLikeTxTrace>>(uri1, DebugModuleFactory.Converters);
-            using IConsensusDataSource<IEnumerable<GethLikeTxTrace>> receipt2Source = GetSource<IEnumerable<GethLikeTxTrace>>(uri2, DebugModuleFactory.Converters);
+            using IConsensusDataSource<IEnumerable<GethLikeTxTrace>> receipt1Source = GetSource<IEnumerable<GethLikeTxTrace>>(uri1);
+            using IConsensusDataSource<IEnumerable<GethLikeTxTrace>> receipt2Source = GetSource<IEnumerable<GethLikeTxTrace>>(uri2);
             TrySetData(blockHash, receipt1Source, receipt2Source);
             TrySetData(gethTraceOptions, receipt1Source, receipt2Source);
             await CompareCollection(receipt1Source, receipt2Source, true);
@@ -84,8 +88,8 @@ namespace Nethermind.JsonRpc.Test
         public async Task CompareGethTxTrace(Uri uri1, Uri uri2, Keccak? transactionHash = null, GethTraceOptions? gethTraceOptions = null)
         {
             gethTraceOptions ??= GethTraceOptions.Default;
-            using IConsensusDataSource<GethLikeTxTrace> receipt1Source = GetSource<GethLikeTxTrace>(uri1, DebugModuleFactory.Converters);
-            using IConsensusDataSource<GethLikeTxTrace> receipt2Source = GetSource<GethLikeTxTrace>(uri2, DebugModuleFactory.Converters);
+            using IConsensusDataSource<GethLikeTxTrace> receipt1Source = GetSource<GethLikeTxTrace>(uri1);
+            using IConsensusDataSource<GethLikeTxTrace> receipt2Source = GetSource<GethLikeTxTrace>(uri2);
             TrySetData(transactionHash, receipt1Source, receipt2Source);
             TrySetData(gethTraceOptions, receipt1Source, receipt2Source);
             await Compare(receipt1Source, receipt2Source, true);
@@ -94,8 +98,8 @@ namespace Nethermind.JsonRpc.Test
         [TestCaseSource(nameof(Tests))]
         public async Task CompareParityBlockTrace(Uri uri1, Uri uri2, long blockNumber)
         {
-            using IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>> receipt1Source = GetSource<IEnumerable<ParityTxTraceFromStore>>(uri1, TraceModuleFactory.Converters);
-            using IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>> receipt2Source = GetSource<IEnumerable<ParityTxTraceFromStore>>(uri2, TraceModuleFactory.Converters);
+            using IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>> receipt1Source = GetSource<IEnumerable<ParityTxTraceFromStore>>(uri1);
+            using IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>> receipt2Source = GetSource<IEnumerable<ParityTxTraceFromStore>>(uri2);
             TrySetData(blockNumber, receipt1Source, receipt2Source);
             await CompareCollection(receipt1Source, receipt2Source, true);
         }
@@ -111,9 +115,9 @@ namespace Nethermind.JsonRpc.Test
             }
         }
 
-        private IConsensusDataSource<T> GetSource<T>(Uri uri, IEnumerable<JsonConverter>? additionalConverters = null)
+        private IConsensusDataSource<T> GetSource<T>(Uri uri)
         {
-            var serializer = GetSerializer(additionalConverters!);
+            var serializer = GetSerializer();
             if (uri.IsFile)
             {
                 return new FileConsensusDataSource<T>(uri, serializer);
@@ -146,13 +150,13 @@ namespace Nethermind.JsonRpc.Test
             throw new NotSupportedException($"Uri: {uri} is not supported");
         }
 
-        private IJsonSerializer GetSerializer(IEnumerable<JsonConverter>? additionalConverters)
+        private IJsonSerializer GetSerializer()
         {
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
-            if (additionalConverters is not null)
-            {
-                jsonSerializer.RegisterConverters(additionalConverters);
-            }
+            //if (additionalConverters is not null)
+            //{
+            //    jsonSerializer.RegisterConverters(additionalConverters);
+            //}
 
             return jsonSerializer;
         }
@@ -165,10 +169,10 @@ namespace Nethermind.JsonRpc.Test
 
             if (compareJson)
             {
-                JToken data = JsonHelper.ParseNormalize(await source1.GetJsonData());
-                JToken expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
+                JsonNode data = JsonHelper.ParseNormalize(await source1.GetJsonData());
+                JsonNode expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
                 data.Should().BeEquivalentTo(expectation);
-                data["error"].Should().BeNull(data["error"]?.ToString());
+                data["error"].Should().BeNull(data["error"].ToString());
             }
             else
             {
@@ -195,10 +199,10 @@ namespace Nethermind.JsonRpc.Test
 
             if (compareJson)
             {
-                JToken data = JsonHelper.ParseNormalize(await source1.GetJsonData());
-                JToken expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
+                JsonNode data = JsonHelper.ParseNormalize(await source1.GetJsonData());
+                JsonNode expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
                 data.Should().BeEquivalentTo(expectation);
-                data["error"].Should().BeNull(data["error"]?.ToString());
+                data["error"].Should().BeNull(data["error"].ToString());
             }
             else
             {
@@ -222,14 +226,14 @@ namespace Nethermind.JsonRpc.Test
         {
             try
             {
-                JToken data = JsonHelper.ParseNormalize(dataJson);
-                JToken expectation = JsonHelper.ParseNormalize(expectationJson);
+                JsonNode data = JsonHelper.ParseNormalize(dataJson);
+                JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
                 await TestContext.Out.WriteLineAsync();
-                await TestContext.Out.WriteLineAsync(data.ToString(Formatting.Indented));
+                await TestContext.Out.WriteLineAsync(data.ToString());
                 await TestContext.Out.WriteLineAsync();
                 await TestContext.Out.WriteLineAsync("-------------------------------------------------------------");
                 await TestContext.Out.WriteLineAsync();
-                await TestContext.Out.WriteLineAsync(expectation.ToString(Formatting.Indented));
+                await TestContext.Out.WriteLineAsync(expectation.ToString());
             }
             catch (JsonException) { }
         }
@@ -247,34 +251,34 @@ namespace Nethermind.JsonRpc.Test
 
         public static class JsonHelper
         {
-            public static JToken ParseNormalize(string json) => Normalize(JToken.Parse(json));
+            public static JsonNode ParseNormalize(string json) => Normalize(JsonNode.Parse(json));
 
-            public static JToken Normalize(JToken token)
+            public static JsonNode Normalize(JsonNode token)
             {
-                if (token.Type == JTokenType.Object)
+                if (token is JsonObject jObject)
                 {
-                    JObject copy = new();
-                    foreach (JProperty prop in token.Children<JProperty>())
+                    JsonObject copy = new JsonObject();
+                    foreach (var prop in jObject)
                     {
-                        JToken child = prop.Value;
-                        if (child.HasValues)
+                        JsonNode child = prop.Value;
+                        if (child is JsonObject || child is JsonArray)
                         {
                             child = Normalize(child);
                         }
                         if (!IsEmpty(child))
                         {
-                            copy.Add(prop.Name, child);
+                            copy.Add(prop.Key, child);
                         }
                     }
                     return copy;
                 }
-                else if (token.Type == JTokenType.Array)
+                else if (token is JsonArray jArray)
                 {
-                    JArray copy = new();
-                    foreach (JToken item in token.Children())
+                    JsonArray copy = new JsonArray();
+                    foreach (JsonNode item in jArray)
                     {
-                        JToken child = item;
-                        if (child.HasValues)
+                        JsonNode child = item;
+                        if (child is JsonObject || child is JsonArray)
                         {
                             child = Normalize(child);
                         }
@@ -288,9 +292,9 @@ namespace Nethermind.JsonRpc.Test
                 return token;
             }
 
-            public static bool IsEmpty(JToken token)
+            public static bool IsEmpty(JsonNode token)
             {
-                return (token.Type == JTokenType.Null);
+                return (token is null);
             }
         }
     }

@@ -6,8 +6,12 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Text.Json.Serialization;
+using System.Text.Json;
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {
@@ -229,6 +233,7 @@ namespace Nethermind.Core.Crypto
         }
     }
 
+    [JsonConverter(typeof(KeccakConverter))]
     [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>, IComparable<Keccak>
     {
@@ -554,5 +559,28 @@ namespace Nethermind.Core.Crypto
         }
 
         public Keccak ToKeccak() => new(Bytes.ToArray());
+    }
+}
+
+namespace Nethermind.Serialization.Json
+{
+    public class KeccakConverter : JsonConverter<Keccak>
+    {
+        public override Keccak? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            byte[]? bytes = ByteArrayConverter.Convert(ref reader);
+            return bytes is null ? null : new Keccak(bytes);
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            Keccak keccak,
+            JsonSerializerOptions options)
+        {
+            ByteArrayConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: false);
+        }
     }
 }

@@ -7,6 +7,7 @@ using System.IO;
 using System.Security.Authentication;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 using HealthChecks.UI.Client;
 
@@ -159,12 +160,13 @@ namespace Nethermind.Runner.JsonRpc
                     }
 
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    using CountingTextReader request = new(new StreamReader(ctx.Request.Body, Encoding.UTF8));
+                    using CountingStream request = new(ctx.Request.Body);
                     try
                     {
                         JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
-                        await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
+                        await foreach ((JsonRpcResult result, IDisposable disposable) in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
                         {
+                            disposable.Dispose();
                             Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
 
                             long responseSize = 0;
@@ -286,6 +288,55 @@ namespace Nethermind.Runner.JsonRpc
         private static bool ModuleTimeout(JsonRpcResponse? response)
         {
             return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout };
+        }
+
+        private sealed class CountingStream : Stream
+        {
+            private readonly Stream _wrappedStream;
+            private long _position;
+
+            public CountingStream(Stream stream)
+            {
+                _position = 0;
+                _wrappedStream = stream;
+            }
+
+            public override long Length => _position;
+            public override long Position { get => _position; set => throw new NotSupportedException(); }
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                int length = _wrappedStream.Read(buffer, offset, count);
+                _position += length;
+                return length;
+            }
+
+            public override int Read(Span<byte> buffer)
+            {
+                int length = _wrappedStream.Read(buffer);
+                _position += length;
+                return length;
+            }
+            public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            {
+                int length = await _wrappedStream.ReadAsync(buffer, cancellationToken);
+                _position += length;
+                return length;
+            }
+            public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            {
+                int length = await _wrappedStream.ReadAsync(buffer, offset, count, cancellationToken);
+                _position += length;
+                return length;
+            }
+
+            public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+            public override void Write(ReadOnlySpan<byte> buffer) => throw new NotSupportedException();
+            public override void Flush() => throw new NotSupportedException();
+            public override bool CanRead => _wrappedStream.CanRead;
+            public override bool CanSeek => _wrappedStream.CanSeek;
+            public override bool CanWrite => _wrappedStream.CanWrite;
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override void SetLength(long value) => throw new NotSupportedException();
         }
     }
 }

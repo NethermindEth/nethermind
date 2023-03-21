@@ -4,7 +4,9 @@
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
-using Newtonsoft.Json;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -20,8 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public int After { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public int? Count { get; set; }
     }
 }

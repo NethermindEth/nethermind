@@ -8,35 +8,31 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats.Model;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
     public class PeerInfo
     {
-        [JsonProperty("id", Order = 0)]
-        [System.Text.Json.Serialization.JsonPropertyName("id")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(0)]
+        [JsonPropertyName("id")]
+        [JsonPropertyOrder(0)]
         public string Id { get; set; }
 
-        [JsonProperty("name", Order = 1)]
-        [System.Text.Json.Serialization.JsonPropertyName("name")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(1)]
+        [JsonPropertyName("name")]
+        [JsonPropertyOrder(1)]
         public string Name { get; set; }
 
-        [JsonProperty("caps", Order = 2)]
-        [System.Text.Json.Serialization.JsonPropertyName("caps")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(2)]
+        [JsonPropertyName("caps")]
+        [JsonPropertyOrder(2)]
         public List<string> Caps { get; set; }
 
-        [JsonProperty("network", Order = 3)]
-        [System.Text.Json.Serialization.JsonPropertyName("network")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(3)]
+        [JsonPropertyName("network")]
+        [JsonPropertyOrder(3)]
         public PeerNetworkInfo Network { get; set; }
 
-        [JsonProperty("protocols", Order = 4)]
-        [System.Text.Json.Serialization.JsonPropertyName("protocols")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(4)]
+        [JsonPropertyName("protocols")]
+        [JsonPropertyOrder(4)]
         public Dictionary<string, EthProtocolInfo> Protocols { get; set; }
 
         public PeerInfo(Peer peer)

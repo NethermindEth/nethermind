@@ -9,7 +9,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Logging;
-using Newtonsoft.Json;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -29,6 +29,7 @@ namespace Nethermind.JsonRpc.Modules
         public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            Serializer = new EthereumJsonSerializer();
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             if (fileSystem.File.Exists(_jsonRpcConfig.CallsFilterFilePath))
             {
@@ -37,9 +38,7 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        public JsonSerializer Serializer { get; } = new();
-
-        public IReadOnlyCollection<JsonConverter> Converters { get; } = new List<JsonConverter>();
+        public IJsonSerializer Serializer { get; }
 
         public IReadOnlyCollection<string> Enabled => _enabledModules;
 
@@ -59,8 +58,8 @@ namespace Nethermind.JsonRpc.Modules
             _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
             _modules.Add(moduleType);
 
-            IReadOnlyCollection<JsonConverter> poolConverters = pool.Factory.GetConverters();
-            ((List<JsonConverter>)Converters).AddRange(poolConverters);
+            //IReadOnlyCollection<JsonConverter> poolConverters = pool.Factory.GetConverters();
+            //((List<JsonConverter>)Converters).AddRange(poolConverters);
 
             foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
             {

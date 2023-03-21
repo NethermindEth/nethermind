@@ -23,7 +23,7 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
 
     public ParityLikeTraceSerializer(ILogManager logManager, int maxDepth = 1024, bool verifySerialized = false)
     {
-        _jsonSerializer = new EthereumJsonSerializer(maxDepth, new ParityTraceActionCreationConverter());
+        _jsonSerializer = new EthereumJsonSerializer(maxDepth);
         _maxDepth = maxDepth;
         _verifySerialized = verifySerialized;
         _logger = logManager?.GetClassLogger<ParityLikeTraceSerializer>();

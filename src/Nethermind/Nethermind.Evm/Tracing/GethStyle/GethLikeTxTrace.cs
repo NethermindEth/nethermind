@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -25,7 +24,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
 
         public byte[] ReturnValue { get; set; }
 
-        [Newtonsoft.Json.JsonProperty(PropertyName = "structLogs")]
+        [JsonPropertyName("structLogs")]
         public List<GethTxTraceEntry> Entries { get; set; }
     }
 

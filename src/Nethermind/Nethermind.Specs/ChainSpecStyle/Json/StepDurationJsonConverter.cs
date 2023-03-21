@@ -2,37 +2,56 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
     internal class StepDurationJsonConverter : JsonConverter<ChainSpecJson.AuraEngineParamsJson.StepDurationJson>
     {
-        public override void WriteJson(JsonWriter writer, ChainSpecJson.AuraEngineParamsJson.StepDurationJson value, JsonSerializer serializer)
+        public override void Write(Utf8JsonWriter writer, ChainSpecJson.AuraEngineParamsJson.StepDurationJson value, JsonSerializerOptions options)
         {
             throw new NotSupportedException();
         }
 
-        public override ChainSpecJson.AuraEngineParamsJson.StepDurationJson ReadJson(JsonReader reader, Type objectType, ChainSpecJson.AuraEngineParamsJson.StepDurationJson existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override ChainSpecJson.AuraEngineParamsJson.StepDurationJson Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            existingValue ??= new ChainSpecJson.AuraEngineParamsJson.StepDurationJson();
-            if (reader.TokenType == JsonToken.String || reader.TokenType == JsonToken.Integer)
+            var value = new ChainSpecJson.AuraEngineParamsJson.StepDurationJson();
+            if (reader.TokenType == JsonTokenType.String)
             {
-                var stepDuration = serializer.Deserialize<long>(reader);
-                existingValue.Add(0, stepDuration);
+                value.Add(0, long.Parse(reader.GetString()));
+            }
+            else if (reader.TokenType == JsonTokenType.Number)
+            {
+                value.Add(0, reader.GetInt64());
+            }
+            else if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                reader.Read();
+                while (reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (reader.TokenType != JsonTokenType.PropertyName)
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+                    var key = reader.GetInt64();
+                    reader.Read();
+                    if (reader.TokenType != JsonTokenType.String)
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+
+                    value.Add(key, reader.GetInt64());
+                    reader.Read();
+                }
             }
             else
             {
-                var stepDurations = serializer.Deserialize<Dictionary<string, long>>(reader);
-                foreach (var stepDuration in stepDurations ?? throw new ArgumentException("Cannot deserialize StepDuration."))
-                {
-                    existingValue.Add(LongConverter.FromString(stepDuration.Key), stepDuration.Value);
-                }
+                throw new ArgumentException("Cannot deserialize BlockReward.");
             }
 
-            return existingValue;
+            return value;
         }
     }
 }

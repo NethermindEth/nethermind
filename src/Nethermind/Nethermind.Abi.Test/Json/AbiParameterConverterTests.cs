@@ -5,9 +5,12 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
+using System.Text.Json;
+
 using FluentAssertions;
 using Nethermind.Blockchain.Contracts.Json;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.Abi.Test.Json
@@ -69,22 +72,20 @@ namespace Nethermind.Abi.Test.Json
             List<IAbiTypeFactory> abiTypeFactories = new List<IAbiTypeFactory>() { new AbiTypeFactory(new AbiTuple<CustomAbiType>()) };
             var converter = new AbiParameterConverter(abiTypeFactories);
             var model = new { name = "theName", type, components };
-            string json = JsonConvert.SerializeObject(model);
-            using (var jsonReader = new JsonTextReader(new StringReader(json)))
+            byte[] json = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(model));
+            Utf8JsonReader jsonReader = new Utf8JsonReader(json);
+            try
             {
-                try
+                var result = converter.Read(ref jsonReader, typeof(AbiParameter), null);
+                var expectation = new AbiParameter() { Name = "theName", Type = expectedType };
+                expectedException.Should().BeNull();
+                result.Should().BeEquivalentTo(expectation);
+            }
+            catch (Exception e)
+            {
+                if (e.GetType() != expectedException?.GetType())
                 {
-                    var result = converter.ReadJson(jsonReader, typeof(AbiParameter), null, false, new JsonSerializer());
-                    var expectation = new AbiParameter() { Name = "theName", Type = expectedType };
-                    expectedException.Should().BeNull();
-                    result.Should().BeEquivalentTo(expectation);
-                }
-                catch (Exception e)
-                {
-                    if (e.GetType() != expectedException?.GetType())
-                    {
-                        throw;
-                    }
+                    throw;
                 }
             }
         }

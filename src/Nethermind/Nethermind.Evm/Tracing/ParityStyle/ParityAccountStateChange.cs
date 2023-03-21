@@ -24,7 +24,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
     public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccountStateChange>
     {
-        private Byte32JsonConverter _32BytesConverter = new();
+        private Bytes32Converter _32BytesConverter = new();
 
         public override ParityAccountStateChange Read(
             ref Utf8JsonReader reader,

@@ -28,7 +28,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
-using Newtonsoft.Json;
+
 using NSubstitute;
 using NUnit.Framework;
 
@@ -65,8 +65,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
             _syncConfig = new SyncConfig();
 
-            JsonSerializer jsonSerializer = new();
-            jsonSerializer.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
+            IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
 
             SubscriptionFactory subscriptionFactory = new(
                 _logManager,
@@ -236,9 +235,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [TestCase("true")]
-        [TestCase("True")]
+        [TestCase("\"True\"")]
         [TestCase("false")]
-        [TestCase("False")]
+        [TestCase("\"False\"")]
         public void NewHeadSubscription_with_bool_arg(string boolArg)
         {
             string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", boolArg);
@@ -746,9 +745,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [TestCase("true")]
-        [TestCase("True")]
+        [TestCase("\"True\"")]
         [TestCase("false")]
-        [TestCase("False")]
+        [TestCase("\"False\"")]
         public void NewPendingTransactionsSubscription_creating_result_with_bool_arg(string boolArg)
         {
             string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions", boolArg);
@@ -972,7 +971,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"isSyncing\":true,\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2728\",\"highestBlock\":\"0x273a\"}}}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2728\",\"highestBlock\":\"0x273a\"}}}");
             expectedResult.Should().Be(serialized);
         }
 
@@ -990,7 +989,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"isSyncing\":true,\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2738\",\"highestBlock\":\"0x2773\"}}}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2738\",\"highestBlock\":\"0x2773\"}}}");
             expectedResult.Should().Be(serialized);
         }
 

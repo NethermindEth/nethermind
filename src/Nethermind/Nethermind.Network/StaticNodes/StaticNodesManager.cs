@@ -7,12 +7,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Stats.Model;
-using Newtonsoft.Json;
 
 namespace Nethermind.Network.StaticNodes
 {
@@ -71,7 +73,7 @@ namespace Nethermind.Network.StaticNodes
             string[] nodes;
             try
             {
-                nodes = JsonConvert.DeserializeObject<string[]>(data) ?? Array.Empty<string>();
+                nodes = JsonSerializer.Deserialize<string[]>(data) ?? Array.Empty<string>();
             }
             catch (JsonException)
             {
@@ -130,7 +132,7 @@ namespace Nethermind.Network.StaticNodes
 
         private Task SaveFileAsync()
             => File.WriteAllTextAsync(_staticNodesPath,
-                JsonConvert.SerializeObject(_nodes.Select(n => n.Value.ToString()), Formatting.Indented));
+                JsonSerializer.Serialize(_nodes.Select(n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
 
         public List<Node> LoadInitialList()
         {

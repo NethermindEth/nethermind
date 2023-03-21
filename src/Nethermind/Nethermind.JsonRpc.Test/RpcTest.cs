@@ -5,12 +5,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 using FluentAssertions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test
@@ -24,9 +27,9 @@ namespace Nethermind.JsonRpc.Test
             return service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http)).Result;
         }
 
-        public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IRpcModule
+        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
         {
-            IJsonRpcService service = BuildRpcService(module, converters);
+            IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
 
             JsonRpcContext context = new JsonRpcContext(RpcEndpoint.Http);
@@ -38,10 +41,10 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcResponse response = service.SendRequestAsync(request, context).Result;
 
             EthereumJsonSerializer serializer = new();
-            foreach (JsonConverter converter in converters)
-            {
-                serializer.RegisterConverter(converter);
-            }
+            //foreach (JsonConverter converter in converters)
+            //{
+            //    serializer.RegisterConverter(converter);
+            //}
 
             Stream stream = new MemoryStream();
             long size = serializer.Serialize(stream, response);
@@ -60,27 +63,23 @@ namespace Nethermind.JsonRpc.Test
             return serialized;
         }
 
-        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
-        {
-            return TestSerializedRequest(new JsonConverter[0], module, method, parameters);
-        }
-
-        public static IJsonRpcService BuildRpcService<T>(T module, IReadOnlyCollection<JsonConverter>? converters = null) where T : class, IRpcModule
+        public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IRpcModule
         {
             var moduleProvider = new TestRpcModuleProvider<T>(module);
 
-            moduleProvider.Register(new SingletonModulePool<T>(new TestSingletonFactory<T>(module, converters), true));
+            moduleProvider.Register(new SingletonModulePool<T>(new TestSingletonFactory<T>(module), true));
             IJsonRpcService service = new JsonRpcService(moduleProvider, LimboLogs.Instance, new JsonRpcConfig());
             return service;
         }
 
         public static JsonRpcRequest GetJsonRequest(string method, params string[] parameters)
         {
+            var doc = JsonDocument.Parse(JsonSerializer.Serialize(parameters?.ToArray() ?? Array.Empty<string>()));
             var request = new JsonRpcRequest()
             {
                 JsonRpc = "2.0",
                 Method = method,
-                Params = parameters?.ToArray() ?? Array.Empty<string>(),
+                Params = doc.RootElement,
                 Id = 67
             };
 
@@ -89,14 +88,9 @@ namespace Nethermind.JsonRpc.Test
 
         private class TestSingletonFactory<T> : SingletonFactory<T> where T : IRpcModule
         {
-            private readonly IReadOnlyCollection<JsonConverter>? _converters;
-
-            public TestSingletonFactory(T module, IReadOnlyCollection<JsonConverter>? converters) : base(module)
+            public TestSingletonFactory(T module) : base(module)
             {
-                _converters = converters;
             }
-
-            public override IReadOnlyCollection<JsonConverter> GetConverters() => _converters ?? base.GetConverters();
         }
     }
 

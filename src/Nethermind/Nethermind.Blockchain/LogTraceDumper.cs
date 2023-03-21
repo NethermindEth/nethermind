@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
@@ -11,14 +12,11 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
 
 namespace Nethermind.Blockchain
 {
     public static class BlockTraceDumper
     {
-        public static List<JsonConverter> Converters { get; } = new List<JsonConverter>();
-
         public static void LogDiagnosticTrace(
             IBlockTracer blockTracer,
             Keccak blockHash,
@@ -35,7 +33,7 @@ namespace Nethermind.Blockchain
             try
             {
                 IJsonSerializer serializer = new EthereumJsonSerializer();
-                serializer.RegisterConverters(Converters);
+                //serializer.RegisterConverters(Converters);
 
                 if (blockTracer is BlockReceiptsTracer receiptsTracer)
                 {

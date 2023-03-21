@@ -3,61 +3,69 @@
 
 using System;
 
-namespace Nethermind.Serialization.Json
-{
-    using Newtonsoft.Json;
+//namespace Nethermind.Serialization.Json
+//{
+//    
 
-    public class NullableULongConverter : JsonConverter<ulong?>
-    {
-        private readonly ULongConverter _ulongConverter;
+//    public class NullableULongConverter : JsonConverter<ulong?>
+//    {
+//        private readonly ULongConverter _ulongConverter;
 
-        public NullableULongConverter()
-            : this(NumberConversion.Hex)
-        {
-        }
+//        public NullableULongConverter()
+//            : this(NumberConversion.Hex)
+//        {
+//        }
 
-        public NullableULongConverter(NumberConversion conversion)
-        {
-            _ulongConverter = new ULongConverter(conversion);
-        }
+//        public NullableULongConverter(NumberConversion conversion)
+//        {
+//            _ulongConverter = new ULongConverter(conversion);
+//        }
 
-        public override void WriteJson(JsonWriter writer, ulong? value, JsonSerializer serializer)
-        {
-            if (!value.HasValue)
-            {
-                writer.WriteNull();
-                return;
-            }
+//        public override void WriteJson(JsonWriter writer, ulong? value, JsonSerializer serializer)
+//        {
+//            if (!value.HasValue)
+//            {
+//                writer.WriteNull();
+//                return;
+//            }
 
-            _ulongConverter.WriteJson(writer, value.Value, serializer);
-        }
+//            _ulongConverter.WriteJson(writer, value.Value, serializer);
+//        }
 
-        public override ulong? ReadJson(JsonReader reader, Type objectType, ulong? existingValue, bool hasExistingValue,
-            JsonSerializer serializer)
-        {
-            if (reader.TokenType == JsonToken.Null)
-            {
-                return null;
-            }
+//        public override ulong? ReadJson(JsonReader reader, Type objectType, ulong? existingValue, bool hasExistingValue,
+//            JsonSerializer serializer)
+//        {
+//            if (reader.TokenType == JsonToken.Null)
+//            {
+//                return null;
+//            }
 
-            return _ulongConverter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
-        }
-    }
-}
+//            return _ulongConverter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
+//        }
+//    }
+//}
 
 namespace Nethermind.Serialization.Json
 {
     using System.Text.Json;
     using System.Text.Json.Serialization;
 
-    public class NullableULongJsonConverter : JsonConverter<ulong?>
+    public class NullableULongConverter : JsonConverter<ulong?>
     {
-        private readonly ULongJsonConverter _converter = new();
+        private readonly ULongConverter _converter = new();
 
         public override ulong? Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
-            JsonSerializerOptions options) => throw new NotImplementedException();
+            JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+            {
+                return null;
+            }
+
+            return _converter.Read(ref reader, typeToConvert, options);
+        }
 
         public override void Write(
             Utf8JsonWriter writer,

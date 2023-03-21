@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,7 +15,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public Keccak? BlockHash { get; set; }
 
-        [System.Text.Json.Serialization.JsonConverter(typeof(LongRawJsonConverter))]
+        [JsonConverter(typeof(LongRawJsonConverter))]
         public long BlockNumber { get; set; }
 
         public int? TransactionPosition { get; set; }

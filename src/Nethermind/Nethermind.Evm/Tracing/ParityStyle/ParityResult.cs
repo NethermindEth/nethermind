@@ -9,7 +9,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
-    [System.Text.Json.Serialization.JsonConverter(typeof(ParityTraceResultJsonConverter))]
+    [JsonConverter(typeof(ParityTraceResultConverter))]
     public class ParityTraceResult
     {
         public long GasUsed { get; set; }
@@ -18,7 +18,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public byte[]? Code { get; set; }
     }
 
-    public class ParityTraceResultJsonConverter : JsonConverter<ParityTraceResult>
+    public class ParityTraceResultConverter : JsonConverter<ParityTraceResult>
     {
         public override ParityTraceResult Read(
             ref Utf8JsonReader reader,

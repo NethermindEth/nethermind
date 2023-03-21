@@ -5,7 +5,8 @@ using System.IO;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Data;
-using Newtonsoft.Json;
+using Nethermind.Serialization.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
@@ -26,13 +27,9 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"100\"", 100)]
         public void Can_read_block_number(string input, long output)
         {
-            using StringReader reader = new(input);
-            using JsonTextReader textReader = new(reader);
+            IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            JsonSerializer serializer = new();
-            BlockParameterConverter converter = new();
-            serializer.Converters.Add(converter);
-            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader)!;
+            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
 
             Assert.AreEqual(output, blockParameter.BlockNumber);
         }
@@ -51,13 +48,9 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"Safe\"", BlockParameterType.Safe)]
         public void Can_read_type(string input, BlockParameterType output)
         {
-            using StringReader reader = new(input);
-            using JsonTextReader textReader = new(reader);
+            IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            JsonSerializer serializer = new();
-            BlockParameterConverter converter = new();
-            serializer.Converters.Add(converter);
-            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader)!;
+            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
 
             Assert.AreEqual(output, blockParameter.Type);
         }
@@ -71,15 +64,11 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             BlockParameter blockParameter = new(input);
 
-            using StringWriter reader = new();
-            using JsonTextWriter textWriter = new(reader);
+            IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            JsonSerializer serializer = new();
-            BlockParameterConverter converter = new();
-            serializer.Converters.Add(converter);
-            serializer.Serialize(textWriter, blockParameter);
+            var result = serializer.Serialize(blockParameter);
 
-            Assert.AreEqual(output, reader.ToString());
+            Assert.AreEqual(output, result);
         }
 
         [TestCase("\"0x0\"", 0)]
@@ -88,15 +77,11 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             BlockParameter blockParameter = new(input);
 
-            using StringWriter reader = new();
-            using JsonTextWriter textWriter = new(reader);
+            IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            JsonSerializer serializer = new();
-            BlockParameterConverter converter = new();
-            serializer.Converters.Add(converter);
-            serializer.Serialize(textWriter, blockParameter);
+            var result = serializer.Serialize(blockParameter);
 
-            Assert.AreEqual(output, reader.ToString());
+            Assert.AreEqual(output, result);
         }
 
         [Test]

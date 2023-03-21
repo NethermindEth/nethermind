@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data;
 
@@ -52,29 +53,24 @@ public class TransactionForRpc
     }
 
     // ReSharper disable once UnusedMember.Global
-    public TransactionForRpc()
-    {
-    }
+    [JsonConstructor]
+    public TransactionForRpc() { }
 
     public Keccak? Hash { get; set; }
     public UInt256? Nonce { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Keccak? BlockHash { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? BlockNumber { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? TransactionIndex { get; set; }
 
     public Address? From { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? To { get; set; }
 
     public UInt256? Value { get; set; }
@@ -86,8 +82,7 @@ public class TransactionForRpc
     public long? Gas { get; set; }
     public byte[]? Data { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[]? Input { get; set; }
 
     public UInt256? ChainId { get; set; }
@@ -104,7 +99,7 @@ public class TransactionForRpc
 
     public UInt256? R { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? YParity { get; set; }
 
     public Transaction ToTransactionWithDefaults(ulong? chainId = null) => ToTransactionWithDefaults<Transaction>(chainId);

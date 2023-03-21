@@ -7,6 +7,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -15,17 +17,13 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
-using Newtonsoft.Json;
-using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Nethermind.JsonRpc;
 
-[Todo(Improve.Refactor, "Use JsonConverters and JSON serialization everywhere")]
 public class JsonRpcService : IJsonRpcService
 {
     private readonly ILogger _logger;
     private readonly IRpcModuleProvider _rpcModuleProvider;
-    private readonly JsonSerializer _serializer;
     private readonly HashSet<string> _methodsLoggingFiltering;
     private readonly int _maxLoggedRequestParametersCharacters;
 
@@ -33,30 +31,8 @@ public class JsonRpcService : IJsonRpcService
     {
         _logger = logManager.GetClassLogger();
         _rpcModuleProvider = rpcModuleProvider;
-        _serializer = rpcModuleProvider.Serializer;
         _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? Array.Empty<string>()).ToHashSet();
         _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
-
-        List<JsonConverter> converterList = new();
-        foreach (JsonConverter converter in rpcModuleProvider.Converters)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} inside {nameof(JsonRpcService)}");
-            _serializer.Converters.Add(converter);
-            converterList.Add(converter);
-        }
-
-        foreach (JsonConverter converter in EthereumJsonSerializer.CommonConverters)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} (default)");
-            _serializer.Converters.Add(converter);
-            converterList.Add(converter);
-        }
-
-        BlockParameterConverter blockParameterConverter = new();
-        _serializer.Converters.Add(blockParameterConverter);
-        converterList.Add(blockParameterConverter);
-
-        Converters = converterList.ToArray();
     }
 
     public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
@@ -110,11 +86,19 @@ public class JsonRpcService : IJsonRpcService
         (MethodInfo Info, bool ReadOnly) method, JsonRpcContext context)
     {
         ParameterInfo[] expectedParameters = method.Info.GetParameters();
-        string?[] providedParameters = request.Params ?? Array.Empty<string>();
+        JsonElement providedParameters = request.Params;
 
         LogRequest(methodName, providedParameters, expectedParameters);
 
-        int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
+        int missingParamsCount = expectedParameters.Length - providedParameters.GetArrayLength();
+        foreach (JsonElement item in providedParameters.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Null || (item.ValueKind == JsonValueKind.String && item.ValueEquals(ReadOnlySpan<byte>.Empty)))
+            {
+                missingParamsCount++;
+            }
+        }
+
         int explicitNullableParamsCount = 0;
 
         if (missingParamsCount != 0)
@@ -131,7 +115,7 @@ public class JsonRpcService : IJsonRpcService
                     // if the null is the default parameter it could be passed in an explicit way as "" or null
                     // or we can treat null as a missing parameter. Two tests for this cases:
                     // Eth_call_is_working_with_implicit_null_as_the_last_argument and Eth_call_is_working_with_explicit_null_as_the_last_argument
-                    bool isExplicit = providedParameters.Length >= parameterIndex + 1;
+                    bool isExplicit = providedParameters.GetArrayLength() >= parameterIndex + 1;
                     if (nullable && isExplicit)
                     {
                         explicitNullableParamsCount += 1;
@@ -234,7 +218,7 @@ public class JsonRpcService : IJsonRpcService
         return GetSuccessResponse(methodName, resultWrapper.GetData(), request.Id, returnAction);
     }
 
-    private void LogRequest(string methodName, string?[] providedParameters, ParameterInfo[] expectedParameters)
+    private void LogRequest(string methodName, JsonElement providedParameters, ParameterInfo[] expectedParameters)
     {
         if (_logger.IsInfo && !_methodsLoggingFiltering.Contains(methodName))
         {
@@ -247,29 +231,32 @@ public class JsonRpcService : IJsonRpcService
             int paramsCount = 0;
             const string separator = ", ";
 
-            for (int i = 0; i < providedParameters.Length; i++)
+            if (providedParameters.ValueKind != JsonValueKind.Undefined && providedParameters.ValueKind != JsonValueKind.Null)
             {
-                string? parameter = expectedParameters.ElementAtOrDefault(i)?.Name == "passphrase"
-                    ? "{passphrase}"
-                    : providedParameters[i];
-
-                if (paramsLength > _maxLoggedRequestParametersCharacters)
+                foreach (JsonElement param in providedParameters.EnumerateArray())
                 {
-                    int toRemove = paramsLength - _maxLoggedRequestParametersCharacters;
-                    builder.Remove(builder.Length - toRemove, toRemove);
-                    builder.Append("...");
-                    break;
-                }
+                    string? parameter = expectedParameters.ElementAtOrDefault(paramsCount)?.Name == "passphrase"
+                        ? "{passphrase}"
+                        : param.GetRawText();
 
-                if (paramsCount != 0)
-                {
-                    builder.Append(separator);
-                    paramsLength += separator.Length;
-                }
+                    if (paramsLength > _maxLoggedRequestParametersCharacters)
+                    {
+                        int toRemove = paramsLength - _maxLoggedRequestParametersCharacters;
+                        builder.Remove(builder.Length - toRemove, toRemove);
+                        builder.Append("...");
+                        break;
+                    }
 
-                builder.Append(parameter);
-                paramsLength += (parameter?.Length ?? 0);
-                paramsCount++;
+                    if (paramsCount != 0)
+                    {
+                        builder.Append(separator);
+                        paramsLength += separator.Length;
+                    }
+
+                    builder.Append(parameter);
+                    paramsLength += (parameter?.Length ?? 0);
+                    paramsCount++;
+                }
             }
             builder.Append(']');
             string log = builder.ToString();
@@ -277,24 +264,26 @@ public class JsonRpcService : IJsonRpcService
         }
     }
 
-    private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, string?[] providedParameters, int missingParamsCount)
+    private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
     {
         try
         {
             List<object> executionParameters = new List<object>();
-            for (int i = 0; i < providedParameters.Length; i++)
+            int i = 0;
+            foreach (JsonElement providedParameter in providedParameters.EnumerateArray())
             {
-                string providedParameter = providedParameters[i];
                 ParameterInfo expectedParameter = expectedParameters[i];
+                i++;
+
                 Type paramType = expectedParameter.ParameterType;
                 if (paramType.IsByRef)
                 {
                     paramType = paramType.GetElementType();
                 }
 
-                if (string.IsNullOrWhiteSpace(providedParameter))
+                if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
                 {
-                    if (providedParameter is null && IsNullableParameter(expectedParameter))
+                    if (providedParameter.ValueKind == JsonValueKind.Null && IsNullableParameter(expectedParameter))
                     {
                         executionParameters.Add(null);
                     }
@@ -306,36 +295,40 @@ public class JsonRpcService : IJsonRpcService
                 }
 
                 object? executionParam;
-                if (typeof(IJsonRpcParam).IsAssignableFrom(paramType))
+                if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
                 {
                     IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
-                    jsonRpcParam!.ReadJson(_serializer, providedParameter);
+                    jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
                     executionParam = jsonRpcParam;
                 }
                 else if (paramType == typeof(string))
                 {
-                    executionParam = providedParameter;
-                }
-                else if (paramType == typeof(string[]))
-                {
-                    executionParam = _serializer.Deserialize<string[]>(new JsonTextReader(new StringReader(providedParameter)));
+                    executionParam = providedParameter.GetString();
                 }
                 else
                 {
-                    if (providedParameter.StartsWith('[') || providedParameter.StartsWith('{'))
+                    if (providedParameter.ValueKind == JsonValueKind.String)
                     {
-                        executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader(providedParameter)), paramType);
+                        JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
+                        if (converter.GetType().FullName.StartsWith("System."))
+                        {
+                            executionParam = JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions);
+                        }
+                        else
+                        {
+                            executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                        }
                     }
                     else
                     {
-                        executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader($"\"{providedParameter}\"")), paramType);
+                        executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
                     }
                 }
 
                 executionParameters.Add(executionParam);
             }
 
-            for (int i = 0; i < missingParamsCount; i++)
+            for (i = 0; i < missingParamsCount; i++)
             {
                 executionParameters.Add(Type.Missing);
             }
@@ -387,8 +380,6 @@ public class JsonRpcService : IJsonRpcService
 
     public JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object id) =>
         GetErrorResponse(methodName, errorCode, errorMessage, null, id);
-
-    public JsonConverter[] Converters { get; }
 
     private JsonRpcErrorResponse GetErrorResponse(string? methodName, int errorCode, string? errorMessage, object? errorData, object? id, Action? disposableAction = null)
     {

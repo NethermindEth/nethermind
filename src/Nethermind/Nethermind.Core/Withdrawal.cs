@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Newtonsoft.Json;
 
 namespace Nethermind.Core;
 
@@ -30,12 +30,10 @@ public class Withdrawal
     /// <summary>
     /// Gets or sets the withdrawal amount in GWei.
     /// </summary>
-    [JsonProperty(PropertyName = "amount")]
-    [System.Text.Json.Serialization.JsonPropertyName("amount")]
+    [JsonPropertyName("amount")]
     public ulong AmountInGwei { get; set; }
 
     [JsonIgnore]
-    [System.Text.Json.Serialization.JsonIgnore]
     public UInt256 AmountInWei => AmountInGwei * 1.GWei();
 
     public override string ToString() => ToString(string.Empty);

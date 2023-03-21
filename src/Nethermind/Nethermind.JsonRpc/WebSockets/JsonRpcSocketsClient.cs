@@ -58,11 +58,12 @@ namespace Nethermind.JsonRpc.WebSockets
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             IncrementBytesReceivedMetric(data.Count);
-            using TextReader request = new StreamReader(new MemoryStream(data.Array!, data.Offset, data.Count), Encoding.UTF8);
+            using MemoryStream request = new MemoryStream(data.Array!, data.Offset, data.Count);
             int allResponsesSize = 0;
 
-            await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
+            await foreach ((JsonRpcResult result, IDisposable disposable) in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
             {
+                disposable.Dispose();
                 stopwatch.Restart();
 
                 int singleResponseSize = await SendJsonRpcResult(result);

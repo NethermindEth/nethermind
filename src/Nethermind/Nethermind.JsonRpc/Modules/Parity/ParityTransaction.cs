@@ -5,7 +5,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
@@ -13,31 +14,25 @@ namespace Nethermind.JsonRpc.Modules.Parity
     {
         public Keccak Hash { get; set; }
         public UInt256? Nonce { get; set; }
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Keccak BlockHash { get; set; }
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public UInt256? BlockNumber { get; set; }
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public UInt256? TransactionIndex { get; set; }
         public Address From { get; set; }
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address To { get; set; }
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
         public long? Gas { get; set; }
         public byte[] Input { get; set; }
         public byte[] Raw { get; set; }
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address Creates { get; set; }
         public PublicKey PublicKey { get; set; }
         public ulong? ChainId { get; set; }
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public object Condition { get; set; }
         public byte[] R { get; set; }
         public byte[] S { get; set; }

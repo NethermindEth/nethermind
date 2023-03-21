@@ -1,30 +1,27 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
     public class ParityNetPeers
     {
-        [JsonProperty("active", Order = 0)]
-        [System.Text.Json.Serialization.JsonPropertyName("active")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(0)]
+        [JsonPropertyName("active")]
+        [JsonPropertyOrder(0)]
         public int Active { get; set; }
 
-        [JsonProperty("connected", Order = 1)]
-        [System.Text.Json.Serialization.JsonPropertyName("connected")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(1)]
+        [JsonPropertyName("connected")]
+        [JsonPropertyOrder(1)]
         public int Connected { get; set; }
 
-        [JsonProperty("max", Order = 2)]
-        [System.Text.Json.Serialization.JsonPropertyName("max")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(2)]
+        [JsonPropertyName("max")]
+        [JsonPropertyOrder(2)]
         public int Max { get; set; }
 
-        [JsonProperty("peers", Order = 3)]
-        [System.Text.Json.Serialization.JsonPropertyName("peers")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(3)]
+        [JsonPropertyName("peers")]
+        [JsonPropertyOrder(3)]
         public PeerInfo[] Peers { get; set; }
 
         public ParityNetPeers()

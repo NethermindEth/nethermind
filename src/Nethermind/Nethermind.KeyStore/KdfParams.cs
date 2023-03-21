@@ -1,31 +1,37 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.KeyStore
 {
     public class KdfParams
     {
-        [JsonProperty(PropertyName = "dklen", Order = 0)]
+        [JsonPropertyName("dklen")]
+        [JsonPropertyOrder(0)]
         public int DkLen { get; set; }
 
-        [JsonProperty(PropertyName = "salt", Order = 1)]
+        [JsonPropertyName("salt")]
+        [JsonPropertyOrder(1)]
         public string Salt { get; set; }
 
-        [JsonProperty(PropertyName = "n", Order = 2)]
+        [JsonPropertyName("n")]
+        [JsonPropertyOrder(2)]
         public int? N { get; set; }
 
-        [JsonProperty(PropertyName = "p", Order = 4)]
-        public int? P { get; set; }
-
-        [JsonProperty(PropertyName = "r", Order = 3)]
+        [JsonPropertyName("r")]
+        [JsonPropertyOrder(3)]
         public int? R { get; set; }
 
-        [JsonProperty(PropertyName = "c")]
+        [JsonPropertyName("p")]
+        [JsonPropertyOrder(4)]
+        public int? P { get; set; }
+
+        [JsonPropertyName("c")]
         public int? C { get; set; }
 
-        [JsonProperty(PropertyName = "prf")]
+        [JsonPropertyName("prf")]
         public string Prf { get; set; }
     }
 }

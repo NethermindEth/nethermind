@@ -2,127 +2,78 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Globalization;
+using System.Buffers;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
-namespace Nethermind.Serialization.Json
+namespace Nethermind.Serialization.Json;
+
+public class UInt256Converter : JsonConverter<UInt256>
 {
-    using Newtonsoft.Json;
-
-    public class UInt256Converter : JsonConverter<UInt256>
+    public override UInt256 Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
     {
-        private readonly NumberConversion _conversion;
-
-        public UInt256Converter()
-            : this(NumberConversion.Hex)
+        if (reader.TokenType == JsonTokenType.Number)
         {
+            return (UInt256)reader.GetUInt64();
+        }
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            ThrowInvalidOperationException();
         }
 
-        public UInt256Converter(NumberConversion conversion)
-        {
-            _conversion = conversion;
-        }
-
-        public override void WriteJson(JsonWriter writer, UInt256 value, JsonSerializer serializer)
-        {
-            if (value.IsZero)
-            {
-                writer.WriteValue("0x0");
-                return;
-            }
-
-            NumberConversion usedConversion = _conversion == NumberConversion.Decimal
-                ? value < int.MaxValue ? NumberConversion.Decimal : NumberConversion.Hex
-                : _conversion;
-
-            switch (usedConversion)
-            {
-                case NumberConversion.Hex:
-                    writer.WriteValue(value.ToHexString(true));
-                    break;
-                case NumberConversion.Decimal:
-                    writer.WriteRawValue(value.ToString());
-                    break;
-                default:
-                    throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");
-            }
-        }
-
-        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer) =>
-            ReaderJson(reader);
-
-        public static UInt256 ReaderJson(JsonReader reader)
-        {
-            if (reader.Value is long || reader.Value is int)
-            {
-                return (UInt256)(long)reader.Value;
-            }
-
-            string s = reader.Value?.ToString();
-            if (s is null)
-            {
-                throw new JsonException($"{nameof(UInt256)} cannot be deserialized from null");
-            }
-
-            if (s == "0x0")
-            {
-                return UInt256.Zero;
-            }
-
-            if (s.StartsWith("0x0"))
-            {
-                return UInt256.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
-            }
-
-            if (s.StartsWith("0x"))
-            {
-                Span<char> withZero = new(new char[s.Length - 1]);
-                withZero[0] = '0';
-                s.AsSpan(2).CopyTo(withZero.Slice(1));
-                return UInt256.Parse(withZero, NumberStyles.AllowHexSpecifier);
-            }
-
-            try
-            {
-                return UInt256.Parse(s, NumberStyles.Integer);
-            }
-            catch (Exception)
-            {
-                return UInt256.Parse(s, NumberStyles.HexNumber);
-            }
-        }
+        ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+        return Read(hex);
     }
-}
 
-namespace Nethermind.Serialization.Json
-{
-    using System.Runtime.CompilerServices;
-    using System.Text.Json;
-    using System.Text.Json.Serialization;
-
-    public class UInt256JsonConverter : JsonConverter<UInt256>
+    public static UInt256 Read(ReadOnlySpan<byte> hex)
     {
-        public override UInt256 Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options) => throw new NotImplementedException();
 
-        [SkipLocalsInit]
-        public override void Write(
-            Utf8JsonWriter writer,
-            UInt256 value,
-            JsonSerializerOptions options)
+        if (hex.SequenceEqual("0x0"u8))
         {
-            if (value.IsZero)
-            {
-                writer.WriteRawValue("\"0x0\"");
-                return;
-            }
-
-            Span<byte> bytes = stackalloc byte[32];
-            value.ToBigEndian(bytes);
-            ByteArrayJsonConverter.Convert(writer, bytes);
+            return default;
         }
+
+        if (hex.StartsWith("0x"u8))
+        {
+            hex = hex[2..];
+        }
+
+        Span<byte> bytes = stackalloc byte[32];
+        int length = (hex.Length >> 1) + hex.Length % 2;
+        Bytes.FromUtf8HexString(hex, bytes[(32 - length)..]);
+        ReadOnlySpan<byte> readOnlyBytes = bytes;
+        return new UInt256(in readOnlyBytes, isBigEndian: true);
+    }
+
+    [SkipLocalsInit]
+    public override void Write(
+        Utf8JsonWriter writer,
+        UInt256 value,
+        JsonSerializerOptions options)
+    {
+        if (value.IsZero)
+        {
+            writer.WriteRawValue("\"0x0\"");
+            return;
+        }
+
+        Span<byte> bytes = stackalloc byte[32];
+        value.ToBigEndian(bytes);
+        ByteArrayConverter.Convert(writer, bytes);
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    private static void ThrowInvalidOperationException()
+    {
+        throw new InvalidOperationException();
     }
 }

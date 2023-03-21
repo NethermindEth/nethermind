@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
+
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -22,9 +24,7 @@ namespace Nethermind.JsonRpc.Modules
         {
         }
 
-        public JsonSerializer Serializer { get; } = new();
-
-        public IReadOnlyCollection<JsonConverter> Converters => Array.Empty<JsonConverter>();
+        public IJsonSerializer Serializer { get; } = new EthereumJsonSerializer();
 
         public IReadOnlyCollection<string> Enabled => Array.Empty<string>();
 

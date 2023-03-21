@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
-    [System.Text.Json.Serialization.JsonConverter(typeof(ParityTraceActionConverter))]
+    [JsonConverter(typeof(ParityTraceActionConverter))]
     public class ParityTraceAction
     {
         public int[]? TraceAddress { get; set; }
@@ -34,6 +34,16 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public string? Error { get; set; }
     }
 
+    /*
+     * {
+     *   "callType": "call",
+     *   "from": "0x430adc807210dab17ce7538aecd4040979a45137",
+     *   "gas": "0x1a1f8",
+     *   "input": "0x",
+     *   "to": "0x9bcb0733c56b1d8f0c7c4310949e00485cae4e9d",
+     *    "value": "0x2707377c7552d8000"
+     * },
+     */
     public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
     {
         public override ParityTraceAction Read(

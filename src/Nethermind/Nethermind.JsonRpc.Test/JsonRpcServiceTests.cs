@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
+
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -22,7 +24,7 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+
 using NSubstitute;
 using NUnit.Framework;
 
@@ -119,7 +121,7 @@ namespace Nethermind.JsonRpc.Test
                 }
             };
 
-            JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_newFilter", JsonConvert.SerializeObject(parameters)) as JsonRpcSuccessResponse;
+            JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_newFilter", JsonSerializer.Serialize(parameters)) as JsonRpcSuccessResponse;
             Assert.AreEqual(UInt256.One, response?.Result);
         }
 

@@ -11,7 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Overseer.Test.Framework;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.Overseer.Test

@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
-using Newtonsoft.Json;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -28,7 +30,6 @@ public class ExecutionPayloadBodyV1Result
 
     public IList<IList<byte>> Transactions { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public IList<Withdrawal>? Withdrawals { get; set; }
 }

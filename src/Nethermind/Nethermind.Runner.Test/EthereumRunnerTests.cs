@@ -35,6 +35,7 @@ using NLog.Config;
 using NLog.Targets;
 using NUnit.Framework;
 using LogLevel = NLog.LogLevel;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Test
 {

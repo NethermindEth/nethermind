@@ -2,11 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
+using System.Text.Json.Serialization;
+using System.Text.Json;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core
 {
+    [JsonConverter(typeof(BloomConverter))]
     public class Bloom : IEquatable<Bloom>
     {
         public static readonly Bloom Empty = new();
@@ -364,6 +370,29 @@ namespace Nethermind.Core
             var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
             var indexes = new Bloom.BloomExtract(GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
             return indexes;
+        }
+    }
+}
+
+namespace Nethermind.Serialization.Json
+{
+    public class BloomConverter : JsonConverter<Bloom>
+    {
+        public override Bloom? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            byte[]? bytes = ByteArrayConverter.Convert(ref reader);
+            return bytes is null ? null : new Bloom(bytes);
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            Bloom bloom,
+            JsonSerializerOptions options)
+        {
+            ByteArrayConverter.Convert(writer, bloom.Bytes, skipLeadingZeros: false);
         }
     }
 }

@@ -6,7 +6,8 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Data
 {
@@ -46,12 +47,10 @@ namespace Nethermind.JsonRpc.Data
         public UInt256? EffectiveGasPrice { get; set; }
         public Address From { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address To { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
@@ -62,22 +61,24 @@ namespace Nethermind.JsonRpc.Data
 
         public TxReceipt ToReceipt()
         {
-            TxReceipt receipt = new();
-            receipt.Bloom = LogsBloom;
-            receipt.Error = Error;
-            receipt.Index = (int)TransactionIndex;
-            receipt.Logs = Logs.Select(l => l.ToLogEntry()).ToArray();
-            receipt.Recipient = To;
-            receipt.Sender = From;
-            receipt.BlockHash = BlockHash;
-            receipt.BlockNumber = BlockNumber;
-            receipt.ContractAddress = ContractAddress;
-            receipt.GasUsed = GasUsed;
-            receipt.StatusCode = (byte)Status;
-            receipt.TxHash = TransactionHash;
-            receipt.GasUsedTotal = CumulativeGasUsed;
-            receipt.PostTransactionState = Root;
-            receipt.TxType = Type;
+            TxReceipt receipt = new()
+            {
+                Bloom = LogsBloom,
+                Error = Error,
+                Index = (int)TransactionIndex,
+                Logs = Logs.Select(l => l.ToLogEntry()).ToArray(),
+                Recipient = To,
+                Sender = From,
+                BlockHash = BlockHash,
+                BlockNumber = BlockNumber,
+                ContractAddress = ContractAddress,
+                GasUsed = GasUsed,
+                StatusCode = (byte)Status,
+                TxHash = TransactionHash,
+                GasUsedTotal = CumulativeGasUsed,
+                PostTransactionState = Root,
+                TxType = Type
+            };
             return receipt;
         }
     }

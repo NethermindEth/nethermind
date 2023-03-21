@@ -7,11 +7,10 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Facade.Eth
 {
-    [System.Text.Json.Serialization.JsonConverter(typeof(SyncingResultJsonConverter))]
+    [JsonConverter(typeof(SyncingResultJsonConverter))]
     public struct SyncingResult
     {
         public static SyncingResult NotSyncing = new();
-
         public bool IsSyncing { get; set; }
         public long StartingBlock { get; set; }
         public long CurrentBlock { get; set; }
@@ -28,7 +27,7 @@ namespace Nethermind.Facade.Eth
         public override SyncingResult Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
-            JsonSerializerOptions options) => throw new NotImplementedException();
+            JsonSerializerOptions options) => throw new NotSupportedException();
 
         public override void Write(
             Utf8JsonWriter writer,

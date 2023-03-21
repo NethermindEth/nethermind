@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -12,10 +13,8 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -61,12 +60,5 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             return new ProofRpcModule(tracer, _blockTree, _receiptFinder, _specProvider, _logManager);
         }
-
-        private static readonly List<JsonConverter> _converters = new()
-        {
-            new ProofConverter()
-        };
-
-        public override IReadOnlyCollection<JsonConverter> GetConverters() => _converters;
     }
 }

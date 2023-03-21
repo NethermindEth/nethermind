@@ -944,7 +944,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        public static byte[] FromUtf8HexString(ReadOnlySpan<byte> hexString)
+        public static byte[] FromUtf8HexString(scoped ReadOnlySpan<byte> hexString)
         {
             if (hexString.Length == 0)
             {
@@ -954,6 +954,36 @@ namespace Nethermind.Core.Extensions
             int oddMod = hexString.Length % 2;
             byte[] result = GC.AllocateUninitializedArray<byte>((hexString.Length >> 1) + oddMod);
             return HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1) ? result : throw new FormatException("Incorrect hex string");
+        }
+
+        [DebuggerStepThrough]
+        public static void FromUtf8HexString(ReadOnlySpan<byte> hexString, Span<byte> result)
+        {
+            int oddMod = hexString.Length % 2;
+            int length = (hexString.Length >> 1) + oddMod;
+            if (length != result.Length)
+            {
+                ThrowInvalidOperationException();
+            }
+
+            if (!HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1))
+            {
+                ThrowFormatException_IncorrectHexString();
+            }
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowInvalidOperationException()
+        {
+            throw new InvalidOperationException();
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void ThrowFormatException_IncorrectHexString()
+        {
+            throw new FormatException("Incorrect hex string");
         }
 
         [DebuggerStepThrough]

@@ -3,22 +3,28 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
-namespace Nethermind.Specs.ChainSpecStyle.Json;
-
-internal class ChainSpecJson
+namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    public string Name { get; set; }
-    public string DataDir { get; set; }
-    public EngineJson Engine { get; set; }
-    public ChainSpecParamsJson Params { get; set; }
-    public ChainSpecGenesisJson Genesis { get; set; }
-    public string[] Nodes { get; set; }
-    public Dictionary<string, AllocationJson> Accounts { get; set; }
+    [SuppressMessage("ReSharper", "ClassNeverInstantiated.Global")]
+    [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
+    [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
+    internal class ChainSpecJson
+    {
+        public string Name { get; set; }
+        public string DataDir { get; set; }
+        public EngineJson Engine { get; set; }
+        public ChainSpecParamsJson Params { get; set; }
+        [JsonPropertyName("genesis")]
+        public ChainSpecGenesisJson Genesis { get; set; }
+        public string[] Nodes { get; set; }
+        [JsonPropertyName("accounts")]
+        public Dictionary<string, AllocationJson> Accounts { get; set; }
 
     internal class EthashEngineJson
     {
@@ -85,10 +91,12 @@ internal class ChainSpecJson
         public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; } = new Dictionary<long, IDictionary<Address, byte[]>>();
         public Address WithdrawalContractAddress { get; set; }
 
-        public class StepDurationJson : SortedDictionary<long, long> { }
-    }
+            [JsonConverter(typeof(StepDurationJsonConverter))]
+            public class StepDurationJson : SortedDictionary<long, long> { }
+        }
 
-    public class BlockRewardJson : SortedDictionary<long, UInt256> { }
+        [JsonConverter(typeof(BlockRewardJsonConverter))]
+        public class BlockRewardJson : SortedDictionary<long, UInt256> { }
 
     internal class AuRaValidatorJson
     {
@@ -163,14 +171,19 @@ internal class ChainSpecJson
     {
     }
 
-    internal class EngineJson
-    {
-        public EthashEngineJson Ethash { get; set; }
-        public CliqueEngineJson Clique { get; set; }
-        public AuraEngineJson AuthorityRound { get; set; }
-        public NethDevJson NethDev { get; set; }
+        internal class EngineJson
+        {
+            [JsonPropertyName("Ethash")]
+            public EthashEngineJson Ethash { get; set; }
+            [JsonPropertyName("Clique")]
+            public CliqueEngineJson Clique { get; set; }
+            [JsonPropertyName("AuthorityRound")]
+            public AuraEngineJson AuthorityRound { get; set; }
+            [JsonPropertyName("NethDev")]
+            public NethDevJson NethDev { get; set; }
 
-        [JsonExtensionData]
-        public IDictionary<string, JToken> CustomEngineData { get; set; }
+            [JsonExtensionData]
+            public Dictionary<string, JsonElement> CustomEngineData { get; set; }
+        }
     }
 }

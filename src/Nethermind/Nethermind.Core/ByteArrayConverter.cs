@@ -2,52 +2,73 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json
 {
-    using Newtonsoft.Json;
-
     public class ByteArrayConverter : JsonConverter<byte[]>
     {
-        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
+        public override byte[]? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
         {
-            if (value is null)
-            {
-                writer.WriteNull();
-            }
-            else
-            {
-                writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value, true));
-            }
+            return Convert(ref reader);
         }
 
-        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public static byte[]? Convert(ref Utf8JsonReader reader)
         {
-            if (reader.TokenType == JsonToken.Null)
+            JsonTokenType tokenType = reader.TokenType;
+            if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
             {
                 return null;
             }
+            else if (tokenType != JsonTokenType.String)
+            {
+                ThrowInvalidOperationException();
+            }
 
-            string s = (string)reader.Value;
-            return Bytes.FromHexString(s);
+            int length = reader.ValueSpan.Length;
+            byte[]? bytes = null;
+            if (length == 0)
+            {
+                length = checked((int)reader.ValueSequence.Length);
+                if (length == 0)
+                {
+                    return null;
+                }
+
+                bytes = ArrayPool<byte>.Shared.Rent(length);
+                reader.ValueSequence.CopyTo(bytes);
+            }
+
+            ReadOnlySpan<byte> hex = bytes is null ? reader.ValueSpan : bytes.AsSpan(0, length);
+            if (hex.StartsWith("0x"u8))
+            {
+                hex = hex[2..];
+            }
+
+            byte[] returnVal = Bytes.FromUtf8HexString(hex);
+            if (bytes is not null)
+            {
+                ArrayPool<byte>.Shared.Return(bytes);
+            }
+
+            return returnVal;
         }
-    }
-}
 
-namespace Nethermind.Serialization.Json
-{
-    using System.Buffers;
-    using System.Runtime.CompilerServices;
-    using System.Text.Json;
-    using System.Text.Json.Serialization;
-
-    public class ByteArrayJsonConverter : JsonConverter<byte[]>
-    {
-        public override byte[] Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options) => throw new NotImplementedException();
+        [DoesNotReturn]
+        [StackTraceHidden]
+        internal static void ThrowInvalidOperationException()
+        {
+            throw new InvalidOperationException();
+        }
 
         public override void Write(
             Utf8JsonWriter writer,
@@ -66,7 +87,7 @@ namespace Nethermind.Serialization.Json
             int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingZeros() : 0;
             int length = bytes.Length * 2 - leadingNibbleZeros + 4;
 
-            byte[] array = null;
+            byte[]? array = null;
             if (length > maxStackLength)
             {
                 array = ArrayPool<byte>.Shared.Rent(length);

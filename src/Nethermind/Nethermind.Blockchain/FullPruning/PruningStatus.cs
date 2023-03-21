@@ -1,15 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.FullPruning;
 
 /// <summary>
 /// Status of Full Pruning
 /// </summary>
-[JsonConverter(typeof(StringEnumConverter))]
+[JsonConverter(typeof(LowerCaseJsonStringEnumConverter))]
 public enum PruningStatus
 {
     /// <summary>

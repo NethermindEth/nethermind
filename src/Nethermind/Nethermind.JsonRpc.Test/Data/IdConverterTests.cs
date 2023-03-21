@@ -4,10 +4,12 @@
 using System;
 using System.IO;
 using System.Numerics;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using FluentAssertions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
@@ -26,7 +28,7 @@ namespace Nethermind.JsonRpc.Test.Data
         public void Can_handle_int()
         {
             IdConverter converter = new();
-            converter.WriteJson(new JsonTextWriter(new StringWriter()), 1, JsonSerializer.CreateDefault());
+            converter.Write(new Utf8JsonWriter(new MemoryStream()), 1, null);
         }
 
         [Test]
@@ -34,7 +36,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             IdConverter converter = new();
             Assert.Throws<NotSupportedException>(
-                () => converter.WriteJson(new JsonTextWriter(new StringWriter()), 1.1, JsonSerializer.CreateDefault()));
+                () => converter.Write(new Utf8JsonWriter(new MemoryStream()), 1.1, null));
         }
 
         [TestCase(typeof(int))]
@@ -91,9 +93,7 @@ namespace Nethermind.JsonRpc.Test.Data
         public class SomethingWithId
         {
             [JsonConverter(typeof(IdConverter))]
-            [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-            [System.Text.Json.Serialization.JsonConverter(typeof(IdJsonConverter))]
-            [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+            [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
             public object Id { get; set; } = null!;
 
             public string Something { get; set; } = null!;
@@ -102,9 +102,7 @@ namespace Nethermind.JsonRpc.Test.Data
         public class SomethingWithDecimalId
         {
             [JsonConverter(typeof(IdConverter))]
-            [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-            [System.Text.Json.Serialization.JsonConverter(typeof(IdJsonConverter))]
-            [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+            [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
             public decimal Id { get; set; }
 
             public string Something { get; set; } = null!;

@@ -6,7 +6,7 @@ using System.Text;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json
@@ -25,13 +25,9 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Direct_null()
         {
-            ByteArrayConverter converter = new();
-            StringBuilder sb = new();
-            JsonSerializer serializer = new();
-            serializer.Converters.Add(converter);
-            converter.WriteJson(
-                new JsonTextWriter(new StringWriter(sb)), null, serializer);
-            sb.ToString().Should().Be("null");
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+            var result = serializer.Serialize<byte[]>(null);
+            result.Should().Be("null");
         }
     }
 }

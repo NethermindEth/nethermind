@@ -3,10 +3,11 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Newtonsoft.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
@@ -17,7 +18,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong? ChainId { get; set; }
         public ulong? NetworkId { get; set; }
 
-        [JsonProperty(PropertyName = "registrar")]
+        [JsonPropertyName("registrar")]
         public Address EnsRegistrar { get; set; }
 
         public long? GasLimitBoundDivisor { get; set; }

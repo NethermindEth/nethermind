@@ -4,9 +4,11 @@
 using System;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+
 
 namespace Nethermind.JsonRpc.Test
 {
@@ -53,9 +55,8 @@ namespace Nethermind.JsonRpc.Test
 
             protected class JsonRpcSuccessResponse<T> : JsonRpcSuccessResponse
             {
-                [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 1)]
-                [System.Text.Json.Serialization.JsonPropertyOrder(1)]
-                [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+                [JsonPropertyOrder(1)]
+                [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
                 public new T Result { get { return (T)base.Result; } set { base.Result = value; } }
             }
 
@@ -69,7 +70,7 @@ namespace Nethermind.JsonRpc.Test
 
             public class JsonRpcRequestWithParams : JsonRpcRequest
             {
-                [JsonProperty(Required = Required.Default)]
+                [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
                 public new object[]? Params { get; set; }
             }
         }

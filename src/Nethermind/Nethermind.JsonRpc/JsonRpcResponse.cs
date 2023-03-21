@@ -4,13 +4,17 @@
 using System;
 
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc
 {
-    [System.Text.Json.Serialization.JsonDerivedType(typeof(JsonRpcResponse))]
-    [System.Text.Json.Serialization.JsonDerivedType(typeof(JsonRpcSuccessResponse))]
-    [System.Text.Json.Serialization.JsonDerivedType(typeof(JsonRpcErrorResponse))]
+    [JsonDerivedType(typeof(JsonRpcResponse))]
+    [JsonDerivedType(typeof(JsonRpcSuccessResponse))]
+    [JsonDerivedType(typeof(JsonRpcErrorResponse))]
+    [JsonDerivedType(typeof(JsonRpcSubscriptionResponse))]
     public class JsonRpcResponse : IDisposable
     {
         private Action? _disposableAction;
@@ -20,21 +24,17 @@ namespace Nethermind.JsonRpc
             _disposableAction = disposableAction;
         }
 
-        [JsonProperty(PropertyName = "jsonrpc", Order = 0)]
-        [System.Text.Json.Serialization.JsonPropertyName("jsonrpc")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(0)]
+        [JsonPropertyName("jsonrpc")]
+        [JsonPropertyOrder(0)]
         public readonly string JsonRpc = "2.0";
 
         [JsonConverter(typeof(IdConverter))]
-        [JsonProperty(PropertyName = "id", Order = 2, NullValueHandling = NullValueHandling.Include)]
-        [System.Text.Json.Serialization.JsonConverter(typeof(IdJsonConverter))]
-        [System.Text.Json.Serialization.JsonPropertyName("id")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(2)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonPropertyName("id")]
+        [JsonPropertyOrder(2)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public object? Id { get; set; }
 
         [JsonIgnore]
-        [System.Text.Json.Serialization.JsonIgnore]
         public string MethodName { get; set; }
 
         public void Dispose()
@@ -46,11 +46,13 @@ namespace Nethermind.JsonRpc
 
     public class JsonRpcSuccessResponse : JsonRpcResponse
     {
-        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 1)]
-        [System.Text.Json.Serialization.JsonPropertyName("result")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(1)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonPropertyName("result")]
+        [JsonPropertyOrder(1)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public object? Result { get; set; }
+
+        [JsonConstructor]
+        public JsonRpcSuccessResponse() : base(null) { }
 
         public JsonRpcSuccessResponse(Action? disposableAction = null) : base(disposableAction)
         {
@@ -59,10 +61,9 @@ namespace Nethermind.JsonRpc
 
     public class JsonRpcErrorResponse : JsonRpcResponse
     {
-        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Include, Order = 1)]
-        [System.Text.Json.Serialization.JsonPropertyName("error")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(1)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonPropertyName("error")]
+        [JsonPropertyOrder(1)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Error? Error { get; set; }
 
         public JsonRpcErrorResponse(Action? disposableAction = null) : base(disposableAction)

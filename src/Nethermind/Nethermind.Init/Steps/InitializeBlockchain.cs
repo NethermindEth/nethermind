@@ -322,10 +322,7 @@ namespace Nethermind.Init.Steps
 
         private static void InitBlockTraceDumper()
         {
-            BlockTraceDumper.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
-            BlockTraceDumper.Converters.AddRange(DebugModuleFactory.Converters);
-            BlockTraceDumper.Converters.AddRange(TraceModuleFactory.Converters);
-            BlockTraceDumper.Converters.Add(new TxReceiptConverter());
+            EthereumJsonSerializer.AddConverter(new TxReceiptConverter());
         }
 
         protected virtual IHealthHintService CreateHealthHintService() =>

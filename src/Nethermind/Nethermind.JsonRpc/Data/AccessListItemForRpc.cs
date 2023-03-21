@@ -8,12 +8,15 @@ using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Data
 {
     public class AccessListItemForRpc
     {
+        [JsonConstructor]
+        public AccessListItemForRpc() { }
         public AccessListItemForRpc(Address address, IReadOnlyCollection<UInt256>? storageKeys)
         {
             Address = address;
@@ -22,9 +25,9 @@ namespace Nethermind.JsonRpc.Data
 
         public Address Address { get; set; }
 
-        [JsonProperty(ItemConverterType = typeof(StorageCellIndexConverter))]
-        [System.Text.Json.Serialization.JsonConverter(typeof(StorageCellIndexJsonConverter))]
-        public UInt256[]? StorageKeys { get; set; }
+        private UInt256[]? _storageKeys;
+        [JsonConverter(typeof(StorageCellIndexConverter))]
+        public UInt256[]? StorageKeys { get => _storageKeys ?? Array.Empty<UInt256>(); set => _storageKeys = value; }
 
         public static AccessListItemForRpc[] FromAccessList(AccessList accessList) =>
             accessList.Data.Select(kvp => new AccessListItemForRpc(kvp.Key, kvp.Value)).ToArray();

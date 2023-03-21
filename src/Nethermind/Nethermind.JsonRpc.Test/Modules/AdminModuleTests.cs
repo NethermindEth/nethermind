@@ -4,6 +4,8 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
@@ -16,8 +18,7 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats.Model;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+
 using NSubstitute;
 using NUnit.Framework;
 
@@ -63,10 +64,8 @@ public class AdminModuleTests
     {
         string serialized = RpcTest.TestSerializedRequest(_adminRpcModule, "admin_nodeInfo");
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
-        JsonSerializerSettings settings = new();
-        settings.Converters = EthereumJsonSerializer.CommonConverters.ToList();
 
-        NodeInfo nodeInfo = ((JObject)response.Result!).ToObject<NodeInfo>(JsonSerializer.Create(settings))!;
+        NodeInfo nodeInfo = ((JsonElement)response.Result!).Deserialize<NodeInfo>(EthereumJsonSerializer.JsonOptions)!;
         nodeInfo.Enode.Should().Be(_enodeString);
         nodeInfo.Id.Should().Be("ae3623ef35c06ab49e9ae4b9f5a2b0f1983c28f85de1ccc98e2174333fdbdf1f");
         nodeInfo.Ip.Should().Be("127.0.0.1");

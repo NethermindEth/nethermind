@@ -2,25 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public class JsonRpcSubscriptionResponse : JsonRpcResponse
     {
-        [JsonProperty(PropertyName = "params", Order = 2)]
-        [System.Text.Json.Serialization.JsonPropertyOrder(2)]
+        [JsonPropertyName("params")]
+        [JsonPropertyOrder(2)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public JsonRpcSubscriptionResult Params { get; set; }
 
-        [JsonProperty(PropertyName = "method", Order = 1)]
-        [System.Text.Json.Serialization.JsonPropertyName("method")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(1)]
+        [JsonPropertyName("method")]
+        [JsonPropertyOrder(1)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public new string MethodName => "eth_subscription";
 
+        [JsonPropertyName("id")]
         [JsonConverter(typeof(IdConverter))]
-        [JsonProperty(PropertyName = "id", Order = 3, NullValueHandling = NullValueHandling.Ignore)]
-        [System.Text.Json.Serialization.JsonConverter(typeof(IdJsonConverter))]
-        [System.Text.Json.Serialization.JsonPropertyOrder(3)]
+        [JsonPropertyOrder(3)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public new object? Id { get { return base.Id; } set { base.Id = value; } }
     }
 }

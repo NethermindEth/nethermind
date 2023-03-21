@@ -6,10 +6,10 @@
     
     <Nullable>annotations</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Jint" />
-    <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="System.Linq.Async" />
     <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />
   </ItemGroup>

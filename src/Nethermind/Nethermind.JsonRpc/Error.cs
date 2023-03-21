@@ -1,19 +1,23 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc
 {
     public class Error
     {
-        [JsonProperty(PropertyName = "code", Order = 0)]
+        [JsonPropertyName("code")]
+        [JsonPropertyOrder(0)]
         public int Code { get; set; }
 
-        [JsonProperty(PropertyName = "message", Order = 1)]
+        [JsonPropertyName("message")]
+        [JsonPropertyOrder(1)]
         public string? Message { get; set; }
 
-        [JsonProperty(PropertyName = "data", Order = 2)]
+        [JsonPropertyName("data")]
+        [JsonPropertyOrder(2)]
         public object? Data { get; set; }
     }
 }

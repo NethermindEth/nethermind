@@ -8,7 +8,8 @@ using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Polly;
 
 namespace Nethermind.Blockchain.Data
@@ -76,7 +77,7 @@ namespace Nethermind.Blockchain.Data
         {
             try
             {
-                await Policy.Handle<JsonSerializationException>()
+                await Policy.Handle<JsonException>()
                     .Or<IOException>()
                     .WaitAndRetryAsync(3, CalcRetryIntervals, (exception, i) => ReportRetry(exception))
                     .ExecuteAsync(() =>
@@ -85,7 +86,7 @@ namespace Nethermind.Blockchain.Data
                         return Task.CompletedTask;
                     });
             }
-            catch (JsonSerializationException e)
+            catch (JsonException e)
             {
                 ReportJsonError(e);
             }
@@ -99,12 +100,12 @@ namespace Nethermind.Blockchain.Data
         {
             try
             {
-                Policy.Handle<JsonSerializationException>()
+                Policy.Handle<JsonException>()
                     .Or<IOException>()
                     .WaitAndRetry(2, CalcRetryIntervals, (exception, i) => ReportRetry(exception))
                     .Execute(() => LoadFileCore());
             }
-            catch (JsonSerializationException e)
+            catch (JsonException e)
             {
                 ReportJsonError(e);
             }
@@ -145,7 +146,7 @@ namespace Nethermind.Blockchain.Data
             }
         }
 
-        private void ReportJsonError(JsonSerializationException e)
+        private void ReportJsonError(JsonException e)
         {
             if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {FilePath}. Will not retry any more.", e);
         }

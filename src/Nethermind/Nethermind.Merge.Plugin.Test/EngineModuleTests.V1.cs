@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -30,7 +31,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
-using Newtonsoft.Json;
+
 using NSubstitute;
 using NUnit.Framework;
 
@@ -67,8 +68,8 @@ public partial class EngineModuleTests
         };
         string?[] parameters =
         {
-            JsonConvert.SerializeObject(forkChoiceUpdatedParams),
-            JsonConvert.SerializeObject(preparePayloadParams)
+            JsonSerializer.Serialize(forkChoiceUpdatedParams),
+            JsonSerializer.Serialize(preparePayloadParams)
         };
         // prepare a payload
         string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
@@ -106,7 +107,7 @@ public partial class EngineModuleTests
             safeBlockHash = expectedBlockHash.ToString(true),
             finalizedBlockHash = startingHead.ToString(true),
         };
-        parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams), null };
+        parameters = new[] { JsonSerializer.Serialize(forkChoiceUpdatedParams), null };
         // update the fork choice
         result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"VALID\",\"latestValidHash\":\"" +
@@ -125,7 +126,7 @@ public partial class EngineModuleTests
             safeBlockHash = Keccak.Zero.ToString(),
             finalizedBlockHash = Keccak.Zero.ToString(),
         };
-        string[] parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams) };
+        string[] parameters = new[] { JsonSerializer.Serialize(forkChoiceUpdatedParams) };
         string? result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"SYNCING\",\"latestValidHash\":null,\"validationError\":null},\"payloadId\":null},\"id\":67}");
     }

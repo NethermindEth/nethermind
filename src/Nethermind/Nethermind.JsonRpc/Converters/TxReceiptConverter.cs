@@ -5,20 +5,21 @@ using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Converters
 {
     public class TxReceiptConverter : JsonConverter<TxReceipt>
     {
-        public override void WriteJson(JsonWriter writer, TxReceipt value, JsonSerializer serializer)
+        public override TxReceipt? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            serializer.Serialize(writer, new ReceiptForRpc(value.TxHash!, value, UInt256.Zero));
+            return JsonSerializer.Deserialize<ReceiptForRpc>(ref reader, options)?.ToReceipt();
         }
 
-        public override TxReceipt ReadJson(JsonReader reader, Type objectType, TxReceipt existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override void Write(Utf8JsonWriter writer, TxReceipt value, JsonSerializerOptions options)
         {
-            return serializer.Deserialize<ReceiptForRpc>(reader)?.ToReceipt() ?? existingValue;
+            JsonSerializer.Serialize(writer, new ReceiptForRpc(value.TxHash!, value, UInt256.Zero), options);
         }
     }
 }

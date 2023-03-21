@@ -28,7 +28,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Newtonsoft.Json;
+
 using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -152,12 +152,12 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         public string TestEthRpc(string method, params string[] parameters)
         {
-            return RpcTest.TestSerializedRequest(EthModuleFactory.Converters, EthRpcModule, method, parameters);
+            return RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
         }
 
         public string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
         {
-            return RpcTest.TestSerializedRequest(new JsonConverter[0], module, method, parameters);
+            return RpcTest.TestSerializedRequest(module, method, parameters);
         }
     }
 }

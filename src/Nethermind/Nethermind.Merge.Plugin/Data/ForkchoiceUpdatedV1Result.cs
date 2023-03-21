@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
-using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data
 {
@@ -51,8 +52,7 @@ namespace Nethermind.Merge.Plugin.Data
         /// <summary>
         /// Identifier of the payload build process or null if there is none.
         /// </summary>
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public string? PayloadId { get; set; }
 
         public static implicit operator Task<ForkchoiceUpdatedV1Result>(ForkchoiceUpdatedV1Result result) => Task.FromResult(result);

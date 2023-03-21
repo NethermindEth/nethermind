@@ -13,8 +13,4 @@
     <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" />
-  </ItemGroup>
-
 </Project>

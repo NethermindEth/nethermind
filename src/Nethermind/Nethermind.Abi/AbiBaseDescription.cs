@@ -3,10 +3,15 @@
 
 using System;
 using System.Linq;
+using System.Text.Json.Serialization;
+
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Abi
 {
+    [JsonDerivedType(typeof(AbiEventDescription))]
+    [JsonDerivedType(typeof(AbiFunctionDescription))]
+    [JsonDerivedType(typeof(AbiErrorDescription))]
     public abstract class AbiBaseDescription
     {
         public AbiDescriptionType Type { get; set; } = AbiDescriptionType.Function;

@@ -27,7 +27,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
-using Newtonsoft.Json;
+
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 

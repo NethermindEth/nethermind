@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Transactions;
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -103,7 +102,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteEndObject();
             foreach (ParityTraceAction subtrace in value.Subtraces)
             {
+                writer.WriteStartObject();
+                writer.WritePropertyName("action"u8);
                 JsonSerializer.Serialize(writer, subtrace, options);
+
+                writer.WritePropertyName("result"u8);
+                JsonSerializer.Serialize(writer, subtrace.Result, options);
+                writer.WriteEndObject();
             }
         }
     }

@@ -168,13 +168,13 @@ namespace Nethermind.Cli
 
         private static void RegisterConverters()
         {
-            Serializer.RegisterConverter(new ParityTxTraceFromReplayConverter());
-            Serializer.RegisterConverter(new ParityAccountStateChangeConverter());
-            Serializer.RegisterConverter(new ParityTraceActionConverter());
-            Serializer.RegisterConverter(new ParityTraceResultConverter());
-            Serializer.RegisterConverter(new ParityVmOperationTraceConverter());
-            Serializer.RegisterConverter(new ParityVmTraceConverter());
-            Serializer.RegisterConverter(new TransactionForRpcWithTraceTypesConverter());
+            //Serializer.RegisterConverter(new ParityTxTraceFromReplayConverter());
+            //Serializer.RegisterConverter(new ParityAccountStateChangeConverter());
+            //Serializer.RegisterConverter(new ParityTraceActionConverter());
+            //Serializer.RegisterConverter(new ParityTraceResultConverter());
+            //Serializer.RegisterConverter(new ParityVmOperationTraceConverter());
+            //Serializer.RegisterConverter(new ParityVmTraceConverter());
+            //Serializer.RegisterConverter(new TransactionForRpcWithTraceTypesConverter());
         }
 
         private static ColorScheme? MapColorScheme(string colorSchemeOption)

@@ -32,6 +32,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Rpc;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Init.Steps
 {

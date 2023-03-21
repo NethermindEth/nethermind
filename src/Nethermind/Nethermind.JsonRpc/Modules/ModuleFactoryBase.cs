@@ -4,7 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -29,11 +30,6 @@ namespace Nethermind.JsonRpc.Modules
         public abstract T Create();
 
         public string ModuleType { get; }
-
-        public virtual IReadOnlyCollection<JsonConverter> GetConverters()
-        {
-            return Array.Empty<JsonConverter>();
-        }
     }
 
     public class SingletonFactory<T> : ModuleFactoryBase<T> where T : IRpcModule

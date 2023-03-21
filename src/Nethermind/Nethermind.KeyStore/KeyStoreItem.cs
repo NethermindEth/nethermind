@@ -1,22 +1,27 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.KeyStore
 {
     public class KeyStoreItem
     {
-        [JsonProperty(PropertyName = "version", Order = 0)]
+        [JsonPropertyName("version")]
+        [JsonPropertyOrder(0)]
         public int Version { get; set; }
 
-        [JsonProperty(PropertyName = "id", Order = 1)]
+        [JsonPropertyName("id")]
+        [JsonPropertyOrder(1)]
         public string Id { get; set; }
 
-        [JsonProperty(PropertyName = "address", Order = 2)]
+        [JsonPropertyName("address")]
+        [JsonPropertyOrder(2)]
         public string Address { get; set; }
 
-        [JsonProperty(PropertyName = "crypto", Order = 3)]
+        [JsonPropertyName("crypto")]
+        [JsonPropertyOrder(3)]
         public Crypto Crypto { get; set; }
     }
 }

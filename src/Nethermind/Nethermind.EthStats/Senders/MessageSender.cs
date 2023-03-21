@@ -2,21 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Logging;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
+using Nethermind.Serialization.Json;
 using Websocket.Client;
 
 namespace Nethermind.EthStats.Senders
 {
     public class MessageSender : IMessageSender
     {
-        private static readonly JsonSerializerSettings SerializerSettings = new()
-        {
-            ContractResolver = new CamelCasePropertyNamesContractResolver()
-        };
-
         private readonly string _instanceId;
         private readonly ILogger _logger;
 
@@ -34,7 +29,7 @@ namespace Nethermind.EthStats.Senders
             }
 
             (EmitMessage? emitMessage, string? messageType) = CreateMessage(message, type);
-            string payload = JsonConvert.SerializeObject(emitMessage, SerializerSettings);
+            string payload = JsonSerializer.Serialize(emitMessage, EthereumJsonSerializer.JsonOptions);
             if (_logger.IsTrace) _logger.Trace($"Sending ETH stats message '{messageType}': {payload}");
 
             client.Send(payload);

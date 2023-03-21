@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -10,14 +11,10 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -85,18 +82,5 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, _specProvider, _logManager);
         }
-
-        public static JsonConverter[] Converters =
-        {
-            new ParityTxTraceFromReplayConverter(),
-            new ParityAccountStateChangeConverter(),
-            new ParityTraceActionConverter(),
-            new ParityTraceResultConverter(),
-            new ParityVmOperationTraceConverter(),
-            new ParityVmTraceConverter(),
-            new TransactionForRpcWithTraceTypesConverter()
-        };
-
-        public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
     }
 }

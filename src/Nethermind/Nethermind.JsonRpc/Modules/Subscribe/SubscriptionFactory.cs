@@ -11,8 +11,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
 
@@ -27,7 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 /// </remarks>
 public class SubscriptionFactory : ISubscriptionFactory
 {
-    private readonly JsonSerializer _jsonSerializer;
+    private readonly IJsonSerializer _jsonSerializer;
     private readonly ConcurrentDictionary<string, CustomSubscriptionType> _subscriptionConstructors;
 
     public SubscriptionFactory(ILogManager? logManager,
@@ -37,7 +39,7 @@ public class SubscriptionFactory : ISubscriptionFactory
         IFilterStore? filterStore,
         IEthSyncingInfo ethSyncingInfo,
         ISpecProvider specProvider,
-        JsonSerializer jsonSerializer)
+        IJsonSerializer jsonSerializer)
     {
         _jsonSerializer = jsonSerializer;
         logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -83,7 +85,8 @@ public class SubscriptionFactory : ISubscriptionFactory
                 param = (IJsonRpcParam)Activator.CreateInstance(paramType);
                 if (thereAreArgs)
                 {
-                    param!.ReadJson(_jsonSerializer, args);
+                    using var doc = JsonDocument.Parse(args);
+                    param!.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
                 }
             }
 

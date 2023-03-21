@@ -11,7 +11,9 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -25,6 +27,7 @@ public class BlockForRpc
 
     }
 
+    [SkipLocalsInit]
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
     {
         _isAuRaBlock = block.Header.AuRaSignature is not null;
@@ -83,25 +86,22 @@ public class BlockForRpc
     public long GasLimit { get; set; }
     public long GasUsed { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Keccak Hash { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Bloom LogsBloom { get; set; }
     public Address Miner { get; set; }
     public Keccak MixHash { get; set; }
 
     public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash is not null;
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[] Nonce { get; set; }
 
     public bool ShouldSerializeNonce() => !_isAuRaBlock;
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Number { get; set; }
     public Keccak ParentHash { get; set; }
     public Keccak ReceiptsRoot { get; set; }
@@ -110,8 +110,7 @@ public class BlockForRpc
     public bool ShouldSerializeSignature() => _isAuRaBlock;
     public long Size { get; set; }
     public Keccak StateRoot { get; set; }
-    [JsonConverter(typeof(NullableLongConverter), NumberConversion.Raw)]
-    [System.Text.Json.Serialization.JsonConverter(typeof(NullableRawLongJsonConverter))]
+    [JsonConverter(typeof(NullableRawLongConverter))]
     public long? Step { get; set; }
     public bool ShouldSerializeStep() => _isAuRaBlock;
     public UInt256 TotalDifficulty { get; set; }
@@ -122,12 +121,12 @@ public class BlockForRpc
     public Keccak TransactionsRoot { get; set; }
     public IEnumerable<Keccak> Uncles { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Keccak? WithdrawalsRoot { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? ExcessDataGas { get; set; }
 }

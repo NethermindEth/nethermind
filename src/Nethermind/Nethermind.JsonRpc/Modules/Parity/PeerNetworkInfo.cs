@@ -1,20 +1,19 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
     public class PeerNetworkInfo
     {
-        [JsonProperty("localAddress", Order = 0)]
-        [System.Text.Json.Serialization.JsonPropertyName("localAddress")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(0)]
+        [JsonPropertyOrder(0)]
+        [JsonPropertyName("localAddress")]
         public string LocalAddress { get; set; }
 
-        [JsonProperty("remoteAddress", Order = 1)]
-        [System.Text.Json.Serialization.JsonPropertyName("remoteAddress")]
-        [System.Text.Json.Serialization.JsonPropertyOrder(1)]
+        [JsonPropertyOrder(1)]
+        [JsonPropertyName("remoteAddress")]
         public string RemoteAddress { get; set; }
     }
 }
