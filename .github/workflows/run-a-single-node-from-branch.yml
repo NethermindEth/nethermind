@@ -74,6 +74,7 @@ jobs:
           }'
           
   trigger_node_and_vm_creation:
+    needs: create_docker_image
     runs-on: ubuntu-latest
     steps:
     - name: Trigger Another Repo Action
