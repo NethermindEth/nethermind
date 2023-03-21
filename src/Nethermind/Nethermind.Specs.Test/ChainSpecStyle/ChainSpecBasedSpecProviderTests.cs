@@ -293,7 +293,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)MainnetSpecProvider.ArrowGlacierBlockNumber,
                 (ForkActivation)(MainnetSpecProvider.GrayGlacierBlockNumber - 1),
                 (ForkActivation)MainnetSpecProvider.GrayGlacierBlockNumber,
-                (ForkActivation)99_000_000, // far in the future
+                MainnetSpecProvider.ShanghaiActivation,
+                new ForkActivation(99_000_000, 99_681_338_455) // far in the future
             };
 
             CompareSpecProviders(mainnet, provider, forkActivationsToTest);

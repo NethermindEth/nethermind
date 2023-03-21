@@ -398,14 +398,11 @@ namespace Nethermind.Consensus.Processing
 
         public bool IsProcessingBlocks(ulong? maxProcessingInterval)
         {
-            if (_processorTask is null || _recoveryTask is null || _processorTask.IsCompleted ||
-                _recoveryTask.IsCompleted)
+            if (_processorTask is null || _recoveryTask is null || _processorTask.IsCompleted || _recoveryTask.IsCompleted)
                 return false;
 
-            if (maxProcessingInterval is not null)
-                return _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
-            else // user does not setup interval and we cannot set interval time based on chainspec
-                return true;
+            // user does not setup interval and we cannot set interval time based on chainspec
+            return maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
         }
 
         private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
