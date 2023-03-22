@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
             BlockGasLimit = e.Block!.GasLimit;
-            CurrentBaseFee = e.Block.Header.BaseFeePerGas;
+            CurrentBaseFee = e.Block.Header.BaseFeePerGas ?? 0;
             HeadChanged?.Invoke(sender, e);
         }
     }

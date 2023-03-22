@@ -56,7 +56,6 @@ public class BlockDecoderTests
                 .WithUncles(uncles)
                 .WithWithdrawals(8)
                 .WithMixHash(Keccak.EmptyTreeHash)
-                .WithTimestamp(HeaderDecoder.WithdrawalTimestamp)
                 .TestObject
         };
     }

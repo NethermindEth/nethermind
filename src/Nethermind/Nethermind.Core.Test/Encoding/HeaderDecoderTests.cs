@@ -96,18 +96,10 @@ public class HeaderDecoderTests
     [Test]
     public void Can_encode_decode_with_base_fee()
     {
-        try
-        {
-            HeaderDecoder.Eip1559TransitionBlock = 0;
-            BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).TestObject;
-            Rlp rlp = Rlp.Encode(header);
-            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
-            blockHeader.BaseFeePerGas.Should().Be(123);
-        }
-        finally
-        {
-            HeaderDecoder.Eip1559TransitionBlock = long.MaxValue;
-        }
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).TestObject;
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+        blockHeader.BaseFeePerGas.Should().Be((UInt256)123);
     }
 
     [TestCaseSource(nameof(ExcessDataGasCaseSource))]

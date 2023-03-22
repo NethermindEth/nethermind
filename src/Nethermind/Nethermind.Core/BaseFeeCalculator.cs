@@ -12,10 +12,10 @@ namespace Nethermind.Core
     {
         public static UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559)
         {
-            UInt256 expectedBaseFee = parent.BaseFeePerGas;
+            UInt256 expectedBaseFee = parent.BaseFeePerGas ?? 0;
             if (specFor1559.IsEip1559Enabled)
             {
-                UInt256 parentBaseFee = parent.BaseFeePerGas;
+                UInt256 parentBaseFee = parent.BaseFeePerGas ?? 0;
                 long gasDelta;
                 UInt256 feeDelta;
                 bool isForkBlockNumber = specFor1559.Eip1559TransitionBlock == parent.Number + 1;
@@ -25,7 +25,7 @@ namespace Nethermind.Core
 
                 if (parent.GasUsed == parentGasTarget)
                 {
-                    expectedBaseFee = parent.BaseFeePerGas;
+                    expectedBaseFee = parent.BaseFeePerGas ?? 0;
                 }
                 else if (parent.GasUsed > parentGasTarget)
                 {

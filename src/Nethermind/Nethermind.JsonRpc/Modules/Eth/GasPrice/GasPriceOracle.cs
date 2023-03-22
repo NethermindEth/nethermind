@@ -89,9 +89,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return gasPriceEstimate!;
         }
 
-        private UInt256 GetMinimumGasPrice(in UInt256 baseFeePerGas) => (_minGasPrice + baseFeePerGas) * _defaultMinGasPriceMultiplier / 100ul;
+        private UInt256 GetMinimumGasPrice(in UInt256? baseFeePerGas) => (_minGasPrice + (baseFeePerGas ?? 0)) * _defaultMinGasPriceMultiplier / 100ul;
 
-        private delegate UInt256 CalculateGas(Transaction transaction, bool eip1559, UInt256 baseFee);
+        private delegate UInt256 CalculateGas(Transaction transaction, bool eip1559, UInt256? baseFee);
 
         private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction)
         {
@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 Transaction[] currentBlockTransactions = currentBlock.Transactions;
                 int txFromCurrentBlock = 0;
                 bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Header).IsEip1559Enabled;
-                UInt256 baseFee = currentBlock.BaseFeePerGas;
+                UInt256? baseFee = currentBlock.BaseFeePerGas;
                 IEnumerable<UInt256> effectiveGasPrices = currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
                         .Select(tx => calculateGasFromTransaction(tx, eip1559Enabled, baseFee))
                         .Where(g => g >= IgnoreUnder)

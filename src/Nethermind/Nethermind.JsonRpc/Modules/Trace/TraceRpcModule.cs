@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockHeader header = headerSearch.Object;
             if (header!.IsGenesis)
             {
-                UInt256 baseFee = header.BaseFeePerGas;
+                UInt256 baseFee = header.BaseFeePerGas ?? 0;
                 header = new BlockHeader(
                     header.Hash!,
                     Keccak.OfAnEmptySequenceRlp,
