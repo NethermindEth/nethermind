@@ -39,8 +39,20 @@ namespace Nethermind.Blockchain.Synchronization
         public long AncientBodiesBarrier { get; set; }
         public long AncientReceiptsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
-        public string? PivotNumber { get; set; }
-        public string? PivotHash { get; set; }
+        private string? _pivotNumber;
+        public string? PivotNumber
+        {
+            get => FastSync || SnapSync ? _pivotNumber : null;
+            set => _pivotNumber = value;
+        }
+
+        private string? _pivotHash;
+
+        public string? PivotHash
+        {
+            get => FastSync || SnapSync ? _pivotHash : null;
+            set => _pivotHash = value;
+        }
         public bool WitnessProtocolEnabled { get; set; } = false;
         public bool SnapSync { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
