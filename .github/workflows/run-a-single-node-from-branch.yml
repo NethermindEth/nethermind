@@ -57,21 +57,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Trigger Docker Build Action
-      env:
-        REPOSITORY_DISPATCH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-      run: |
-        curl -X POST \
-          -H "Accept: application/vnd.github+json" \
-          -H "Authorization: Bearer $REPOSITORY_DISPATCH_TOKEN" \
-          "https://api.github.com/repos/NethermindEth/nethermind/actions/workflows/build-nethermind-docker-images.yml/dispatches" \
-          -d '{
-            "ref": "${{ github.ref }}",
-            "inputs": {
+      uses: benc-uk/workflow-dispatch@v1
+      with:
+          workflow: build-nethermind-docker-images.yml
+          ref: "${{ github.ref }}"
+          token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          inputs: '{
               "repo": "nethermindeth/nethermind",
               "tag": "${{ github.ref }}",
               "dockerfile": "Dockerfile"
-            }
-          }'
+           }'
 
     - name: Wait for Docker Build Action to complete
       env:
@@ -132,17 +127,15 @@ jobs:
     needs: create_docker_image
     runs-on: ubuntu-latest
     steps:
-    - name: Trigger Another Repo Action
-      env:
-        REPOSITORY_DISPATCH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-      run: |
-        curl -X POST \
-          -H "Accept: application/vnd.github+json" \
-          -H "Authorization: Bearer $REPOSITORY_DISPATCH_TOKEN" \
-          "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/workflows/run-single-node.yml/dispatches" \
-          -d '{
-            "ref": "main",
-            "inputs": {
+    - name: Trigger Node creation Repo Action
+      uses: benc-uk/workflow-dispatch@v1
+      with:
+          workflow: run-single-node.yml
+          ref: "main"
+          token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          inputs: '{
+              "ref": "main",
+              "inputs": {
               "github_username": "${{ github.actor }}",
               "config_file": "${{ inputs.config_file }}",
               "nethermind_branch": "${{ inputs.nethermind_branch }}",
@@ -152,5 +145,4 @@ jobs:
               "timeout": "${{ inputs.timeout }}",
               "additional_nethermind_flags": "${{ inputs.additional_nethermind_flags }}",
               "additional_cl_flags": "${{ inputs.additional_cl_flags }}"
-            }
-          }'
+            }'
