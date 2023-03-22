@@ -134,14 +134,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             return new PooledTransactionsMessage(txsToSend);
         }
 
-        protected override void SendNewTransactionCore(Transaction tx)
-        {
-            if (tx.Type != TxType.Blob) // blob-type txs should be announced only in dedicated form of hashes message (eth68 and above)
-            {
-                base.SendNewTransactionCore(tx);
-            }
-        }
-
         protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {
             if (sendFullTx)
