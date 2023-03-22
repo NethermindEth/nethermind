@@ -155,6 +155,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 if (tx.Hash is not null)
                 {
                     hashes.Add(tx.Hash);
+                    NotifiedTransactions.Set(tx.Hash);
                     TxPool.Metrics.PendingTransactionsHashesSent++;
                 }
             }
