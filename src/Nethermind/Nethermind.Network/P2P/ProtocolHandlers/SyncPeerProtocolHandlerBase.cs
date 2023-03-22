@@ -181,9 +181,17 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
-        public virtual void SendNewTransaction(Transaction tx)
+        public void SendNewTransaction(Transaction tx)
         {
-            if (tx.Type != TxType.Blob) //protect from sending full blob-type txs
+            if (tx.Hash != null && NotifiedTransactions.Set(tx.Hash))
+            {
+                SendNewTransactionCore(tx);
+            }
+        }
+
+        protected virtual void SendNewTransactionCore(Transaction tx)
+        {
+            if (tx.Type != TxType.Blob) //additional protection from sending full blob-type txs
             {
                 SendMessage(new[] { tx });
             }
@@ -212,7 +220,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             foreach (Transaction tx in txs)
             {
-                int txSize = tx.GetLength(_txDecoder);
+                int txSize = tx.GetLength();
 
                 if (txSize > packetSizeLeft && txsToSend.Count > 0)
                 {
@@ -221,7 +229,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                 }
 
-                if (tx.Hash is not null && tx.Type != TxType.Blob) //protect from sending full blob-type txs
+                if (tx.Hash is not null && tx.Type != TxType.Blob) //additional protection from sending full blob-type txs
                 {
                     txsToSend.Add(tx);
                     packetSizeLeft -= txSize;

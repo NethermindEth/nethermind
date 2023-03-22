@@ -92,15 +92,15 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         if (isTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
     }
 
-    public override void SendNewTransaction(Transaction tx)
+    protected override void SendNewTransactionCore(Transaction tx)
     {
-        if (tx.Type != TxType.Blob)
+        if (tx.CanBeBroadcast())
         {
-            base.SendNewTransaction(tx);
+            base.SendNewTransactionCore(tx);
         }
         else
         {
-            SendMessage(new byte[] { (byte)tx.Type }, new int[] { tx.GetLength(_txDecoder) }, new Keccak[] { tx.Hash });
+            SendMessage(new byte[] { (byte)tx.Type }, new int[] { tx.GetLength() }, new Keccak[] { tx.Hash });
         }
     }
 
@@ -129,7 +129,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             if (tx.Hash is not null)
             {
                 types.Add((byte)tx.Type);
-                sizes.Add(tx.GetLength(_txDecoder));
+                sizes.Add(tx.GetLength());
                 hashes.Add(tx.Hash);
             }
         }

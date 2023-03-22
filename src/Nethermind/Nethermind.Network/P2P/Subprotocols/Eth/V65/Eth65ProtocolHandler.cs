@@ -119,7 +119,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             {
                 if (_txPool.TryGetPendingTransaction(msg.Hashes[i], out Transaction tx))
                 {
-                    int txSize = tx.GetLength(_txDecoder);
+                    int txSize = tx.GetLength();
 
                     if (txSize > packetSizeLeft && txsToSend.Count > 0)
                     {
@@ -132,6 +132,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
 
             return new PooledTransactionsMessage(txsToSend);
+        }
+
+        protected override void SendNewTransactionCore(Transaction tx)
+        {
+            if (tx.Type != TxType.Blob) // blob-type txs should be announced only in dedicated form of hashes message (eth68 and above)
+            {
+                base.SendNewTransactionCore(tx);
+            }
         }
 
         protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
