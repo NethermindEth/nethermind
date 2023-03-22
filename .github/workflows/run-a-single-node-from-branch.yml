@@ -63,8 +63,8 @@ jobs:
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
 
-    - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}-{{ inputs.network }}-{{ inputs.cl_client }}"
-      run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}-{{ inputs.network }}-{{ inputs.cl_client }}'"
+    - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}"
+      run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}'"
 
     - name: Trigger Docker Build Action with Cleaned Ref
       uses: benc-uk/workflow-dispatch@v1
