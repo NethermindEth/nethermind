@@ -1,4 +1,4 @@
-name: 'Run a node with selected configuration"'
+name: 'Run a node with selected configuration'
 
 on:
   workflow_dispatch:
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Creating a node with NodeName=\"DevNode-${{ github.actor }}-${{ github.ref }}\"
-      run: echo "NodeName=\"DevNode-${{ github.actor }}-${{ github.ref }}\"""
+      run: echo "NodeName=\"DevNode-${{ github.actor }}-${{ github.ref }}\""
 
     - name: Trigger Docker Build Action
       uses: benc-uk/workflow-dispatch@v1
