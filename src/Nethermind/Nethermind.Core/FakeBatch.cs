@@ -25,7 +25,6 @@ namespace Nethermind.Core
         public void Dispose()
         {
             _onDispose?.Invoke();
-            GC.SuppressFinalize(this);
         }
 
         public byte[]? this[ReadOnlySpan<byte> key]
