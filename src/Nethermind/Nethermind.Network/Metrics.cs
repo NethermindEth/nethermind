@@ -318,16 +318,20 @@ namespace Nethermind.Network
         [Description("Number of SNAP TrieNodes messages received")]
         public static long SnapTrieNodesReceived { get; set; }
 
-        [CounterMetric] [Description("Number of bytes sent through P2P (TCP).")]
+        [CounterMetric]
+        [Description("Number of bytes sent through P2P (TCP).")]
         public static long P2PBytesSent;
 
-        [CounterMetric] [Description("Number of bytes received through P2P (TCP).")]
+        [CounterMetric]
+        [Description("Number of bytes received through P2P (TCP).")]
         public static long P2PBytesReceived;
 
-        [CounterMetric] [Description("Number of bytes sent through Discovery (UDP).")]
+        [CounterMetric]
+        [Description("Number of bytes sent through Discovery (UDP).")]
         public static long DiscoveryBytesSent;
 
-        [CounterMetric] [Description("Number of bytes received through Discovery (UDP).")]
+        [CounterMetric]
+        [Description("Number of bytes received through Discovery (UDP).")]
         public static long DiscoveryBytesReceived;
 
         [GaugeMetric]
