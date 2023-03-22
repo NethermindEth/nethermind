@@ -48,7 +48,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transactions published locally (initiated by this node users) or reorganised.
         /// </summary>
-        private readonly SortedPool<Keccak, Transaction, Address> _persistentTxs;
+        private readonly SortedPool<ValueKeccak, Transaction, Address> _persistentTxs;
 
         /// <summary>
         /// Transactions added by external peers between timer elapses.
@@ -221,7 +221,7 @@ namespace Nethermind.TxPool
 
                 foreach ((_, ITxPoolPeer peer) in _peers)
                 {
-                    Notify(peer, GetTxsToSend(peer, _txsToSend), false);
+                    Notify(peer, _txsToSend, false);
                 }
 
                 _txsToSend.Reset();
@@ -231,17 +231,6 @@ namespace Nethermind.TxPool
             _timer.Enabled = true;
         }
 
-        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IList<Transaction> txsToSend)
-        {
-            for (int index = 0; index < txsToSend.Count; index++)
-            {
-                Transaction tx = txsToSend[index];
-                if (tx.DeliveredBy is null || !tx.DeliveredBy.Equals(peer.Id))
-                {
-                    yield return tx;
-                }
-            }
-        }
 
         private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs, bool sendFullTx)
         {

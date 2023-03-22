@@ -44,13 +44,7 @@ namespace Nethermind.Db
         {
             get
             {
-                if (_readDelay > 0)
-                {
-                    Thread.Sleep(_readDelay);
-                }
-
-                ReadsCount++;
-                return _db.TryGetValue(key, out byte[] value) ? value : null;
+                return Get(key);
             }
             set
             {
@@ -103,7 +97,7 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
-        public IBatch StartBatch()
+        public virtual IBatch StartBatch()
         {
             return this.LikeABatch();
         }
@@ -129,6 +123,17 @@ namespace Nethermind.Db
 
         public void DangerousReleaseMemory(in Span<byte> span)
         {
+        }
+
+        public virtual byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if (_readDelay > 0)
+            {
+                Thread.Sleep(_readDelay);
+            }
+
+            ReadsCount++;
+            return _db.TryGetValue(key, out byte[] value) ? value : null;
         }
     }
 }

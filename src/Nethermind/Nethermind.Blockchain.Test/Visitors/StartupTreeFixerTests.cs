@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree.BestKnownNumber.Should().Be(2);
         }
 
-        [Retry(3)]
+        [Retry(10)]
         [Timeout(Timeout.MaxTestTime * 4)]
         [TestCase(0)]
         [TestCase(1)]

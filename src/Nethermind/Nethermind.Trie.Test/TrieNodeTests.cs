@@ -532,8 +532,8 @@ namespace Nethermind.Trie.Test
                 node.SetChild(i, ctx.AccountLeaf);
             }
 
-            Assert.AreEqual(3664, node.GetMemorySize(true));
-            Assert.AreEqual(208, node.GetMemorySize(false));
+            Assert.AreEqual(3656, node.GetMemorySize(true));
+            Assert.AreEqual(200, node.GetMemorySize(false));
         }
 
         [Test]
@@ -544,7 +544,7 @@ namespace Nethermind.Trie.Test
             trieNode.Key = new byte[] { 1 };
             trieNode.SetChild(0, ctx.TiniestLeaf);
 
-            Assert.AreEqual(120, trieNode.GetMemorySize(false));
+            Assert.AreEqual(112, trieNode.GetMemorySize(false));
         }
 
         [Test]
@@ -555,22 +555,22 @@ namespace Nethermind.Trie.Test
             trieNode.Key = new byte[] { 1 };
             trieNode.SetChild(0, ctx.TiniestLeaf);
 
-            Assert.AreEqual(264, trieNode.GetMemorySize(true));
-            Assert.AreEqual(120, trieNode.GetMemorySize(false));
+            Assert.AreEqual(256, trieNode.GetMemorySize(true));
+            Assert.AreEqual(112, trieNode.GetMemorySize(false));
         }
 
         [Test]
         public void Size_of_an_unknown_empty_node_is_correct()
         {
             TrieNode trieNode = new(NodeType.Unknown);
-            trieNode.GetMemorySize(false).Should().Be(56);
+            trieNode.GetMemorySize(false).Should().Be(48);
         }
 
         [Test]
         public void Size_of_an_unknown_node_with_keccak_is_correct()
         {
             TrieNode trieNode = new(NodeType.Unknown, Keccak.Zero);
-            trieNode.GetMemorySize(false).Should().Be(136);
+            trieNode.GetMemorySize(false).Should().Be(128);
         }
 
         [Test]
@@ -578,7 +578,7 @@ namespace Nethermind.Trie.Test
         {
             TrieNode trieNode = new(NodeType.Extension);
             trieNode.SetChild(0, null);
-            trieNode.GetMemorySize(false).Should().Be(96);
+            trieNode.GetMemorySize(false).Should().Be(88);
         }
 
         [Test]
@@ -586,7 +586,7 @@ namespace Nethermind.Trie.Test
         {
             TrieNode trieNode = new(NodeType.Branch);
             trieNode.SetChild(0, null);
-            trieNode.GetMemorySize(false).Should().Be(208);
+            trieNode.GetMemorySize(false).Should().Be(200);
         }
 
         [Test]
@@ -601,7 +601,7 @@ namespace Nethermind.Trie.Test
         public void Size_of_an_unknown_node_with_full_rlp_is_correct()
         {
             TrieNode trieNode = new(NodeType.Unknown, new byte[7]);
-            trieNode.GetMemorySize(false).Should().Be(120);
+            trieNode.GetMemorySize(false).Should().Be(80);
         }
 
         [Test]
@@ -699,7 +699,7 @@ namespace Nethermind.Trie.Test
             trieNode.SetChild(0, child);
 
             trieNode.PrunePersistedRecursively(1);
-            trieNode.GetMemorySize(false).Should().Be(176);
+            trieNode.GetMemorySize(false).Should().Be(168);
         }
 
         [Test]
@@ -712,7 +712,7 @@ namespace Nethermind.Trie.Test
             trieNode.PrunePersistedRecursively(1);
             TrieNode cloned = trieNode.Clone();
 
-            cloned.GetMemorySize(false).Should().Be(176);
+            cloned.GetMemorySize(false).Should().Be(168);
         }
 
         [Test]

@@ -153,4 +153,9 @@ public partial class DbMetricsUpdater
 
     [GeneratedRegex("^Interval compaction: (\\d+)\\.\\d+.*GB write.*\\s+(\\d+)\\.\\d+.*MB\\/s write.*\\s+(\\d+)\\.\\d+.*GB read.*\\s+(\\d+)\\.\\d+.*MB\\/s read.*\\s+(\\d+)\\.\\d+.*seconds.*$", RegexOptions.Multiline)]
     private static partial Regex ExtractIntervalRegex();
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
 }

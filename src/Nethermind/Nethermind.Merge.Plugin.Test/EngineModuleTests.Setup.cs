@@ -224,6 +224,7 @@ public partial class EngineModuleTests
                 SpecProvider,
                 LogManager);
         }
+
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
         protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
