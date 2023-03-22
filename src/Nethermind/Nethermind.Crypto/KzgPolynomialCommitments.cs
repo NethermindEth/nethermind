@@ -13,7 +13,9 @@ namespace Nethermind.Crypto;
 
 public static class KzgPolynomialCommitments
 {
-    public static readonly UInt256 BlsModulus = UInt256.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513", System.Globalization.NumberStyles.Integer);
+    public static readonly UInt256 BlsModulus =
+        UInt256.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513",
+            System.Globalization.NumberStyles.Integer);
 
     private const byte KzgBlobHashVersionV1 = 1;
     private static IntPtr _ckzgSetup = IntPtr.Zero;
@@ -30,7 +32,8 @@ public static class KzgPolynomialCommitments
             Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
                          string.Empty, "kzg_trusted_setup.txt");
 
-        if (logger?.IsInfo == true) logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
+        if (logger?.IsInfo == true)
+            logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
         _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
 
         if (_ckzgSetup == IntPtr.Zero)
@@ -71,10 +74,28 @@ public static class KzgPolynomialCommitments
     }
 
     public static bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y,
-        ReadOnlySpan<byte> proof) =>
-        Ckzg.Ckzg.VerifyKzgProof(commitment, z, y, proof, _ckzgSetup);
+        ReadOnlySpan<byte> proof)
+    {
+        try
+        {
+            return Ckzg.Ckzg.VerifyKzgProof(commitment, z, y, proof, _ckzgSetup);
+        }
+        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+        {
+            return false;
+        }
+    }
 
-    public static bool AreProofsValid(byte[] blobs, byte[] commitments, byte[] proofs) =>
-        Ckzg.Ckzg.VerifyBlobKzgProofBatch(blobs, commitments, proofs, blobs.Length / Ckzg.Ckzg.BytesPerBlob,
-            _ckzgSetup);
+    public static bool AreProofsValid(byte[] blobs, byte[] commitments, byte[] proofs)
+    {
+        try
+        {
+            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(blobs, commitments, proofs, blobs.Length / Ckzg.Ckzg.BytesPerBlob,
+                _ckzgSetup);
+        }
+        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+        {
+            return false;
+        }
+    }
 }
