@@ -56,10 +56,17 @@ jobs:
   create_docker_image:
     runs-on: ubuntu-latest
     steps:
-    - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ github.ref }}"
-      run: echo "NodeName='DevNode-${{ github.actor }}-${{ github.ref }}'"
+    - name: Prepare docker tag
+      id: prepare_ref
+      run: |
+        REF_NAME=${{ github.ref }}
+        CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+        echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
 
-    - name: Trigger Docker Build Action
+    - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}"
+      run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}'"
+
+    - name: Trigger Docker Build Action with Cleaned Ref
       uses: benc-uk/workflow-dispatch@v1
       with:
           workflow: build-nethermind-docker-images.yml
@@ -67,7 +74,7 @@ jobs:
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
               "repo": "nethermindeth/nethermind",
-              "tag": "${{ github.ref }}",
+              "tag": "${{ env.CLEAN_REF }}",
               "dockerfile": "Dockerfile"
            }'
 
