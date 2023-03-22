@@ -7,8 +7,10 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -19,7 +21,7 @@ namespace Nethermind.Trie;
 public class BatchedTrieVisitor
 {
     // Not using shared pool so GC can reclaim them later.
-    private ArrayPool<(ValueKeccak, SmallTrieVisitContext)> _valueKeccakPool = ArrayPool<(ValueKeccak, SmallTrieVisitContext)>.Create();
+    private ArrayPool<Job> _jobArrayPool = ArrayPool<Job>.Create();
     private ArrayPool<(TrieNode, SmallTrieVisitContext)> _trieNodePool = ArrayPool<(TrieNode, SmallTrieVisitContext)>.Create();
     private int _maxJobSize;
 
@@ -32,15 +34,14 @@ public class BatchedTrieVisitor
     {
         _maxJobSize = 128;
 
-        // The keccak + context itself should be 40 byte. But the node of the concurrent stack seems to total to this
-        // according to dotmemory. Might wanna try something other than ConcurrentStack. Tried Stack with lock,
-        // modified ArrayPool and ConcurrentQueue. Curiously, ConcurrentStack seems to work the best probably because
-        // other technique create LOHs.
-        long recordSize = 112;
+        // The keccak + context itself should be 40 byte. But the measured byte seems to be 52 from GC stats POV.
+        // The * 2 is just margin. RSS is still higher though, but that could be due to more deserialization.
+        long recordSize = 52 * 2;
+        long recordCount = visitingOptions.FullScanMemoryBudget / recordSize;
 
         // Generally, at first, we want to attempt to maximize number of partition. This tend to increase throughput
         // compared to increasing job size.
-        long partitionCount = visitingOptions.FullScanMemoryBudget / (recordSize * _maxJobSize);
+        long partitionCount = recordCount / _maxJobSize;
 
         // 3000 is about the num of file for state on mainnet, so we assume 4000 for an unpruned db. Multiplied by
         // a reasonable num of thread we want to confine to a file. If its too high, the overhead of looping through the
@@ -50,8 +51,14 @@ public class BatchedTrieVisitor
         if (partitionCount > maxPartitionCount)
         {
             partitionCount = maxPartitionCount;
-            _maxJobSize = (int) (visitingOptions.FullScanMemoryBudget / (partitionCount * recordSize));
+            _maxJobSize = (int) (recordCount / partitionCount);
         }
+
+        // Calculating estimated pool margin at about 5% of total working size. The queue size fluctuate a bit so
+        // this is to reduce allocation.
+        long estimatedPoolMargin = (long)((recordCount / 128) * 0.05);
+        ObjectPool<CompactStack<Job>.Node> jobPool = new DefaultObjectPool<CompactStack<Job>.Node>(
+            new CompactStack<Job>.ObjectPoolPolicy(128), (int) estimatedPoolMargin);
 
         long currentPointer = 0;
         long queuedItems = 0;
@@ -66,15 +73,15 @@ public class BatchedTrieVisitor
         }
 
         // This need to be very small
-        ConcurrentStack<(ValueKeccak, SmallTrieVisitContext)>[] nodeToProcess = new ConcurrentStack<(ValueKeccak, SmallTrieVisitContext)>[partitionCount];
+        CompactStack<Job>[] nodeToProcess = new CompactStack<Job>[partitionCount];
         for (int i = 0; i < partitionCount; i++)
         {
-            nodeToProcess[i] = new ConcurrentStack<(ValueKeccak, SmallTrieVisitContext)>();
+            nodeToProcess[i] = new CompactStack<Job>(jobPool);
         }
 
         // Start with the root
         SmallTrieVisitContext rootContext = new(trieVisitContext);
-        nodeToProcess[CalculateShardIdx(root)].Push((root, rootContext));
+        nodeToProcess[CalculateShardIdx(root)].Push(new Job(root, rootContext));
         activeItems = 1;
         queuedItems = 1;
         bool failed = false;
@@ -82,7 +89,7 @@ public class BatchedTrieVisitor
         ArrayPoolList<(TrieNode, SmallTrieVisitContext)>? NextBatch()
         {
             long shardIdx;
-            ConcurrentStack<(ValueKeccak, SmallTrieVisitContext)>? theShard;
+            CompactStack<Job>? theShard;
             do
             {
                 shardIdx = Interlocked.Increment(ref currentPointer);
@@ -108,17 +115,24 @@ public class BatchedTrieVisitor
                 }
 
                 theShard = nodeToProcess[shardIdx];
-            } while (theShard.IsEmpty);
+                lock (theShard)
+                {
+                    if (!theShard.IsEmpty) break;
+                }
+            } while (true);
 
             ArrayPoolList<(TrieNode, SmallTrieVisitContext)> finalBatch = new(_trieNodePool, _maxJobSize);
 
             if (activeItems < targetCurrentItems)
             {
-                for (int i = 0; i < _maxJobSize; i++)
+                lock (theShard)
                 {
-                    if (!theShard.TryPop(out (ValueKeccak, SmallTrieVisitContext) item)) break;
-                    finalBatch.Add((new TrieNode(NodeType.Unknown, item.Item1.ToKeccak()), item.Item2));
-                    Interlocked.Decrement(ref queuedItems);
+                    for (int i = 0; i < _maxJobSize; i++)
+                    {
+                        if (!theShard.TryPop(out Job item)) break;
+                        finalBatch.Add((new TrieNode(NodeType.Unknown, item.Key.ToKeccak()), item.Context));
+                        Interlocked.Decrement(ref queuedItems);
+                    }
                 }
             }
             else
@@ -126,33 +140,43 @@ public class BatchedTrieVisitor
                 // So we get more than the batch size, then we sort it by level, and take only the maxNodeBatch nodes with
                 // the higher level. This is so that higher level is processed first to reduce memory usage. Its inaccurate,
                 // and hacky, but it works.
-                (ValueKeccak, SmallTrieVisitContext)[] preSort = _valueKeccakPool.Rent(_maxJobSize * 4);
-                int preSortLength = theShard.TryPopRange(preSort);
-                Interlocked.Add(ref queuedItems, -preSortLength);
+                ArrayPoolList<Job> preSort = new(_jobArrayPool, _maxJobSize * 4);
+                lock (theShard)
+                {
+                    for (int i = 0; i < _maxJobSize*4; i++)
+                    {
+                        if (!theShard.TryPop(out Job item)) break;
+                        preSort.Add(item);
+                        Interlocked.Decrement(ref queuedItems);
+                    }
+                }
 
                 // Sort by level
                 if (activeItems > targetCurrentItems)
                 {
-                    preSort.AsSpan(0, preSortLength).Sort((item1, item2) => item1.Item2.Level.CompareTo(item2.Item2.Level) * -1);
+                    preSort.AsSpan().Sort((item1, item2) => item1.Context.Level.CompareTo(item2.Context.Level) * -1);
                 }
 
-                int endIdx = Math.Min(_maxJobSize, preSortLength);
+                int endIdx = Math.Min(_maxJobSize, preSort.Count);
 
                 for (int i = 0; i < endIdx; i++)
                 {
-                    (ValueKeccak keccak, SmallTrieVisitContext ctx) = preSort[i];
+                    Job job = preSort[i];
 
-                    TrieNode node = resolver.FindCachedOrUnknown(keccak.ToKeccak());
-                    finalBatch.Add((node, ctx));
+                    TrieNode node = resolver.FindCachedOrUnknown(job.Key.ToKeccak());
+                    finalBatch.Add((node, job.Context));
                 }
 
                 // Add back what we won't process. In reverse order.
-                for (int i = preSortLength - 1; i >= endIdx; i--)
+                lock (theShard)
                 {
-                    theShard.Push(preSort[i]);
-                    Interlocked.Increment(ref queuedItems);
+                    for (int i = preSort.Count - 1; i >= endIdx; i--)
+                    {
+                        theShard.Push(preSort[i]);
+                        Interlocked.Increment(ref queuedItems);
+                    }
                 }
-                _valueKeccakPool.Return(preSort);
+                preSort.Dispose();
             }
 
             return finalBatch;
@@ -181,7 +205,12 @@ public class BatchedTrieVisitor
                 int shardIdx = CalculateShardIdx(keccak);
                 Interlocked.Increment(ref activeItems);
                 Interlocked.Increment(ref queuedItems);
-                nodeToProcess[shardIdx].Push((keccak, ctx));
+
+                var theShard = nodeToProcess[shardIdx];
+                lock (theShard)
+                {
+                    theShard.Push(new Job(keccak, ctx));
+                }
             }
 
             Interlocked.Decrement(ref activeItems);
@@ -274,20 +303,54 @@ public class BatchedTrieVisitor
         }
     }
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    struct Job
+    {
+        public ValueKeccak Key;
+        public SmallTrieVisitContext Context;
+
+        public Job(ValueKeccak key, SmallTrieVisitContext context)
+        {
+            Key = key;
+            Context = context;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct SmallTrieVisitContext
     {
         public SmallTrieVisitContext(TrieVisitContext trieVisitContext)
         {
             Level = (byte)trieVisitContext.Level;
             IsStorage = trieVisitContext.IsStorage;
-            BranchChildIndex = (byte?)trieVisitContext.BranchChildIndex;
+            if (trieVisitContext.BranchChildIndex != null)
+            {
+                _branchChildIndex = (byte)trieVisitContext.BranchChildIndex!;
+            }
             ExpectAccounts = trieVisitContext.ExpectAccounts;
         }
 
         public byte Level { get; internal set; }
         public bool IsStorage { get; internal set; }
-        public byte? BranchChildIndex { get; internal set; }
+
+        private byte _branchChildIndex = 255;
         public bool ExpectAccounts { get; init; }
+
+        public byte? BranchChildIndex
+        {
+            get => _branchChildIndex == 255 ? null : _branchChildIndex;
+            internal set
+            {
+                if (value == null)
+                {
+                    _branchChildIndex = 255;
+                }
+                else
+                {
+                    _branchChildIndex = (byte)value;
+                }
+            }
+        }
 
         public SmallTrieVisitContext Clone() => (SmallTrieVisitContext)MemberwiseClone();
 
