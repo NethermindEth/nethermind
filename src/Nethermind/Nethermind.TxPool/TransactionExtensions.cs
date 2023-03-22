@@ -3,15 +3,27 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
 
 namespace Nethermind.TxPool
 {
-    internal static class TransactionExtensions
+    public static class TransactionExtensions
     {
-        public static UInt256 CalculateGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
+        private static readonly long MaxSizeOfTxForBroadcast = 128.KB();
+        private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new TxDecoder();
+
+        private static int? _size = null;
+        public static int GetLength(this Transaction tx)
+        {
+            return _size ??= _transactionSizeCalculator.GetLength(tx);
+        }
+        public static bool CanBeBroadcast(this Transaction tx) => tx.Type != TxType.Blob && tx.GetLength() <= MaxSizeOfTxForBroadcast;
+
+        internal static UInt256 CalculateGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
         {
             if (eip1559Enabled && tx.IsEip1559)
             {
@@ -26,7 +38,7 @@ namespace Nethermind.TxPool
             return tx.GasPrice;
         }
 
-        public static UInt256 CalculateAffordableGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee, in UInt256 balance)
+        internal static UInt256 CalculateAffordableGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee, in UInt256 balance)
         {
             if (eip1559Enabled && tx.IsEip1559)
             {
