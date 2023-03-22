@@ -233,7 +233,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private void LoadScenario(Scenario scenario)
         {
-            LoadScenario(scenario, new SyncConfig { FastBlocks = true });
+            LoadScenario(scenario, _syncConfig);
         }
 
         private void LoadScenario(Scenario scenario, ISyncConfig syncConfig)
