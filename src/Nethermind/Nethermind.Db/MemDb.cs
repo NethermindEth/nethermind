@@ -97,7 +97,7 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
-        public IBatch StartBatch()
+        public virtual IBatch StartBatch()
         {
             return this.LikeABatch();
         }
