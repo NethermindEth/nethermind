@@ -22,15 +22,14 @@ public class PerTableDbConfig
     }
 
     public bool CacheIndexAndFilterBlocks => _settings.CacheIndexAndFilterBlocks ?? ReadConfig<bool>(nameof(CacheIndexAndFilterBlocks));
-
     public ulong BlockCacheSize => _settings.BlockCacheSize ?? ReadConfig<ulong>(nameof(BlockCacheSize));
-
     public ulong WriteBufferSize => _settings.WriteBufferSize ?? ReadConfig<ulong>(nameof(WriteBufferSize));
-
     public ulong WriteBufferNumber => _settings.WriteBufferNumber ?? ReadConfig<uint>(nameof(WriteBufferNumber));
-
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
-    public long? MaxWriteBytesPerSec => ReadConfig<long?>(nameof(MaxWriteBytesPerSec));
+    public long? RateLimiterBytesPerSec => ReadConfig<long?>(nameof(RateLimiterBytesPerSec));
+    public bool? UseDirectReads => ReadConfig<bool?>(nameof(UseDirectReads));
+    public bool? UseDirectIOForFlushAndCompaction => ReadConfig<bool?>(nameof(UseDirectIOForFlushAndCompaction));
+    public bool? EnableBlobFiles => ReadConfig<bool?>(nameof(EnableBlobFiles));
 
     private T? ReadConfig<T>(string propertyName)
     {

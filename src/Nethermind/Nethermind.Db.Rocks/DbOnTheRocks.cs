@@ -252,10 +252,10 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             options.SetMaxOpenFiles(_perTableDbConfig.MaxOpenFiles.Value);
         }
 
-        if (_perTableDbConfig.MaxWriteBytesPerSec.HasValue)
+        if (_perTableDbConfig.RateLimiterBytesPerSec.HasValue)
         {
             _rateLimiter =
-                _rocksDbNative.rocksdb_ratelimiter_create(_perTableDbConfig.MaxWriteBytesPerSec.Value, 1000, 10);
+                _rocksDbNative.rocksdb_ratelimiter_create(_perTableDbConfig.RateLimiterBytesPerSec.Value, 1000, 10);
             _rocksDbNative.rocksdb_options_set_ratelimiter(options.Handle, _rateLimiter.Value);
         }
 
@@ -264,6 +264,10 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         int writeBufferNumber = (int)_perTableDbConfig.WriteBufferNumber;
         options.SetMaxWriteBufferNumber(writeBufferNumber);
         options.SetMinWriteBufferNumberToMerge(2);
+
+        if (_perTableDbConfig.UseDirectReads != null) options.SetUseDirectReads(_perTableDbConfig.UseDirectReads.Value);
+        if (_perTableDbConfig.UseDirectIOForFlushAndCompaction != null) options.SetUseDirectReads(_perTableDbConfig.UseDirectIOForFlushAndCompaction.Value);
+        if (_perTableDbConfig.EnableBlobFiles != null) _rocksDbNative.rocksdb_options_set_enable_blob_files(options.Handle, true);
 
         lock (_dbsByPath)
         {
