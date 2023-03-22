@@ -92,11 +92,11 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         if (isTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
     }
 
-    public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
+    protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
     {
         if (sendFullTx)
         {
-            base.SendNewTransactions(txs, sendFullTx);
+            base.SendNewTransactionsCore(txs, sendFullTx);
             return;
         }
 

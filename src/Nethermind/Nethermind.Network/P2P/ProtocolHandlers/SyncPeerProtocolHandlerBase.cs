@@ -186,7 +186,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             SendMessage(new[] { tx });
         }
 
-        public virtual void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false)
+        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false)
         {
             SendNewTransactionsCore(TxsToSendAndMarkAsNotified(txs, sendFullTx), sendFullTx);
         }
@@ -202,7 +202,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        private void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
+        protected virtual void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
             using ArrayPoolList<Transaction> txsToSend = new(1024);
