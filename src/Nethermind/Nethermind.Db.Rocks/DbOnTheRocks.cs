@@ -61,6 +61,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
 
+    private List<DbMetricsUpdater> _metricsUpdaters = new();
+
     protected static void InitCache(IDbConfig dbConfig)
     {
         if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
@@ -128,16 +130,21 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
             if (dbConfig.EnableMetricsUpdater)
             {
-                new DbMetricsUpdater(Name, DbOptions, db, null, dbConfig, _logger).StartUpdating();
+                _metricsUpdaters.Add(new DbMetricsUpdater(Name, DbOptions, db, null, dbConfig, _logger));
                 if (columnFamilies != null)
                 {
                     foreach (ColumnFamilies.Descriptor columnFamily in columnFamilies)
                     {
                         if (db.TryGetColumnFamily(columnFamily.Name, out ColumnFamilyHandle handle))
                         {
-                            new DbMetricsUpdater(Name + "_" + columnFamily.Name, DbOptions, db, handle, dbConfig, _logger).StartUpdating();
+                            _metricsUpdaters.Add(new DbMetricsUpdater(Name + "_" + columnFamily.Name, DbOptions, db, handle, dbConfig, _logger));
                         }
                     }
+                }
+
+                foreach (DbMetricsUpdater metricsUpdater in _metricsUpdaters)
+                {
+                    metricsUpdater.StartUpdating();
                 }
             }
 
@@ -738,6 +745,12 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         _isDisposing = true;
 
         if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
+
+        foreach (DbMetricsUpdater dbMetricsUpdater in _metricsUpdaters)
+        {
+            dbMetricsUpdater.Dispose();
+        }
+
         InnerFlush();
         ReleaseUnmanagedResources();
 
