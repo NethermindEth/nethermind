@@ -78,6 +78,13 @@ namespace Nethermind.Init.Steps
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IMiningConfig miningConfig = getApi.Config<IMiningConfig>();
 
+            if (!syncConfig.FastSync && !syncConfig.SnapSync && syncConfig.PivotNumberParsed != 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.FastSync)} and {nameof(syncConfig.SnapSync)} are disabled. Changing pivot to genesis");
+                syncConfig.PivotNumber = null;
+                syncConfig.PivotHash = null;
+            }
+
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
