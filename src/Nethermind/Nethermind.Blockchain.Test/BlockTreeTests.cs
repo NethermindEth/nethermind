@@ -1203,6 +1203,7 @@ namespace Nethermind.Blockchain.Test
 
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = beginIndex.ToString();
+            syncConfig.FastSync = true;
 
             BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
