@@ -103,25 +103,25 @@ jobs:
           sleep 30
         done
 
-        # Wait for the triggered workflow to complete
+        # Wait for the triggered workflow to complete and check its conclusion
         while true; do
-          status=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/NethermindEth/nethermind/actions/runs/$run_id" | jq -r '.status')
+          run_data=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/NethermindEth/nethermind/actions/runs/$run_id")
+          status=$(echo "$run_data" | jq -r '.status')
+        
           if [ "$status" = "completed" ]; then
-            break
+            conclusion=$(echo "$run_data" | jq -r '.conclusion')
+            if [ "$conclusion" != "success" ]; then
+              echo "The workflow has not completed successfully. Exiting."
+              exit 1
+            else
+              echo "The workflow completed successfully! Exiting."
+              break
+            fi
           fi
           echo "Waiting for the workflow to complete..."
           sleep 30
         done
-
-        # Check if the workflow has completed successfully
-        conclusion=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token $GITHUB_TOKEN" \
-          "https://api.github.com/repos/NethermindEth/nethermind/actions/runs/$run_id" | jq -r '.conclusion')
-        if [ "$conclusion" != "success" ]; then
-          echo "The workflow has not completed successfully. Exiting."
-          exit 1
-        fi
-        echo "The workflow completed successfully! Exiting."
           
   trigger_node_and_vm_creation:
     needs: create_docker_image
