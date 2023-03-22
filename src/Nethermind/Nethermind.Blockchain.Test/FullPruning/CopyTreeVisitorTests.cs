@@ -22,8 +22,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
     {
         [TestCase(0, 1)]
         [TestCase(0, 8)]
-        [TestCase(100, 1)]
-        [TestCase(100, 8)]
+        [TestCase(1, 1)]
+        [TestCase(1, 8)]
         [Timeout(Timeout.MaxTestTime)]
         public void copies_state_between_dbs(int fullPruningMemoryBudgetMb, int maxDegreeOfParallelism)
         {

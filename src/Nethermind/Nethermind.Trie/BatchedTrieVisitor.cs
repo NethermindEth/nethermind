@@ -28,7 +28,7 @@ public class BatchedTrieVisitor
 
     private long _activeItems;
     private long _queuedItems;
-    private bool _failed = false;
+    private bool _failed;
     private long _currentPointer;
 
     private readonly ITrieNodeResolver _resolver;
@@ -66,7 +66,7 @@ public class BatchedTrieVisitor
 
         // Calculating estimated pool margin at about 5% of total working size. The queue size fluctuate a bit so
         // this is to reduce allocation.
-        long estimatedPoolMargin = (long)((recordCount / 128) * 0.05);
+        long estimatedPoolMargin = (long)(((double) recordCount / 128) * 0.05);
         ObjectPool<CompactStack<Job>.Node> jobPool = new DefaultObjectPool<CompactStack<Job>.Node>(
             new CompactStack<Job>.ObjectPoolPolicy(128), (int) estimatedPoolMargin);
 
@@ -84,7 +84,7 @@ public class BatchedTrieVisitor
     }
 
     // Determine the locality of the key. I guess if you use paprika or something, you'd need to modify this.
-    int CalculateShardIdx(ValueKeccak key)
+    int CalculatePartitionIdx(ValueKeccak key)
     {
         uint number = BinaryPrimitives.ReadUInt32BigEndian(key.Span);
         return (int)(number * (ulong) _partitionCount / uint.MaxValue);
@@ -96,7 +96,7 @@ public class BatchedTrieVisitor
     {
         // Start with the root
         SmallTrieVisitContext rootContext = new(trieVisitContext);
-        _partitions[CalculateShardIdx(root)].Push(new Job(root, rootContext));
+        _partitions[CalculatePartitionIdx(root)].Push(new Job(root, rootContext));
         _activeItems = 1;
         _queuedItems = 1;
 
@@ -115,20 +115,19 @@ public class BatchedTrieVisitor
         }
     }
 
-    ArrayPoolList<(TrieNode, SmallTrieVisitContext)>? NextBatch()
+    ArrayPoolList<(TrieNode, SmallTrieVisitContext)>? GetNextBatch()
     {
-        long shardIdx;
         CompactStack<Job>? theStack;
         do
         {
-            shardIdx = Interlocked.Increment(ref _currentPointer);
-            if (shardIdx == _partitionCount)
+            long partitionIdx = Interlocked.Increment(ref _currentPointer);
+            if (partitionIdx == _partitionCount)
             {
                 Interlocked.Add(ref _currentPointer, -_partitionCount);
 
                 GC.Collect(); // Simulate GC collect of standard visitor
             }
-            shardIdx = shardIdx % _partitionCount;
+            partitionIdx %= _partitionCount;
 
             if (_activeItems == 0 || _failed)
             {
@@ -143,7 +142,7 @@ public class BatchedTrieVisitor
                 Thread.Sleep(TimeSpan.FromMilliseconds(100));
             }
 
-            theStack = _partitions[shardIdx];
+            theStack = _partitions[partitionIdx];
             lock (theStack)
             {
                 if (!theStack.IsEmpty) break;
@@ -232,11 +231,11 @@ public class BatchedTrieVisitor
             }
 
             ValueKeccak keccak = trieNode.Keccak;
-            int shardIdx = CalculateShardIdx(keccak);
+            int partitionIdx = CalculatePartitionIdx(keccak);
             Interlocked.Increment(ref _activeItems);
             Interlocked.Increment(ref _queuedItems);
 
-            var theStack = _partitions[shardIdx];
+            var theStack = _partitions[partitionIdx];
             lock (theStack)
             {
                 theStack.Push(new Job(keccak, ctx));
@@ -252,7 +251,7 @@ public class BatchedTrieVisitor
         ArrayPoolList<(TrieNode, SmallTrieVisitContext)>? currentBatch;
         ArrayPoolList<(TrieNode, SmallTrieVisitContext)> nextToProcesses = new(_maxJobSize);
         ArrayPoolList<int> resolveOrdering = new(_maxJobSize);
-        while ((currentBatch = NextBatch()) != null)
+        while ((currentBatch = GetNextBatch()) != null)
         {
             // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
             // but the path ordering is important for read amplification
@@ -364,8 +363,6 @@ public class BatchedTrieVisitor
                 }
             }
         }
-
-        public SmallTrieVisitContext Clone() => (SmallTrieVisitContext)MemberwiseClone();
 
         public TrieVisitContext ToVisitContext()
         {
