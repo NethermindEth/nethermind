@@ -100,7 +100,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _receiptStorage = Substitute.For<IReceiptStorage>();
             _blockTree = Substitute.For<IBlockTree>();
 
-            _syncConfig = new SyncConfig { FastBlocks = true };
+            _syncConfig = new SyncConfig { FastBlocks = true, FastSync = true };
             _syncConfig.PivotNumber = _pivotNumber.ToString();
             _syncConfig.PivotHash = Keccak.Zero.ToString();
 

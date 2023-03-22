@@ -1111,7 +1111,7 @@ namespace Nethermind.Blockchain.Test
             MemDb headersDb = new();
             MemDb metadataDb = new();
 
-            SyncConfig syncConfig = new();
+            SyncConfig syncConfig = new(){ FastSync = true };
             syncConfig.PivotNumber = beginIndex.ToString();
 
             BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);

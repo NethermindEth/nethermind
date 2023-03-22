@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Text;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Db;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -47,7 +44,6 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         private string? _pivotHash;
-
         public string? PivotHash
         {
             get => FastSync || SnapSync ? _pivotHash : null;
