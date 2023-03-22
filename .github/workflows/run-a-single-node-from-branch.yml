@@ -141,7 +141,7 @@ jobs:
       uses: benc-uk/workflow-dispatch@v1
       with:
           workflow: run-single-node.yml
-          repo: post-merge-smoke-tests
+          repo: NethermindEth/post-merge-smoke-tests
           ref: "main"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
