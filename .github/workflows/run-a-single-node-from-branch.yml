@@ -56,8 +56,8 @@ jobs:
   create_docker_image:
     runs-on: ubuntu-latest
     steps:
-    - name: Creating a node with NodeName=\"DevNode-${{ github.actor }}-${{ github.ref }}\"
-      run: echo "NodeName=\"DevNode-${{ github.actor }}-${{ github.ref }}\""
+    - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ github.ref }}"
+      run: echo "NodeName='DevNode-${{ github.actor }}-${{ github.ref }}'"
 
     - name: Trigger Docker Build Action
       uses: benc-uk/workflow-dispatch@v1
