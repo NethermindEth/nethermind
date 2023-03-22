@@ -16,10 +16,9 @@ namespace Nethermind.TxPool
         private static readonly long MaxSizeOfTxForBroadcast = 128.KB();
         private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new TxDecoder();
 
-        private static int? _size = null;
         public static int GetLength(this Transaction tx)
         {
-            return _size ??= _transactionSizeCalculator.GetLength(tx);
+            return tx.GetLength(_transactionSizeCalculator);
         }
         public static bool CanBeBroadcast(this Transaction tx) => tx.Type != TxType.Blob && tx.GetLength() <= MaxSizeOfTxForBroadcast;
 
