@@ -66,72 +66,72 @@ jobs:
     - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}"
       run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}'"
 
-    #- name: Trigger Docker Build Action with Cleaned Ref
-    #  uses: benc-uk/workflow-dispatch@v1
-    #  with:
-    #      workflow: build-nethermind-docker-images.yml
-    #      ref: "${{ github.ref }}"
-    #      token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-    #      inputs: '{
-    #          "repo": "nethermindeth/nethermind",
-    #          "tag": "${{ env.CLEAN_REF }}",
-    #          "dockerfile": "Dockerfile"
-    #       }'
-    #
-    #- name: Wait for Docker Build Action to complete
-    #  env:
-    #    GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-    #  run: |
-    #    # Replace `workflow_id` with the ID of the workflow you want to wait for.
-    #    workflow_id="8166053" #Id of Docker build workflow
-    #    
-    #    # Set the maximum waiting time (in minutes) and initialize the counter
-    #    max_wait_minutes=3
-    #    counter=0
-    #
-    #    # Get the current time in ISO 8601 format
-    #    current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    #
-    #    # Wait for the workflow to be triggered
-    #    while true; do
-    #      run_id=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token $GITHUB_TOKEN" \
-    #        "https://api.github.com/repos/NethermindEth/nethermind/actions/workflows/${workflow_id}/runs" | \
-    #        jq -r --arg ref "$(echo '${{ github.ref }}' | sed 's/refs\/heads\///')" --arg current_time "$current_time" \
-    #        '.workflow_runs[] | select(.head_branch == $ref and .created_at >= $current_time) | .id')
-    #      if [ -n "$run_id" ]; then
-    #        break
-    #      fi
-    #    
-    #      # Increment the counter and check if the maximum waiting time is reached
-    #      counter=$((counter + 1))
-    #      if [ $((counter * 30)) -ge $((max_wait_minutes * 60)) ]; then
-    #        echo "Maximum waiting time for the workflow to be triggered has been reached. Exiting."
-    #        exit 1
-    #      fi
-    #    
-    #      echo "Waiting for the workflow to be triggered..."
-    #      sleep 30
-    #    done
-    #
-    #    # Wait for the triggered workflow to complete and check its conclusion
-    #    while true; do
-    #      run_data=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token $GITHUB_TOKEN" \
-    #        "https://api.github.com/repos/NethermindEth/nethermind/actions/runs/$run_id")
-    #      status=$(echo "$run_data" | jq -r '.status')
-    #    
-    #      if [ "$status" = "completed" ]; then
-    #        conclusion=$(echo "$run_data" | jq -r '.conclusion')
-    #        if [ "$conclusion" != "success" ]; then
-    #          echo "The workflow has not completed successfully. Exiting."
-    #          exit 1
-    #        else
-    #          echo "The workflow completed successfully! Exiting."
-    #          break
-    #        fi
-    #      fi
-    #      echo "Waiting for the workflow to complete..."
-    #      sleep 30
-    #    done
+    - name: Trigger Docker Build Action with Cleaned Ref
+      uses: benc-uk/workflow-dispatch@v1
+      with:
+          workflow: build-nethermind-docker-images.yml
+          ref: "${{ github.ref }}"
+          token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          inputs: '{
+              "repo": "nethermindeth/nethermind",
+              "tag": "${{ env.CLEAN_REF }}",
+              "dockerfile": "Dockerfile"
+           }'
+    
+    - name: Wait for Docker Build Action to complete
+      env:
+        GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+      run: |
+        # Replace `workflow_id` with the ID of the workflow you want to wait for.
+        workflow_id="8166053" #Id of Docker build workflow
+        
+        # Set the maximum waiting time (in minutes) and initialize the counter
+        max_wait_minutes=3
+        counter=0
+    
+        # Get the current time in ISO 8601 format
+        current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+        # Wait for the workflow to be triggered
+        while true; do
+          run_id=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/NethermindEth/nethermind/actions/workflows/${workflow_id}/runs" | \
+            jq -r --arg ref "$(echo '${{ github.ref }}' | sed 's/refs\/heads\///')" --arg current_time "$current_time" \
+            '.workflow_runs[] | select(.head_branch == $ref and .created_at >= $current_time) | .id')
+          if [ -n "$run_id" ]; then
+            break
+          fi
+        
+          # Increment the counter and check if the maximum waiting time is reached
+          counter=$((counter + 1))
+          if [ $((counter * 30)) -ge $((max_wait_minutes * 60)) ]; then
+            echo "Maximum waiting time for the workflow to be triggered has been reached. Exiting."
+            exit 1
+          fi
+        
+          echo "Waiting for the workflow to be triggered..."
+          sleep 30
+        done
+    
+        # Wait for the triggered workflow to complete and check its conclusion
+        while true; do
+          run_data=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/NethermindEth/nethermind/actions/runs/$run_id")
+          status=$(echo "$run_data" | jq -r '.status')
+        
+          if [ "$status" = "completed" ]; then
+            conclusion=$(echo "$run_data" | jq -r '.conclusion')
+            if [ "$conclusion" != "success" ]; then
+              echo "The workflow has not completed successfully. Exiting."
+              exit 1
+            else
+              echo "The workflow completed successfully! Exiting."
+              break
+            fi
+          fi
+          echo "Waiting for the workflow to complete..."
+          sleep 30
+        done
           
   trigger_node_and_vm_creation:
     needs: create_docker_image
