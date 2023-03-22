@@ -12,21 +12,21 @@ namespace Nethermind.Merge.Plugin.GC;
 
 public class GCKeeper
 {
-    private readonly IGCStrategy _igcStrategy;
+    private readonly IGCStrategy _gcStrategy;
     private readonly ILogger _logger;
     private static readonly long _defaultSize = 512.MB();
     private Task _gcScheduleTask = Task.CompletedTask;
 
-    public GCKeeper(IGCStrategy igcStrategy, ILogManager logManager)
+    public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
     {
-        _igcStrategy = igcStrategy;
+        _gcStrategy = gcStrategy;
         _logger = logManager.GetClassLogger<GCKeeper>();
     }
 
     public IDisposable TryStartNoGCRegion(long? size = null)
     {
         size ??= _defaultSize;
-        if (_igcStrategy.CanStartNoGCRegion())
+        if (_gcStrategy.CanStartNoGCRegion())
         {
             FailCause failCause = FailCause.None;
             try
@@ -44,6 +44,12 @@ public class GCKeeper
             {
                 failCause = FailCause.AlreadyInNoGCRegion;
             }
+            catch (Exception e)
+            {
+                failCause = FailCause.Exception;
+
+                if (_logger.IsError) _logger.Error($"{nameof(System.GC.TryStartNoGCRegion)} failed with exception.", e);
+            }
 
             return new NoGCRegion(this, failCause, size, _logger);
         }
@@ -57,7 +63,8 @@ public class GCKeeper
         StrategyDisallowed,
         GCFailedToStartNoGCRegion,
         TotalSizeExceededTheEphemeralSegmentSize,
-        AlreadyInNoGCRegion
+        AlreadyInNoGCRegion,
+        Exception
     }
 
     private class NoGCRegion : IDisposable
@@ -89,6 +96,10 @@ public class GCKeeper
                     {
                         if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with Exception with {_size} bytes");
                     }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsError) _logger.Error($"{nameof(System.GC.EndNoGCRegion)} failed with exception.", e);
+                    }
                 }
                 else if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with {_size} bytes");
             }
@@ -100,20 +111,36 @@ public class GCKeeper
 
     private void ScheduleGC()
     {
-        if (_gcScheduleTask.IsCompleted) _gcScheduleTask = ScheduleGCInternal();
+        if (_gcScheduleTask.IsCompleted)
+        {
+            lock (_gcStrategy)
+            {
+                if (_gcScheduleTask.IsCompleted)
+                {
+                    _gcScheduleTask = ScheduleGCInternal();
+                }
+            }
+        }
+
+
     }
 
     private async Task ScheduleGCInternal()
     {
-        (int generation, bool compacting) = _igcStrategy.GetForcedGCParams();
-        if (generation >= 0)
+        (int generation, int compacting) = _gcStrategy.GetForcedGCParams();
+        if (generation > IGCStrategy.NoGC)
         {
             // This should give time to finalize response in Engine API
             // Normally we should get block every 12s (5s on some chains)
             // Lets say we process block in 2s, then delay 1s, then invoke GC
             await Task.Delay(1000);
             if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
-            System.GC.Collect(generation, GCCollectionMode.Default, blocking: false, compacting: compacting);
+            if (generation == IGCStrategy.Gen2 && compacting == IGCStrategy.LOHCompacting)
+            {
+                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            }
+            System.GC.Collect(generation, GCCollectionMode.Default, blocking: false, compacting: compacting > 0);
+            await Task.Delay(1000); // lets keep the task alive for next 1s for GC to complete
         }
     }
 }
