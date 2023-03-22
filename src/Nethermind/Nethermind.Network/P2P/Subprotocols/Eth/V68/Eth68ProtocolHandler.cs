@@ -120,6 +120,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
                 sizes.Add(tx.GetLength(_txDecoder));
                 hashes.Add(tx.Hash);
                 NotifiedTransactions.Set(tx.Hash);
+                TxPool.Metrics.PendingTransactionsHashesSent++;
             }
         }
 
