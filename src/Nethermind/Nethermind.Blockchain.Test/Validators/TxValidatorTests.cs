@@ -287,5 +287,29 @@ namespace Nethermind.Blockchain.Test.Validators
             TxValidator txValidator = new(TestBlockchainIds.ChainId);
             return txValidator.IsWellFormed(tx, Cancun.Instance);
         }
+
+        [TestCase(0, ExpectedResult = true)]
+        [TestCase(Eip4844Constants.MaxBlobsPerTransaction - 1, ExpectedResult = true)]
+        [TestCase(Eip4844Constants.MaxBlobsPerTransaction, ExpectedResult = true)]
+        [TestCase(Eip4844Constants.MaxBlobsPerTransaction + 1, ExpectedResult = false)]
+        public bool Blobs_count_should_not_exceed_max_count_per_tx(int blobsCount)
+        {
+            byte[] sigData = new byte[65];
+            sigData[31] = 1; // correct r
+            sigData[63] = 1; // correct s
+            sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+            Signature signature = new(sigData);
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.Blob)
+                .WithTimestamp(ulong.MaxValue)
+                .WithMaxFeePerGas(1)
+                .WithMaxFeePerDataGas(1)
+                .WithBlobVersionedHashes(blobsCount)
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithSignature(signature).TestObject;
+
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            return txValidator.IsWellFormed(tx, Cancun.Instance);
+        }
     }
 }

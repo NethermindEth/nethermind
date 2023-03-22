@@ -197,7 +197,7 @@ public class BlockValidator : IBlockValidator
     {
         const int maxBlobsPerBlock = 4;
 
-        if (spec.IsEip4844Enabled && block.ExcessDataGas is null)
+        if (spec.IsEip4844Enabled ^ block.ExcessDataGas is not null)
         {
             error = $"ExcessDataGas cannot be null in block {block.Hash} when EIP-4844 activated.";
             if (_logger.IsWarn) _logger.Warn(error);
