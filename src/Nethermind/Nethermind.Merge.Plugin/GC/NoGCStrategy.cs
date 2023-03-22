@@ -8,5 +8,5 @@ class NoGCStrategy : IGCStrategy
     public static readonly NoGCStrategy Instance = new();
 
     public bool CanStartNoGCRegion() => false;
-    public (int, bool) GetForcedGCParams() => (-1, false);
+    public (int, int) GetForcedGCParams() => (IGCStrategy.NoGC, IGCStrategy.NoCompacting);
 }

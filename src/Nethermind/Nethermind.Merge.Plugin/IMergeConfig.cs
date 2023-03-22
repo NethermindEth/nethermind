@@ -49,7 +49,7 @@ namespace Nethermind.Merge.Plugin
         [ConfigItem(Description = "Reduces memory usage by forcing Garbage Collection between EngineApi calls. Accept values [-1,2]. -1 disables it.", DefaultValue = "1")]
         public int GCGenerationToCollect { get; set; }
 
-        [ConfigItem(Description = "Reduces process used memory.", DefaultValue = "true")]
-        public bool AggressivelyCompactMemory { get; set; }
+        [ConfigItem(Description = "Reduces process used memory. 0 is disabled, 1 compacts normal heaps, 2 compacts large object heap too (only when GCGenerationToCollect is set to 2).", DefaultValue = "1")]
+        public int AggressivelyCompactMemory { get; set; }
     }
 }

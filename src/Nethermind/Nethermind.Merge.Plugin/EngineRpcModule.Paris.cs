@@ -75,9 +75,9 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (await _locker.WaitAsync(_timeout))
         {
             Stopwatch watch = Stopwatch.StartNew();
-            using IDisposable region = _gcKeeper.TryStartNoGCRegion();
             try
             {
+                using IDisposable region = _gcKeeper.TryStartNoGCRegion();
                 return await _newPayloadV1Handler.HandleAsync(executionPayload);
             }
             catch (Exception exception)

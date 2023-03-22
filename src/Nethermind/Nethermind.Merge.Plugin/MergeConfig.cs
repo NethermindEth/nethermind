@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Merge.Plugin.GC;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -24,8 +25,8 @@ namespace Nethermind.Merge.Plugin
 
         public bool PrioritizeBlockLatency { get; set; } = true;
 
-        public int GCGenerationToCollect { get; set; } = 1;
+        public int GCGenerationToCollect { get; set; } = IGCStrategy.Gen1;
 
-        public bool AggressivelyCompactMemory { get; set; } = true;
+        public int AggressivelyCompactMemory { get; set; } = IGCStrategy.Compacting;
     }
 }
