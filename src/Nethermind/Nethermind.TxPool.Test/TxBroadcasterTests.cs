@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -137,7 +138,7 @@ public class TxBroadcasterTests
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
+        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
 
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
         pickedTxs.Count.Should().Be(expectedCount);
@@ -172,7 +173,7 @@ public class TxBroadcasterTests
         for (int i = 0; i < addedTxsCount; i++)
         {
             transactions[i] = Build.A.Transaction
-                .WithGasPrice(i.GWei())
+                .WithGasPrice((addedTxsCount - i - 1).GWei())
                 .WithType(i % 10 == 0 ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
@@ -182,27 +183,48 @@ public class TxBroadcasterTests
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
+        (IList<Transaction> pickedTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
 
-        int addedNotBlobTxsCount = addedTxsCount - (addedTxsCount / 10 + 1);
-        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedNotBlobTxsCount);
-        pickedTxs.Count.Should().Be(expectedCount);
+        int expectedCountTotal = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
+        int expectedCountOfBlobHashes = expectedCountTotal / 10 + 1;
+        int expectedCountOfNonBlobTxs = expectedCountTotal - expectedCountOfBlobHashes;
+        if (expectedCountOfNonBlobTxs > 0)
+        {
+            pickedTxs.Count.Should().Be(expectedCountOfNonBlobTxs);
+        }
+        else
+        {
+            pickedTxs.Should().BeNull();
+        }
+
+        if (expectedCountOfBlobHashes > 0)
+        {
+            pickedHashes.Count.Should().Be(expectedCountOfBlobHashes);
+        }
+        else
+        {
+            pickedHashes.Should().BeNull();
+        }
 
         List<Transaction> expectedTxs = new();
+        List<Transaction> expectedHashes = new();
 
-        int j = 0;
-        for (int i = 1; i <= expectedCount; i++)
+        for (int i = 0; i < expectedCountTotal; i++)
         {
-            Transaction tx = transactions[addedTxsCount - i - j];
+            Transaction tx = transactions[i];
 
-            while (tx.Type == TxType.Blob)
+            if (tx.Type != TxType.Blob)
             {
-                tx = transactions[addedTxsCount - i - ++j];
+                expectedTxs.Add(tx);
             }
-            expectedTxs.Add(tx);
+            else
+            {
+                expectedHashes.Add(tx);
+            }
         }
 
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
+        expectedHashes.Should().BeEquivalentTo(pickedHashes);
     }
 
     [TestCase(1)]
@@ -239,7 +261,7 @@ public class TxBroadcasterTests
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
+        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
 
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
@@ -289,7 +311,7 @@ public class TxBroadcasterTests
 
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
+        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
 
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
@@ -326,7 +348,7 @@ public class TxBroadcasterTests
         }
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
+        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().TransactionsToSend;
         pickedTxs.Count.Should().Be(1);
 
         List<Transaction> expectedTxs = new() { transactions[0] };
@@ -365,7 +387,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            Substitute.For<ForkInfo>(),
+            new ForkInfo(_specProvider, Keccak.Zero),
             Substitute.For<ILogManager>());
         _broadcaster.AddPeer(eth68Handler);
 
@@ -392,7 +414,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            Substitute.For<ForkInfo>(),
+            new ForkInfo(_specProvider, Keccak.Zero),
             Substitute.For<ILogManager>());
 
         ISession session68 = Substitute.For<ISession>();
@@ -404,7 +426,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            Substitute.For<ForkInfo>(),
+            new ForkInfo(_specProvider, Keccak.Zero),
             Substitute.For<ILogManager>());
 
         Transaction localTx = Build.A.Transaction
