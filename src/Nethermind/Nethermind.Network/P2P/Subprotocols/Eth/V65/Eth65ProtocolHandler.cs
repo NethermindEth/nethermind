@@ -134,11 +134,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             return new PooledTransactionsMessage(txsToSend);
         }
 
-        protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
+        public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
         {
             if (sendFullTx)
             {
-                base.SendNewTransactionsCore(txs, true);
+                base.SendNewTransactions(txs, true);
                 return;
             }
 
