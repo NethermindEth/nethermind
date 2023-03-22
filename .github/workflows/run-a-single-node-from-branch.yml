@@ -137,6 +137,13 @@ jobs:
     needs: create_docker_image
     runs-on: ubuntu-latest
     steps:
+    - name: Prepare docker tag
+      id: prepare_ref
+      run: |
+        REF_NAME=${{ github.ref }}
+        CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+        echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
+
     - name: Trigger Node creation Repo Action
       uses: benc-uk/workflow-dispatch@v1
       with:
