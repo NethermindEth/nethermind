@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             MemDb trieDb = new();
             MemDb clonedDb = new();
 
-            VisitingOptions visitingOptions = new VisitingOptions()
+            VisitingOptions visitingOptions = new()
             {
                 MaxDegreeOfParallelism = maxDegreeOfParallelism,
                 FullScanMemoryBudget = fullPruningMemoryBudgetMb.MiB(),

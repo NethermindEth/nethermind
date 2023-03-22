@@ -1032,8 +1032,8 @@ namespace Nethermind.Trie
 
             if (visitingOptions.FullScanMemoryBudget != 0)
             {
-                BatchedTrieVisitor batchedTrieVisitor = new();
-                batchedTrieVisitor.BatchedAccept(visitor, resolver, rootRef.Keccak, trieVisitContext, visitingOptions);
+                BatchedTrieVisitor batchedTrieVisitor = new(visitor, resolver, visitingOptions);
+                batchedTrieVisitor.Start(rootRef.Keccak, trieVisitContext);
             }
             else
             {
