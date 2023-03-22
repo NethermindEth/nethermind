@@ -17,8 +17,8 @@ public interface IDbConfig : IConfig
     bool WriteAheadLogSync { get; set; }
     long? RateLimiterBytesPerSec { get; set; }
     bool? UseDirectReads { get; set; }
-    bool? UseDirectIOForFlushAndCompaction  { get; set; }
-    bool? EnableBlobFiles  { get; set; }
+    bool? UseDirectIOForFlushAndCompaction { get; set; }
+    bool? EnableBlobFiles { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
@@ -27,8 +27,8 @@ public interface IDbConfig : IConfig
     int? ReceiptsDbMaxOpenFiles { get; set; }
     long? ReceiptsDbRateLimiterBytesPerSec { get; set; }
     bool? ReceiptsDbUseDirectReads { get; set; }
-    bool? ReceiptsDbUseDirectIOForFlushAndCompaction  { get; set; }
-    bool? ReceiptsDbEnableBlobFiles  { get; set; }
+    bool? ReceiptsDbUseDirectIOForFlushAndCompaction { get; set; }
+    bool? ReceiptsDbEnableBlobFiles { get; set; }
 
     ulong BlocksDbWriteBufferSize { get; set; }
     uint BlocksDbWriteBufferNumber { get; set; }
@@ -37,8 +37,8 @@ public interface IDbConfig : IConfig
     int? BlocksDbMaxOpenFiles { get; set; }
     long? BlocksDbRateLimiterBytesPerSec { get; set; }
     bool? BlocksDbUseDirectReads { get; set; }
-    bool? BlocksDbUseDirectIOForFlushAndCompaction  { get; set; }
-    bool? BlocksDbEnableBlobFiles  { get; set; }
+    bool? BlocksDbUseDirectIOForFlushAndCompaction { get; set; }
+    bool? BlocksDbEnableBlobFiles { get; set; }
 
     ulong HeadersDbWriteBufferSize { get; set; }
     uint HeadersDbWriteBufferNumber { get; set; }
@@ -47,8 +47,8 @@ public interface IDbConfig : IConfig
     int? HeadersDbMaxOpenFiles { get; set; }
     long? HeadersDbRateLimiterBytesPerSec { get; set; }
     bool? HeadersDbUseDirectReads { get; set; }
-    bool? HeadersDbUseDirectIOForFlushAndCompaction  { get; set; }
-    bool? HeadersDbEnableBlobFiles  { get; set; }
+    bool? HeadersDbUseDirectIOForFlushAndCompaction { get; set; }
+    bool? HeadersDbEnableBlobFiles { get; set; }
 
     ulong BlockInfosDbWriteBufferSize { get; set; }
     uint BlockInfosDbWriteBufferNumber { get; set; }
@@ -57,8 +57,8 @@ public interface IDbConfig : IConfig
     int? BlockInfosDbMaxOpenFiles { get; set; }
     long? BlockInfosDbRateLimiterBytesPerSec { get; set; }
     bool? BlockInfoUseDirectReads { get; set; }
-    bool? BlockInfoUseDirectIOForFlushAndCompaction  { get; set; }
-    bool? BlockInfoEnableBlobFiles  { get; set; }
+    bool? BlockInfoUseDirectIOForFlushAndCompaction { get; set; }
+    bool? BlockInfoEnableBlobFiles { get; set; }
 
     ulong PendingTxsDbWriteBufferSize { get; set; }
     uint PendingTxsDbWriteBufferNumber { get; set; }
@@ -67,8 +67,8 @@ public interface IDbConfig : IConfig
     int? PendingTxsDbMaxOpenFiles { get; set; }
     long? PendingTxsDbRateLimiterBytesPerSec { get; set; }
     bool? PendingTxsUseDirectReads { get; set; }
-    bool? PendingTxsUseDirectIOForFlushAndCompaction  { get; set; }
-    bool? PendingTxsEnableBlobFiles  { get; set; }
+    bool? PendingTxsUseDirectIOForFlushAndCompaction { get; set; }
+    bool? PendingTxsEnableBlobFiles { get; set; }
 
     ulong CodeDbWriteBufferSize { get; set; }
     uint CodeDbWriteBufferNumber { get; set; }
@@ -77,8 +77,8 @@ public interface IDbConfig : IConfig
     int? CodeDbMaxOpenFiles { get; set; }
     long? CodeDbRateLimiterBytesPerSec { get; set; }
     bool? CodeDbUseDirectReads { get; set; }
-    bool? CodeDbUseDirectIOForFlushAndCompaction  { get; set; }
-    bool? CodeDbEnableBlobFiles  { get; set; }
+    bool? CodeDbUseDirectIOForFlushAndCompaction { get; set; }
+    bool? CodeDbEnableBlobFiles { get; set; }
 
     ulong BloomDbWriteBufferSize { get; set; }
     uint BloomDbWriteBufferNumber { get; set; }
@@ -87,8 +87,8 @@ public interface IDbConfig : IConfig
     int? BloomDbMaxOpenFiles { get; set; }
     long? BloomDbRateLimiterBytesPerSec { get; set; }
     bool? BloomDbUseDirectReads { get; set; }
-    bool? BloomDbUseDirectIOForFlushAndCompaction  { get; set; }
-    bool? BloomDbEnableBlobFiles  { get; set; }
+    bool? BloomDbUseDirectIOForFlushAndCompaction { get; set; }
+    bool? BloomDbEnableBlobFiles { get; set; }
 
     ulong WitnessDbWriteBufferSize { get; set; }
     uint WitnessDbWriteBufferNumber { get; set; }
@@ -97,8 +97,8 @@ public interface IDbConfig : IConfig
     int? WitnessDbMaxOpenFiles { get; set; }
     long? WitnessDbRateLimiterBytesPerSec { get; set; }
     bool? WitnessDbUseDirectReads { get; set; }
-    bool? WitnessDbUseDirectIOForFlushAndCompaction  { get; set; }
-    bool? WitnessDbEnableBlobFiles  { get; set; }
+    bool? WitnessDbUseDirectIOForFlushAndCompaction { get; set; }
+    bool? WitnessDbEnableBlobFiles { get; set; }
 
     ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
     uint CanonicalHashTrieDbWriteBufferNumber { get; set; }
@@ -107,8 +107,8 @@ public interface IDbConfig : IConfig
     int? CanonicalHashTrieDbMaxOpenFiles { get; set; }
     long? CanonicalHashTrieDbRateLimiterBytesPerSec { get; set; }
     bool? CanonicalHashTrieDbUseDirectReads { get; set; }
-    bool? CanonicalHashTrieDbUseDirectIOForFlushAndCompaction  { get; set; }
-    bool? CanonicalHashTrieDbEnableBlobFiles  { get; set; }
+    bool? CanonicalHashTrieDbUseDirectIOForFlushAndCompaction { get; set; }
+    bool? CanonicalHashTrieDbEnableBlobFiles { get; set; }
 
     ulong MetadataDbWriteBufferSize { get; set; }
     uint MetadataDbWriteBufferNumber { get; set; }
@@ -117,8 +117,8 @@ public interface IDbConfig : IConfig
     int? MetadataDbMaxOpenFiles { get; set; }
     long? MetadataDbRateLimiterBytesPerSec { get; set; }
     bool? MetadataDbUseDirectReads { get; set; }
-    bool? MetadataDbUseDirectIOForFlushAndCompaction  { get; set; }
-    bool? MetadataDbEnableBlobFiles  { get; set; }
+    bool? MetadataDbUseDirectIOForFlushAndCompaction { get; set; }
+    bool? MetadataDbEnableBlobFiles { get; set; }
 
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
