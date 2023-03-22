@@ -20,7 +20,7 @@ public static class KzgPolynomialCommitments
 
     private static readonly ThreadLocal<SHA256> _sha256 = new(SHA256.Create);
 
-    private static Task? _initializeTask = null;
+    private static Task? _initializeTask;
 
     public static Task Initialize(ILogger? logger = null) => _initializeTask ??= Task.Run(() =>
     {

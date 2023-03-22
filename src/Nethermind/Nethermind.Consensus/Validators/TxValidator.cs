@@ -43,7 +43,8 @@ namespace Nethermind.Consensus.Validators
                    Validate4844Fields(transaction);
         }
 
-        private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) => !transaction.IsAboveInitCode(releaseSpec);
+        private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
+            !transaction.IsAboveInitCode(releaseSpec);
 
         private static bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec) =>
             transaction.Type switch
@@ -102,7 +103,8 @@ namespace Nethermind.Consensus.Validators
         {
             if (transaction.Type != TxType.Blob)
             {
-                return true;
+                return transaction.MaxFeePerDataGas is null &&
+                       transaction.BlobVersionedHashes is null;
             }
 
             if (transaction.MaxFeePerDataGas is null ||
@@ -113,7 +115,9 @@ namespace Nethermind.Consensus.Validators
             }
 
             // Validate network form
-            if (transaction.Blobs is not null || transaction.BlobKzgs is not null || transaction.BlobProofs is not null)
+            if (transaction.BlobVersionedHashes!.Length > 0 && (transaction.Blobs is not null ||
+                                                                transaction.BlobKzgs is not null ||
+                                                                transaction.BlobProofs is not null))
             {
                 if (transaction.BlobKzgs is null)
                 {

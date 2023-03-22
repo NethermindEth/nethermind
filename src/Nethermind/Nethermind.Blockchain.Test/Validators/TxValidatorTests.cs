@@ -276,13 +276,18 @@ namespace Nethermind.Blockchain.Test.Validators
             sigData[63] = 1; // correct s
             sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
             Signature signature = new(sigData);
-            Transaction tx = Build.A.Transaction
+            TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
                 .WithType(txType)
                 .WithTimestamp(ulong.MaxValue)
                 .WithMaxFeePerGas(1)
                 .WithMaxFeePerDataGas(isMaxFeePerDataGasSet ? 1 : null)
                 .WithChainId(TestBlockchainIds.ChainId)
-                .WithSignature(signature).TestObject;
+                .WithSignature(signature);
+            if (txType == TxType.Blob)
+            {
+                txBuilder = txBuilder.WithBlobVersionedHashes(0);
+            }
+            Transaction tx = txBuilder.TestObject;
 
             TxValidator txValidator = new(TestBlockchainIds.ChainId);
             return txValidator.IsWellFormed(tx, Cancun.Instance);
