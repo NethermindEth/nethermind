@@ -96,7 +96,7 @@ jobs:
         while true; do
           run_id=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/NethermindEth/nethermind/actions/workflows/${workflow_id}/runs" | \
-            jq -r --arg ref "${{ github.ref }}" --arg current_time "$current_time" \
+            jq -r --arg ref "$(echo '${{ github.ref }}' | sed 's/refs\/heads\///')" --arg current_time "$current_time" \
             '.workflow_runs[] | select(.head_branch == $ref and .created_at >= $current_time) | .id')
           if [ -n "$run_id" ]; then
             break
