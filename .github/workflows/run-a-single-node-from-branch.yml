@@ -145,16 +145,13 @@ jobs:
           ref: "main"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
-                     "ref": "main",
-                     "inputs": {
-                       "github_username": "${{ github.actor }}",
-                       "config_file": "${{ inputs.config }}",
-                       "nethermind_branch": "${{ env.CLEAN_REF }}",
-                       "network": "${{ inputs.network }}",
-                       "cl_client": "${{ inputs.cl_client }}",
-                       "cl_custom_image": "${{ inputs.cl_custom_image }}",
-                       "timeout": "${{ inputs.timeout }}",
-                       "additional_nethermind_flags": "${{ inputs.additional_nethermind_flags }}",
-                       "additional_cl_flags": "${{ inputs.additional_cl_flags }}"
-                     }
+                     "github_username": "${{ github.actor }}",
+                     "config_file": "${{ inputs.config }}",
+                     "nethermind_branch": "${{ env.CLEAN_REF }}",
+                     "network": "${{ inputs.network }}",
+                     "cl_client": "${{ inputs.cl_client }}",
+                     "cl_custom_image": "${{ inputs.cl_custom_image }}",
+                     "timeout": "${{ inputs.timeout }}",
+                     "additional_nethermind_flags": "${{ inputs.additional_nethermind_flags }}",
+                     "additional_cl_flags": "${{ inputs.additional_cl_flags }}"
                    }'
