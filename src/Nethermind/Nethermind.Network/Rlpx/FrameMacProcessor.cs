@@ -3,12 +3,10 @@
 
 using System;
 using System.IO;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
 using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Parameters;
 
@@ -20,10 +18,10 @@ namespace Nethermind.Network.Rlpx
     public sealed class FrameMacProcessor : IFrameMacProcessor
     {
         private readonly PublicKey _remoteNodeId;
-        private readonly KeccakDigest _egressMac;
-        private readonly KeccakDigest _ingressMac;
-        private readonly KeccakDigest _egressMacCopy;
-        private readonly KeccakDigest _ingressMacCopy;
+        private readonly KeccakHash _egressMac;
+        private readonly KeccakHash _ingressMac;
+        private readonly KeccakHash _egressMacCopy;
+        private readonly KeccakHash _ingressMacCopy;
         private readonly IBlockCipher _aesEngine;
         private readonly byte[] _macSecret;
 
@@ -32,14 +30,14 @@ namespace Nethermind.Network.Rlpx
             _remoteNodeId = remoteNodeId;
             _macSecret = secrets.MacSecret;
             _egressMac = secrets.EgressMac;
-            _egressMacCopy = (KeccakDigest)_egressMac.Copy();
+            _egressMacCopy = _egressMac.Copy();
             _ingressMac = secrets.IngressMac;
-            _ingressMacCopy = (KeccakDigest)_ingressMac.Copy();
+            _ingressMacCopy = _ingressMac.Copy();
             _aesEngine = MakeMacCipher();
-            _checkMacBuffer = new byte[_ingressMac.GetDigestSize()];
-            _addMacBuffer = new byte[_ingressMac.GetDigestSize()];
-            _ingressAesBlockBuffer = new byte[_ingressMac.GetDigestSize()];
-            _egressAesBlockBuffer = new byte[_ingressMac.GetDigestSize()];
+            _checkMacBuffer = new byte[_ingressMac.HashSize];
+            _addMacBuffer = new byte[_ingressMac.HashSize];
+            _ingressAesBlockBuffer = new byte[_ingressMac.HashSize];
+            _egressAesBlockBuffer = new byte[_ingressMac.HashSize];
         }
 
         private IBlockCipher MakeMacCipher()
@@ -58,17 +56,17 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                _egressMac.BlockUpdate(input, offset, length);
+                _egressMac.Update(input.AsSpan(offset, length));
 
                 // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
-                DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer, 0); // frame MAC seed
+                DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer); // frame MAC seed
                 UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, 0, input, offset + length, true);
             }
         }
 
         public void UpdateEgressMac(byte[] input)
         {
-            _egressMac.BlockUpdate(input, 0, input.Length);
+            _egressMac.Update(input);
         }
 
         public void UpdateIngressMac(byte[] input, bool isHeader)
@@ -79,13 +77,13 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                _ingressMac.BlockUpdate(input, 0, input.Length);
+                _ingressMac.Update(input);
             }
         }
 
         public void CalculateMac(byte[] output)
         {
-            DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer, 0); // frame MAC seed
+            DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer); // frame MAC seed
             UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, 0, output, 0, true);
         }
 
@@ -98,10 +96,10 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                _egressMac.BlockUpdate(input, offset, length);
+                _egressMac.Update(input.AsSpan(offset, length));
 
                 // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
-                DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer, 0); // frame MAC seed
+                DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer); // frame MAC seed
                 UpdateMac(_egressMac, _egressMacCopy, _addMacBuffer, 0, output, outputOffset, true);
             }
         }
@@ -115,11 +113,11 @@ namespace Nethermind.Network.Rlpx
         {
             if (!isHeader)
             {
-                DoFinalNoReset(_ingressMac, _ingressMacCopy, _checkMacBuffer, 0); // frame MAC seed
+                DoFinalNoReset(_ingressMac, _ingressMacCopy, _checkMacBuffer); // frame MAC seed
             }
 
             byte[] aesBlock = _ingressAesBlockBuffer;
-            DoFinalNoReset(_ingressMac, _ingressMacCopy, aesBlock, 0);
+            DoFinalNoReset(_ingressMac, _ingressMacCopy, aesBlock);
 
             _aesEngine.ProcessBlock(aesBlock, 0, aesBlock, 0);
 
@@ -130,9 +128,9 @@ namespace Nethermind.Network.Rlpx
                 aesBlock[i] ^= _checkMacBuffer[i];
             }
 
-            _ingressMac.BlockUpdate(aesBlock, 0, length);
+            _ingressMac.Update(aesBlock.AsSpan(0, length));
             byte[] result = _checkMacBuffer;
-            DoFinalNoReset(_ingressMac, _ingressMacCopy, result, 0);
+            DoFinalNoReset(_ingressMac, _ingressMacCopy, result);
 
             bool isMacSame = true;
             for (int i = 0; i < length; i++)
@@ -156,10 +154,10 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                _ingressMac.BlockUpdate(input, offset, length);
+                _ingressMac.Update(input.AsSpan(offset, length));
 
                 // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
-                DoFinalNoReset(_ingressMac, _ingressMacCopy, _checkMacBuffer, 0); // frame MAC seed
+                DoFinalNoReset(_ingressMac, _ingressMacCopy, _checkMacBuffer); // frame MAC seed
                 UpdateMac(_ingressMac, _ingressMacCopy, _checkMacBuffer, 0, input, offset + length, false);
             }
         }
@@ -168,10 +166,10 @@ namespace Nethermind.Network.Rlpx
         /// <summary>
         /// adapted from ethereumJ
         /// </summary>
-        private void UpdateMac(KeccakDigest mac, KeccakDigest macCopy, byte[] seed, int offset, byte[] output, int outOffset, bool egress)
+        private void UpdateMac(KeccakHash mac, KeccakHash macCopy, byte[] seed, int offset, byte[] output, int outOffset, bool egress)
         {
             byte[] aesBlock = egress ? _egressAesBlockBuffer : _ingressAesBlockBuffer;
-            DoFinalNoReset(mac, macCopy, aesBlock, 0);
+            DoFinalNoReset(mac, macCopy, aesBlock);
 
             _aesEngine.ProcessBlock(aesBlock, 0, aesBlock, 0);
 
@@ -182,9 +180,9 @@ namespace Nethermind.Network.Rlpx
                 aesBlock[i] ^= seed[i + offset];
             }
 
-            mac.BlockUpdate(aesBlock, 0, length);
+            mac.Update(aesBlock.AsSpan(0, length));
             byte[] result = seed;
-            DoFinalNoReset(mac, macCopy, result, 0);
+            DoFinalNoReset(mac, macCopy, result);
 
             if (egress)
             {
@@ -209,11 +207,16 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        [Todo(Improve.Performance, "Ideally we would use our own implementation of Keccak here")]
-        private void DoFinalNoReset(KeccakDigest mac, KeccakDigest macCopy, byte[] output, int offset)
+        private void DoFinalNoReset(KeccakHash mac, KeccakHash macCopy, byte[] output)
         {
-            macCopy.Reset(mac);
-            macCopy.DoFinal(output, offset);
+            macCopy.ResetTo(mac);
+            macCopy.UpdateFinalTo(output);
+        }
+
+        public void Dispose()
+        {
+            _egressMacCopy.Reset();
+            _ingressMacCopy.Reset();
         }
     }
 }

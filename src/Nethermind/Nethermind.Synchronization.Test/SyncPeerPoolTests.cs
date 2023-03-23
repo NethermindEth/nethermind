@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.Test
                 BlockTree = Substitute.For<IBlockTree>();
                 Stats = Substitute.For<INodeStatsManager>();
                 PeerStrategy = new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
-                Pool = new SyncPeerPool(BlockTree, Stats, PeerStrategy, 25, 50, LimboLogs.Instance);
+                Pool = new SyncPeerPool(BlockTree, Stats, PeerStrategy, LimboLogs.Instance, 25, 50);
             }
 
             public async ValueTask DisposeAsync()
@@ -64,6 +64,8 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; } = 1;
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
+            public byte ProtocolVersion { get; }
+            public string ProtocolCode { get; }
 
             public bool DisconnectRequested { get; set; }
 
@@ -200,7 +202,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 25;
             const int priorityPeersMaxCount = 25;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
             var peers = await SetupPeers(ctx, peersMaxCount);
 
             // setting priority to all peers except one - peers[number]
@@ -222,7 +224,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 25;
             const int priorityPeersMaxCount = 25;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
             var peers = await SetupPeers(ctx, peersMaxCount);
 
             foreach (SimpleSyncPeerMock peer in peers)
@@ -240,7 +242,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 1;
             const int priorityPeersMaxCount = 1;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
 
             SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = true };
             ctx.Pool.Start();
@@ -258,7 +260,7 @@ namespace Nethermind.Synchronization.Test
             const int peersMaxCount = 1;
             const int priorityPeersMaxCount = 1;
             await using Context ctx = new();
-            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount, 50, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, priorityPeersMaxCount, 50);
 
             SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = false };
             ctx.Pool.Start();

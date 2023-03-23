@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain.Test
             action.Should().Throw<InvalidOperationException>();
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(10, 20, 15, null, true, TestName = "No corrupted block.")]
         [TestCase(10, 20, 15, 19, true, TestName = "Corrupted block too far.")]
         [TestCase(10, 20, 5, 19, true, TestName = "Start before head.")]

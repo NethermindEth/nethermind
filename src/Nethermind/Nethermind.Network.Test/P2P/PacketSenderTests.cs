@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -20,9 +21,10 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Does_send_on_active_channel()
         {
-            byte[] serialized = new byte[2];
+            IByteBuffer serialized = UnpooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
-            serializer.Serialize(PingMessage.Instance).Returns(serialized);
+            serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
+            serialized.SafeRelease();
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             IChannel channel = Substitute.For<IChannel>();
             channel.Active.Returns(true);
@@ -38,9 +40,10 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Does_not_try_to_send_on_inactive_channel()
         {
-            byte[] serialized = new byte[2];
+            IByteBuffer serialized = UnpooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
-            serializer.Serialize(PingMessage.Instance).Returns(serialized);
+            serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
+            serialized.SafeRelease();
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             IChannel channel = Substitute.For<IChannel>();
             channel.Active.Returns(false);
@@ -56,9 +59,10 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public async Task Send_after_delay_if_specified()
         {
-            byte[] serialized = new byte[2];
+            IByteBuffer serialized = UnpooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
-            serializer.Serialize(PingMessage.Instance).Returns(serialized);
+            serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
+            serialized.SafeRelease();
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             IChannel channel = Substitute.For<IChannel>();
             channel.Active.Returns(true);

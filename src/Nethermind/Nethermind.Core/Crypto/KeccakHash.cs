@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using static System.Numerics.BitOperations;
 
 // ReSharper disable InconsistentNaming
 namespace Nethermind.Core.Crypto
 {
-    public class KeccakHash
+    public sealed class KeccakHash
     {
         public const int HASH_SIZE = 32;
         private const int STATE_SIZE = 200;
@@ -30,71 +33,59 @@ namespace Nethermind.Core.Crypto
             0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
         };
 
-        private int _roundSize;
-        private int _roundSizeU64;
-        private Memory<byte> _remainderBuffer;
-        private int _remainderLength;
-        private Memory<ulong> _state;
+        private byte[] _remainderBuffer = Array.Empty<byte>();
+        private ulong[] _state = Array.Empty<ulong>();
         private byte[]? _hash;
+        private int _remainderLength;
+        private int _roundSize;
 
-        private static int GetRoundSize(int hashSize) => STATE_SIZE - 2 * hashSize;
-        private static int GetRoundSizeU64(int hashSize) => GetRoundSize(hashSize) / 8;
+        private static int GetRoundSize(int hashSize) => checked(STATE_SIZE - 2 * hashSize);
 
         /// <summary>
         /// Indicates the hash size in bytes.
         /// </summary>
-        public int HashSize { get; }
+        public int HashSize { get; private set; }
 
         /// <summary>
         /// The current hash buffer at this point. Recomputed after hash updates.
         /// </summary>
-        public byte[] Hash
-        {
-            get
-            {
-                // If the hash is null, recalculate.
-                return _hash ??= UpdateFinal();
-            }
-        }
+        public byte[] Hash => _hash ??= GenerateHash(); // If the hash is null, recalculate.
 
-        #region Constructor
+        private KeccakHash(KeccakHash original)
+        {
+            if (original._state.Length > 0)
+            {
+                _state = Pool.RentState();
+                original._state.AsSpan().CopyTo(_state);
+            }
+
+            if (original._remainderBuffer.Length > 0)
+            {
+                _remainderBuffer = Pool.RentRemainder();
+                original._remainderBuffer.AsSpan().CopyTo(_remainderBuffer);
+            }
+
+            _roundSize = original._roundSize;
+            _remainderLength = original._remainderLength;
+            HashSize = original.HashSize;
+        }
 
         private KeccakHash(int size)
         {
-            // Set the hash size
-            HashSize = size;
-
             // Verify the size
-            if (HashSize <= 0 || HashSize > STATE_SIZE)
+            if (size <= 0 || size > STATE_SIZE)
             {
                 throw new ArgumentException($"Invalid Keccak hash size. Must be between 0 and {STATE_SIZE}.");
             }
 
-            // The round size.
-            _roundSize = STATE_SIZE == HashSize ? HASH_DATA_AREA : STATE_SIZE - (2 * HashSize);
-
-            // The size of a round in terms of ulong.
-            _roundSizeU64 = _roundSize / 8;
-
-            // Allocate our remainder buffer
-            _remainderBuffer = new byte[_roundSize];
+            _roundSize = STATE_SIZE == size ? HASH_DATA_AREA : checked(STATE_SIZE - (2 * size));
             _remainderLength = 0;
+            HashSize = size;
         }
 
-        #endregion
+        public KeccakHash Copy() => new(this);
 
-        #region Functions
-
-        public static KeccakHash Create(int size = HASH_SIZE)
-        {
-            return new(size);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong ROL(ulong a, int offset)
-        {
-            return (a << (offset % LANE_BITS)) ^ (a >> (LANE_BITS - (offset % LANE_BITS)));
-        }
+        public static KeccakHash Create(int size = HASH_SIZE) => new(size);
 
         // update the state with given number of rounds
         private static void KeccakF(Span<ulong> st)
@@ -114,7 +105,11 @@ namespace Nethermind.Core.Crypto
             ulong ema, eme, emi, emo, emu;
             ulong esa, ese, esi, eso, esu;
 
-            //copyFromState(A, state)
+            {
+                // Access last element to perform range check once
+                // and not for every ascending access
+                _ = st[24];
+            }
             aba = st[0];
             abe = st[1];
             abi = st[2];
@@ -141,7 +136,7 @@ namespace Nethermind.Core.Crypto
             aso = st[23];
             asu = st[24];
 
-            for (var round = 0; round < ROUNDS; round += 2)
+            for (int round = 0; round < ROUNDS; round += 2)
             {
                 //    prepareTheta
                 bCa = aba ^ aga ^ aka ^ ama ^ asa;
@@ -151,22 +146,22 @@ namespace Nethermind.Core.Crypto
                 bCu = abu ^ agu ^ aku ^ amu ^ asu;
 
                 //thetaRhoPiChiIotaPrepareTheta(round  , A, E)
-                da = bCu ^ ROL(bCe, 1);
-                de = bCa ^ ROL(bCi, 1);
-                di = bCe ^ ROL(bCo, 1);
-                @do = bCi ^ ROL(bCu, 1);
-                du = bCo ^ ROL(bCa, 1);
+                da = bCu ^ RotateLeft(bCe, 1);
+                de = bCa ^ RotateLeft(bCi, 1);
+                di = bCe ^ RotateLeft(bCo, 1);
+                @do = bCi ^ RotateLeft(bCu, 1);
+                du = bCo ^ RotateLeft(bCa, 1);
 
                 aba ^= da;
                 bCa = aba;
                 age ^= de;
-                bCe = ROL(age, 44);
+                bCe = RotateLeft(age, 44);
                 aki ^= di;
-                bCi = ROL(aki, 43);
+                bCi = RotateLeft(aki, 43);
                 amo ^= @do;
-                bCo = ROL(amo, 21);
+                bCo = RotateLeft(amo, 21);
                 asu ^= du;
-                bCu = ROL(asu, 14);
+                bCu = RotateLeft(asu, 14);
                 eba = bCa ^ ((~bCe) & bCi);
                 eba ^= RoundConstants[round];
                 ebe = bCe ^ ((~bCi) & bCo);
@@ -175,15 +170,15 @@ namespace Nethermind.Core.Crypto
                 ebu = bCu ^ ((~bCa) & bCe);
 
                 abo ^= @do;
-                bCa = ROL(abo, 28);
+                bCa = RotateLeft(abo, 28);
                 agu ^= du;
-                bCe = ROL(agu, 20);
+                bCe = RotateLeft(agu, 20);
                 aka ^= da;
-                bCi = ROL(aka, 3);
+                bCi = RotateLeft(aka, 3);
                 ame ^= de;
-                bCo = ROL(ame, 45);
+                bCo = RotateLeft(ame, 45);
                 asi ^= di;
-                bCu = ROL(asi, 61);
+                bCu = RotateLeft(asi, 61);
                 ega = bCa ^ ((~bCe) & bCi);
                 ege = bCe ^ ((~bCi) & bCo);
                 egi = bCi ^ ((~bCo) & bCu);
@@ -191,15 +186,15 @@ namespace Nethermind.Core.Crypto
                 egu = bCu ^ ((~bCa) & bCe);
 
                 abe ^= de;
-                bCa = ROL(abe, 1);
+                bCa = RotateLeft(abe, 1);
                 agi ^= di;
-                bCe = ROL(agi, 6);
+                bCe = RotateLeft(agi, 6);
                 ako ^= @do;
-                bCi = ROL(ako, 25);
+                bCi = RotateLeft(ako, 25);
                 amu ^= du;
-                bCo = ROL(amu, 8);
+                bCo = RotateLeft(amu, 8);
                 asa ^= da;
-                bCu = ROL(asa, 18);
+                bCu = RotateLeft(asa, 18);
                 eka = bCa ^ ((~bCe) & bCi);
                 eke = bCe ^ ((~bCi) & bCo);
                 eki = bCi ^ ((~bCo) & bCu);
@@ -207,15 +202,15 @@ namespace Nethermind.Core.Crypto
                 eku = bCu ^ ((~bCa) & bCe);
 
                 abu ^= du;
-                bCa = ROL(abu, 27);
+                bCa = RotateLeft(abu, 27);
                 aga ^= da;
-                bCe = ROL(aga, 36);
+                bCe = RotateLeft(aga, 36);
                 ake ^= de;
-                bCi = ROL(ake, 10);
+                bCi = RotateLeft(ake, 10);
                 ami ^= di;
-                bCo = ROL(ami, 15);
+                bCo = RotateLeft(ami, 15);
                 aso ^= @do;
-                bCu = ROL(aso, 56);
+                bCu = RotateLeft(aso, 56);
                 ema = bCa ^ ((~bCe) & bCi);
                 eme = bCe ^ ((~bCi) & bCo);
                 emi = bCi ^ ((~bCo) & bCu);
@@ -223,15 +218,15 @@ namespace Nethermind.Core.Crypto
                 emu = bCu ^ ((~bCa) & bCe);
 
                 abi ^= di;
-                bCa = ROL(abi, 62);
+                bCa = RotateLeft(abi, 62);
                 ago ^= @do;
-                bCe = ROL(ago, 55);
+                bCe = RotateLeft(ago, 55);
                 aku ^= du;
-                bCi = ROL(aku, 39);
+                bCi = RotateLeft(aku, 39);
                 ama ^= da;
-                bCo = ROL(ama, 41);
+                bCo = RotateLeft(ama, 41);
                 ase ^= de;
-                bCu = ROL(ase, 2);
+                bCu = RotateLeft(ase, 2);
                 esa = bCa ^ ((~bCe) & bCi);
                 ese = bCe ^ ((~bCi) & bCo);
                 esi = bCi ^ ((~bCo) & bCu);
@@ -246,22 +241,22 @@ namespace Nethermind.Core.Crypto
                 bCu = ebu ^ egu ^ eku ^ emu ^ esu;
 
                 //thetaRhoPiChiIotaPrepareTheta(round+1, E, A)
-                da = bCu ^ ROL(bCe, 1);
-                de = bCa ^ ROL(bCi, 1);
-                di = bCe ^ ROL(bCo, 1);
-                @do = bCi ^ ROL(bCu, 1);
-                du = bCo ^ ROL(bCa, 1);
+                da = bCu ^ RotateLeft(bCe, 1);
+                de = bCa ^ RotateLeft(bCi, 1);
+                di = bCe ^ RotateLeft(bCo, 1);
+                @do = bCi ^ RotateLeft(bCu, 1);
+                du = bCo ^ RotateLeft(bCa, 1);
 
                 eba ^= da;
                 bCa = eba;
                 ege ^= de;
-                bCe = ROL(ege, 44);
+                bCe = RotateLeft(ege, 44);
                 eki ^= di;
-                bCi = ROL(eki, 43);
+                bCi = RotateLeft(eki, 43);
                 emo ^= @do;
-                bCo = ROL(emo, 21);
+                bCo = RotateLeft(emo, 21);
                 esu ^= du;
-                bCu = ROL(esu, 14);
+                bCu = RotateLeft(esu, 14);
                 aba = bCa ^ ((~bCe) & bCi);
                 aba ^= RoundConstants[round + 1];
                 abe = bCe ^ ((~bCi) & bCo);
@@ -270,15 +265,15 @@ namespace Nethermind.Core.Crypto
                 abu = bCu ^ ((~bCa) & bCe);
 
                 ebo ^= @do;
-                bCa = ROL(ebo, 28);
+                bCa = RotateLeft(ebo, 28);
                 egu ^= du;
-                bCe = ROL(egu, 20);
+                bCe = RotateLeft(egu, 20);
                 eka ^= da;
-                bCi = ROL(eka, 3);
+                bCi = RotateLeft(eka, 3);
                 eme ^= de;
-                bCo = ROL(eme, 45);
+                bCo = RotateLeft(eme, 45);
                 esi ^= di;
-                bCu = ROL(esi, 61);
+                bCu = RotateLeft(esi, 61);
                 aga = bCa ^ ((~bCe) & bCi);
                 age = bCe ^ ((~bCi) & bCo);
                 agi = bCi ^ ((~bCo) & bCu);
@@ -286,15 +281,15 @@ namespace Nethermind.Core.Crypto
                 agu = bCu ^ ((~bCa) & bCe);
 
                 ebe ^= de;
-                bCa = ROL(ebe, 1);
+                bCa = RotateLeft(ebe, 1);
                 egi ^= di;
-                bCe = ROL(egi, 6);
+                bCe = RotateLeft(egi, 6);
                 eko ^= @do;
-                bCi = ROL(eko, 25);
+                bCi = RotateLeft(eko, 25);
                 emu ^= du;
-                bCo = ROL(emu, 8);
+                bCo = RotateLeft(emu, 8);
                 esa ^= da;
-                bCu = ROL(esa, 18);
+                bCu = RotateLeft(esa, 18);
                 aka = bCa ^ ((~bCe) & bCi);
                 ake = bCe ^ ((~bCi) & bCo);
                 aki = bCi ^ ((~bCo) & bCu);
@@ -302,15 +297,15 @@ namespace Nethermind.Core.Crypto
                 aku = bCu ^ ((~bCa) & bCe);
 
                 ebu ^= du;
-                bCa = ROL(ebu, 27);
+                bCa = RotateLeft(ebu, 27);
                 ega ^= da;
-                bCe = ROL(ega, 36);
+                bCe = RotateLeft(ega, 36);
                 eke ^= de;
-                bCi = ROL(eke, 10);
+                bCi = RotateLeft(eke, 10);
                 emi ^= di;
-                bCo = ROL(emi, 15);
+                bCo = RotateLeft(emi, 15);
                 eso ^= @do;
-                bCu = ROL(eso, 56);
+                bCu = RotateLeft(eso, 56);
                 ama = bCa ^ ((~bCe) & bCi);
                 ame = bCe ^ ((~bCi) & bCo);
                 ami = bCi ^ ((~bCo) & bCu);
@@ -318,15 +313,15 @@ namespace Nethermind.Core.Crypto
                 amu = bCu ^ ((~bCa) & bCe);
 
                 ebi ^= di;
-                bCa = ROL(ebi, 62);
+                bCa = RotateLeft(ebi, 62);
                 ego ^= @do;
-                bCe = ROL(ego, 55);
+                bCe = RotateLeft(ego, 55);
                 eku ^= du;
-                bCi = ROL(eku, 39);
+                bCi = RotateLeft(eku, 39);
                 ema ^= da;
-                bCo = ROL(ema, 41);
+                bCo = RotateLeft(ema, 41);
                 ese ^= de;
-                bCu = ROL(ese, 2);
+                bCu = RotateLeft(ese, 2);
                 asa = bCa ^ ((~bCe) & bCi);
                 ase = bCe ^ ((~bCi) & bCo);
                 asi = bCi ^ ((~bCo) & bCu);
@@ -371,7 +366,7 @@ namespace Nethermind.Core.Crypto
 
         public static byte[] ComputeHashBytes(ReadOnlySpan<byte> input, int size = HASH_SIZE)
         {
-            var output = new byte[size];
+            byte[] output = new byte[size];
             ComputeHash(input, output);
             return output;
         }
@@ -388,39 +383,37 @@ namespace Nethermind.Core.Crypto
 
         public static uint[] ComputeUIntsToUint(Span<uint> input, int size)
         {
-            var output = new uint[size / 4];
+            uint[] output = new uint[size / sizeof(uint)];
             ComputeUIntsToUint(input, output);
             return output;
         }
 
         public static uint[] ComputeBytesToUint(byte[] input, int size)
         {
-            var output = new uint[size / 4];
+            uint[] output = new uint[size / sizeof(uint)];
             ComputeHash(input, MemoryMarshal.Cast<uint, byte>(output));
             return output;
         }
 
-        // compute a keccak hash (md) of given byte length from "in"
+        // compute a Keccak hash (md) of given byte length from "in"
         public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
         {
-            var size = output.Length;
-            var roundSize = GetRoundSize(size);
-            var roundSizeU64 = GetRoundSizeU64(size);
+            int size = output.Length;
+            int roundSize = GetRoundSize(size);
             if (output.Length <= 0 || output.Length > STATE_SIZE)
             {
-                throw new ArgumentException("Bad keccak use");
+                ThrowBadKeccak();
             }
 
             Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
             Span<byte> temp = stackalloc byte[TEMP_BUFF_SIZE];
 
-            var remainingInputLength = input.Length;
-            int i;
-            for (; remainingInputLength >= roundSize; remainingInputLength -= roundSize, input = input.Slice(roundSize))
+            int remainingInputLength = input.Length;
+            for (; remainingInputLength >= roundSize; remainingInputLength -= roundSize, input = input[roundSize..])
             {
-                var input64 = MemoryMarshal.Cast<byte, ulong>(input);
+                ReadOnlySpan<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input[..roundSize]);
 
-                for (i = 0; i < roundSizeU64; i++)
+                for (int i = 0; i < input64.Length; i++)
                 {
                     state[i] ^= input64[i];
                 }
@@ -429,86 +422,78 @@ namespace Nethermind.Core.Crypto
             }
 
             // last block and padding
-            if (input.Length >= TEMP_BUFF_SIZE || input.Length > roundSize || roundSize + 1 >= TEMP_BUFF_SIZE || roundSize == 0 || roundSize - 1 >= TEMP_BUFF_SIZE || roundSizeU64 * 8 > TEMP_BUFF_SIZE)
+            if (input.Length >= TEMP_BUFF_SIZE || input.Length > roundSize || roundSize + 1 >= TEMP_BUFF_SIZE || roundSize == 0 || roundSize - 1 >= TEMP_BUFF_SIZE)
             {
-                throw new ArgumentException("Bad keccak use");
+                ThrowBadKeccak();
             }
 
-            input.Slice(0, remainingInputLength).CopyTo(temp);
+            input[..remainingInputLength].CopyTo(temp);
             temp[remainingInputLength] = 1;
             temp[roundSize - 1] |= 0x80;
 
-            var tempU64 = MemoryMarshal.Cast<byte, ulong>(temp);
-
-            for (i = 0; i < roundSizeU64; i++)
+            Span<ulong> tempU64 = MemoryMarshal.Cast<byte, ulong>(temp[..roundSize]);
+            for (int i = 0; i < tempU64.Length; i++)
             {
                 state[i] ^= tempU64[i];
             }
 
             KeccakF(state);
-            MemoryMarshal.AsBytes(state.Slice(0, size / sizeof(ulong))).CopyTo(output);
+            MemoryMarshal.AsBytes(state[..(size / sizeof(ulong))]).CopyTo(output);
         }
 
-        public void Update(Span<byte> array, int index, int size)
+        public void Update(Span<byte> input)
         {
-            // Bounds checking.
-            if (size < 0)
+            if (_hash is not null)
             {
-                throw new ArgumentException("Cannot updated Keccak hash because the provided size of data to hash is negative.");
-            }
-            else if (index + size > array.Length || index < 0)
-            {
-                throw new ArgumentOutOfRangeException("Cannot updated Keccak hash because the provided index and size extend outside the bounds of the array.");
+                ThrowHashingComplete();
             }
 
             // If the size is zero, quit
-            if (size == 0)
+            if (input.Length == 0)
             {
                 return;
             }
 
-            // Create the input buffer
-            Span<byte> input = array;
-            input = input.Slice(index, size);
-
             // If our provided state is empty, initialize a new one
-            if (_state.Length == 0)
+            ulong[] state = _state;
+            if (state.Length == 0)
             {
-                _state = new ulong[STATE_SIZE / 8];
+                _state = state = Pool.RentState();
             }
 
             // If our remainder is non zero.
-            int i;
             if (_remainderLength != 0)
             {
                 // Copy data to our remainder
-                var remainderAdditive = input.Slice(0, Math.Min(input.Length, _roundSize - _remainderLength));
-                remainderAdditive.CopyTo(_remainderBuffer.Slice(_remainderLength).Span);
+                Span<byte> remainderAdditive = input[..Math.Min(input.Length, _roundSize - _remainderLength)];
+                remainderAdditive.CopyTo(_remainderBuffer.AsSpan(_remainderLength));
 
                 // Increment the length
                 _remainderLength += remainderAdditive.Length;
 
                 // Increment the input
-                input = input.Slice(remainderAdditive.Length);
+                input = input[remainderAdditive.Length..];
 
                 // If our remainder length equals a full round
                 if (_remainderLength == _roundSize)
                 {
                     // Cast our input to ulongs.
-                    var remainderBufferU64 = MemoryMarshal.Cast<byte, ulong>(_remainderBuffer.Span);
+                    Span<ulong> remainderBufferU64 = MemoryMarshal.Cast<byte, ulong>(_remainderBuffer.AsSpan(0, _roundSize));
 
+                    // Eliminate bounds check for state for the loop
+                    _ = state[remainderBufferU64.Length];
                     // Loop for each ulong in this remainder, and xor the state with the input.
-                    for (i = 0; i < _roundSizeU64; i++)
+                    for (int i = 0; i < remainderBufferU64.Length; i++)
                     {
-                        _state.Span[i] ^= remainderBufferU64[i];
+                        state[i] ^= remainderBufferU64[i];
                     }
 
-                    // Perform our keccakF on our state.
-                    KeccakF(_state.Span);
+                    // Perform our KeccakF on our state.
+                    KeccakF(state);
 
                     // Clear remainder fields
                     _remainderLength = 0;
-                    _remainderBuffer.Span.Clear();
+                    Pool.ReturnRemainder(ref _remainderBuffer);
                 }
             }
 
@@ -516,76 +501,178 @@ namespace Nethermind.Core.Crypto
             while (input.Length >= _roundSize)
             {
                 // Cast our input to ulongs.
-                var input64 = MemoryMarshal.Cast<byte, ulong>(input);
+                Span<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input[.._roundSize]);
 
+                // Eliminate bounds check for state for the loop
+                _ = state[input64.Length];
                 // Loop for each ulong in this round, and xor the state with the input.
-                for (i = 0; i < _roundSizeU64; i++)
+                for (int i = 0; i < input64.Length; i++)
                 {
-                    _state.Span[i] ^= input64[i];
+                    state[i] ^= input64[i];
                 }
 
-                // Perform our keccakF on our state.
-                KeccakF(_state.Span);
+                // Perform our KeccakF on our state.
+                KeccakF(state);
 
                 // Remove the input data processed this round.
-                input = input.Slice(_roundSize);
+                input = input[_roundSize..];
             }
 
             // last block and padding
-            if (input.Length >= TEMP_BUFF_SIZE || input.Length > _roundSize || _roundSize + 1 >= TEMP_BUFF_SIZE || _roundSize == 0 || _roundSize - 1 >= TEMP_BUFF_SIZE || _roundSizeU64 * 8 > TEMP_BUFF_SIZE)
+            if (input.Length >= TEMP_BUFF_SIZE || input.Length > _roundSize || _roundSize + 1 >= TEMP_BUFF_SIZE || _roundSize == 0 || _roundSize - 1 >= TEMP_BUFF_SIZE)
             {
-                throw new ArgumentException("Bad keccak use");
+                ThrowBadKeccak();
             }
 
             // If we have any remainder here, it means any remainder was processed before, we can copy our data over and set our length
             if (input.Length > 0)
             {
-                input.CopyTo(_remainderBuffer.Span);
+                if (_remainderBuffer.Length == 0)
+                {
+                    _remainderBuffer = Pool.RentRemainder();
+                }
+                input.CopyTo(_remainderBuffer);
                 _remainderLength = input.Length;
             }
-
-            // Set the hash as null
-            _hash = null;
         }
 
-        private byte[] UpdateFinal()
+        private byte[] GenerateHash()
         {
-            // Copy the remainder buffer
-            Memory<byte> remainderClone = _remainderBuffer.ToArray();
-
-            // Set a 1 byte after the remainder.
-            remainderClone.Span[_remainderLength++] = 1;
-
-            // Set the highest bit on the last byte.
-            remainderClone.Span[_roundSize - 1] |= 0x80;
-
-            // Cast the remainder buffer to ulongs.
-            var temp64 = MemoryMarshal.Cast<byte, ulong>(remainderClone.Span);
-
-            // Loop for each ulong in this round, and xor the state with the input.
-            for (int i = 0; i < _roundSizeU64; i++)
-            {
-                _state.Span[i] ^= temp64[i];
-            }
-
-            KeccakF(_state.Span);
-
+            byte[] output = new byte[HashSize];
+            UpdateFinalTo(output);
             // Obtain the state data in the desired (hash) size we want.
-            _hash = MemoryMarshal.AsBytes(_state.Span).Slice(0, HashSize).ToArray();
+            _hash = output;
 
             // Return the result.
-            return Hash;
+            return output;
+        }
+
+        public void UpdateFinalTo(Span<byte> output)
+        {
+            if (_hash is not null)
+            {
+                ThrowHashingComplete();
+            }
+
+            if (_remainderLength > 0)
+            {
+                Span<byte> remainder = _remainderBuffer.AsSpan(0, _roundSize);
+                // Set a 1 byte after the remainder.
+                remainder[_remainderLength++] = 1;
+
+                // Set the highest bit on the last byte.
+                remainder[_roundSize - 1] |= 0x80;
+
+                // Cast the remainder buffer to ulongs.
+                Span<ulong> temp64 = MemoryMarshal.Cast<byte, ulong>(remainder);
+                // Loop for each ulong in this round, and xor the state with the input.
+                for (int i = 0; i < temp64.Length; i++)
+                {
+                    _state[i] ^= temp64[i];
+                }
+
+                Pool.ReturnRemainder(ref _remainderBuffer);
+            }
+            else
+            {
+                Span<byte> temp = MemoryMarshal.AsBytes<ulong>(_state);
+                // Xor 1 byte as first byte.
+                temp[0] ^= 1;
+                // Xor the highest bit on the last byte.
+                temp[_roundSize - 1] ^= 0x80;
+            }
+
+            KeccakF(_state);
+
+            // Obtain the state data in the desired (hash) size we want.
+            MemoryMarshal.AsBytes<ulong>(_state)[..HashSize].CopyTo(output);
+
+            Pool.ReturnState(ref _state);
         }
 
         public void Reset()
         {
             // Clear our hash state information.
-            _state.Span.Clear();
-            _remainderBuffer.Span.Clear();
-            _remainderLength = 0;
+            Pool.ReturnState(ref _state);
+            Pool.ReturnRemainder(ref _remainderBuffer);
             _hash = null;
         }
 
-        #endregion
+        public void ResetTo(KeccakHash original)
+        {
+            if (original._remainderBuffer.Length == 0)
+            {
+                Pool.ReturnRemainder(ref _remainderBuffer);
+            }
+            else
+            {
+                if (_remainderBuffer.Length == 0)
+                {
+                    _remainderBuffer = Pool.RentRemainder();
+                }
+                original._remainderBuffer.AsSpan().CopyTo(_remainderBuffer);
+            }
+
+            _roundSize = original._roundSize;
+            _remainderLength = original._remainderLength;
+
+            if (original._state.Length == 0)
+            {
+                Pool.ReturnState(ref _state);
+            }
+            else
+            {
+                if (_state.Length == 0)
+                {
+                    // Original allocated, but not here, so allocated
+                    _state = Pool.RentState();
+                }
+                // Copy from original
+                original._state.AsSpan().CopyTo(_state);
+            }
+
+            HashSize = original.HashSize;
+            _hash = null;
+        }
+
+        [DoesNotReturn]
+        private static void ThrowBadKeccak() => throw new ArgumentException("Bad Keccak use");
+
+        [DoesNotReturn]
+        private static void ThrowHashingComplete() => throw new InvalidOperationException("Keccak hash is complete");
+
+        private static class Pool
+        {
+            private const int MaxPooled = 24;
+            private static ConcurrentQueue<byte[]> s_remainderCache = new();
+            public static byte[] RentRemainder() => s_remainderCache.TryDequeue(out byte[]? remainder) ? remainder : new byte[STATE_SIZE];
+            public static void ReturnRemainder(ref byte[] remainder)
+            {
+                if (remainder.Length == 0) return;
+
+                if (s_remainderCache.Count <= MaxPooled)
+                {
+                    remainder.AsSpan().Clear();
+                    s_remainderCache.Enqueue(remainder);
+                }
+
+                remainder = Array.Empty<byte>();
+            }
+
+            private static ConcurrentQueue<ulong[]> s_stateCache = new();
+            public static ulong[] RentState() => s_stateCache.TryDequeue(out ulong[]? state) ? state : new ulong[STATE_SIZE / sizeof(ulong)];
+            public static void ReturnState(ref ulong[] state)
+            {
+                if (state.Length == 0) return;
+
+                if (s_stateCache.Count <= MaxPooled)
+                {
+                    state.AsSpan().Clear();
+                    s_stateCache.Enqueue(state);
+                }
+
+                state = Array.Empty<ulong>();
+            }
+        }
     }
 }

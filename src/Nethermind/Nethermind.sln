@@ -44,7 +44,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83BB-6092-45A4-B751-D05D4A6ED995}"
 	ProjectSection(SolutionItems) = preProject
 		Chains\AuRaTest.json = Chains\AuRaTest.json
-		Chains\baseline.json = Chains\baseline.json
 		Chains\energyweb.json = Chains\energyweb.json
 		Chains\foundation.json = Chains\foundation.json
 		Chains\genesis.json = Chains\genesis.json
@@ -236,6 +235,8 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Merkleization", "Nethermind.Merkleization\Nethermind.Merkleization.csproj", "{E5001E79-6562-4EC4-9000-4C70DF95DF00}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ssz", "Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj", "{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Contract", "Nethermind.Network.Contract\Nethermind.Network.Contract.csproj", "{AD151E35-4BBC-4A83-8F57-CC8665F6E007}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -627,6 +628,10 @@ Global
 		{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

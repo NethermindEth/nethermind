@@ -15,6 +15,7 @@ using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
 using System.Text;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -23,7 +24,7 @@ namespace Nethermind.Core.Extensions
     public static unsafe partial class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
-
+        public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
@@ -37,6 +38,13 @@ namespace Nethermind.Core.Extensions
             {
                 return obj.GetSimplifiedHashCode();
             }
+        }
+
+        private class SpanBytesEqualityComparer : ISpanEqualityComparer<byte>
+        {
+            public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
+
+            public int GetHashCode(ReadOnlySpan<byte> obj) => GetSimplifiedHashCode(obj);
         }
 
         public class BytesComparer : Comparer<byte[]>
@@ -137,7 +145,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool AreEqual(Span<byte> a1, Span<byte> a2)
+        public static bool AreEqual(ReadOnlySpan<byte> a1, ReadOnlySpan<byte> a2)
         {
             if (Unsafe.AreSame(ref MemoryMarshal.GetReference(a1), ref MemoryMarshal.GetReference(a2)) &&
                 a1.Length == a2.Length)
@@ -151,61 +159,29 @@ namespace Nethermind.Core.Extensions
 
         public static bool IsZero(this byte[] bytes)
         {
-            return IsZero((ReadOnlySpan<byte>)bytes);
+            return bytes.AsSpan().IndexOfAnyExcept((byte)0) < 0;
         }
 
         public static bool IsZero(this Span<byte> bytes)
         {
-            return IsZero((ReadOnlySpan<byte>)bytes);
+            return bytes.IndexOfAnyExcept((byte)0) < 0;
         }
 
         public static bool IsZero(this ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length == 32)
-            {
-                return bytes[31] == 0 && bytes.SequenceEqual(Zero32);
-            }
-
-            for (int i = 0; i < bytes.Length / 2; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return false;
-                }
-
-                if (bytes[bytes.Length - i - 1] != 0)
-                {
-                    return false;
-                }
-            }
-
-            return bytes.Length % 2 == 0 || bytes[bytes.Length / 2] == 0;
+            return bytes.IndexOfAnyExcept((byte)0) < 0;
         }
 
         public static int LeadingZerosCount(this Span<byte> bytes, int startIndex = 0)
         {
-            for (int i = startIndex; i < bytes.Length; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return i - startIndex;
-                }
-            }
-
-            return bytes.Length - startIndex;
+            int nonZeroIndex = bytes[startIndex..].IndexOfAnyExcept((byte)0);
+            return nonZeroIndex < 0 ? bytes.Length - startIndex : nonZeroIndex;
         }
 
         public static int TrailingZerosCount(this byte[] bytes)
         {
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                if (bytes[bytes.Length - i - 1] != 0)
-                {
-                    return i;
-                }
-            }
-
-            return bytes.Length;
+            int lastIndex = bytes.AsSpan().LastIndexOfAnyExcept((byte)0);
+            return lastIndex < 0 ? bytes.Length : bytes.Length - lastIndex - 1;
         }
 
         public static Span<byte> WithoutLeadingZeros(this byte[] bytes)
@@ -215,15 +191,10 @@ namespace Nethermind.Core.Extensions
 
         public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return bytes.Slice(i, bytes.Length - i);
-                }
-            }
+            if (bytes.Length == 0) return new byte[] { 0 };
 
-            return new byte[] { 0 };
+            int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
+            return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)
@@ -506,10 +477,15 @@ namespace Nethermind.Core.Extensions
 
         public static string ToHexString(this byte[] bytes)
         {
-            return ToHexString(bytes, false, false, false);
+            return ByteArrayToHexViaLookup32(bytes, false, false, false);
         }
 
         public static void StreamHex(this byte[] bytes, StreamWriter streamWriter)
+        {
+            bytes.AsSpan().StreamHex(streamWriter);
+        }
+
+        public static void StreamHex(this Span<byte> bytes, StreamWriter streamWriter)
         {
             for (int i = 0; i < bytes.Length; i++)
             {
@@ -854,6 +830,19 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
+        public static byte[] FromUtf8HexString(ReadOnlySpan<byte> hexString)
+        {
+            if (hexString.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int oddMod = hexString.Length % 2;
+            byte[] result = GC.AllocateUninitializedArray<byte>((hexString.Length >> 1) + oddMod);
+            return HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1) ? result : throw new FormatException("Incorrect hex string");
+        }
+
+        [DebuggerStepThrough]
         public static byte[] FromHexString(string hexString)
         {
             if (hexString is null)
@@ -951,7 +940,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
-        public static int GetSimplifiedHashCode(this Span<byte> bytes)
+        public static int GetSimplifiedHashCode(this ReadOnlySpan<byte> bytes)
         {
             const int fnvPrime = 0x01000193;
 

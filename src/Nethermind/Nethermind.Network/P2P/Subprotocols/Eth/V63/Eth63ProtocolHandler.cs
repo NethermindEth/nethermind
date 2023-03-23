@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
@@ -37,7 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
         }
 
-        public override byte ProtocolVersion => 63;
+        public override byte ProtocolVersion => EthVersions.Eth63;
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go
 
@@ -50,22 +51,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             {
                 case Eth63MessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
-                    ReportIn(getReceiptsMessage);
+                    ReportIn(getReceiptsMessage, size);
                     Handle(getReceiptsMessage);
                     break;
                 case Eth63MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
-                    ReportIn(receiptsMessage);
+                    ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
                     break;
                 case Eth63MessageCode.GetNodeData:
                     GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
-                    ReportIn(getNodeDataMessage);
+                    ReportIn(getNodeDataMessage, size);
                     Handle(getNodeDataMessage);
                     break;
                 case Eth63MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
-                    ReportIn(nodeDataMessage);
+                    ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
                     break;
             }

@@ -131,15 +131,20 @@ namespace Nethermind.Db
                 if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
                 {
                     Span<byte> data = spanDb.GetSpan(key);
-                    if (data.IsNullOrEmpty())
+                    if (data.IsNull())
                     {
                         return null;
                     }
 
                     try
                     {
+                        if (data.Length == 0)
+                        {
+                            return null;
+                        }
+
                         var rlpValueContext = data.AsRlpValueContext();
-                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraData);
+                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                     }
                     finally
                     {
@@ -154,7 +159,7 @@ namespace Nethermind.Db
                         return null;
                     }
 
-                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
+                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraBytes);
                 }
             }
 
@@ -174,15 +179,20 @@ namespace Nethermind.Db
                 if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
                 {
                     Span<byte> data = spanDb.GetSpan(key);
-                    if (data.IsNullOrEmpty())
+                    if (data.IsNull())
                     {
                         return null;
                     }
 
                     try
                     {
+                        if (data.Length == 0)
+                        {
+                            return null;
+                        }
+
                         var rlpValueContext = data.AsRlpValueContext();
-                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraData);
+                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                     }
                     finally
                     {
@@ -197,7 +207,7 @@ namespace Nethermind.Db
                         return null;
                     }
 
-                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
+                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraBytes);
                 }
             }
 

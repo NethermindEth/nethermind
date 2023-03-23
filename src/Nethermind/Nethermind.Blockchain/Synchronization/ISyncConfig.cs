@@ -5,6 +5,7 @@ using System;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -81,11 +82,20 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Enables SNAP sync protocol.", DefaultValue = "false")]
         public bool SnapSync { get; set; }
 
+        [ConfigItem(Description = "Number of account range partition to create. Increase snap sync request concurrency. Value must be between 1 to 256 (inclusive).", DefaultValue = "8")]
+        int SnapSyncAccountRangePartitionCount { get; set; }
+
         [ConfigItem(Description = "[ONLY FOR MISSING RECEIPTS ISSUE] Turns on receipts validation that checks for ones that might be missing due to previous bug. It downloads them from network if needed." +
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
         public bool FixReceipts { get; set; }
 
         [ConfigItem(Description = "Disable some optimization and run a more extensive sync. Useful for broken sync state but normally not needed", DefaultValue = "false")]
         public bool StrictMode { get; set; }
+
+        [ConfigItem(Description = "[EXPERIMENTAL] Only for non validator nodes! If set to true, DownloadReceiptsInFastSync and/or DownloadBodiesInFastSync can be set to false.", DefaultValue = "false")]
+        public bool NonValidatorNode { get; set; }
+
+        [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync. Significantly reduce total writes written and some sync time if you are not network limited.", DefaultValue = "Default")]
+        public ITunableDb.TuneType TuneDbMode { get; set; }
     }
 }

@@ -18,6 +18,7 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Init.Steps
 {
+    [RunnerStepDependencies(typeof(ApplyMemoryHint))]
     public class InitDatabase : IStep
     {
         private readonly IBasicApi _api;

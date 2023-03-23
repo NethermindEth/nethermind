@@ -9,5 +9,6 @@ namespace Nethermind.TxPool
         public int Size { get; set; } = 2048;
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
+        public int? ReportMinutes { get; set; } = null;
     }
 }

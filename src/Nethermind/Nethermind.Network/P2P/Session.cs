@@ -11,6 +11,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
@@ -199,7 +200,7 @@ namespace Nethermind.Network.P2P
             }
         }
 
-        public void DeliverMessage<T>(T message) where T : P2PMessage
+        public int DeliverMessage<T>(T message) where T : P2PMessage
         {
             lock (_sessionStateLock)
             {
@@ -210,15 +211,16 @@ namespace Nethermind.Network.P2P
 
                 if (IsClosing)
                 {
-                    return;
+                    return 1;
                 }
             }
 
             if (_logger.IsTrace) _logger.Trace($"P2P to deliver {message.Protocol}.{message.PacketType} on {this}");
 
             message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
-            var size = _packetSender.Enqueue(message);
+            int size = _packetSender.Enqueue(message);
             Interlocked.Add(ref Metrics.P2PBytesSent, size);
+            return size;
         }
 
         public void ReceiveMessage(Packet packet)

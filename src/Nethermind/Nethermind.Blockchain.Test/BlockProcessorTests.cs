@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class BlockProcessorTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Prepared_block_contains_author_field()
         {
             IDb stateDb = new MemDb();
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_store_a_witness()
         {
             IDb stateDb = new MemDb();
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Test
             witnessCollector.Received(1).Persist(block.Hash);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Recovers_state_on_cancel()
         {
             IDb stateDb = new MemDb();
@@ -131,6 +131,7 @@ namespace Nethermind.Blockchain.Test
                 AlwaysCancelBlockTracer.Instance));
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(20)]
         [TestCase(63)]
         [TestCase(64)]

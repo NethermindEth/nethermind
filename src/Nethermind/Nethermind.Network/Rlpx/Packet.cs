@@ -13,7 +13,7 @@ namespace Nethermind.Network.Rlpx
 
         public Packet(ZeroPacket zeroPacket)
         {
-            Data = zeroPacket.Content.ReadAllBytes();
+            Data = zeroPacket.Content.ReadAllBytesAsArray();
             PacketType = zeroPacket.PacketType;
             Protocol = zeroPacket.Protocol;
         }

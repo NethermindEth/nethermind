@@ -33,6 +33,7 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Network.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Config;
+using Nethermind.Network.Contract.P2P;
 
 namespace Nethermind.AccountAbstraction
 {

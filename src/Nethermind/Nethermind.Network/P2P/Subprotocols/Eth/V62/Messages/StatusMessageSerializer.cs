@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 ForkId forkId = message.ForkId.Value;
                 rlpStream.StartSequence(forkIdContentLength);
-                rlpStream.Encode(forkId.ForkHash);
+                rlpStream.Encode(forkId.HashBytes);
                 rlpStream.Encode(forkId.Next);
             }
         }
@@ -76,7 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             if (rlpStream.Position < rlpStream.Length)
             {
                 rlpStream.ReadSequenceLength();
-                byte[] forkHash = rlpStream.DecodeByteArray();
+                uint forkHash = rlpStream.DecodeUInt();
                 ulong next = rlpStream.DecodeUlong();
                 ForkId forkId = new(forkHash, next);
                 statusMessage.ForkId = forkId;

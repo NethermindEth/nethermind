@@ -146,7 +146,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
         if (_syncConfig.FastSync)
         {
-            if (!_syncConfig.DownloadReceiptsInFastSync || !_syncConfig.DownloadBodiesInFastSync)
+            if (!_syncConfig.NonValidatorNode && (!_syncConfig.DownloadReceiptsInFastSync || !_syncConfig.DownloadBodiesInFastSync))
             {
                 throw new InvalidConfigurationException(
                     "Receipt and body must be available for merge to function. The following configs values should be set to true: Sync.DownloadReceiptsInFastSync, Sync.DownloadBodiesInFastSync",

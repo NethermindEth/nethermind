@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -32,15 +33,15 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class BlockTreeTests
     {
-        private MemDb _blocksInfosDb;
-        private MemDb _headersDb;
-        private MemDb _blocksDb;
+        private TestMemDb _blocksInfosDb;
+        private TestMemDb _headersDb;
+        private TestMemDb _blocksDb;
 
         private BlockTree BuildBlockTree()
         {
-            _blocksDb = new MemDb();
-            _headersDb = new MemDb();
-            _blocksInfosDb = new MemDb();
+            _blocksDb = new TestMemDb();
+            _headersDb = new TestMemDb();
+            _blocksInfosDb = new TestMemDb();
             _chainLevelInfoRepository = new ChainLevelInfoRepository(_blocksInfosDb);
             return new BlockTree(_blocksDb, _headersDb, _blocksInfosDb, _chainLevelInfoRepository, MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
         }
@@ -51,7 +52,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.UpdateMainChain(new[] { block0 }, true);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_genesis_shall_notify()
         {
             bool hasNotified = false;
@@ -70,7 +71,7 @@ namespace Nethermind.Blockchain.Test
             Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_genesis_shall_work_even_with_0_difficulty()
         {
             bool hasNotified = false;
@@ -88,7 +89,7 @@ namespace Nethermind.Blockchain.Test
             Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Suggesting_genesis_many_times_does_not_cause_any_trouble()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -98,7 +99,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(blockB).Should().Be(AddBlockResult.AlreadyKnown);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_notify_on_new_head_block_after_genesis()
         {
             bool hasNotified = false;
@@ -119,7 +120,7 @@ namespace Nethermind.Blockchain.Test
             Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_notify_new_head_block_once_and_block_added_to_main_multiple_times_when_adding_multiple_blocks_at_once()
         {
             int newHeadBlockNotifications = 0;
@@ -144,7 +145,7 @@ namespace Nethermind.Blockchain.Test
             blockAddedToMainNotifications.Should().Be(3, "block added to main");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_notify_on_new_suggested_block_after_genesis()
         {
             bool hasNotified = false;
@@ -164,7 +165,7 @@ namespace Nethermind.Blockchain.Test
             Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_not_notify_but_add_on_lower_difficulty()
         {
             bool hasNotifiedBest = false;
@@ -189,7 +190,7 @@ namespace Nethermind.Blockchain.Test
             Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_ignore_orphans()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -200,7 +201,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(AddBlockResult.UnknownParent, result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_ignore_known()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -212,7 +213,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(AddBlockResult.AlreadyKnown, result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cleans_invalid_blocks_before_starting()
         {
             MemDb blocksDb = new();
@@ -245,7 +246,7 @@ namespace Nethermind.Blockchain.Test
             Assert.IsNull(blockInfosDb.Get(3), "level 3");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_cleaning_descendants_of_invalid_does_not_touch_other_branches()
         {
             MemDb blocksDb = new();
@@ -286,23 +287,30 @@ namespace Nethermind.Blockchain.Test
             Assert.NotNull(blockInfosDb.Get(3), "level 3");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_load_best_known_up_to_256million()
         {
-            _blocksDb = new MemDb();
-            _headersDb = new MemDb();
-            IDb blocksInfosDb = Substitute.For<IDb>();
+            _blocksDb = new TestMemDb();
+            _headersDb = new TestMemDb();
+            TestMemDb blocksInfosDb = new TestMemDb();
 
             Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
-            blocksInfosDb[BlockTree.DeletePointerAddressInDb.Bytes].Returns((byte[])null);
-            blocksInfosDb[Arg.Is<byte[]>(b => !Bytes.AreEqual(b, BlockTree.DeletePointerAddressInDb.Bytes))].Returns(chainLevel.Bytes);
+            blocksInfosDb.ReadFunc = (key) =>
+            {
+                if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.Bytes))
+                {
+                    return chainLevel.Bytes;
+                }
+
+                return null;
+            };
 
             BlockTree blockTree = new(_blocksDb, _headersDb, blocksInfosDb, new ChainLevelInfoRepository(blocksInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
             Assert.AreEqual(256000000, blockTree.BestKnownNumber);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_and_find_branch()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -312,7 +320,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block.Hash, found.Header.CalculateHash());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_on_branch_move_find()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -322,7 +330,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block.Hash, found.Header.CalculateHash());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_on_branch_move_find_via_block_finder_interface()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -332,7 +340,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block.Hash, found.Header.CalculateHash());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_on_branch_and_not_find_on_main()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -342,7 +350,7 @@ namespace Nethermind.Blockchain.Test
             Assert.IsNull(found);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_on_branch_and_not_find_on_main_via_block_finder_interface()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -352,7 +360,7 @@ namespace Nethermind.Blockchain.Test
             Assert.IsNull(found);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_by_number_basic()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -367,7 +375,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block2.Hash, found.Header.CalculateHash());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_by_number_beyond_what_is_known_returns_null()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -382,7 +390,7 @@ namespace Nethermind.Blockchain.Test
             Assert.Null(found);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_by_number_returns_null_when_block_is_missing()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -395,7 +403,7 @@ namespace Nethermind.Blockchain.Test
             Assert.IsNull(found);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_headers_basic()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -412,7 +420,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1.Hash, headers[1].Hash);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_headers_skip()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -429,7 +437,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block2.Hash, headers[1].Hash);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_headers_reverse()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -450,7 +458,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1.Hash, headers[1].Hash);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_headers_reverse_skip()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -467,7 +475,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block0.Hash, headers[1].Hash);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_headers_reverse_below_zero()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -484,7 +492,7 @@ namespace Nethermind.Blockchain.Test
             Assert.Null(headers[1]);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_finding_headers_does_not_find_a_header_it_breaks_the_loop()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -503,7 +511,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(0, _headersDb.ReadsCount);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_finding_blocks_does_not_find_a_block_it_breaks_the_loop()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -522,7 +530,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(0, _headersDb.ReadsCount);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_basic_longer()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -541,7 +549,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block2.Hash, blocks[2].CalculateHash());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_basic_shorter()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -559,7 +567,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block2.Hash, blocks[1].CalculateHash());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_basic()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -578,7 +586,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block2.Hash, blocks[2].CalculateHash());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_reverse()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -597,7 +605,7 @@ namespace Nethermind.Blockchain.Test
         }
 
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_zero_blocks()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -612,7 +620,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(0, blocks.Length);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_one_block()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -627,7 +635,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(1, blocks.Length);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_basic_skip()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -644,7 +652,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block2.Hash, blocks[1].CalculateHash());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_some_empty()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -660,7 +668,7 @@ namespace Nethermind.Blockchain.Test
             Assert.IsNull(blocks[3]);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Total_difficulty_is_calculated_when_exists_parent_with_total_difficulty()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -673,7 +681,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(3, (int)block1.TotalDifficulty!);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Total_difficulty_is_null_when_no_parent()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -686,7 +694,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(null, block2.TotalDifficulty);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Head_block_gets_updated()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -698,7 +706,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1.Hash, blockTree.Head.CalculateHash());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Best_suggested_block_gets_updated()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -711,7 +719,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1.Hash, blockTree.BestSuggestedHeader.CalculateHash(), "best suggested");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Sets_genesis_block()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -721,7 +729,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block0.Hash, blockTree.Genesis.CalculateHash());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void ForkChoiceUpdated_update_hashes()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -732,7 +740,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(safeBlockHash, blockTree.SafeHash);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Stores_multiple_blocks_per_level()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -748,7 +756,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1B.Hash, found.Header.CalculateHash());
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_init_head_block_from_db_by_hash()
         {
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -771,7 +779,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(headBlock.Hash, blockTree.Genesis?.Hash, "genesis");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Sets_head_block_hash_in_db_on_new_head_block()
         {
             MemDb blocksDb = new();
@@ -797,7 +805,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1.Hash, dec);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_check_if_block_was_processed()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -811,7 +819,7 @@ namespace Nethermind.Blockchain.Test
             Assert.True(blockTree.WasProcessed(block1.Number, block1.Hash), "after");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Best_known_number_is_set()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -823,7 +831,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(1L, blockTree.BestKnownNumber);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Is_main_chain_returns_false_when_on_branch()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -835,7 +843,7 @@ namespace Nethermind.Blockchain.Test
             Assert.False(blockTree.IsMainChain(block1.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Is_main_chain_returns_true_when_on_main()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -848,7 +856,7 @@ namespace Nethermind.Blockchain.Test
             Assert.True(blockTree.IsMainChain(block1.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Pending_returns_head()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -864,7 +872,7 @@ namespace Nethermind.Blockchain.Test
             ((IBlockFinder)blockTree).FindPendingBlock().Should().BeSameAs(block0);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Is_main_chain_returns_true_on_fast_sync_block()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -873,7 +881,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.IsMainChain(block0.Hash!).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Was_processed_returns_true_on_fast_sync_block()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -881,7 +889,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block0, BlockTreeSuggestOptions.None);
         }
 
-        [Test(Description = "There was a bug where we switched positions and used the index from before the positions were switched")]
+        [Test(Description = "There was a bug where we switched positions and used the index from before the positions were switched"), Timeout(Timeout.MaxTestTime)]
         public void When_moving_to_main_one_of_the_two_blocks_at_given_level_the_was_processed_check_is_executed_on_the_correct_block_index_regression()
         {
             MemDb blocksDb = new();
@@ -903,7 +911,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1.Hash, storedInDb);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_deleting_invalid_block_sets_head_bestKnown_and_suggested_right()
         {
             BlockTree tree = BuildBlockTree();
@@ -926,7 +934,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1.Header, tree.BestSuggestedHeader);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_deleting_invalid_block_deletes_its_descendants()
         {
             MemDb blocksDb = new();
@@ -960,7 +968,7 @@ namespace Nethermind.Blockchain.Test
             Assert.IsNull(blockInfosDb.Get(3), "level 3");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_deleting_invalid_block_deletes_its_descendants_even_if_not_first()
         {
             MemDb blocksDb = new();
@@ -1014,7 +1022,7 @@ namespace Nethermind.Blockchain.Test
             repository.LoadLevel(3)!.BlockInfos.Length.Should().Be(1);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void After_removing_invalid_block_will_not_accept_it_again()
         {
             MemDb blocksDb = new();
@@ -1036,7 +1044,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(AddBlockResult.InvalidBlock, result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void After_deleting_invalid_block_will_accept_other_blocks()
         {
             MemDb blocksDb = new();
@@ -1060,7 +1068,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(AddBlockResult.Added, result);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_deleting_invalid_block_does_not_delete_blocks_that_are_not_its_descendants()
         {
             MemDb blocksDb = new();
@@ -1093,7 +1101,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block5.Hash, tree.BestSuggestedHeader!.Hash, "suggested");
         }
 
-        [Test, TestCaseSource("SourceOfBSearchTestCases")]
+        [Test, Timeout(Timeout.MaxTestTime), TestCaseSource("SourceOfBSearchTestCases")]
         public void Loads_lowest_inserted_header_correctly(long beginIndex, long insertedBlocks)
         {
             long? expectedResult = insertedBlocks == 0L ? (long?)null : beginIndex - insertedBlocks + 1L;
@@ -1120,7 +1128,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(expectedResult, loadedTree.LowestInsertedHeader?.Number, "loaded tree");
         }
 
-        [Test, TestCaseSource("SourceOfBSearchTestCases")]
+        [Test, Timeout(Timeout.MaxTestTime), TestCaseSource("SourceOfBSearchTestCases")]
         public void Loads_lowest_inserted_body_correctly(long beginIndex, long insertedBlocks)
         {
             // left old code to prove that it does not matter for the result nowadays
@@ -1183,7 +1191,7 @@ namespace Nethermind.Blockchain.Test
 
         private ChainLevelInfoRepository _chainLevelInfoRepository;
 
-        [Test, TestCaseSource(nameof(SourceOfBSearchTestCases))]
+        [Test, Timeout(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
         public void Loads_best_known_correctly_on_inserts(long beginIndex, long insertedBlocks)
         {
             long expectedResult = insertedBlocks == 0L ? 0L : beginIndex;
@@ -1221,6 +1229,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(expectedResult, loadedTree.BestKnownNumber, "loaded tree");
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(1L)]
         [TestCase(2L)]
         [TestCase(3L)]
@@ -1255,7 +1264,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(pivotNumber + 1, loadedTree.BestKnownNumber, "loaded tree");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Loads_best_known_correctly_when_head_before_pivot()
         {
             int pivotNumber = 1000;
@@ -1278,7 +1287,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(head, loadedTree.BestKnownNumber, "loaded tree");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cannot_insert_genesis()
         {
             MemDb blocksDb = new();
@@ -1299,7 +1308,7 @@ namespace Nethermind.Blockchain.Test
             Assert.Throws<InvalidOperationException>(() => tree.Insert(new[] { genesis }));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_batch_insert_blocks()
         {
             MemDb blocksDb = new();
@@ -1326,7 +1335,7 @@ namespace Nethermind.Blockchain.Test
             tree.Insert(blocks);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Inserts_blooms()
         {
             MemDb blocksDb = new();
@@ -1356,7 +1365,7 @@ namespace Nethermind.Blockchain.Test
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Block_loading_is_lazy()
         {
             MemDb blocksDb = new();
@@ -1385,7 +1394,7 @@ namespace Nethermind.Blockchain.Test
             loadedTree.FindHeader(lastBlock.Hash, BlockTreeLookupOptions.None);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_block_is_moved_to_main_blooms_are_stored()
         {
             MemDb blocksDb = new();
@@ -1411,7 +1420,7 @@ namespace Nethermind.Blockchain.Test
         }
 
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_find_genesis_level()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1420,7 +1429,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(1, info.BlockInfos.Length);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_find_some_level()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1429,7 +1438,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(1, info.BlockInfos.Length);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cannot_find_future_level()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1437,7 +1446,7 @@ namespace Nethermind.Blockchain.Test
             Assert.IsNull(info);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_delete_a_future_slice()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1445,7 +1454,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(2, blockTree.Head!.Number);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_delete_slice()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1455,7 +1464,7 @@ namespace Nethermind.Blockchain.Test
             Assert.Null(blockTree.FindLevel(2));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Does_not_delete_outside_of_the_slice()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1465,7 +1474,7 @@ namespace Nethermind.Blockchain.Test
             Assert.NotNull(blockTree.FindLevel(1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_delete_one_block()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1473,7 +1482,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(1, blockTree.Head!.Number);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_delete_two_blocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1482,42 +1491,42 @@ namespace Nethermind.Blockchain.Test
             Assert.Null(blockTree.FindLevel(2));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_delete_in_the_middle()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             blockTree.DeleteChainSlice(1, 1);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Throws_when_start_after_end()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(2, 1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Throws_when_start_at_zero()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(0, 1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Throws_when_start_below_zero()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(-1, 1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cannot_delete_too_many()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(1000, 52001));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cannot_add_blocks_when_blocked()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1525,7 +1534,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(Build.A.Block.WithNumber(3).TestObject).Should().Be(AddBlockResult.CannotAccept);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_block_cannot_insert_blocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1537,7 +1546,7 @@ namespace Nethermind.Blockchain.Test
             result.Should().Be(AddBlockResult.CannotAccept);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_skip_blocked_tree()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1549,7 +1558,7 @@ namespace Nethermind.Blockchain.Test
             result.Should().Be(AddBlockResult.Added);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_block_and_unblock_adding_blocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1563,6 +1572,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.CanAcceptNewBlocks.Should().BeTrue();
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(10, false, 10000000ul)]
         [TestCase(4, false, 4000000ul)]
         [TestCase(10, true, 10000000ul)]
@@ -1602,7 +1612,7 @@ namespace Nethermind.Blockchain.Test
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Visitor_can_block_adding_blocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1613,7 +1623,7 @@ namespace Nethermind.Blockchain.Test
             await acceptTask;
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task SuggestBlockAsync_should_wait_for_blockTree_unlock()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1625,7 +1635,7 @@ namespace Nethermind.Blockchain.Test
             suggest.IsCompleted.Should().Be(true);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task SuggestBlockAsync_works_well_with_multiple_locks_and_unlocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1649,7 +1659,7 @@ namespace Nethermind.Blockchain.Test
             suggest.IsCompleted.Should().Be(true);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task SuggestBlockAsync_works_well_when_there_are_no_blockades()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1658,7 +1668,7 @@ namespace Nethermind.Blockchain.Test
             suggest.IsCompleted.Should().Be(true);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void SuggestBlock_should_work_with_zero_difficulty()
         {
             Block genesisWithZeroDifficulty = Build.A.Block.WithDifficulty(0).WithNumber(0).TestObject;

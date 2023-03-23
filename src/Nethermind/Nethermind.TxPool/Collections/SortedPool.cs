@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -26,15 +27,17 @@ namespace Nethermind.TxPool.Collections
         private readonly IComparer<TValue> _groupComparer;
 
         // group buckets, keep the items grouped by group key and sorted in group
-        private readonly IDictionary<TGroupKey, EnhancedSortedSet<TValue>> _buckets;
+        protected readonly Dictionary<TGroupKey, EnhancedSortedSet<TValue>> _buckets;
 
-        private readonly IDictionary<TKey, TValue> _cacheMap;
+        private readonly Dictionary<TKey, TValue> _cacheMap;
+        private bool _isFull = false;
 
         // comparer for worst elements in buckets
         private readonly IComparer<TValue> _sortedComparer;
 
         // worst element from every group, used to determine element that will be evicted when pool is full
         protected readonly DictionarySortedSet<TValue, TKey> _worstSortedValues;
+        protected KeyValuePair<TValue, TKey>? _worstValue = null;
         private TValue[]? _snapshot;
 
         /// <summary>
@@ -155,12 +158,15 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets last element in supplied comparer order.
         /// </summary>
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGetLast(out TValue last)
+        public bool TryGetLast(out TValue? last)
         {
-            last = _worstSortedValues.Max.Key;
+            last = _worstValue.GetValueOrDefault().Key;
             return last is not null;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected void UpdateWorstValue() =>
+            _worstValue = _worstSortedValues.Max;
 
         /// <summary>
         /// Tries to remove element.
@@ -190,7 +196,10 @@ namespace Nethermind.TxPool.Collections
                             {
                                 _buckets.Remove(groupMapping);
                                 if (last is not null)
+                                {
                                     _worstSortedValues.Remove(last);
+                                    UpdateWorstValue();
+                                }
                             }
                             else
                             {
@@ -299,7 +308,15 @@ namespace Nethermind.TxPool.Collections
 
         private void RemoveLast(out TValue? removed)
         {
-            TryRemove(_worstSortedValues.Max.Value, true, out removed, out _);
+            TKey? key = _worstValue.GetValueOrDefault().Value;
+            if (key is not null)
+            {
+                TryRemove(key, true, out removed, out _);
+            }
+            else
+            {
+                removed = default;
+            }
         }
 
         /// <summary>
@@ -329,6 +346,7 @@ namespace Nethermind.TxPool.Collections
             if (bucket.Add(value))
             {
                 _cacheMap[key] = value;
+                UpdateIsFull();
                 UpdateSortedValues(bucket, last);
                 _snapshot = null;
                 Inserted?.Invoke(this, new SortedPoolEventArgs(key, value, groupKey));
@@ -344,8 +362,13 @@ namespace Nethermind.TxPool.Collections
                 {
                     _worstSortedValues.Remove(previousLast);
                 }
+
                 if (newLast is not null)
+                {
                     _worstSortedValues.Add(newLast, GetKey(newLast));
+                }
+
+                UpdateWorstValue();
             }
         }
 
@@ -356,6 +379,7 @@ namespace Nethermind.TxPool.Collections
         {
             if (_cacheMap.Remove(key))
             {
+                UpdateIsFull();
                 _snapshot = null;
                 return true;
             }
@@ -363,9 +387,11 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
+        public bool IsFull() => _isFull;
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool IsFull() => _cacheMap.Count >= _capacity;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void UpdateIsFull() =>
+            _isFull = _cacheMap.Count >= _capacity;
 
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -386,7 +412,8 @@ namespace Nethermind.TxPool.Collections
         {
             foreach ((TGroupKey groupKey, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
-                changingElements(groupKey, bucket);
+                Debug.Assert(bucket.Count > 0);
+
                 UpdateGroup(groupKey, bucket, changingElements);
             }
         }
@@ -397,6 +424,8 @@ namespace Nethermind.TxPool.Collections
             if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
+                Debug.Assert(bucket.Count > 0);
+
                 UpdateGroup(groupKey, bucket, changingElements);
             }
         }
