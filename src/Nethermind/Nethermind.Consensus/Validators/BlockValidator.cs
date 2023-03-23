@@ -204,7 +204,13 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        if (spec.IsEip4844Enabled && block.Transactions.Sum(tr => tr?.BlobVersionedHashes?.Length) > maxBlobsPerBlock)
+        int? blobsInBlock = 0;
+        for (int txIndex = block.Transactions.Length - 1; txIndex >= 0; txIndex--)
+        {
+            blobsInBlock += block.Transactions[txIndex].BlobVersionedHashes?.Length ?? 0;
+        }
+
+        if (spec.IsEip4844Enabled && blobsInBlock > maxBlobsPerBlock)
         {
             error = $"A block cannot contain more than {maxBlobsPerBlock} blobs.";
             if (_logger.IsWarn) _logger.Warn(error);

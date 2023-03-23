@@ -11,7 +11,7 @@ namespace Nethermind.Core.Test
         [TestCase(TxType.AccessList, true, false, false)]
         [TestCase(TxType.EIP1559, true, true, false)]
         [TestCase(TxType.Blob, true, true, true)]
-        public void When_to_not_empty_then_is_message_call(TxType txType, bool isEip2930Supported,
+        public void When_eip_defines_new_tx_type_then_previous_eips_are_supported(TxType txType, bool isEip2930Supported,
             bool isEip1559Supported, bool isEip4844Supported)
         {
             Transaction transaction = new() { Type = txType };
