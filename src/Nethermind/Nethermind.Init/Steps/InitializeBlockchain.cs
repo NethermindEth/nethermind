@@ -44,7 +44,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitializePlugins), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(typeof(InitializePlugins), typeof(InitializeFactories), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
     public class InitializeBlockchain : IStep
     {
         private readonly INethermindApi _api;
@@ -350,14 +350,15 @@ namespace Nethermind.Init.Steps
             _api.SpecProvider,
             _api.LogManager);
 
-        // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor()
+        // NOTE: This logic is now part of the INethermindApiWithFactories and InitializeFactories step
+        //       We keep this here only for plugins with custom initialization steps (only AuRa)
+        protected virtual IBlockProcessor CreateBlockProcessor()
         {
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
-            return new BlockProcessor(
+            return _api.BlockProcessorFactory.Create(
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
@@ -366,6 +367,7 @@ namespace Nethermind.Init.Steps
                 _api.StorageProvider,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
+                null,
                 _api.LogManager);
         }
 

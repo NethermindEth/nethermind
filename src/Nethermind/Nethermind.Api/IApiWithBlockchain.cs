@@ -25,10 +25,10 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Api
 {
-    public interface IApiWithBlockchain : IApiWithStores, IBlockchainBridgeFactory
+    public interface IApiWithBlockchain : IApiWithFactories, IBlockchainBridgeFactory
     {
-        (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
-        (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
+        (IApiWithFactories GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
+        (IApiWithFactories GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
         (IApiWithBlockchain GetFromApi, IApiWithBlockchain SetInApi) ForProducer => (this, this);
 
         IBlockchainProcessor? BlockchainProcessor { get; set; }

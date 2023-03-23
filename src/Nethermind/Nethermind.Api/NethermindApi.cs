@@ -6,6 +6,7 @@ using System.IO.Abstractions;
 using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Factories;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -42,20 +43,20 @@ using Nethermind.Network;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
+using Nethermind.Sockets;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.Sockets;
-using Nethermind.State.Snap;
-using Nethermind.Synchronization.SnapSync;
-using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Api
 {
@@ -99,6 +100,8 @@ namespace Nethermind.Api
                 miningConfig.Enabled
             );
         }
+
+        public IBlockProcessorFactory BlockProcessorFactory { get; set; }
 
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
         public IBlockchainProcessor? BlockchainProcessor { get; set; }

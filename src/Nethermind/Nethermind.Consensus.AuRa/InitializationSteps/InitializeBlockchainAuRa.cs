@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             _auraConfig = NethermindApi.Config<IAuraConfig>();
         }
 
-        protected override BlockProcessor CreateBlockProcessor()
+        protected override IBlockProcessor CreateBlockProcessor()
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.ChainHeadStateProvider is null) throw new StepDependencyException(nameof(_api.ChainHeadStateProvider));
