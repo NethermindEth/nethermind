@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Nethermind.Trie
@@ -55,6 +56,54 @@ namespace Nethermind.Trie
                 GC.Collect();
             }
 
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct SmallTrieVisitContext
+    {
+        public SmallTrieVisitContext(TrieVisitContext trieVisitContext)
+        {
+            Level = (byte)trieVisitContext.Level;
+            IsStorage = trieVisitContext.IsStorage;
+            if (trieVisitContext.BranchChildIndex != null)
+            {
+                _branchChildIndex = (byte)trieVisitContext.BranchChildIndex!;
+            }
+            ExpectAccounts = trieVisitContext.ExpectAccounts;
+        }
+
+        public byte Level { get; internal set; }
+        public bool IsStorage { get; internal set; }
+
+        private byte _branchChildIndex = 255;
+        public bool ExpectAccounts { get; init; }
+
+        public byte? BranchChildIndex
+        {
+            get => _branchChildIndex == 255 ? null : _branchChildIndex;
+            internal set
+            {
+                if (value == null)
+                {
+                    _branchChildIndex = 255;
+                }
+                else
+                {
+                    _branchChildIndex = (byte)value;
+                }
+            }
+        }
+
+        public TrieVisitContext ToVisitContext()
+        {
+            return new TrieVisitContext()
+            {
+                Level = Level,
+                IsStorage = IsStorage,
+                BranchChildIndex = BranchChildIndex,
+                ExpectAccounts = ExpectAccounts
+            };
         }
     }
 }

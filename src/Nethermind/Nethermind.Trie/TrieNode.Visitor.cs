@@ -22,7 +22,17 @@ namespace Nethermind.Trie
     {
         private const int BranchesCount = 16;
 
-        internal void AcceptResolvedNode(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, BatchedTrieVisitor.SmallTrieVisitContext trieVisitContext, IList<(TrieNode, BatchedTrieVisitor.SmallTrieVisitContext)> nextToVisit)
+        /// <summary>
+        /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
+        /// `nextToVisit`. Also, it assume the node is already resolved.
+        /// </summary>
+        /// <param name="visitor"></param>
+        /// <param name="nodeResolver"></param>
+        /// <param name="trieVisitContext"></param>
+        /// <param name="nextToVisit"></param>
+        /// <exception cref="InvalidDataException"></exception>
+        /// <exception cref="TrieException"></exception>
+        internal void AcceptResolvedNode(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, SmallTrieVisitContext)> nextToVisit)
         {
             switch (NodeType)
             {
@@ -31,7 +41,6 @@ namespace Nethermind.Trie
                         visitor.VisitBranch(this, trieVisitContext.ToVisitContext());
                         trieVisitContext.Level++;
 
-                        // single threaded route
                         for (int i = 0; i < BranchesCount; i++)
                         {
                             TrieNode child = GetChild(nodeResolver, i);
@@ -40,7 +49,7 @@ namespace Nethermind.Trie
                                 child.ResolveKey(nodeResolver, false);
                                 if (visitor.ShouldVisit(child.Keccak!))
                                 {
-                                    BatchedTrieVisitor.SmallTrieVisitContext childCtx = trieVisitContext; // Copy
+                                    SmallTrieVisitContext childCtx = trieVisitContext; // Copy
                                     childCtx.BranchChildIndex = (byte?)i;
 
                                     nextToVisit.Add((child, childCtx));
