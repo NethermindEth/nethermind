@@ -63,47 +63,77 @@ namespace Nethermind.Trie
     public struct SmallTrieVisitContext
     {
         public SmallTrieVisitContext(TrieVisitContext trieVisitContext)
-        {
-            Level = (byte)trieVisitContext.Level;
-            IsStorage = trieVisitContext.IsStorage;
-            if (trieVisitContext.BranchChildIndex != null)
-            {
-                _branchChildIndex = (byte)trieVisitContext.BranchChildIndex!;
-            }
-            ExpectAccounts = trieVisitContext.ExpectAccounts;
-        }
+         {
+             Level = (byte)trieVisitContext.Level;
+             IsStorage = trieVisitContext.IsStorage;
+             BranchChildIndex = (byte?)trieVisitContext.BranchChildIndex;
+             ExpectAccounts = trieVisitContext.ExpectAccounts;
+         }
 
-        public byte Level { get; internal set; }
-        public bool IsStorage { get; internal set; }
+         public byte Level { get; internal set; }
+         private byte _branchChildIndex = 255;
+         private byte _flags = 0;
 
-        private byte _branchChildIndex = 255;
-        public bool ExpectAccounts { get; init; }
+         private const byte StorageFlag = 1;
+         private const byte ExpectAccountsFlag = 2;
 
-        public byte? BranchChildIndex
-        {
-            get => _branchChildIndex == 255 ? null : _branchChildIndex;
-            internal set
-            {
-                if (value == null)
-                {
-                    _branchChildIndex = 255;
-                }
-                else
-                {
-                    _branchChildIndex = (byte)value;
-                }
-            }
-        }
+         public bool IsStorage
+         {
+             get => (_flags & StorageFlag) == StorageFlag;
+             internal set
+             {
+                 if (value)
+                 {
+                     _flags = (byte) (_flags | StorageFlag);
+                 }
+                 else
+                 {
+                     _flags = (byte) (_flags & ~StorageFlag);
+                 }
+             }
+         }
 
-        public TrieVisitContext ToVisitContext()
-        {
-            return new TrieVisitContext()
-            {
-                Level = Level,
-                IsStorage = IsStorage,
-                BranchChildIndex = BranchChildIndex,
-                ExpectAccounts = ExpectAccounts
-            };
-        }
+         public bool ExpectAccounts
+         {
+             get => (_flags & ExpectAccountsFlag) == ExpectAccountsFlag;
+             internal set
+             {
+                 if (value)
+                 {
+                     _flags = (byte) (_flags | ExpectAccountsFlag);
+                 }
+                 else
+                 {
+                     _flags = (byte) (_flags & ~ExpectAccountsFlag);
+                 }
+             }
+         }
+
+         public byte? BranchChildIndex
+         {
+             get => _branchChildIndex == 255 ? null : _branchChildIndex;
+             internal set
+             {
+                 if (value == null)
+                 {
+                     _branchChildIndex = 255;
+                 }
+                 else
+                 {
+                     _branchChildIndex = (byte)value;
+                 }
+             }
+         }
+
+         public TrieVisitContext ToVisitContext()
+         {
+             return new TrieVisitContext()
+             {
+                 Level = Level,
+                 IsStorage = IsStorage,
+                 BranchChildIndex = BranchChildIndex,
+                 ExpectAccounts = ExpectAccounts
+             };
+         }
     }
 }
