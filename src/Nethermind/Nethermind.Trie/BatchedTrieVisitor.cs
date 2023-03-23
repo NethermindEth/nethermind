@@ -76,14 +76,14 @@ public class BatchedTrieVisitor
         if (_partitionCount > maxPartitionCount)
         {
             _partitionCount = maxPartitionCount;
-            _maxBatchSize = (int) (recordCount / _partitionCount);
+            _maxBatchSize = (int)(recordCount / _partitionCount);
         }
 
         // Calculating estimated pool margin at about 5% of total working size. The working set size fluctuate a bit so
         // this is to reduce allocation.
-        long estimatedPoolMargin = (long)(((double) recordCount / 128) * 0.05);
+        long estimatedPoolMargin = (long)(((double)recordCount / 128) * 0.05);
         ObjectPool<CompactStack<Job>.Node> jobPool = new DefaultObjectPool<CompactStack<Job>.Node>(
-            new CompactStack<Job>.ObjectPoolPolicy(128), (int) estimatedPoolMargin);
+            new CompactStack<Job>.ObjectPoolPolicy(128), (int)estimatedPoolMargin);
 
         _currentPointer = 0;
         _queuedJobs = 0;
@@ -102,7 +102,7 @@ public class BatchedTrieVisitor
     int CalculatePartitionIdx(ValueKeccak key)
     {
         uint number = BinaryPrimitives.ReadUInt32BigEndian(key.Span);
-        return (int)(number * (ulong) _partitionCount / uint.MaxValue);
+        return (int)(number * (ulong)_partitionCount / uint.MaxValue);
     }
 
     public void Start(
@@ -186,7 +186,7 @@ public class BatchedTrieVisitor
             ArrayPoolList<Job> preSort = new(_jobArrayPool, _maxBatchSize * 4);
             lock (theStack)
             {
-                for (int i = 0; i < _maxBatchSize*4; i++)
+                for (int i = 0; i < _maxBatchSize * 4; i++)
                 {
                     if (!theStack.TryPop(out Job item)) break;
                     preSort.Add(item);

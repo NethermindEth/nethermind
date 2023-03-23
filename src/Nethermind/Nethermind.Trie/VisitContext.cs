@@ -63,77 +63,77 @@ namespace Nethermind.Trie
     public struct SmallTrieVisitContext
     {
         public SmallTrieVisitContext(TrieVisitContext trieVisitContext)
-         {
-             Level = (byte)trieVisitContext.Level;
-             IsStorage = trieVisitContext.IsStorage;
-             BranchChildIndex = (byte?)trieVisitContext.BranchChildIndex;
-             ExpectAccounts = trieVisitContext.ExpectAccounts;
-         }
+        {
+            Level = (byte)trieVisitContext.Level;
+            IsStorage = trieVisitContext.IsStorage;
+            BranchChildIndex = (byte?)trieVisitContext.BranchChildIndex;
+            ExpectAccounts = trieVisitContext.ExpectAccounts;
+        }
 
-         public byte Level { get; internal set; }
-         private byte _branchChildIndex = 255;
-         private byte _flags = 0;
+        public byte Level { get; internal set; }
+        private byte _branchChildIndex = 255;
+        private byte _flags = 0;
 
-         private const byte StorageFlag = 1;
-         private const byte ExpectAccountsFlag = 2;
+        private const byte StorageFlag = 1;
+        private const byte ExpectAccountsFlag = 2;
 
-         public bool IsStorage
-         {
-             get => (_flags & StorageFlag) == StorageFlag;
-             internal set
-             {
-                 if (value)
-                 {
-                     _flags = (byte) (_flags | StorageFlag);
-                 }
-                 else
-                 {
-                     _flags = (byte) (_flags & ~StorageFlag);
-                 }
-             }
-         }
+        public bool IsStorage
+        {
+            get => (_flags & StorageFlag) == StorageFlag;
+            internal set
+            {
+                if (value)
+                {
+                    _flags = (byte)(_flags | StorageFlag);
+                }
+                else
+                {
+                    _flags = (byte)(_flags & ~StorageFlag);
+                }
+            }
+        }
 
-         public bool ExpectAccounts
-         {
-             get => (_flags & ExpectAccountsFlag) == ExpectAccountsFlag;
-             internal set
-             {
-                 if (value)
-                 {
-                     _flags = (byte) (_flags | ExpectAccountsFlag);
-                 }
-                 else
-                 {
-                     _flags = (byte) (_flags & ~ExpectAccountsFlag);
-                 }
-             }
-         }
+        public bool ExpectAccounts
+        {
+            get => (_flags & ExpectAccountsFlag) == ExpectAccountsFlag;
+            internal set
+            {
+                if (value)
+                {
+                    _flags = (byte)(_flags | ExpectAccountsFlag);
+                }
+                else
+                {
+                    _flags = (byte)(_flags & ~ExpectAccountsFlag);
+                }
+            }
+        }
 
-         public byte? BranchChildIndex
-         {
-             get => _branchChildIndex == 255 ? null : _branchChildIndex;
-             internal set
-             {
-                 if (value == null)
-                 {
-                     _branchChildIndex = 255;
-                 }
-                 else
-                 {
-                     _branchChildIndex = (byte)value;
-                 }
-             }
-         }
+        public byte? BranchChildIndex
+        {
+            get => _branchChildIndex == 255 ? null : _branchChildIndex;
+            internal set
+            {
+                if (value == null)
+                {
+                    _branchChildIndex = 255;
+                }
+                else
+                {
+                    _branchChildIndex = (byte)value;
+                }
+            }
+        }
 
-         public TrieVisitContext ToVisitContext()
-         {
-             return new TrieVisitContext()
-             {
-                 Level = Level,
-                 IsStorage = IsStorage,
-                 BranchChildIndex = BranchChildIndex,
-                 ExpectAccounts = ExpectAccounts
-             };
-         }
+        public TrieVisitContext ToVisitContext()
+        {
+            return new TrieVisitContext()
+            {
+                Level = Level,
+                IsStorage = IsStorage,
+                BranchChildIndex = BranchChildIndex,
+                ExpectAccounts = ExpectAccounts
+            };
+        }
     }
 }
