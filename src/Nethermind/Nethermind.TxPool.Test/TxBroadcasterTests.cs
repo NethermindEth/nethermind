@@ -447,4 +447,54 @@ public class TxBroadcasterTests
         session68.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage>());
         session68.Received(1).DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
     }
+
+    [TestCase(1_000, true)]
+    [TestCase(128_000, true)]
+    [TestCase(128_001, false)]
+    [TestCase(1_000_000, false)]
+    public void should_broadcast_full_local_tx_up_to_max_size_and_only_announce_if_larger(int txSize, bool shouldBroadcastFullTx)
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        ISession session68 = Substitute.For<ISession>();
+        session68.Node.Returns(new Node(TestItem.PublicKeyB, TestItem.IPEndPointB));
+        ITxPoolPeer eth68Handler = new Eth68ProtocolHandler(session68,
+            Substitute.For<IMessageSerializationService>(),
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<ISyncServer>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IPooledTxsRequestor>(),
+            Substitute.For<IGossipPolicy>(),
+            new ForkInfo(_specProvider, Keccak.Zero),
+            Substitute.For<ILogManager>());
+
+        Transaction localTx = Build.A.Transaction
+            .WithData(new byte[txSize])
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        int draftTxSize = localTx.GetLength();
+        if (draftTxSize > txSize)
+        {
+            localTx = Build.A.Transaction
+                .WithData(new byte[2 * txSize - draftTxSize])
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+        }
+        localTx.GetLength().Should().Be(txSize);
+
+        _broadcaster.AddPeer(eth68Handler);
+        _broadcaster.Broadcast(localTx, true);
+
+        if (shouldBroadcastFullTx)
+        {
+            session68.Received(1).DeliverMessage(Arg.Any<TransactionsMessage>());
+            session68.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
+        }
+        else
+        {
+            session68.DidNotReceive().DeliverMessage(Arg.Any<TransactionsMessage>());
+            session68.Received(1).DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
+        }
+        session68.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage>());
+    }
 }

@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
