@@ -141,6 +141,7 @@ namespace Nethermind.Core
         {
             return _size ??= sizeCalculator.GetLength(this);
         }
+
         public string ToShortString()
         {
             string gasPriceString =

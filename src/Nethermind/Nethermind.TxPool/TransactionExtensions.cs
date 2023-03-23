@@ -3,7 +3,6 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
@@ -13,13 +12,14 @@ namespace Nethermind.TxPool
 {
     public static class TransactionExtensions
     {
-        private static readonly long MaxSizeOfTxForBroadcast = 128.KB();
+        private static readonly long MaxSizeOfTxForBroadcast = 128_000; //128KB, as proposed in https://eips.ethereum.org/EIPS/eip-5793
         private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new TxDecoder();
 
         public static int GetLength(this Transaction tx)
         {
             return tx.GetLength(_transactionSizeCalculator);
         }
+
         public static bool CanBeBroadcast(this Transaction tx) => tx.Type != TxType.Blob && tx.GetLength() <= MaxSizeOfTxForBroadcast;
 
         internal static UInt256 CalculateGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
