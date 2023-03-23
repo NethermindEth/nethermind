@@ -45,7 +45,7 @@ namespace Nethermind.Db
         int FullPruningMaxDegreeOfParallelism { get; set; }
 
         [ConfigItem(
-            Description = "[EXPERIMENTAL] Set the memory budget used for the trie visit. Increasing this significantly reduces read iops requirement at expense of RAM.",
+            Description = "Set the memory budget used for the trie visit. Increasing this significantly reduces read iops requirement at expense of RAM. Default depend on network. Set to 0 to disable.",
             DefaultValue = "0")]
         int FullPruningMemoryBudgetMb { get; set; }
 
