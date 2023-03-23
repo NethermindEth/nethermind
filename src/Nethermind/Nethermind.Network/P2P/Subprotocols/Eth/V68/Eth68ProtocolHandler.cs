@@ -131,6 +131,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
                 types.Add((byte)tx.Type);
                 sizes.Add(tx.GetLength());
                 hashes.Add(tx.Hash);
+                TxPool.Metrics.PendingTransactionsHashesSent++;
             }
         }
 
