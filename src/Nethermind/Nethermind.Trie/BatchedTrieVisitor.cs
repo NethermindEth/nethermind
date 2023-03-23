@@ -15,19 +15,34 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
+/// <summary>
+/// An alternate trie visitor that try to optimize for read io by grouping/sorting node to be processed (as Job) in order
+/// of its key. This works by having a list of partition, each is a stack of Job where each partition holds only Jobs for
+/// a portion of the address space. The partition are ordered in increasing order. On run, each worker will go through
+/// the partitions one by one in ascending order. The pointer to which partition to process next is shared with all worker
+/// so that all worker works on a small common range of the address space.
+///
+/// The working set, which is the number of Job waiting to be processed is adjusted by increasing the partition number
+/// and the max batch size (num of job to be processed on each worker visit to a partition).
+/// If the size of working set is large enough, the required data between Job in a batch is available near each other
+/// which increases cache hit. The exact minimum size of working set depends on the size of the database, which seems
+/// to increase linearly. For goerli, that seems to be 256MB, and mainnet it seems to be 1Gb. Increasing the working
+/// set decreases reads, however up to a certain point, the time taken for writes is much higher than read, so no
+/// point in increasing memory budget further. For goerli, that seems to be 3GB and for mainnet, that seems to be 8Gb.
+/// </summary>
 public class BatchedTrieVisitor
 {
     // Not using shared pool so GC can reclaim them later.
     private ArrayPool<Job> _jobArrayPool = ArrayPool<Job>.Create();
     private ArrayPool<(TrieNode, SmallTrieVisitContext)> _trieNodePool = ArrayPool<(TrieNode, SmallTrieVisitContext)>.Create();
 
-    private readonly int _maxJobSize;
+    private readonly int _maxBatchSize;
     private readonly long _partitionCount;
     private readonly CompactStack<Job>[] _partitions;
     private readonly long _targetCurrentItems;
 
-    private long _activeItems;
-    private long _queuedItems;
+    private long _activeJobs;
+    private long _queuedJobs;
     private bool _failed;
     private long _currentPointer;
 
@@ -42,7 +57,7 @@ public class BatchedTrieVisitor
         _visitor = visitor;
         _resolver = resolver;
 
-        _maxJobSize = 128;
+        _maxBatchSize = 128;
 
         // The keccak + context itself should be 40 byte. But the measured byte seems to be 52 from GC stats POV.
         // The * 2 is just margin. RSS is still higher though, but that could be due to more deserialization.
@@ -50,8 +65,8 @@ public class BatchedTrieVisitor
         long recordCount = visitingOptions.FullScanMemoryBudget / recordSize;
 
         // Generally, at first, we want to attempt to maximize number of partition. This tend to increase throughput
-        // compared to increasing job size.
-        _partitionCount = recordCount / _maxJobSize;
+        // compared to increasing batch size.
+        _partitionCount = recordCount / _maxBatchSize;
 
         // 3000 is about the num of file for state on mainnet, so we assume 4000 for an unpruned db. Multiplied by
         // a reasonable num of thread we want to confine to a file. If its too high, the overhead of looping through the
@@ -61,19 +76,19 @@ public class BatchedTrieVisitor
         if (_partitionCount > maxPartitionCount)
         {
             _partitionCount = maxPartitionCount;
-            _maxJobSize = (int) (recordCount / _partitionCount);
+            _maxBatchSize = (int) (recordCount / _partitionCount);
         }
 
-        // Calculating estimated pool margin at about 5% of total working size. The queue size fluctuate a bit so
+        // Calculating estimated pool margin at about 5% of total working size. The working set size fluctuate a bit so
         // this is to reduce allocation.
         long estimatedPoolMargin = (long)(((double) recordCount / 128) * 0.05);
         ObjectPool<CompactStack<Job>.Node> jobPool = new DefaultObjectPool<CompactStack<Job>.Node>(
             new CompactStack<Job>.ObjectPoolPolicy(128), (int) estimatedPoolMargin);
 
         _currentPointer = 0;
-        _queuedItems = 0;
-        _activeItems = 0;
-        _targetCurrentItems = _partitionCount * _maxJobSize;
+        _queuedJobs = 0;
+        _activeJobs = 0;
+        _targetCurrentItems = _partitionCount * _maxBatchSize;
 
         // This need to be very small
         _partitions = new CompactStack<Job>[_partitionCount];
@@ -97,8 +112,8 @@ public class BatchedTrieVisitor
         // Start with the root
         SmallTrieVisitContext rootContext = new(trieVisitContext);
         _partitions[CalculatePartitionIdx(root)].Push(new Job(root, rootContext));
-        _activeItems = 1;
-        _queuedItems = 1;
+        _activeJobs = 1;
+        _queuedJobs = 1;
 
         try
         {
@@ -129,13 +144,13 @@ public class BatchedTrieVisitor
             }
             partitionIdx %= _partitionCount;
 
-            if (_activeItems == 0 || _failed)
+            if (_activeJobs == 0 || _failed)
             {
                 // Its finished
                 return null;
             }
 
-            if (_queuedItems == 0)
+            if (_queuedJobs == 0)
             {
                 // Just a small timeout to prevent threads from loading CPU
                 // Note, there are other threads also going through the stacks, so its fine to have this high.
@@ -149,17 +164,17 @@ public class BatchedTrieVisitor
             }
         } while (true);
 
-        ArrayPoolList<(TrieNode, SmallTrieVisitContext)> finalBatch = new(_trieNodePool, _maxJobSize);
+        ArrayPoolList<(TrieNode, SmallTrieVisitContext)> finalBatch = new(_trieNodePool, _maxBatchSize);
 
-        if (_activeItems < _targetCurrentItems)
+        if (_activeJobs < _targetCurrentItems)
         {
             lock (theStack)
             {
-                for (int i = 0; i < _maxJobSize; i++)
+                for (int i = 0; i < _maxBatchSize; i++)
                 {
                     if (!theStack.TryPop(out Job item)) break;
                     finalBatch.Add((new TrieNode(NodeType.Unknown, item.Key.ToKeccak()), item.Context));
-                    Interlocked.Decrement(ref _queuedItems);
+                    Interlocked.Decrement(ref _queuedJobs);
                 }
             }
         }
@@ -168,24 +183,24 @@ public class BatchedTrieVisitor
             // So we get more than the batch size, then we sort it by level, and take only the maxNodeBatch nodes with
             // the higher level. This is so that higher level is processed first to reduce memory usage. Its inaccurate,
             // and hacky, but it works.
-            ArrayPoolList<Job> preSort = new(_jobArrayPool, _maxJobSize * 4);
+            ArrayPoolList<Job> preSort = new(_jobArrayPool, _maxBatchSize * 4);
             lock (theStack)
             {
-                for (int i = 0; i < _maxJobSize*4; i++)
+                for (int i = 0; i < _maxBatchSize*4; i++)
                 {
                     if (!theStack.TryPop(out Job item)) break;
                     preSort.Add(item);
-                    Interlocked.Decrement(ref _queuedItems);
+                    Interlocked.Decrement(ref _queuedJobs);
                 }
             }
 
             // Sort by level
-            if (_activeItems > _targetCurrentItems)
+            if (_activeJobs > _targetCurrentItems)
             {
                 preSort.AsSpan().Sort((item1, item2) => item1.Context.Level.CompareTo(item2.Context.Level) * -1);
             }
 
-            int endIdx = Math.Min(_maxJobSize, preSort.Count);
+            int endIdx = Math.Min(_maxBatchSize, preSort.Count);
 
             for (int i = 0; i < endIdx; i++)
             {
@@ -201,7 +216,7 @@ public class BatchedTrieVisitor
                 for (int i = preSort.Count - 1; i >= endIdx; i--)
                 {
                     theStack.Push(preSort[i]);
-                    Interlocked.Increment(ref _queuedItems);
+                    Interlocked.Increment(ref _queuedJobs);
                 }
             }
             preSort.Dispose();
@@ -223,7 +238,7 @@ public class BatchedTrieVisitor
                 // to queue, so we'll just process it inline.
                 ArrayPoolList<(TrieNode, SmallTrieVisitContext)> recursiveResult = new(1);
                 trieNode.ResolveNode(_resolver);
-                Interlocked.Increment(ref _activeItems);
+                Interlocked.Increment(ref _activeJobs);
                 trieNode.AcceptResolvedNode(_visitor, _resolver, ctx, recursiveResult);
                 QueueNextNodes(recursiveResult);
                 recursiveResult.Dispose();
@@ -232,8 +247,8 @@ public class BatchedTrieVisitor
 
             ValueKeccak keccak = trieNode.Keccak;
             int partitionIdx = CalculatePartitionIdx(keccak);
-            Interlocked.Increment(ref _activeItems);
-            Interlocked.Increment(ref _queuedItems);
+            Interlocked.Increment(ref _activeJobs);
+            Interlocked.Increment(ref _queuedJobs);
 
             var theStack = _partitions[partitionIdx];
             lock (theStack)
@@ -242,15 +257,15 @@ public class BatchedTrieVisitor
             }
         }
 
-        Interlocked.Decrement(ref _activeItems);
+        Interlocked.Decrement(ref _activeJobs);
     }
 
 
     private void BatchedThread()
     {
         ArrayPoolList<(TrieNode, SmallTrieVisitContext)>? currentBatch;
-        ArrayPoolList<(TrieNode, SmallTrieVisitContext)> nextToProcesses = new(_maxJobSize);
-        ArrayPoolList<int> resolveOrdering = new(_maxJobSize);
+        ArrayPoolList<(TrieNode, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
+        ArrayPoolList<int> resolveOrdering = new(_maxBatchSize);
         while ((currentBatch = GetNextBatch()) != null)
         {
             // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
@@ -318,8 +333,8 @@ public class BatchedTrieVisitor
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     struct Job
     {
-        public ValueKeccak Key;
-        public SmallTrieVisitContext Context;
+        public readonly ValueKeccak Key;
+        public readonly SmallTrieVisitContext Context;
 
         public Job(ValueKeccak key, SmallTrieVisitContext context)
         {
