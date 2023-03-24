@@ -263,8 +263,6 @@ namespace Nethermind.Blockchain
                     .AsRlpStream().DecodeKeccak();
                 _lowestInsertedBeaconHeader = FindHeader(lowestBeaconHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
-
-            if (_logger.IsInfo) _logger.Info($"Loaded LowestInsertedBeaconHeader: {LowestInsertedBeaconHeader}");
         }
 
         private void LoadLowestInsertedHeader()
@@ -1357,6 +1355,8 @@ namespace Nethermind.Blockchain
                 bool lastProcessedBlock = i == blocks.Count - 1;
                 MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
             }
+
+            OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
         }
 
         public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
@@ -1557,7 +1557,7 @@ namespace Nethermind.Blockchain
                 if (data is not null)
                 {
                     startBlock = FindBlock(new Keccak(data), BlockTreeLookupOptions.None);
-                    _logger.Warn($"Start block loaded from HEAD - {startBlock?.ToString(Block.Format.Short)}");
+                    if (_logger.IsInfo) _logger.Info($"Start block loaded from HEAD - {startBlock?.ToString(Block.Format.Short)}");
                 }
             }
 
@@ -1939,6 +1939,8 @@ namespace Nethermind.Blockchain
         }
 
         public event EventHandler<BlockReplacementEventArgs>? BlockAddedToMain;
+
+        public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain;
 
         public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock;
 

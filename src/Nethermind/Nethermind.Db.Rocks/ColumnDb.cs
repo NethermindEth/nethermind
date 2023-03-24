@@ -23,7 +23,7 @@ public class ColumnDb : IDbWithSpan
         Name = name;
     }
 
-    public void Dispose() { GC.SuppressFinalize(this); }
+    public void Dispose() { }
 
     public string Name { get; }
 

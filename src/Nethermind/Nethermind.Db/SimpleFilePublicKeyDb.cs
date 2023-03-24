@@ -292,7 +292,6 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
-            GC.SuppressFinalize(this);
         }
     }
 }

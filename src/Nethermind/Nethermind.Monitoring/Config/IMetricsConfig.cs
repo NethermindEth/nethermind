@@ -5,7 +5,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Monitoring.Config
 {
-    [ConfigCategory(Description = "Configuration of the Prometheus metrics publication. Documentation of the required setup is not yet ready (but the metrics do work and are used by the dev team)")]
+    [ConfigCategory(Description = "Configuration of the metrics provided by a Nethermind node for both, the Prometheus and the dotnet-counters.")]
     public interface IMetricsConfig : IConfig
     {
         [ConfigItem(Description = "If set, the node exposes Prometheus metrics on the given port.", DefaultValue = "null")]
@@ -13,6 +13,9 @@ namespace Nethermind.Monitoring.Config
 
         [ConfigItem(Description = "If 'true',the node publishes various metrics to Prometheus Pushgateway at given interval.", DefaultValue = "false")]
         bool Enabled { get; }
+
+        [ConfigItem(Description = "If 'true',the node publishes metrics using .NET diagnostics that can be collected with dotnet-counters.", DefaultValue = "false")]
+        bool CountersEnabled { get; }
 
         [ConfigItem(Description = "Prometheus Pushgateway URL.", DefaultValue = "")]
         string PushGatewayUrl { get; }
