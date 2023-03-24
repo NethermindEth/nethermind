@@ -91,6 +91,7 @@ public class GCKeeper
                     try
                     {
                         System.GC.EndNoGCRegion();
+                        _gcKeeper.ScheduleGC();
                     }
                     catch (InvalidOperationException)
                     {
@@ -104,8 +105,6 @@ public class GCKeeper
                 else if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with {_size} bytes");
             }
             else if (_logger.IsDebug) _logger.Debug($"Failed to start NoGCRegion with {_size} bytes with cause {_failCause.FastToString()}");
-
-            _gcKeeper.ScheduleGC();
         }
     }
 
@@ -133,14 +132,18 @@ public class GCKeeper
             // This should give time to finalize response in Engine API
             // Normally we should get block every 12s (5s on some chains)
             // Lets say we process block in 2s, then delay 1s, then invoke GC
-            await Task.Delay(1000);
+            await Task.Delay(100);
             if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
             if (generation == IGCStrategy.Gen2 && compacting == IGCStrategy.LOHCompacting)
             {
                 GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
             }
-            System.GC.Collect(generation, GCCollectionMode.Default, blocking: false, compacting: compacting > 0);
-            await Task.Delay(1000); // lets keep the task alive for next 1s for GC to complete
+
+            if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
+            {
+                System.GC.Collect(generation, GCCollectionMode.Default, blocking: false, compacting: compacting > 0);
+                await Task.Delay(100); // lets keep the task alive for next 1s for GC to complete
+            }
         }
     }
 }
