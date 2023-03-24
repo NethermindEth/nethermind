@@ -34,5 +34,6 @@ namespace Nethermind.Network.Config
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
         public long SimulateSendLatencyMs { get; set; } = 0;
+        public int ProcessingThreadCount { get; set; } = 0;
     }
 }

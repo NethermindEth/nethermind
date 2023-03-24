@@ -82,5 +82,8 @@ namespace Nethermind.Network.Config
 
         [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = "[TECHNICAL] Introduce a fixed latency for all p2p message send. Useful for testing higher latency network or simulate slower network for testing purpose.")]
         long SimulateSendLatencyMs { get; set; }
+
+        [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = "[TECHNICAL] Num of thread in final processing of network packet. Set to 0 to use processor count.")]
+        int ProcessingThreadCount { get; set; }
     }
 }

@@ -483,6 +483,7 @@ public class InitializeNetwork : IStep
             _api.MessageSerializationService,
             _api.NodeKey.PublicKey,
             _networkConfig.P2PPort,
+            _networkConfig.ProcessingThreadCount,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,
