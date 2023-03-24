@@ -48,12 +48,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         ) input)
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
-    // Override below tests for now, it fails when asserting the blockHash of produced block equals a hardcoded precomputed one.
-    // This happens because for this AuRa chain the blockHash includes AuRa specific fields, hence the hash for genesis is different
-    // causing all subsequent blocks to have a different blockHash.
-    // You can verify this by removing `SealEngineType = Nethermind.Core.SealEngineType.AuRa;` from the constructor of
-    // the test class above and rerunning the tests.
-
     [TestCase(
         "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926",
         "0x60049df788e4d9473a2547e40c3188ee464c9f8855a8d82b724f3a199d70c325",
