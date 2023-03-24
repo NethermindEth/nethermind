@@ -1,29 +1,29 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<PropertyGroup>
-		<TargetFramework>net7.0</TargetFramework>
-		<IncludeBuildOutput>false</IncludeBuildOutput>
-		<NoBuild>true</NoBuild>
-		<NoWarn>$(NoWarn);NU5131;NU5017</NoWarn>
-	</PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <NoBuild>true</NoBuild>
+    <NoWarn>$(NoWarn);NU5131;NU5017</NoWarn>
+  </PropertyGroup>
 
-	<PropertyGroup>
-		<Authors>Nethermind</Authors>
-		<Description>The reference assemblies of the Nethermind execution client</Description>
-		<EmbedUntrackedSources>false</EmbedUntrackedSources>
-		<IncludeSymbols>false</IncludeSymbols>
-		<PackageId>Nethermind.ReferenceAssemblies</PackageId>
-		<PackageLicenseExpression>LGPL-3.0-only</PackageLicenseExpression>
-		<PackageProjectUrl>https://nethermind.io/nethermind-client</PackageProjectUrl>
-		<PackageTags>nethermind</PackageTags>
-		<RepositoryType>git</RepositoryType>
-		<RepositoryUrl>https://github.com/nethermindeth/nethermind</RepositoryUrl>
-	</PropertyGroup>
+  <PropertyGroup>
+    <Authors>Nethermind</Authors>
+    <Description>The reference assemblies of the Nethermind Ethereum execution client</Description>
+    <EmbedUntrackedSources>false</EmbedUntrackedSources>
+    <IncludeSymbols>false</IncludeSymbols>
+    <PackageId>Nethermind.ReferenceAssemblies</PackageId>
+    <PackageLicenseExpression>LGPL-3.0-only</PackageLicenseExpression>
+    <PackageProjectUrl>https://nethermind.io/nethermind-client</PackageProjectUrl>
+    <PackageTags>nethermind</PackageTags>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/nethermindeth/nethermind</RepositoryUrl>
+  </PropertyGroup>
 
-	<ItemGroup>
-		<Content Include="ref/**/*.dll" Pack="true" PackagePath="ref/net7.0">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-	</ItemGroup>
+  <ItemGroup>
+    <Content Include="ref/**/*.dll" Pack="true" PackagePath="ref/net7.0">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
 </Project>
