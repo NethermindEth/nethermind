@@ -34,7 +34,6 @@ public class WithdrawalProcessor : IWithdrawalProcessor
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
         var count = block.Withdrawals.Length;
-        // TODO: Consider using ArrayPoolList<T>
         var amounts = new ulong[count];
         var addresses = new Address[count];
 
