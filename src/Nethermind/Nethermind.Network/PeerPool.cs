@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -185,14 +186,18 @@ namespace Nethermind.Network
                 try
                 {
                     _peerPersistenceTimer.Enabled = false;
-                    RunPeerCommit();
+                    _storageCommitTask = RunPeerCommit().ContinueWith(x =>
+                    {
+                        if (x.IsFaulted && _logger.IsError)
+                        {
+                            _logger.Error($"Error during peer storage commit: {x.Exception}");
+                        }
+                        _peerPersistenceTimer.Enabled = true;
+                    });
                 }
                 catch (Exception exception)
                 {
                     if (_logger.IsDebug) _logger.Error("Peer persistence timer failed", exception);
-                }
-                finally
-                {
                     _peerPersistenceTimer.Enabled = true;
                 }
             };
@@ -200,8 +205,10 @@ namespace Nethermind.Network
             _peerPersistenceTimer.Start();
         }
 
-        private void RunPeerCommit()
+        private async Task RunPeerCommit()
         {
+            // Return the Task immediately so it can be set in the _storageCommitTask field
+            await Task.Yield();
             try
             {
                 UpdateReputationAndMaxPeersCount();
@@ -212,22 +219,8 @@ namespace Nethermind.Network
                     return;
                 }
 
-                _storageCommitTask = Task.Run(() =>
-                {
-                    _peerStorage.Commit();
-                    _peerStorage.StartBatch();
-                });
-
-
-                Task task = _storageCommitTask.ContinueWith(x =>
-                {
-                    if (x.IsFaulted && _logger.IsError)
-                    {
-                        _logger.Error($"Error during peer storage commit: {x.Exception}");
-                    }
-                });
-                task.Wait();
-                _storageCommitTask = null;
+                _peerStorage.Commit();
+                _peerStorage.StartBatch();
             }
             catch (Exception ex)
             {

@@ -60,21 +60,9 @@ namespace Nethermind.Network
             _sessions.TryRemove(session.SessionId, out session);
         }
 
-        private void SendPingMessages()
-        {
-            Task task = Task.Run(SendPingMessagesAsync).ContinueWith(x =>
-            {
-                if (x.IsFaulted && _logger.IsError)
-                {
-                    if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error during send ping messages: {x.Exception}");
-                }
-            });
-
-            task.Wait();
-        }
-
         private async Task SendPingMessagesAsync()
         {
+            _pingTasks.Clear();
             foreach (ISession session in _sessions.Values)
             {
                 if (session.State == SessionState.Initialized && DateTime.UtcNow - session.LastPingUtc > _pingInterval)
@@ -84,7 +72,7 @@ namespace Nethermind.Network
                 }
             }
 
-            if (_pingTasks.Any())
+            if (_pingTasks.Count > 0)
             {
                 bool[] tasks = await Task.WhenAll(_pingTasks);
                 int tasksLength = tasks.Length;
@@ -150,14 +138,19 @@ namespace Nethermind.Network
                 try
                 {
                     _pingTimer.Enabled = false;
-                    SendPingMessages();
+                    SendPingMessagesAsync().ContinueWith(x =>
+                    {
+                        if (x.IsFaulted && _logger.IsError)
+                        {
+                            _logger.Error($"DEBUG/ERROR Error during send ping messages: {x.Exception}");
+                        }
+                        _pingTasks.Clear();
+                        _pingTimer.Enabled = true;
+                    });
                 }
                 catch (Exception exception)
                 {
                     if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Ping timer failed", exception);
-                }
-                finally
-                {
                     _pingTasks.Clear();
                     _pingTimer.Enabled = true;
                 }

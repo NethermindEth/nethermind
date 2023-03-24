@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -299,23 +300,31 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 if (_logger.IsDebug) _logger.Debug($"Running discovery with interval {_discoveryTimer.Interval}");
                 _discoveryTimer.Enabled = false;
-                RunDiscoveryProcess();
-                int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
-                _discoveryTimer.Interval =
-                    nodesCountAfterDiscovery < 16
-                        ? 10
-                        : nodesCountAfterDiscovery < 128
-                            ? 100
-                            : nodesCountAfterDiscovery < 256
-                                ? 1000
-                                : _discoveryConfig.DiscoveryInterval;
+
+                RunDiscoveryProcess().ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        _logger.Error("Discovery timer failed", t.Exception);
+                    }
+                    else
+                    {
+                        int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
+                        _discoveryTimer.Interval =
+                            nodesCountAfterDiscovery < 16
+                                ? 10
+                                : nodesCountAfterDiscovery < 128
+                                    ? 100
+                                    : nodesCountAfterDiscovery < 256
+                                        ? 1000
+                                        : _discoveryConfig.DiscoveryInterval;
+                    }
+                    _discoveryTimer.Enabled = true;
+                });
             }
             catch (Exception exception)
             {
-                if (_logger.IsDebug) _logger.Error("Discovery timer failed", exception);
-            }
-            finally
-            {
+                _logger.Error("Discovery timer failed", exception);
                 _discoveryTimer.Enabled = true;
             }
         };
@@ -345,14 +354,18 @@ public class DiscoveryApp : IDiscoveryApp
             try
             {
                 _discoveryPersistenceTimer.Enabled = false;
-                RunDiscoveryCommit();
+                _storageCommitTask = RunDiscoveryCommit().ContinueWith(x =>
+                {
+                    if (x.IsFaulted && _logger.IsError)
+                    {
+                        _logger.Error($"Error during discovery commit: {x.Exception}");
+                    }
+                    _discoveryPersistenceTimer.Enabled = true;
+                });
             }
             catch (Exception exception)
             {
-                if (_logger.IsDebug) _logger.Error("Discovery persistence timer failed", exception);
-            }
-            finally
-            {
+                _logger.Error("Discovery persistence timer failed", exception);
                 _discoveryPersistenceTimer.Enabled = true;
             }
         };
@@ -500,27 +513,25 @@ public class DiscoveryApp : IDiscoveryApp
         return reachedNodeCounter > 0;
     }
 
-    private void RunDiscoveryProcess()
+    private async Task RunDiscoveryProcess()
     {
-        Task disc = RunDiscoveryAsync(_appShutdownSource.Token).ContinueWith(t =>
+        try
         {
-            if (t.IsFaulted)
-            {
-                _logger.Error($"Error during discovery process: {t.Exception}");
-            }
-        });
-
-        disc.Wait();
-
-        Task refresh = RunRefreshAsync(_appShutdownSource.Token).ContinueWith(t =>
+            await RunDiscoveryAsync(_appShutdownSource.Token);
+        }
+        catch (Exception e)
         {
-            if (t.IsFaulted)
-            {
-                _logger.Error($"Error during discovery refresh process: {t.Exception}");
-            }
-        });
+            _logger.Error($"Error during discovery process: {e}");
+        }
 
-        refresh.Wait();
+        try
+        {
+            await RunRefreshAsync(_appShutdownSource.Token);
+        }
+        catch (Exception e)
+        {
+            _logger.Error($"Error during discovery refresh process: {e}");
+        }
     }
 
     private async Task RunDiscoveryAsync(CancellationToken cancellationToken)
@@ -537,8 +548,10 @@ public class DiscoveryApp : IDiscoveryApp
     }
 
     [Todo(Improve.Allocations, "Remove ToArray here - address as a part of the network DB rewrite")]
-    private void RunDiscoveryCommit()
+    private async Task RunDiscoveryCommit()
     {
+        // Return the Task immediately so it can be set in the _storageCommitTask field
+        await Task.Yield();
         try
         {
             IReadOnlyCollection<INodeLifecycleManager> managers = _discoveryManager.GetNodeLifecycleManagers();
@@ -552,21 +565,8 @@ public class DiscoveryApp : IDiscoveryApp
                 return;
             }
 
-            _storageCommitTask = Task.Run(() =>
-            {
-                _discoveryStorage.Commit();
-                _discoveryStorage.StartBatch();
-            });
-
-            Task task = _storageCommitTask.ContinueWith(x =>
-            {
-                if (x.IsFaulted && _logger.IsError)
-                {
-                    _logger.Error($"Error during discovery commit: {x.Exception}");
-                }
-            });
-            task.Wait();
-            _storageCommitTask = null;
+            _discoveryStorage.Commit();
+            _discoveryStorage.StartBatch();
         }
         catch (Exception ex)
         {
