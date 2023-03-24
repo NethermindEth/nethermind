@@ -42,7 +42,7 @@ fi
 
 cd $PACKAGE_PATH
 
-for rid in "linux-x64" "linux-arm64" "windows-x64" "macos-x64" "macos-arm64"
+for rid in "linux-x64" "linux-arm64" "windows-x64" "macos-x64" "macos-arm64" "plugin-sdk"
 do
   FILE_NAME=$(basename *$rid*)
 

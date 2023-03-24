@@ -1,0 +1,46 @@
+name: Publish NuGet packages
+
+on:
+  release:
+    types: [published]
+  
+env:
+  RELEASE_URL: https://api.github.com/repos/nethermindeth/nethermind/releases/latest
+  
+jobs:
+  get-release:
+    name: Get latest release
+    runs-on: ubuntu-latest
+    outputs:
+      COMMIT: ${{ steps.release.outputs.COMMIT }}
+      PRERELEASE: ${{ steps.release.outputs.PRERELEASE }}
+      URL: ${{ steps.release.outputs.URL }}
+      VERSION: ${{ steps.release.outputs.VERSION }}
+    steps:
+    - name: Get release metadata
+      id: release
+      run: |
+        read tag_name prerelease url < <(echo $(curl -s ${{ env.RELEASE_URL }} | jq -r '.tag_name, .prerelease, (.assets[].browser_download_url | select(contains("plugin-sdk")))'))
+        echo "PRERELEASE=$prerelease" >> $GITHUB_OUTPUT
+        echo "URL=$url" >> $GITHUB_OUTPUT
+        echo "VERSION=$tag_name" >> $GITHUB_OUTPUT
+
+  publish-ref-assemblies:
+    name: Publish Nethermind.ReferenceAssemblies
+    runs-on: ubuntu-latest
+    needs: get-release
+    if: needs.get-release.outputs.PRERELEASE == 'false'
+    steps:
+    - name: Check out Nethermind repository
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ needs.get-release.outputs.VERSION }}
+    - name: Download Nethermind reference assemblies
+      run: |
+        curl -sL ${{ needs.get-release.outputs.URL }} -o refasm.zip
+        unzip refasm.zip -d src/Nethermind/Nethermind.ReferenceAssemblies/ref
+    - name: Submit package
+      working-directory: src/Nethermind/Nethermind.ReferenceAssemblies
+      run: | 
+        dotnet pack -c release
+        dotnet nuget push bin/release/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json

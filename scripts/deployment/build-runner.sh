@@ -15,7 +15,13 @@ for rid in "linux-x64" "linux-arm64" "win-x64" "osx-x64" "osx-arm64"
 do
   echo "  Publishing for $rid"
 
-  dotnet publish -c release -r $rid -o $OUTPUT_PATH/$rid --sc true -p:Commit=$2 -p:BuildTimestamp=$3 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true
+  dotnet publish -c release -r $rid -o $OUTPUT_PATH/$rid --sc true \
+    -p:BuildTimestamp=$3 \
+    -p:Commit=$2 \
+    -p:Deterministic=true \
+    -p:IncludeAllContentForSelfExtract=true \
+    -p:ProduceReferenceAssembly=true \
+    -p:PublishSingleFile=true
 
   rm -rf $OUTPUT_PATH/$rid/*.pdb
   rm -rf $OUTPUT_PATH/$rid/Data/*
@@ -24,5 +30,9 @@ do
   cp Data/static-nodes.json $OUTPUT_PATH/$rid/Data
   mkdir $OUTPUT_PATH/$rid/keystore
 done
+
+cd ..
+mkdir $OUTPUT_PATH/ref
+cp **/obj/release/**/ref/*.dll $OUTPUT_PATH/ref
 
 echo "Build completed"
