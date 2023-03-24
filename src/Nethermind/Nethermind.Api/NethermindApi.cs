@@ -101,7 +101,7 @@ namespace Nethermind.Api
             );
         }
 
-        public IBlockProcessorFactory BlockProcessorFactory { get; set; }
+        public IApiComponentFactory<IBlockProcessor> BlockProcessorFactory { get; set; }
 
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
         public IBlockchainProcessor? BlockchainProcessor { get; set; }

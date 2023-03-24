@@ -354,21 +354,7 @@ namespace Nethermind.Init.Steps
         //       We keep this here only for plugins with custom initialization steps (only AuRa)
         protected virtual IBlockProcessor CreateBlockProcessor()
         {
-            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
-
-            return _api.BlockProcessorFactory.Create(
-                _api.SpecProvider,
-                _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.StateProvider!),
-                _api.StateProvider,
-                _api.StorageProvider,
-                _api.ReceiptStorage,
-                _api.WitnessCollector,
-                null,
-                _api.LogManager);
+            return _api.BlockProcessorFactory.Create();
         }
 
         // TODO: remove from here - move to consensus?

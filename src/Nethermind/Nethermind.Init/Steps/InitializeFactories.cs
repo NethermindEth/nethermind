@@ -7,16 +7,16 @@ namespace Nethermind.Init.Steps;
 
 public class InitializeFactories : IStep
 {
-    private readonly IApiWithFactories _setApi;
+    private readonly INethermindApi _api;
 
     public InitializeFactories(INethermindApi api)
     {
-        (_, _setApi) = api.ForInit;
+        _api = api;
     }
 
     public Task Execute(CancellationToken cancellationToken)
     {
-        _setApi.BlockProcessorFactory = new BlockProcessorFactory();
+        _api.BlockProcessorFactory = new BlockProcessorFactory(_api);
 
         return Task.CompletedTask;
     }

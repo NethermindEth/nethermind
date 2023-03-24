@@ -1,8 +1,9 @@
 using Nethermind.Api.Factories;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Api;
 
 public interface IApiWithFactories : IApiWithStores
 {
-    IBlockProcessorFactory BlockProcessorFactory { get; set; }
+    IApiComponentFactory<IBlockProcessor> BlockProcessorFactory { get; set; }
 }
