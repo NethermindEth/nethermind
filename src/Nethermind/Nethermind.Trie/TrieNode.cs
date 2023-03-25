@@ -28,7 +28,7 @@ namespace Nethermind.Trie
 
         private static object _nullNode = new();
         private static TrieNodeDecoder _nodeDecoder = new();
-        private static AccountDecoder _accountDecoder = new();
+        private static AccountDecoder _accountDecoder = new(slimFormat: true);
         private static Action<TrieNode> _markPersisted => tn => tn.IsPersisted = true;
         private object?[]? _data;
 
