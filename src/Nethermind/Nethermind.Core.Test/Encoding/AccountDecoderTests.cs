@@ -34,5 +34,31 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(decoded.CodeHash, TestItem.KeccakA);
             Assert.AreEqual(decoded.StorageRoot, TestItem.KeccakB);
         }
+
+        [Test]
+        public void Roundtrip_eoa_test()
+        {
+            Account account = new Account(100).WithChangedNonce(1);
+            AccountDecoder decoder = new(slimFormat: false);
+            Rlp rlp = decoder.Encode(account);
+            Account decoded = decoder.Decode(new RlpStream(rlp.Bytes))!;
+            Assert.AreEqual((int)decoded.Balance, 100);
+            Assert.AreEqual((int)decoded.Nonce, 1);
+            Assert.AreEqual(decoded.CodeHash, Keccak.OfAnEmptyString);
+            Assert.AreEqual(decoded.StorageRoot, Keccak.EmptyTreeHash);
+        }
+
+        [Test]
+        public void Roundtrip_eoa_test_slim()
+        {
+            Account account = new Account(100).WithChangedNonce(1);
+            AccountDecoder decoder = new(slimFormat: true);
+            Rlp rlp = decoder.Encode(account);
+            Account decoded = decoder.Decode(new RlpStream(rlp.Bytes))!;
+            Assert.AreEqual((int)decoded.Balance, 100);
+            Assert.AreEqual((int)decoded.Nonce, 1);
+            Assert.AreEqual(decoded.CodeHash, Keccak.OfAnEmptyString);
+            Assert.AreEqual(decoded.StorageRoot, Keccak.EmptyTreeHash);
+        }
     }
 }
