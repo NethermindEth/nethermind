@@ -57,7 +57,10 @@ public class CompressingStore : IKeyValueStoreWithBatching
     static readonly byte[] EmptyStringBytes = Rlp.Encode(Keccak.OfAnEmptyString.Bytes).Bytes;
     private const int CompressedAwayLength = 33;
 
-    private const int MaxLength = 127 + CompressedAwayLength;
+    /// <summary>
+    /// The best estimate of max length at the moment. Maybe can be a bit bigger?
+    /// </summary>
+    private const int MaxLength = (byte.MaxValue & IndexMask) - IndexShift + CompressedAwayLength;
 
     // 1 for preamble and 1 for each compressed-away value
     private const int TotalCompressionBytes = SlotCount + 1;
@@ -67,7 +70,8 @@ public class CompressingStore : IKeyValueStoreWithBatching
     private const byte PreambleValue = 0;
     private const byte EmptyTreeBytesBit = 0b1000_0000;
     private const byte EmptyStringBytesBit = 0b0000_0000;
-    private const byte EntryMask = 0b0111_1111;
+    private const byte IndexMask = 0b0111_1111;
+    private const byte TypeMask = 0b1000_0000;
 
     /// <summary>
     /// Index shift is used to make index of 0, non-zero, so that checking for existence can be made with 0.
@@ -192,10 +196,11 @@ public class CompressingStore : IKeyValueStoreWithBatching
 
         if (compressedAwayCount == 1)
         {
-            int index = (EntryMask & bytes[PreambleByte + 1]) - IndexShift;
+            int index = (IndexMask & bytes[PreambleByte + 1]) - IndexShift;
 
             // only 1, find which case
-            if ((bytes[PreambleByte + 1] & EmptyTreeBytesBit) == EmptyTreeBytesBit)
+            // ReSharper disable once ConvertIfStatementToConditionalTernaryExpression
+            if ((bytes[PreambleByte + 1] & TypeMask) == EmptyTreeBytesBit)
             {
                 // empty tree case
                 CopyWithDecompressionOfOne(source, index, destination, EmptyTreeBytes);
@@ -208,7 +213,21 @@ public class CompressingStore : IKeyValueStoreWithBatching
         }
         else
         {
-            throw new NotImplementedException("Not implemented now");
+            byte[] compressedAway0 = (bytes[PreambleByte + 1] & TypeMask) == EmptyStringBytesBit
+                ? EmptyStringBytes
+                : EmptyTreeBytes;
+            int index0 = (IndexMask & bytes[PreambleByte + 1]) - IndexShift;
+
+            byte[] compressedAway1 = (bytes[PreambleByte + 2] & TypeMask) == EmptyStringBytesBit
+                ? EmptyStringBytes
+                : EmptyTreeBytes;
+            int index1 = (IndexMask & bytes[PreambleByte + 2]) - IndexShift;
+
+            source.Slice(0, index0).CopyTo(destination);
+            compressedAway0.CopyTo(destination.Slice(index0));
+            source.Slice(index0, index1 - index0 - CompressedAwayLength).CopyTo(destination.Slice(index0 + CompressedAwayLength));
+            compressedAway1.CopyTo(destination.Slice(index1));
+            source.Slice(index1 - CompressedAwayLength).CopyTo(destination.Slice(index1 + CompressedAwayLength));
         }
 
         return result;
