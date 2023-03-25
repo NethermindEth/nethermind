@@ -14,7 +14,7 @@ namespace Nethermind.State
 {
     public class StateTree : PatriciaTree
     {
-        private readonly AccountDecoder _decoder = new();
+        private readonly AccountDecoder _decoder = new(slimFormat: true);
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
