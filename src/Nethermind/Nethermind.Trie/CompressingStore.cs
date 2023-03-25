@@ -11,7 +11,7 @@ namespace Nethermind.Trie;
 
 public static class KeyValueStoreCompressingExtensions
 {
-    // TODO: consider wrapping IDbWithSpan to make the read with a span, with no allocs
+    // TODO: consider wrapping IDbWithSpan to make the read with a span, with no allocs?
     public static IKeyValueStoreWithBatching Compressed(this IKeyValueStoreWithBatching @this) =>
         new CompressingStore(@this);
 }

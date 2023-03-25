@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Serialization.Rlp;
@@ -64,30 +65,64 @@ namespace Nethermind.Store.Test
             ctx.Wrapped[Key]!.Length.Should().Be(expectedRawLength);
         }
 
+        [Test]
+        public void Backward_compatible_read()
+        {
+            Context ctx = new();
+            byte[] value = { 1, 2, 34 };
+
+            ctx.Wrapped[Key] = value;
+
+            CollectionAssert.AreEqual(value, ctx.Compressing[Key]);
+        }
+
+        [Test]
+        public void Compression_is_safe_for_long_buffers()
+        {
+            Context ctx = new();
+            byte[] value = Enumerable.Range(1, 253).Select(i => (byte)i).Concat(EmptyString).ToArray();
+
+            ctx.Compressing[Key] = value;
+
+            CollectionAssert.AreEqual(value, ctx.Compressing[Key]);
+            ctx.Wrapped[Key]!.Length.Should().Be(value.Length);
+        }
+
+        [Test]
+        public void Batch()
+        {
+            Context ctx = new();
+
+            using (IBatch batch = ctx.Compressing.StartBatch())
+            {
+                batch[Key] = EmptyString;
+                CollectionAssert.AreEqual(EmptyString, batch[Key]);
+            }
+
+            ctx.Wrapped[Key]!.Length.Should().Be(3);
+        }
+
         public static IEnumerable<TestCaseData> BuildCases()
         {
-            byte[] emptyTree = Rlp.Encode(Keccak.EmptyTreeHash.Bytes).Bytes;
-            byte[] emptyString = Rlp.Encode(Keccak.OfAnEmptyString.Bytes).Bytes;
-
-            yield return new TestCaseData(emptyTree, 3)
+            yield return new TestCaseData(EmptyTree, 3)
                 .SetName("EmptyTreeBytes_only");
 
-            byte[] emptyTreeMiddle = Pre.Concat(emptyTree).Concat(Post).ToArray();
+            byte[] emptyTreeMiddle = Pre.Concat(EmptyTree).Concat(Post).ToArray();
             yield return new TestCaseData(emptyTreeMiddle, emptyTreeMiddle.Length - 33 + 3)
                 .SetName("EmptyTreeBytes_in_the_middle");
 
-            yield return new TestCaseData(emptyString, 3)
+            yield return new TestCaseData(EmptyString, 3)
                 .SetName("EmptyStringBytes_only");
 
-            byte[] emptyStringMiddle = Pre.Concat(emptyString).Concat(Post).ToArray();
+            byte[] emptyStringMiddle = Pre.Concat(EmptyString).Concat(Post).ToArray();
             yield return new TestCaseData(emptyStringMiddle, emptyStringMiddle.Length - 33 + 3)
                 .SetName("EmptyStringBytes_in_the_middle");
 
-            byte[] emptyStringThenEmptyTree = Pre.Concat(emptyString).Concat(Middle).Concat(emptyTree).Concat(Post).ToArray();
+            byte[] emptyStringThenEmptyTree = Pre.Concat(EmptyString).Concat(Middle).Concat(EmptyTree).Concat(Post).ToArray();
             yield return new TestCaseData(emptyStringThenEmptyTree, emptyStringThenEmptyTree.Length - 66 + 3)
                 .SetName("EmptyString_then_EmptyTree");
 
-            byte[] emptyTreeThenEmptyString = Pre.Concat(emptyTree).Concat(Middle).Concat(emptyString).Concat(Post).ToArray();
+            byte[] emptyTreeThenEmptyString = Pre.Concat(EmptyTree).Concat(Middle).Concat(EmptyString).Concat(Post).ToArray();
             yield return new TestCaseData(emptyTreeThenEmptyString, emptyTreeThenEmptyString.Length - 66 + 3)
                 .SetName("EmptyTree_then_EmptyString");
         }
@@ -104,6 +139,9 @@ namespace Nethermind.Store.Test
                 Compressing = new CompressingStore(Wrapped);
             }
         }
+
+        private static readonly byte[] EmptyTree = Rlp.Encode(Keccak.EmptyTreeHash.Bytes).Bytes;
+        private static readonly byte[] EmptyString = Rlp.Encode(Keccak.OfAnEmptyString.Bytes).Bytes;
 
         private static readonly byte[] Key = { 1 };
 
