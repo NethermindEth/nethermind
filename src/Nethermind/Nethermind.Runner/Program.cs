@@ -199,6 +199,10 @@ namespace Nethermind.Runner
 
                     _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
                 }
+                catch (TaskCanceledException)
+                {
+                    if (_logger.IsTrace) _logger.Trace("Runner Task was canceled");
+                }
                 catch (OperationCanceledException)
                 {
                     if (_logger.IsTrace) _logger.Trace("Runner operation was canceled");
