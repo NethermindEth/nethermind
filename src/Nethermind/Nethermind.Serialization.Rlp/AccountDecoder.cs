@@ -11,6 +11,16 @@ namespace Nethermind.Serialization.Rlp
 {
     public class AccountDecoder : IRlpObjectDecoder<Account?>, IRlpStreamDecoder<Account?>
     {
+        public ReadOnlySpan<byte> EmptyCodeHashStorageRoot => new byte[]
+        {
+            160,
+            86, 232, 31, 23, 27, 204, 85, 166, 255, 131, 69, 230, 146, 192, 248, 110, 91, 72, 224, 27, 153, 108, 173, 192, 1, 98, 47, 181, 227, 99, 180, 33,
+            160,
+            197, 210, 70, 1, 134, 247, 35, 60, 146, 126, 125, 178, 220, 199, 3, 192, 229, 0, 182, 83, 202, 130, 39, 59, 123, 250, 216, 4, 93, 133, 164, 112
+        };
+
+        public ReadOnlySpan<byte> SlimEmptyCodeHashStorageRoot => new byte[] { 128, 128 };
+
         private readonly bool _slimFormat;
 
         public AccountDecoder() { }
@@ -53,7 +63,7 @@ namespace Nethermind.Serialization.Rlp
             UInt256 balance = rlpStream.DecodeUInt256();
             Keccak storageRoot = DecodeStorageRoot(rlpStream);
             Keccak codeHash = DecodeCodeHash(rlpStream);
-            Account account = new(nonce, balance, storageRoot, codeHash);
+            Account account = Account.CreateAccount(nonce, balance, storageRoot, codeHash);
             return account;
         }
 
@@ -94,22 +104,36 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.Encode(account.Nonce);
             rlpStream.Encode(account.Balance);
 
-            if (_slimFormat && !account.HasStorage)
+            if (account is ContractAccount contractAccount)
             {
-                rlpStream.EncodeEmptyByteArray();
-            }
-            else
-            {
-                rlpStream.Encode(account.StorageRoot);
-            }
+                if (_slimFormat && !account.HasStorage)
+                {
+                    rlpStream.EncodeEmptyByteArray();
+                }
+                else
+                {
+                    rlpStream.Encode(account.StorageRoot);
+                }
 
-            if (_slimFormat && !account.HasCode)
-            {
-                rlpStream.EncodeEmptyByteArray();
+                if (_slimFormat && !account.HasCode)
+                {
+                    rlpStream.EncodeEmptyByteArray();
+                }
+                else
+                {
+                    rlpStream.Encode(account.CodeHash);
+                }
             }
             else
             {
-                rlpStream.Encode(account.CodeHash);
+                if (_slimFormat)
+                {
+                    rlpStream.Write(SlimEmptyCodeHashStorageRoot);
+                }
+                else
+                {
+                    rlpStream.Write(EmptyCodeHashStorageRoot);
+                }
             }
         }
 

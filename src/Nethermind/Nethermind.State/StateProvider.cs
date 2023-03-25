@@ -77,6 +77,17 @@ namespace Nethermind.State
 
         private readonly StateTree _tree;
 
+        public bool IsContract(Address address)
+        {
+            Account account = GetThroughCache(address);
+            if (account is null)
+            {
+                return false;
+            }
+
+            return account.IsContract;
+        }
+
         public bool AccountExists(Address address)
         {
             if (_intraBlockCache.TryGetValue(address, out Stack<int> value))
@@ -398,7 +409,7 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
-            Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+            Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
             PushNew(address, account);
         }
 

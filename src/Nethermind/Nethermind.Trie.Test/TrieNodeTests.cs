@@ -339,7 +339,7 @@ namespace Nethermind.Trie.Test
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new();
-            Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+            Account account = new(1, 100);
             AccountDecoder decoder = new();
             TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
@@ -355,7 +355,7 @@ namespace Nethermind.Trie.Test
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
             TrieVisitContext context = new();
-            Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
+            Account account = Account.CreateAccount(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
             AccountDecoder decoder = new();
             TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
@@ -371,7 +371,7 @@ namespace Nethermind.Trie.Test
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
             TrieVisitContext context = new();
-            Account account = new(1, 100, Keccak.Zero, Keccak.OfAnEmptyString);
+            Account account = Account.CreateAccount(1, 100, Keccak.Zero, Keccak.OfAnEmptyString);
             AccountDecoder decoder = new();
             TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 

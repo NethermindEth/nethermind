@@ -137,9 +137,7 @@ namespace Nethermind.Core.Test.Builders
 
             Account account = new(
                 (UInt256)random.Next(1000),
-                (UInt256)random.Next(1000),
-                Keccak.EmptyTreeHash,
-                Keccak.OfAnEmptyString);
+                (UInt256)random.Next(1000));
 
             return account;
         }
@@ -156,9 +154,7 @@ namespace Nethermind.Core.Test.Builders
         {
             Account account = new(
                 (UInt256)index,
-                (UInt256)index,
-                Keccak.EmptyTreeHash,
-                Keccak.OfAnEmptyString);
+                (UInt256)index);
 
             return account;
         }

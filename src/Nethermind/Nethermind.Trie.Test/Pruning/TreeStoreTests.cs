@@ -8,7 +8,6 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -428,7 +427,7 @@ namespace Nethermind.Trie.Test.Pruning
             storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode a = new(NodeType.Leaf);
-            Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
+            Account account = Account.CreateAccount(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
             a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
@@ -462,7 +461,7 @@ namespace Nethermind.Trie.Test.Pruning
             storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode a = new(NodeType.Leaf);
-            Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
+            Account account = Account.CreateAccount(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
             a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
@@ -501,7 +500,7 @@ namespace Nethermind.Trie.Test.Pruning
             storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode a = new(NodeType.Leaf);
-            Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
+            Account account = Account.CreateAccount(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
             a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
@@ -510,7 +509,7 @@ namespace Nethermind.Trie.Test.Pruning
             storage2.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode b = new(NodeType.Leaf);
-            Account accountB = new(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
+            Account accountB = Account.CreateAccount(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
             b.Value = _accountDecoder.Encode(accountB).Bytes;
             b.Key = Bytes.FromHexString("abcd");
             b.ResolveKey(NullTrieNodeResolver.Instance, true);
@@ -551,7 +550,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void ReadOnly_store_doesnt_change_witness()
         {
             TrieNode node = new(NodeType.Leaf);
-            Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
+            Account account = Account.CreateAccount(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
             node.Key = Bytes.FromHexString("abc");
             node.ResolveKey(NullTrieNodeResolver.Instance, true);
@@ -630,7 +629,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void ReadOnly_store_returns_copies(bool pruning)
         {
             TrieNode node = new(NodeType.Leaf);
-            Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
+            Account account = Account.CreateAccount(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
             node.Key = Bytes.FromHexString("abc");
             node.ResolveKey(NullTrieNodeResolver.Instance, true);

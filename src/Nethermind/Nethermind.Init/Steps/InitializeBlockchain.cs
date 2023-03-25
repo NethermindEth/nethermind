@@ -86,8 +86,6 @@ namespace Nethermind.Init.Steps
                 syncConfig.DownloadBodiesInFastSync = true;
             }
 
-            Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
-
             IWitnessCollector witnessCollector;
             if (syncConfig.WitnessProtocolEnabled)
             {
@@ -161,7 +159,6 @@ namespace Nethermind.Init.Steps
 
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
-            Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
             stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 

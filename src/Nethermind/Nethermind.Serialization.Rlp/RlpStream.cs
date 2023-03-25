@@ -155,10 +155,15 @@ namespace Nethermind.Serialization.Rlp
             Write(bytesToWrite.AsSpan());
         }
 
-        public virtual void Write(Span<byte> bytesToWrite)
+        public virtual void Write(ReadOnlySpan<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
+        }
+
+        public void Write(Span<byte> bytesToWrite)
+        {
+            Write((ReadOnlySpan<byte>)bytesToWrite);
         }
 
         public virtual void Write(IReadOnlyList<byte> bytesToWrite)

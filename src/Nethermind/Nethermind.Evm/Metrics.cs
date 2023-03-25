@@ -8,6 +8,16 @@ namespace Nethermind.Evm
 {
     public class Metrics
     {
+        [Description("Number of EXTCODESIZE opcodes executed.")]
+        public static long ExtCodeSizeOpcode;
+
+        [Description("Number of EXTCODESIZE ISZERO optimizations.")]
+        public static long ExtCodeSizeOptimizedIsZero;
+        [Description("Number of EXTCODESIZE GT optimizations.")]
+        public static long ExtCodeSizeOptimizedGT;
+        [Description("Number of EXTCODESIZE EQ optimizations.")]
+        public static long ExtCodeSizeOptimizedEQ;
+
         [CounterMetric]
         [Description("Number of EVM exceptions thrown by contracts.")]
         public static long EvmExceptions { get; set; }

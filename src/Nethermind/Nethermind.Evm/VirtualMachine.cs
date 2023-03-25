@@ -1246,11 +1246,72 @@ namespace Nethermind.Evm
                         }
                     case Instruction.EXTCODESIZE:
                         {
+                            Metrics.ExtCodeSizeOpcode++;
                             long gasCost = spec.GetExtCodeCost();
                             if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
                             Address address = stack.PopAddress();
                             if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
+
+                            if (programCounter < code.Length)
+                            {
+                                bool optimizeAccess = false;
+                                Instruction nextInstruction = (Instruction)code[programCounter];
+                                if (nextInstruction == Instruction.ISZERO)
+                                {
+                                    optimizeAccess = true;
+                                    Metrics.ExtCodeSizeOptimizedIsZero++;
+                                }
+                                else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
+                                        stack.PeekUInt256IsZero())
+                                {
+                                    optimizeAccess = true;
+                                    stack.PopLimbo();
+                                    if (nextInstruction == Instruction.GT)
+                                    {
+                                        Metrics.ExtCodeSizeOptimizedGT++;
+                                    }
+                                    else if (nextInstruction == Instruction.EQ)
+                                    {
+                                        Metrics.ExtCodeSizeOptimizedEQ++;
+                                    }
+                                }
+
+                                if (optimizeAccess)
+                                {
+                                    // EXTCODESIZE ISZERO/GT/EQ peephole optimization.
+                                    // In solidity 0.8.1+: `return account.code.length > 0;`
+                                    // is is a common pattern to check if address is a contract
+                                    // however we can just check the address's loaded CodeHash
+                                    // to reduce storage access from trying to load the code
+                                    if (traceOpcodes)
+                                    {
+                                        EndInstructionTrace();
+                                        StartInstructionTrace(Instruction.ISZERO, stack);
+                                    }
+
+                                    programCounter++;
+                                    if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return CallResult.OutOfGasException;
+
+                                    // IsContract
+                                    bool testValue = _state.AccountExists(address) && _state.IsContract(address);
+                                    if (nextInstruction == Instruction.GT)
+                                    {
+                                        // Invert, to IsNotContract
+                                        testValue = !testValue;
+                                    }
+
+                                    if (!testValue)
+                                    {
+                                        stack.PushOne();
+                                    }
+                                    else
+                                    {
+                                        stack.PushZero();
+                                    }
+                                    break;
+                                }
+                            }
 
                             byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                             UInt256 codeSize = (UInt256)accountCode.Length;

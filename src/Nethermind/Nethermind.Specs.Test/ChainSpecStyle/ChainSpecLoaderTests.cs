@@ -112,8 +112,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             Assert.AreEqual((long)32, chainSpec.Parameters.MaximumExtraDataSize, "extra data");
             Assert.AreEqual((long)0x0400, chainSpec.Parameters.GasLimitBoundDivisor, "gas limit bound divisor");
-            Assert.AreEqual((UInt256)0x0, chainSpec.Parameters.AccountStartNonce, "account start nonce");
-
         }
 
         private static ChainSpec LoadChainSpec(string path)

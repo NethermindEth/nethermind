@@ -49,6 +49,17 @@ namespace Nethermind.Blockchain
 
         public bool IsEmptyAccount(Address address) => GetAccount(address).IsEmpty;
 
+        public bool IsContract(Address address)
+        {
+            Account? account = GetAccount(address);
+            if (account is null)
+            {
+                return false;
+            }
+
+            return account.IsContract;
+        }
+
         public bool IsDeadAccount(Address address)
         {
             Account account = GetAccount(address);
