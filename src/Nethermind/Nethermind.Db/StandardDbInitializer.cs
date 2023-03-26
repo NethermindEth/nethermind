@@ -45,12 +45,12 @@ namespace Nethermind.Db
             RegisterDb(BuildRocksDbSettings(DbNames.BlockInfos, () => Metrics.BlockInfosDbReads++, () => Metrics.BlockInfosDbWrites++));
 
             RocksDbSettings stateDbSettings = BuildRocksDbSettings(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++);
-            RegisterCustomDb(DbNames.State, () => (new FullPruningDb(
+            RegisterCustomDb(DbNames.State, () => new FullPruningDb(
                 stateDbSettings,
                 PersistedDb
                     ? new FullPruningInnerDbFactory(RocksDbFactory, _fileSystem, stateDbSettings.DbPath)
                     : new MemDbFactoryToRocksDbAdapter(MemDbFactory),
-                () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites))).Compressed());
+                () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites)));
 
             RegisterDb(BuildRocksDbSettings(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Bloom, () => Metrics.BloomDbReads++, () => Metrics.BloomDbWrites++));
