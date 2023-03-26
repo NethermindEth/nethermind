@@ -8,8 +8,8 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -132,12 +132,12 @@ namespace Nethermind.Store.Test
         {
             public TestMemDb Wrapped { get; }
 
-            public CompressingStore Compressing { get; }
+            public CompressingDb Compressing { get; }
 
             public Context()
             {
                 Wrapped = new TestMemDb();
-                Compressing = new CompressingStore(Wrapped);
+                Compressing = new CompressingDb(Wrapped);
             }
         }
 

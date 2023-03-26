@@ -2,26 +2,31 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Trie;
+namespace Nethermind.Db;
 
 public static class KeyValueStoreCompressingExtensions
 {
-    // TODO: consider wrapping IDbWithSpan to make the read with a span, with no allocs?
-    public static IKeyValueStoreWithBatching Compressed(this IKeyValueStoreWithBatching @this) =>
-        new CompressingStore(@this);
+    /// <summary>
+    /// Applies the RLP-aware compression, that optimizes heavily some common cases of RLP stored in the db.
+    /// </summary>
+    /// <param name="this"></param>
+    /// <returns></returns>
+    public static IDb Compressed(this IDb @this) => new CompressingDb(@this);
 }
 
-public class CompressingStore : IKeyValueStoreWithBatching
+public class CompressingDb : IDb
 {
-    private readonly IKeyValueStoreWithBatching _wrapped;
+    private readonly IDb _wrapped;
 
-    public CompressingStore(IKeyValueStoreWithBatching wrapped)
+    public CompressingDb(IDb wrapped)
     {
+        // TODO: consider wrapping IDbWithSpan to make the read with a span, with no alloc for reading?
         _wrapped = wrapped;
     }
 
@@ -240,4 +245,23 @@ public class CompressingStore : IKeyValueStoreWithBatching
             span.Slice(at).CopyTo(destination.Slice(at + CompressedAwayLength));
         }
     }
+
+    public void Dispose() => _wrapped.Dispose();
+
+    public string Name => _wrapped.Name;
+
+    public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => throw new NotImplementedException();
+
+    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _wrapped.GetAll(ordered)
+        .Select(kvp => new KeyValuePair<byte[], byte[]>(kvp.Key, Decompress(kvp.Value)));
+
+    public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _wrapped.GetAllValues(ordered).Select(Decompress);
+
+    public void Remove(ReadOnlySpan<byte> key) => _wrapped.Remove(key);
+
+    public bool KeyExists(ReadOnlySpan<byte> key) => _wrapped.KeyExists(key);
+
+    public void Flush() => _wrapped.Flush();
+
+    public void Clear() => _wrapped.Clear();
 }

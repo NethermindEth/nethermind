@@ -100,6 +100,7 @@ namespace Nethermind.Init.Steps
             }
 
             CachingStore cachedStateDb = getApi.DbProvider.StateDb
+                .Compressed()
                 .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
             setApi.MainStateDbWithCache = cachedStateDb;
             IKeyValueStore codeDb = getApi.DbProvider.CodeDb
