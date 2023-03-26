@@ -329,14 +329,14 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(0, trace.Entries[0].Stack.Count, "entry[0] length");
 
             Assert.AreEqual(1, trace.Entries[1].Stack.Count, "entry[1] length");
-            Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[1].Stack[0], "entry[1][0]");
+            Assert.AreEqual($"0x{SampleHexData1}", trace.Entries[1].Stack[0], "entry[1][0]");
 
             Assert.AreEqual(2, trace.Entries[2].Stack.Count, "entry[2] length");
-            Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[2].Stack[0], "entry[2][0]");
-            Assert.AreEqual(HexZero.PadLeft(64, '0'), trace.Entries[2].Stack[1], "entry[2][1]");
+            Assert.AreEqual($"0x{SampleHexData1}", trace.Entries[2].Stack[0], "entry[2][0]");
+            Assert.AreEqual("0x0", trace.Entries[2].Stack[1], "entry[2][1]");
 
             Assert.AreEqual(1, trace.Entries[3].Stack.Count, "entry[3] length");
-            Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[3].Stack[0], "entry[3][0]");
+            Assert.AreEqual($"0x{SampleHexData1}", trace.Entries[3].Stack[0], "entry[3][0]");
         }
 
         [Test]
@@ -360,8 +360,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.AreEqual(0, trace.Entries[1].Memory.Count, "entry[1] length");
 
-            Assert.AreEqual(1, trace.Entries[2].Memory.Count, "entry[2] length");
-            Assert.AreEqual(HexZero.PadLeft(64, '0'), trace.Entries[2].Memory[0], "entry[2][0]");
+            Assert.AreEqual(0, trace.Entries[2].Memory.Count, "entry[2] length");
 
             Assert.AreEqual(1, trace.Entries[3].Memory.Count, "entry[3] length");
             Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[3].Memory[0], "entry[3][0]");
@@ -369,9 +368,8 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(1, trace.Entries[4].Memory.Count, "entry[4] length");
             Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[4].Memory[0], "entry[4][0]");
 
-            Assert.AreEqual(2, trace.Entries[5].Memory.Count, "entry[5] length");
+            Assert.AreEqual(1, trace.Entries[5].Memory.Count, "entry[5] length");
             Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[5].Memory[0], "entry[5][0]");
-            Assert.AreEqual(HexZero.PadLeft(64, '0'), trace.Entries[5].Memory[1], "entry[5][1]");
 
             Assert.AreEqual(2, trace.Entries[6].Memory.Count, "entry[2] length");
             Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[6].Memory[0], "entry[6][0]");

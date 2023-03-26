@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Test
 
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
         {
-            GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default);
+            GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default with { EnableMemory = true });
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
