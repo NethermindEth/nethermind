@@ -227,7 +227,7 @@ namespace Nethermind.State.Test.Runner
         {
         }
 
-        public void SetOperationMemory(List<string> memoryTrace)
+        public void SetOperationMemory(IEnumerable<string> memoryTrace)
         {
             if (IsTracingDetailedMemory)
             {
