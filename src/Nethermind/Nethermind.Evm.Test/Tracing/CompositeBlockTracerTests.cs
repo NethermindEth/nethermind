@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Should_create_tracer_correctly()
         {
             Keccak txHash = TestItem.KeccakA;
-            GethLikeBlockMemoryTracer gethLikeBlockTracer = new(txHash, GethTraceOptions.Default);
+            GethLikeBlockMemoryTracer gethLikeBlockTracer = new(GethTraceOptions.Default with { TxHash = txHash });
             ParityLikeBlockTracer parityLikeBlockTracer = new(txHash, ParityTraceTypes.All);
 
             CompositeBlockTracer compositeBlockTracer = new CompositeBlockTracer();

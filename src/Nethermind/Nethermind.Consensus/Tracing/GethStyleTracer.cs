@@ -106,7 +106,7 @@ namespace Nethermind.Consensus.Tracing
             if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
             block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-            GethLikeBlockMemoryTracer blockTracer = new(tx.Hash, options);
+            GethLikeBlockMemoryTracer blockTracer = new(options with { TxHash = tx.Hash });
             _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
             return blockTracer.BuildResult().SingleOrDefault();
         }

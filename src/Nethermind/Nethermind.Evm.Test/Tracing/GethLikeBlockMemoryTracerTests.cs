@@ -19,7 +19,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Starts_with_trace_set_to_null()
         {
             Keccak txHash = TestItem.KeccakA;
-            GethLikeBlockMemoryTracer blockTracer = new(txHash, GethTraceOptions.Default);
+            GethLikeBlockMemoryTracer blockTracer = new(GethTraceOptions.Default with { TxHash = txHash });
             Assert.IsNull(blockTracer.BuildResult().SingleOrDefault(), $"starts with trace set to null");
         }
 
