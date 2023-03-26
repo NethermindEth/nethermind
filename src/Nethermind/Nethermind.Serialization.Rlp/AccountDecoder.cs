@@ -93,7 +93,8 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.Encode(account.Nonce);
             rlpStream.Encode(account.Balance);
 
-            if (_slimFormat && !account.HasStorage)
+            var slim = _slimFormat && !account.HasStorage && !account.HasCode;
+            if (slim)
             {
                 rlpStream.EncodeEmptyByteArray();
             }
@@ -102,7 +103,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(account.StorageRoot);
             }
 
-            if (_slimFormat && !account.HasCode)
+            if (slim)
             {
                 rlpStream.EncodeEmptyByteArray();
             }
@@ -149,7 +150,8 @@ namespace Nethermind.Serialization.Rlp
             var contentLength = Rlp.LengthOf(item.Nonce);
             contentLength += Rlp.LengthOf(item.Balance);
 
-            if (_slimFormat && !item.HasStorage)
+            var slim = _slimFormat && !item.HasStorage && !item.HasCode;
+            if (slim)
             {
                 contentLength++;
             }
@@ -158,7 +160,7 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += Rlp.LengthOfKeccakRlp;
             }
 
-            if (_slimFormat && !item.HasCode)
+            if (slim)
             {
                 contentLength++;
             }

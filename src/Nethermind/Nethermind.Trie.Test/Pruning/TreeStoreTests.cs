@@ -419,7 +419,7 @@ namespace Nethermind.Trie.Test.Pruning
             tree.Set(TestItem.AddressB, Build.A.Account.WithBalance(1000).TestObject);
         }
 
-        private AccountDecoder _accountDecoder = new();
+        private AccountDecoder _accountDecoder = new(slimFormat: true);
 
         [Test]
         public void Will_store_storage_on_snapshot()
@@ -545,6 +545,47 @@ namespace Nethermind.Trie.Test.Pruning
             memDb[storage1.Keccak!.Bytes].Should().NotBeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
             trieStore.IsNodeCached(storage1.Keccak).Should().BeTrue();
+        }
+
+        [Test]
+        public void Will_combine_same()
+        {
+            TrieNode a = new(NodeType.Leaf);
+            Account account = new(1, 1, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Key = Bytes.FromHexString("abc");
+            a.ResolveKey(NullTrieNodeResolver.Instance, true);
+
+            TrieNode b = new(NodeType.Leaf);
+            Account accountB = new(2, 1, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+            b.Value = _accountDecoder.Encode(accountB).Bytes;
+            b.Key = Bytes.FromHexString("abcd");
+            b.ResolveKey(NullTrieNodeResolver.Instance, true);
+
+            TrieNode branch = new(NodeType.Branch);
+            branch.SetChild(0, a);
+            branch.SetChild(1, b);
+            branch.ResolveKey(NullTrieStore.Instance, true);
+
+            MemDb memDb = new();
+
+            using TrieStore trieStore = new(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
+
+            trieStore.FinishBlockCommit(TrieType.State, 0, null);
+            trieStore.CommitNode(1, new NodeCommitInfo(a));
+            trieStore.CommitNode(1, new NodeCommitInfo(b));
+            trieStore.CommitNode(1, new NodeCommitInfo(branch));
+            trieStore.FinishBlockCommit(TrieType.State, 1, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 2, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 3, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 4, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 5, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 6, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 7, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 8, branch);
+
+            memDb[a.Keccak!.Bytes].Should().NotBeNull();
+            trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
         [Test]
