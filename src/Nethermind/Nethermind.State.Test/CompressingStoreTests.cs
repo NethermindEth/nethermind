@@ -96,8 +96,9 @@ namespace Nethermind.Store.Test
             using (IBatch batch = ctx.Compressing.StartBatch())
             {
                 batch[Key] = EmptyString;
-                CollectionAssert.AreEqual(EmptyString, batch[Key]);
             }
+
+            CollectionAssert.AreEqual(EmptyString, ctx.Compressing[Key]);
 
             ctx.Wrapped[Key]!.Length.Should().Be(3);
         }
