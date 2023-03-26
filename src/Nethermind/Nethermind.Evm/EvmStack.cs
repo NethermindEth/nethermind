@@ -394,7 +394,7 @@ namespace Nethermind.Evm
             for (int i = 0; i < Head; i++)
             {
                 Span<byte> stackItem = _bytes.Slice(i * 32, 32);
-                stackTrace.Add(stackItem.ToArray().ToHexString());
+                stackTrace.Add(stackItem.ToArray().ToHexString(true, true));
             }
 
             return stackTrace;
