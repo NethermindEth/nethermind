@@ -27,7 +27,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public bool IsTracingReceipt => true;
         bool ITxTracer.IsTracingActions => false;
         public bool IsTracingOpLevelStorage { get; protected set; }
-        public bool IsTracingMemory => true;
+        public bool IsTracingMemory { get; protected set; }
         protected bool IsTracingFullMemory { get; }
         bool ITxTracer.IsTracingInstructions => true;
         public bool IsTracingRefunds { get; protected set; }

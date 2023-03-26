@@ -18,6 +18,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     {
         _dumpCallback = dumpCallback ?? throw new ArgumentNullException(nameof(dumpCallback));
 
+        IsTracingMemory = true;
         IsTracingOpLevelStorage = false;
         IsTracingRefunds = true;
     }

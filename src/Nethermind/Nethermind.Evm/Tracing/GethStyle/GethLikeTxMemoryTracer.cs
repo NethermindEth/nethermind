@@ -15,7 +15,7 @@ namespace Nethermind.Evm.Tracing.GethStyle;
 
 public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
-    public GethLikeTxMemoryTracer(GethTraceOptions options) : base(options) { }
+    public GethLikeTxMemoryTracer(GethTraceOptions options) : base(options) => IsTracingMemory = IsTracingFullMemory;
 
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
     {
