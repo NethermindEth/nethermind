@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -54,15 +51,16 @@ namespace Nethermind.Store.Test
             CollectionAssert.AreEqual(value, ctx.Wrapped[Key]);
         }
 
-        [TestCaseSource(nameof(BuildCases))]
-        public void Run(byte[] value, int expectedRawLength)
+        [Test]
+        public void EOA()
         {
             Context ctx = new();
 
-            ctx.Compressed[Key] = value;
+            Rlp encoded = new AccountDecoder().Encode((Account)new(1));
+            ctx.Compressed[Key] = encoded.Bytes;
 
-            CollectionAssert.AreEqual(value, ctx.Compressed[Key]);
-            ctx.Wrapped[Key]!.Length.Should().Be(expectedRawLength);
+            CollectionAssert.AreEqual(encoded.Bytes, ctx.Compressed[Key]);
+            ctx.Wrapped[Key]!.Length.Should().Be(5);
         }
 
         [Test]
@@ -77,77 +75,35 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Compression_is_safe_for_long_buffers()
-        {
-            Context ctx = new();
-            byte[] value = Enumerable.Range(1, 253).Select(i => (byte)i).Concat(EmptyString).ToArray();
-
-            ctx.Compressed[Key] = value;
-
-            CollectionAssert.AreEqual(value, ctx.Compressed[Key]);
-            ctx.Wrapped[Key]!.Length.Should().Be(value.Length);
-        }
-
-        [Test]
         public void Batch()
         {
             Context ctx = new();
 
             using (IBatch batch = ctx.Compressed.StartBatch())
             {
-                batch[Key] = EmptyString;
+                batch[Key] = EOABytes;
             }
 
-            CollectionAssert.AreEqual(EmptyString, ctx.Compressed[Key]);
+            CollectionAssert.AreEqual(EOABytes, ctx.Compressed[Key]);
 
-            ctx.Wrapped[Key]!.Length.Should().Be(3);
-        }
-
-        public static IEnumerable<TestCaseData> BuildCases()
-        {
-            yield return new TestCaseData(EmptyTree, 3)
-                .SetName("EmptyTreeBytes_only");
-
-            byte[] emptyTreeMiddle = Pre.Concat(EmptyTree).Concat(Post).ToArray();
-            yield return new TestCaseData(emptyTreeMiddle, emptyTreeMiddle.Length - 33 + 3)
-                .SetName("EmptyTreeBytes_in_the_middle");
-
-            yield return new TestCaseData(EmptyString, 3)
-                .SetName("EmptyStringBytes_only");
-
-            byte[] emptyStringMiddle = Pre.Concat(EmptyString).Concat(Post).ToArray();
-            yield return new TestCaseData(emptyStringMiddle, emptyStringMiddle.Length - 33 + 3)
-                .SetName("EmptyStringBytes_in_the_middle");
-
-            byte[] emptyStringThenEmptyTree = Pre.Concat(EmptyString).Concat(Middle).Concat(EmptyTree).Concat(Post).ToArray();
-            yield return new TestCaseData(emptyStringThenEmptyTree, emptyStringThenEmptyTree.Length - 66 + 3)
-                .SetName("EmptyString_then_EmptyTree");
-
-            byte[] emptyTreeThenEmptyString = Pre.Concat(EmptyTree).Concat(Middle).Concat(EmptyString).Concat(Post).ToArray();
-            yield return new TestCaseData(emptyTreeThenEmptyString, emptyTreeThenEmptyString.Length - 66 + 3)
-                .SetName("EmptyTree_then_EmptyString");
+            ctx.Wrapped[Key]!.Length.Should().Be(5);
         }
 
         private class Context
         {
             public TestMemDb Wrapped { get; }
 
-            public AccountAwareCompressingDb Compressed { get; }
+            public IDb Compressed { get; }
 
             public Context()
             {
                 Wrapped = new TestMemDb();
-                Compressed = new AccountAwareCompressingDb(Wrapped);
+                Compressed = Wrapped.WithEOACompressed();
             }
         }
 
-        private static readonly byte[] EmptyTree = Rlp.Encode(Keccak.EmptyTreeHash.Bytes).Bytes;
-        private static readonly byte[] EmptyString = Rlp.Encode(Keccak.OfAnEmptyString.Bytes).Bytes;
+        private static readonly byte[] EOABytes = new AccountDecoder().Encode((Account)new(1)).Bytes;
 
         private static readonly byte[] Key = { 1 };
-
-        private static readonly byte[] Pre = { 2, 43, 46, 42 };
-        private static readonly byte[] Middle = { 3, 64, 3, 4, 6, 3, 4, 5, 4 };
-        private static readonly byte[] Post = { 53, 63, 234, 56, 4, 23 };
     }
 }

@@ -37,7 +37,7 @@ namespace Nethermind.Db.FullPruning
             _settings = settings;
             _dbFactory = dbFactory;
             _updateDuplicateWriteMetrics = updateDuplicateWriteMetrics;
-            _currentDb = CreateDb(_settings).CompressWithAccountAwareCompression();
+            _currentDb = CreateDb(_settings).WithEOACompressed();
         }
 
         private IDb CreateDb(RocksDbSettings settings) => _dbFactory.CreateDb(settings);
