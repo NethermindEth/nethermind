@@ -14,7 +14,7 @@ namespace Nethermind.Core
     /// 42: Kovan, the public Parity-only PoA testnet
     /// 60: GoChain, the GoChain networks mainnet
     /// 99: Core, the public POA Network main network
-    /// 100: Gnosis, the public Gnosis Network main network
+    /// 100: Gnosis, the public Gnosis main network
     /// 246: EnergyWeb, the public Energyweb main network
     /// 73799: Volta, the public Volta testnet
     /// 31337: GoChain testnet, the GoChain networks public testnet
