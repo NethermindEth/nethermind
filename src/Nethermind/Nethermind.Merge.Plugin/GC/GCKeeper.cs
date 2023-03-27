@@ -141,8 +141,7 @@ public class GCKeeper
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
             {
-                System.GC.Collect(generation, GCCollectionMode.Default, blocking: false, compacting: compacting > 0);
-                await Task.Delay(100); // lets keep the task alive for next 1s for GC to complete
+                System.GC.Collect(generation, GCCollectionMode.Forced, blocking: true, compacting: compacting > 0);
             }
         }
     }
