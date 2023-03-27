@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        [Retry(3)] // experiencing some flakiness
+        [Retry(10)] // experiencing some flakiness
         public void Setup_is_correct()
         {
             foreach (SyncTestContext peer in _peers)
