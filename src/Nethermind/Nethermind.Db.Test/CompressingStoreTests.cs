@@ -22,9 +22,9 @@ namespace Nethermind.Store.Test
         {
             Context ctx = new();
 
-            ctx.Compressing[Key] = null;
+            ctx.Compressed[Key] = null;
 
-            Assert.IsNull(ctx.Compressing[Key]);
+            Assert.IsNull(ctx.Compressed[Key]);
             Assert.IsNull(ctx.Wrapped[Key]);
         }
 
@@ -35,9 +35,9 @@ namespace Nethermind.Store.Test
 
             byte[] empty = Array.Empty<byte>();
 
-            ctx.Compressing[Key] = empty;
+            ctx.Compressed[Key] = empty;
 
-            CollectionAssert.AreEqual(empty, ctx.Compressing[Key]);
+            CollectionAssert.AreEqual(empty, ctx.Compressed[Key]);
             CollectionAssert.AreEqual(empty, ctx.Wrapped[Key]);
         }
 
@@ -48,9 +48,9 @@ namespace Nethermind.Store.Test
 
             byte[] value = { 13 };
 
-            ctx.Compressing[Key] = value;
+            ctx.Compressed[Key] = value;
 
-            CollectionAssert.AreEqual(value, ctx.Compressing[Key]);
+            CollectionAssert.AreEqual(value, ctx.Compressed[Key]);
             CollectionAssert.AreEqual(value, ctx.Wrapped[Key]);
         }
 
@@ -59,9 +59,9 @@ namespace Nethermind.Store.Test
         {
             Context ctx = new();
 
-            ctx.Compressing[Key] = value;
+            ctx.Compressed[Key] = value;
 
-            CollectionAssert.AreEqual(value, ctx.Compressing[Key]);
+            CollectionAssert.AreEqual(value, ctx.Compressed[Key]);
             ctx.Wrapped[Key]!.Length.Should().Be(expectedRawLength);
         }
 
@@ -73,7 +73,7 @@ namespace Nethermind.Store.Test
 
             ctx.Wrapped[Key] = value;
 
-            CollectionAssert.AreEqual(value, ctx.Compressing[Key]);
+            CollectionAssert.AreEqual(value, ctx.Compressed[Key]);
         }
 
         [Test]
@@ -82,9 +82,9 @@ namespace Nethermind.Store.Test
             Context ctx = new();
             byte[] value = Enumerable.Range(1, 253).Select(i => (byte)i).Concat(EmptyString).ToArray();
 
-            ctx.Compressing[Key] = value;
+            ctx.Compressed[Key] = value;
 
-            CollectionAssert.AreEqual(value, ctx.Compressing[Key]);
+            CollectionAssert.AreEqual(value, ctx.Compressed[Key]);
             ctx.Wrapped[Key]!.Length.Should().Be(value.Length);
         }
 
@@ -93,12 +93,12 @@ namespace Nethermind.Store.Test
         {
             Context ctx = new();
 
-            using (IBatch batch = ctx.Compressing.StartBatch())
+            using (IBatch batch = ctx.Compressed.StartBatch())
             {
                 batch[Key] = EmptyString;
             }
 
-            CollectionAssert.AreEqual(EmptyString, ctx.Compressing[Key]);
+            CollectionAssert.AreEqual(EmptyString, ctx.Compressed[Key]);
 
             ctx.Wrapped[Key]!.Length.Should().Be(3);
         }
@@ -132,12 +132,12 @@ namespace Nethermind.Store.Test
         {
             public TestMemDb Wrapped { get; }
 
-            public CompressingDb Compressing { get; }
+            public AccountAwareCompressingDb Compressed { get; }
 
             public Context()
             {
                 Wrapped = new TestMemDb();
-                Compressing = new CompressingDb(Wrapped);
+                Compressed = new AccountAwareCompressingDb(Wrapped);
             }
         }
 

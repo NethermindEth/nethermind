@@ -13,18 +13,18 @@ namespace Nethermind.Db;
 public static class KeyValueStoreCompressingExtensions
 {
     /// <summary>
-    /// Applies the RLP-aware compression, that optimizes heavily some common cases of RLP stored in the db.
+    /// Applies the compression that optimizes heavily accounts encoded with RLP that are stored in the db.
     /// </summary>
     /// <param name="this"></param>
     /// <returns></returns>
-    public static IDb Compressed(this IDb @this) => new CompressingDb(@this);
+    public static IDb CompressWithAccountAwareCompression(this IDb @this) => new AccountAwareCompressingDb(@this);
 }
 
-public class CompressingDb : IDb
+public class AccountAwareCompressingDb : IDb
 {
     private readonly IDb _wrapped;
 
-    public CompressingDb(IDb wrapped)
+    public AccountAwareCompressingDb(IDb wrapped)
     {
         // TODO: consider wrapping IDbWithSpan to make the read with a span, with no alloc for reading?
         _wrapped = wrapped;
