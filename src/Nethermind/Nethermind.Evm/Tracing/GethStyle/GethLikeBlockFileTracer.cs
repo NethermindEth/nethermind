@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -24,7 +23,6 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     private Utf8JsonWriter _jsonWriter;
     private readonly GethTraceOptions _options;
     private readonly JsonSerializerOptions _serializerOptions = new();
-    private readonly Stopwatch _stopwatch = new();
 
     public GethLikeBlockFileTracer(Block block, GethTraceOptions options) : base(options?.TxHash)
     {
@@ -53,14 +51,11 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         var trace = txTracer.BuildResult();
 
-        _stopwatch.Stop();
-
         JsonSerializer.Serialize(_jsonWriter,
             new
             {
                 output = trace.ReturnValue.ToHexString(true),
-                gasUsed = $"0x{trace.Gas:x}",
-                time = _stopwatch.ElapsedTicks
+                gasUsed = $"0x{trace.Gas:x}"
             },
             _serializerOptions);
 
@@ -78,8 +73,6 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
 
         _file = File.OpenWrite(_fileNames.Last());
         _jsonWriter = new Utf8JsonWriter(_file);
-
-        _stopwatch.Restart();
 
         return new(DumpTraceEntry, _options);
     }
