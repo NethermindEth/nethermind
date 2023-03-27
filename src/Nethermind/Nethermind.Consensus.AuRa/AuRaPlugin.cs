@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.AuRa
         {
             return default;
         }
-        
+
         public Task InitServiceDescriptors(IServiceCollection services)
         {
             // Here we can specifiy a different implementation of the factory

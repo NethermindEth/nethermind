@@ -7,5 +7,5 @@ namespace Nethermind.Api;
 
 public interface IApiWithServiceDescriptors
 {
-        IServiceCollection ServiceDescriptors { get; }
+    IServiceCollection ServiceDescriptors { get; }
 }

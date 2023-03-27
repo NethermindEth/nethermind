@@ -74,7 +74,7 @@ namespace Nethermind.Api
         private IReadOnlyDbProvider? _readOnlyDbProvider;
 
         public IServiceCollection ServiceDescriptors { get; } = new ServiceCollection();
-        public IServiceProvider Services {get; set; }
+        public IServiceProvider Services { get; set; }
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree.AsReadOnly();
