@@ -20,7 +20,7 @@ jobs:
     - name: Get release metadata
       id: release
       run: |
-        read tag_name prerelease url < <(echo $(curl -s ${{ env.RELEASE_URL }} | jq -r '.tag_name, .prerelease, (.assets[].browser_download_url | select(contains("plugin-sdk")))'))
+        read tag_name prerelease url < <(echo $(curl -s ${{ env.RELEASE_URL }} | jq -r '.tag_name, .prerelease, (.assets[].browser_download_url | select(contains("ref-assemblies")))'))
         echo "PRERELEASE=$prerelease" >> $GITHUB_OUTPUT
         echo "URL=$url" >> $GITHUB_OUTPUT
         echo "VERSION=$tag_name" >> $GITHUB_OUTPUT

@@ -120,8 +120,8 @@ jobs:
     - name: Upload Nethermind reference assemblies
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-plugin-sdk-package
-        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*plugin-sdk*
+        name: ${{ steps.archive.outputs.PACKAGE_PREFIX }}-ref-assemblies-package
+        path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*ref-assemblies*
         retention-days: ${{ env.PACKAGE_RETENTION }}
         
   approval:
