@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.IO.Abstractions;
 using System.Threading;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Factories;
@@ -70,6 +73,8 @@ namespace Nethermind.Api
 
         private IReadOnlyDbProvider? _readOnlyDbProvider;
 
+        public IServiceCollection ServiceDescriptors { get; } = new ServiceCollection();
+        public IServiceProvider Services {get; set; }
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree.AsReadOnly();
@@ -101,7 +106,9 @@ namespace Nethermind.Api
             );
         }
 
-        public IApiComponentFactory<IBlockProcessor> BlockProcessorFactory { get; set; }
+        public IApiComponentFactory<IBlockProcessor> BlockProcessorFactory
+        // it is only okay to do this because we only use the factory once.
+            => Services.GetRequiredService<IApiComponentFactory<IBlockProcessor>>();
 
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
         public IBlockchainProcessor? BlockchainProcessor { get; set; }

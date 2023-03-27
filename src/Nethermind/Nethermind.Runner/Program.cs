@@ -17,6 +17,7 @@ using System.Threading.Tasks;
 using DotNetty.Common;
 
 using Microsoft.Extensions.CommandLineUtils;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -191,6 +192,7 @@ namespace Nethermind.Runner
                 ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
 
                 _appClosed.Reset();
+
                 EthereumRunner ethereumRunner = new(nethermindApi);
                 int exitCode = ExitCodes.Ok;
                 try

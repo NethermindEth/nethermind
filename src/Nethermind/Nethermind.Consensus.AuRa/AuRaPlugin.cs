@@ -3,9 +3,12 @@
 
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Factories;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 
@@ -16,7 +19,7 @@ namespace Nethermind.Consensus.AuRa
     /// <summary>
     /// Consensus plugin for AuRa setup.
     /// </summary>
-    public class AuRaPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+    public class AuRaPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin, IServiceDescriptorsPlugin
     {
         private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;
@@ -31,6 +34,14 @@ namespace Nethermind.Consensus.AuRa
         public ValueTask DisposeAsync()
         {
             return default;
+        }
+        
+        public Task InitServiceDescriptors(IServiceCollection services)
+        {
+            // Here we can specifiy a different implementation of the factory
+            // or disregard the factory all together in favor of specifying a defferent implementation of the BlockPorcessor
+            // services.AddSingleton<IApiComponentFactory<IBlockProcessor>, AuRaBlockProcessorFactory>();
+            return Task.CompletedTask;
         }
 
         public Task Init(INethermindApi nethermindApi)
@@ -76,5 +87,6 @@ namespace Nethermind.Consensus.AuRa
         public INethermindApi CreateApi() => new AuRaNethermindApi();
 
         public bool ShouldRunSteps(INethermindApi api) => true;
+
     }
 }

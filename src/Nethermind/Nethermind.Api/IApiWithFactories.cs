@@ -5,5 +5,5 @@ namespace Nethermind.Api;
 
 public interface IApiWithFactories : IApiWithStores
 {
-    IApiComponentFactory<IBlockProcessor> BlockProcessorFactory { get; set; }
+    IApiComponentFactory<IBlockProcessor> BlockProcessorFactory { get; }
 }

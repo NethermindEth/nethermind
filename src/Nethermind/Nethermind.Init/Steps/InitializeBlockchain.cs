@@ -44,7 +44,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitializePlugins), typeof(InitializeFactories), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(typeof(InitializePlugins), typeof(InitializeServiceDescriptors), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
     public class InitializeBlockchain : IStep
     {
         private readonly INethermindApi _api;
@@ -354,6 +354,7 @@ namespace Nethermind.Init.Steps
         //       We keep this here only for plugins with custom initialization steps (only AuRa)
         protected virtual IBlockProcessor CreateBlockProcessor()
         {
+
             return _api.BlockProcessorFactory.Create();
         }
 
