@@ -88,6 +88,14 @@ namespace Nethermind.Evm.Test
             return tracer.BuildResult();
         }
 
+        protected GethLikeTxTrace ExecuteAndTraceToFile(Action<GethTxFileTraceEntry> dumpCallback, byte[] code, GethTraceOptions options)
+        {
+            GethLikeTxFileTracer tracer = new(dumpCallback, options);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+            _processor.Execute(transaction, block.Header, tracer);
+            return tracer.BuildResult();
+        }
+
         protected TestAllTracerWithOutput Execute(long blockNumber, ulong timestamp, params byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, code, timestamp: timestamp);

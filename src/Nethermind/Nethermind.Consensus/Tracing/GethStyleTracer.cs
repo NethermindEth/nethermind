@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
@@ -25,17 +26,20 @@ namespace Nethermind.Consensus.Tracing
         private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
         private readonly IBlockchainProcessor _processor;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IFileSystem _fileSystem;
 
         public GethStyleTracer(
             IBlockchainProcessor processor,
             IReceiptStorage receiptStorage,
             IBlockTree blockTree,
-            ChangeableTransactionProcessorAdapter transactionProcessorAdapter)
+            ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
+            IFileSystem fileSystem)
         {
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _transactionProcessorAdapter = transactionProcessorAdapter;
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         public GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
@@ -137,7 +141,7 @@ namespace Nethermind.Consensus.Tracing
                     throw new InvalidOperationException("Cannot trace blocks with invalid parents");
             }
 
-            var tracer = new GethLikeBlockFileTracer(block, options);
+            var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
 
             _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
 

@@ -335,6 +335,25 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void StandardTraceBlockToFile()
+        {
+            var blockHash = Keccak.EmptyTreeHash;
+
+            static IEnumerable<string> GetFileNames(Keccak hash) =>
+                new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
+
+            debugBridge
+                .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+                .Returns(c => GetFileNames(c.ArgAt<Keccak>(0)));
+
+            var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);
+            var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
+
+            actual.Should().BeEquivalentTo(expected);
+        }
+
+        [Test]
         public void TraceBlockByHash_Success()
         {
             var traces = Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray();

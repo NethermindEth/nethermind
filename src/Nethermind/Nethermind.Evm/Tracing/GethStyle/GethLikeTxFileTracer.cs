@@ -39,7 +39,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     {
         _dumpCallback(entry);
 
-        if (_startGas == null)
+        if (_startGas is null)
             _startGas = entry.Gas;
     }
 

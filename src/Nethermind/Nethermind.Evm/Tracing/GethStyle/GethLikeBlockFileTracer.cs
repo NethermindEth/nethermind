@@ -9,6 +9,7 @@ using System.Text.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using System.IO.Abstractions;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
@@ -17,21 +18,23 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     private const string _alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
 
     private readonly Block _block;
-    private FileStream _file;
+    private Stream _file;
     private readonly string _fileNameFormat;
     private readonly List<string> _fileNames = new();
+    private IFileSystem _fileSystem;
     private Utf8JsonWriter _jsonWriter;
     private readonly GethTraceOptions _options;
     private readonly JsonSerializerOptions _serializerOptions = new();
 
-    public GethLikeBlockFileTracer(Block block, GethTraceOptions options) : base(options?.TxHash)
+    public GethLikeBlockFileTracer(Block block, GethTraceOptions options, IFileSystem fileSystem) : base(options?.TxHash)
     {
         _block = block ?? throw new ArgumentNullException(nameof(block));
+        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _options = options ?? throw new ArgumentNullException(nameof(options));
 
         var hash = _block.Hash.Bytes[..4].ToHexString(true);
 
-        _fileNameFormat = Path.Combine(Path.GetTempPath(), $"block_{hash}-{{0}}-{{1}}-{{2}}.jsonl");
+        _fileNameFormat = _fileSystem.Path.Combine(_fileSystem.Path.GetTempPath(), $"block_{hash}-{{0}}-{{1}}-{{2}}.jsonl");
 
         _serializerOptions.Converters.Add(new GethLikeTxTraceJsonConverter());
     }
@@ -71,7 +74,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
 
         _fileNames.Add(GetFileName(tx.Hash));
 
-        _file = File.OpenWrite(_fileNames.Last());
+        _file = _fileSystem.File.OpenWrite(_fileNames.Last());
         _jsonWriter = new Utf8JsonWriter(_file);
 
         return new(DumpTraceEntry, _options);

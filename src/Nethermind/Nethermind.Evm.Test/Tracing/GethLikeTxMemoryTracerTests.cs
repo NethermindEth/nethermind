@@ -13,7 +13,7 @@ namespace Nethermind.Evm.Test.Tracing
 {
     [TestFixture]
     [Parallelizable(ParallelScope.Self)]
-    public class GethLikeTxTracerTests : VirtualMachineTestsBase
+    public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     {
         [Test]
         public void Can_trace_gas()

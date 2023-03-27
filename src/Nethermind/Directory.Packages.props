@@ -69,7 +69,8 @@
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="7.0.0" />
     <PackageVersion Include="System.Diagnostics.TextWriterTraceListener" Version="4.3.0" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="6.27.0" />
-    <PackageVersion Include="System.IO.Abstractions" Version="19.1.18" />
+    <PackageVersion Include="System.IO.Abstractions" Version="19.2.4" />
+    <PackageVersion Include="System.IO.Abstractions.TestingHelpers" Version="19.2.4" />
     <PackageVersion Include="System.IO.Compression.ZipFile" Version="4.3.0" />
     <PackageVersion Include="System.Linq.Async" Version="6.0.1" />
     <PackageVersion Include="System.Net.Http" Version="4.3.4" />

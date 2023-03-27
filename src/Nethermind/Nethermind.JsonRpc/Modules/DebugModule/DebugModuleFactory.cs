@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -35,6 +36,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IReadOnlyDbProvider _dbProvider;
         private readonly IReadOnlyBlockTree _blockTree;
         private readonly ISyncModeSelector _syncModeSelector;
+        private readonly IFileSystem _fileSystem;
         private ILogger _logger;
 
         public DebugModuleFactory(
@@ -50,6 +52,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IConfigProvider configProvider,
             ISpecProvider specProvider,
             ISyncModeSelector syncModeSelector,
+            IFileSystem fileSystem,
             ILogManager logManager)
         {
             _dbProvider = dbProvider.AsReadOnly(false);
@@ -65,6 +68,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _logger = logManager.GetClassLogger();
         }
 
@@ -94,7 +98,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 chainProcessingEnv.ChainProcessor,
                 _receiptStorage,
                 _blockTree,
-                transactionProcessorAdapter);
+                transactionProcessorAdapter,
+                _fileSystem);
 
             DebugBridge debugBridge = new(
                 _configProvider,
