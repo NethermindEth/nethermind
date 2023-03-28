@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -24,7 +24,7 @@ namespace Nethermind.Evm
             return new Address(in contractAddressKeccak);
         }
 
-        public static Address From(Address deployingAddress, Span<byte> salt, Span<byte> initCode)
+        public static Address From(Address deployingAddress, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> initCode)
         {
             // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code)))
             Span<byte> bytes = new byte[1 + Address.ByteLength + 32 + salt.Length];
@@ -35,6 +35,21 @@ namespace Nethermind.Evm
 
             ValueKeccak contractAddressKeccak = ValueKeccak.Compute(bytes);
             return new Address(in contractAddressKeccak);
+        }
+
+        public static Address From(Address deployingAddress, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> initCode, ReadOnlySpan<byte> auxData)
+        {
+            // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code) ++ sha3(aux_data))
+            Span<byte> bytes = new byte[1 + Address.ByteLength + 32 + salt.Length + auxData.Length];
+            bytes[0] = 0xff;
+            deployingAddress.Bytes.CopyTo(bytes.Slice(1, 20));
+            salt.CopyTo(bytes.Slice(21, salt.Length));
+            ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(21 + salt.Length, 32));
+            auxData.CopyTo(bytes.Slice(21 + salt.Length + 32, auxData.Length));
+
+            ValueKeccak contractAddressKeccak = ValueKeccak.Compute(bytes);
+            Span<byte> addressBytes = contractAddressKeccak.BytesAsSpan[12..];
+            return new Address(addressBytes.ToArray());
         }
     }
 }

@@ -22,7 +22,7 @@ internal static class EvmObjectFormat
     }
 
     // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
-    private static byte[] MAGIC = { 0xEF, 0x00 };
+    public static byte[] MAGIC = { 0xEF, 0x00 };
     private const byte ONE_BYTE_LENGTH = 1;
     private const byte TWO_BYTE_LENGTH = 2;
     private const byte VERSION_OFFSET = TWO_BYTE_LENGTH; // magic lenght
@@ -81,6 +81,7 @@ internal static class EvmObjectFormat
         internal const byte KIND_TYPE = 0x01;
         internal const byte KIND_CODE = 0x02;
         internal const byte KIND_DATA = 0x03;
+        internal const byte KIND_CONTAINER = 0x04;
         internal const byte TERMINATOR = 0x00;
 
         internal const byte MINIMUM_TYPESECTION_SIZE = 4;
@@ -88,12 +89,19 @@ internal static class EvmObjectFormat
 
         internal const byte KIND_TYPE_OFFSET = VERSION_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH; // version length
         internal const byte TYPE_SIZE_OFFSET = KIND_TYPE_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH; // kind type length
+
         internal const byte KIND_CODE_OFFSET = TYPE_SIZE_OFFSET + EvmObjectFormat.TWO_BYTE_LENGTH; // type size length
         internal const byte NUM_CODE_SECTIONS_OFFSET = KIND_CODE_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH; // kind code length
         internal const byte CODESIZE_OFFSET = NUM_CODE_SECTIONS_OFFSET + EvmObjectFormat.TWO_BYTE_LENGTH; // num code sections length
+
         internal const byte KIND_DATA_OFFSET = CODESIZE_OFFSET + DYNAMIC_OFFSET; // all code size length
         internal const byte DATA_SIZE_OFFSET = KIND_DATA_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // kind data length + all code size length
-        internal const byte TERMINATOR_OFFSET = DATA_SIZE_OFFSET + EvmObjectFormat.TWO_BYTE_LENGTH + DYNAMIC_OFFSET; // data size length + all code size length
+
+        internal const byte KIND_CONTAINER_OFFSET = KIND_DATA_OFFSET + DYNAMIC_OFFSET; // all code size length
+        internal const byte NUM_CONTAINER_SECTIONS_OFFSET = KIND_CONTAINER_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH; // kind code length
+        internal const byte CONTAINER_OFFSET = NUM_CONTAINER_SECTIONS_OFFSET + DYNAMIC_OFFSET; // all code size length
+
+        internal const byte TERMINATOR_OFFSET = KIND_CONTAINER_OFFSET + EvmObjectFormat.TWO_BYTE_LENGTH + DYNAMIC_OFFSET; // data size length + all code size length
         internal const byte HEADER_END_OFFSET = TERMINATOR_OFFSET + EvmObjectFormat.ONE_BYTE_LENGTH + DYNAMIC_OFFSET; // terminator length + all code size length
         internal const byte DYNAMIC_OFFSET = 0; // to mark dynamic offset needs to be added
         internal const byte TWO_BYTE_LENGTH = 2;// indicates the number of bytes to skip for immediates
@@ -240,6 +248,33 @@ internal static class EvmObjectFormat
                 Size = GetUInt16(container, dataSectionOffset)
             };
 
+
+            int containersSectionsSizeUpToNow = 0;
+            SectionHeader[]? containerSections = null;
+            if (container[KIND_CONTAINER_OFFSET + dynamicOffset] == KIND_CONTAINER)
+            {
+                int containerSectionsSize = container.Slice(NUM_CONTAINER_SECTIONS_OFFSET + dynamicOffset, 2).ReadEthInt16();
+                containerSections = new SectionHeader[containerSectionsSize];
+                for (ushort pos = 0; pos < containerSectionsSize; pos++)
+                {
+                    int currentContainerSizeOffset = CONTAINER_OFFSET + dynamicOffset + pos * EvmObjectFormat.TWO_BYTE_LENGTH; // offset of pos'th code size
+                    SectionHeader containerSection = new()
+                    {
+                        Start = dataSection.EndOffset + containersSectionsSizeUpToNow,
+                        Size = GetUInt16(container, currentContainerSizeOffset)
+                    };
+
+                    if (containerSection.Size == 0)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-xxxx : Empty container Section are not allowed, containerSectionSize must be > 0 but found {containerSection.Size}");
+                        return false;
+                    }
+
+                    containerSections[pos] = containerSection;
+                    containersSectionsSizeUpToNow += containerSection.Size;
+                }
+            }
+
             if (container[TERMINATOR_OFFSET + dynamicOffset] != TERMINATOR)
             {
                 if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
@@ -252,7 +287,9 @@ internal static class EvmObjectFormat
                 TypeSection = typeSection,
                 CodeSections = codeSections,
                 CodeSectionsSize = codeSectionsSizeUpToNow,
-                DataSection = dataSection
+                DataSection = dataSection,
+                ContainerSection = containerSections,
+                ExtraContainersSize = containersSectionsSizeUpToNow
             };
 
             return true;
@@ -263,7 +300,8 @@ internal static class EvmObjectFormat
             int startOffset = CalculateHeaderSize(header.CodeSections.Length);
             int calculatedCodeLength = header.TypeSection.Size
                 + header.CodeSectionsSize
-                + header.DataSection.Size;
+                + header.DataSection.Size
+                + header.ExtraContainersSize;
             SectionHeader[]? codeSections = header.CodeSections;
             ReadOnlySpan<byte> contractBody = container[startOffset..];
             (int typeSectionStart, ushort typeSectionSize) = header.TypeSection;

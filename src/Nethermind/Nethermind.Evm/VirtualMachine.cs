@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -648,6 +649,65 @@ namespace Nethermind.Evm
                 state.DataStackHead = stackHead;
             }
 
+            EvmState ContinueCall(EvmStack stack, ExecutionEnvironment env, Address contractAddress, long callGas, ExecutionType executionType, UInt256 value, ReadOnlySpan<byte> bytecode)
+            {
+                if (spec.UseHotAndColdStorage)
+                {
+                    // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
+                    vmState.WarmUp(contractAddress);
+                }
+
+                _state.IncrementNonce(env.ExecutingAccount);
+
+                Snapshot snapshot = _worldState.TakeSnapshot();
+
+                bool accountExists = _state.AccountExists(contractAddress);
+                if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
+                {
+                    /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
+                    if (isTrace) _logger.Trace($"Contract collision at {contractAddress}");
+                    _returnDataBuffer = Array.Empty<byte>();
+                    stack.PushZero();
+                    return null;
+                }
+
+                if (accountExists)
+                {
+                    _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+                }
+                else if (_state.IsDeadAccount(contractAddress))
+                {
+                    _storage.ClearStorage(contractAddress);
+                }
+
+                _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+                ExecutionEnvironment callEnv = new();
+                callEnv.TxExecutionContext = env.TxExecutionContext;
+                callEnv.CallDepth = env.CallDepth + 1;
+                callEnv.Caller = env.ExecutingAccount;
+                callEnv.ExecutingAccount = contractAddress;
+                callEnv.CodeSource = null;
+                callEnv.CodeInfo = CodeInfoFactory.CreateCodeInfo(bytecode.ToArray(), spec);
+                callEnv.InputData = ReadOnlyMemory<byte>.Empty;
+                callEnv.TransferValue = value;
+                callEnv.Value = value;
+
+                EvmState callState = new(
+                    callGas,
+                    callEnv,
+                    executionType,
+                    false,
+                    snapshot,
+                    0L,
+                    0L,
+                    vmState.IsStatic,
+                    vmState,
+                    false,
+                    accountExists);
+                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                return callState;
+            }
+
             void StartInstructionTrace(Instruction instruction, EvmStack stackValue)
             {
                 _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, txCtx.Header.IsPostMerge);
@@ -766,6 +826,11 @@ namespace Nethermind.Evm
                 {
                     case Instruction.STOP:
                         {
+                            if (vmState.ExecutionType.IsAnyCreateEof())
+                            {
+                                return CallResult.InvalidEofCodeException;
+                            }
+
                             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                             EndInstructionTrace();
                             return CallResult.Empty(env.CodeInfo.EofVersion());
@@ -1506,7 +1571,8 @@ namespace Nethermind.Evm
                             }
 
                             byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                            UInt256 codeSize = (UInt256)accountCode.Length;
+                            UInt256 codeSize = spec.IsEip3540Enabled && EvmObjectFormat.IsValidEof(accountCode, out _)
+                                ? 2 : (UInt256)accountCode.Length;
                             stack.PushUInt256(in codeSize);
                             break;
                         }
@@ -1536,20 +1602,16 @@ namespace Nethermind.Evm
                                 UpdateMemoryCost(in dest, length);
 
                                 byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+                                bool shouldNotCopy = spec.IsEip3540Enabled && EvmObjectFormat.IsValidEof(externalCode, out _);
 
-                                if (spec.IsEip3540Enabled)
+                                if (!shouldNotCopy)
                                 {
-                                    if (EvmObjectFormat.IsValidEof(externalCode, out _))
+                                    ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
+                                    vmState.Memory.Save(in dest, callDataSlice);
+                                    if (_txTracer.IsTracingInstructions)
                                     {
-                                        externalCode = Array.Empty<byte>();
+                                        _txTracer.ReportMemoryChange((long)dest, callDataSlice);
                                     }
-                                }
-
-                                ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
-                                vmState.Memory.Save(in dest, callDataSlice);
-                                if (_txTracer.IsTracingInstructions)
-                                {
-                                    _txTracer.ReportMemoryChange((long)dest, callDataSlice);
                                 }
                             }
 
@@ -2168,7 +2230,7 @@ namespace Nethermind.Evm
                                 EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                 return CallResult.OutOfGasException;
                             }
-                            int currentCodeSectionOffset = env.CodeInfo.SectionOffset(sectionIndex);
+                            (int currentCodeSectionOffset, _) = env.CodeInfo.SectionOffset(sectionIndex);
                             int correctedPC = programCounter - currentCodeSectionOffset - 1;
                             stack.PushUInt32(correctedPC);
                             break;
@@ -2494,64 +2556,27 @@ namespace Nethermind.Evm
                                 ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
                                 : ContractAddress.From(env.ExecutingAccount, salt, initCode);
 
-                            if (spec.UseHotAndColdStorage)
-                            {
-                                // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
-                                vmState.WarmUp(contractAddress);
-                            }
-
-                            _state.IncrementNonce(env.ExecutingAccount);
-
-                            Snapshot snapshot = _worldState.TakeSnapshot();
-
-                            bool accountExists = _state.AccountExists(contractAddress);
-                            if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
-                            {
-                                /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
-                                if (isTrace) _logger.Trace($"Contract collision at {contractAddress}");
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
-                            if (accountExists)
-                            {
-                                _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
-                            }
-                            else if (_state.IsDeadAccount(contractAddress))
-                            {
-                                _storage.ClearStorage(contractAddress);
-                            }
-
-                            _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
-                            ExecutionEnvironment callEnv = new();
-                            callEnv.TxExecutionContext = env.TxExecutionContext;
-                            callEnv.CallDepth = env.CallDepth + 1;
-                            callEnv.Caller = env.ExecutingAccount;
-                            callEnv.ExecutingAccount = contractAddress;
-                            callEnv.CodeSource = null;
-                            callEnv.CodeInfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec);
-                            callEnv.InputData = ReadOnlyMemory<byte>.Empty;
-                            callEnv.TransferValue = value;
-                            callEnv.Value = value;
-
-                            EvmState callState = new(
+                            EvmState nextState = ContinueCall(
+                                stack,
+                                env,
+                                contractAddress,
                                 callGas,
-                                callEnv,
                                 instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
-                                false,
-                                snapshot,
-                                0L,
-                                0L,
-                                vmState.IsStatic,
-                                vmState,
-                                false,
-                                accountExists);
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            return new CallResult(callState);
+                                value,
+                                initCode
+                            );
+
+                            if (nextState == null) break;
+
+                            return new CallResult(nextState);
                         }
                     case Instruction.RETURN:
                         {
+                            if (vmState.ExecutionType.IsAnyCreateEof())
+                            {
+                                return CallResult.InvalidEofCodeException;
+                            }
+
                             stack.PopUInt256(out UInt256 memoryPos);
                             stack.PopUInt256(out UInt256 length);
 
@@ -2970,7 +2995,15 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                stack.PushBytes(_state.GetCodeHash(address).Bytes);
+                                byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+                                if (spec.IsEip3540Enabled && EvmObjectFormat.IsValidEof(externalCode, out _))
+                                {
+                                    stack.PushBytes(Keccak.Compute(EvmObjectFormat.MAGIC).Bytes);
+                                }
+                                else
+                                {
+                                    stack.PushBytes(_state.GetCodeHash(address).Bytes);
+                                }
                             }
 
                             break;
@@ -3134,7 +3167,7 @@ namespace Nethermind.Evm
                             };
 
                             sectionIndex = index;
-                            programCounter = env.CodeInfo.SectionOffset(index);
+                            (programCounter, _) = env.CodeInfo.SectionOffset(index);
                             break;
                         }
                     case Instruction.RETF:
@@ -3162,6 +3195,206 @@ namespace Nethermind.Evm
                             sectionIndex = stackFrame.Index;
                             programCounter = stackFrame.Offset;
                             break;
+                        }
+                    case Instruction.DATASIZE:
+                        {
+                            if (spec.IsEip3540Enabled)
+                            {
+                                if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) // still undecided in EIP
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                stack.PushUInt32(dataSection.Length);
+                                break;
+                            }
+                            else return CallResult.InvalidInstructionException;
+                        }
+                    case Instruction.DATALOAD:
+                        {
+                            if (spec.IsEip3540Enabled)
+                            {
+
+                                if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) // still undecided in EIP
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                stack.PopUInt256(out UInt256 offset);
+                                int castedOffset = (int)offset;
+                                var bytes = dataSection[castedOffset..(castedOffset + 32)];
+                                stack.PushBytes(bytes);
+                                break;
+                            }
+                            else return CallResult.InvalidInstructionException;
+                        }
+                    case Instruction.DATALOADN:
+                        {
+                            if (spec.IsEip3540Enabled)
+                            {
+
+                                if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) // still undecided in EIP
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                var castedOffset = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
+                                var bytes = dataSection[castedOffset..(castedOffset + 32)];
+                                stack.PushBytes(bytes);
+                                break;
+                            }
+                            else return CallResult.InvalidInstructionException;
+                        }
+                    case Instruction.DATACOPY:
+                        {
+                            if (spec.IsEip3540Enabled)
+                            {
+
+                                if (!UpdateGas(GasCostOf.DataCopy, ref gasAvailable)) // still undecided in EIP
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                stack.PopUInt256(out var memOffset);
+                                stack.PopUInt256(out var offset);
+                                stack.PopUInt256(out var size);
+
+                                if (size > UInt256.Zero)
+                                {
+                                    UpdateMemoryCost(in memOffset, size); // Note(Ayman) : needs fixing or double checking 
+
+                                    ReadOnlySpan<byte> dataSectionSlice = dataSection.Slice((int)offset, (int)size);
+                                    vmState.Memory.Save(in memOffset, dataSectionSlice);
+                                    if (_txTracer.IsTracingInstructions)
+                                    {
+                                        _txTracer.ReportMemoryChange((long)memOffset, dataSectionSlice);
+                                    }
+                                }
+
+                                break;
+                            }
+                            else return CallResult.InvalidInstructionException;
+                        }
+
+                    case Instruction.RETURNCONTRACT:
+                        {
+                            if (spec.IsEip3540Enabled && vmState.ExecutionType.IsAnyCreateEof())
+                            {
+
+                                if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) // still undecided in EIP
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                byte sectionIdx = codeSection[programCounter];
+                                stack.PopUInt256(out var aux_data_offset);
+                                stack.PopUInt256(out var aux_data_size);
+
+                                ReadOnlySpan<byte> auxData = Span<byte>.Empty;
+                                if (aux_data_size > UInt256.Zero)
+                                {
+                                    UpdateMemoryCost(in aux_data_offset, aux_data_size); // Note(Ayman) : needs fixing or double checking 
+                                    auxData = env.InputData.Slice((int)aux_data_offset, (int)aux_data_size).Span;
+                                }
+
+                                stack.PushByte(sectionIdx);
+                                stack.PushBytes(auxData);
+
+                                break;
+                            }
+                            else return CallResult.InvalidInstructionException;
+                        }
+                    case Instruction.CREATE3:
+                    case Instruction.CREATE4:
+                        {
+                            if (spec.IsEip3540Enabled)
+                            {
+                                var currentContext = instruction == Instruction.CREATE3 ? ExecutionType.Create3 : ExecutionType.Create4;
+                                if (!UpdateGas(currentContext == ExecutionType.Create3 ? GasCostOf.Create3 : GasCostOf.Create4, ref gasAvailable)) // still undecided in EIP
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+
+                                byte initCodeIdx = instruction switch
+                                {
+                                    Instruction.CREATE3 => codeSection[programCounter],
+                                    Instruction.CREATE4 => stack.PopByte(),
+                                    _ => throw new UnreachableException()
+                                };
+
+                                stack.PopUInt256(out var value);
+                                stack.PopBytes(out var salt);
+                                stack.PopUInt256(out var dataoffset);
+                                stack.PopUInt256(out var datasize);
+
+                                (int initcodeOffset, int initcodeSize) = env.CodeInfo.SectionOffset(initCodeIdx);
+                                ReadOnlySpan<byte> initcode = codeSection.Slice(initcodeOffset, initcodeSize);
+                                UInt256 gasCost = UInt256.MaxValue; // Note(Ayman) : DUMMY VALUE waiting for actual value in spec
+
+                                if (spec.IsEip3860Enabled)
+                                {
+                                    if (initcodeSize > spec.MaxInitCodeSize)
+                                    {
+                                        EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                        return CallResult.OutOfGasException;
+                                    }
+                                }
+
+                                if (!EvmObjectFormat.IsValidEof(initcode, out _))
+                                {
+                                    // handle invalid Eof code
+                                }
+
+                                UInt256 balance = _state.GetBalance(env.ExecutingAccount);
+                                if (value > balance)
+                                {
+                                    _returnDataBuffer = Array.Empty<byte>();
+                                    stack.PushZero();
+                                    break;
+                                }
+
+                                UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
+                                UInt256 maxNonce = ulong.MaxValue;
+                                if (accountNonce >= maxNonce)
+                                {
+                                    _returnDataBuffer = Array.Empty<byte>();
+                                    stack.PushZero();
+                                    break;
+                                }
+
+                                EndInstructionTrace();
+
+                                long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+                                if (!UpdateGas(callGas, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
+
+                                Address contractAddress = ContractAddress.From(env.ExecutingAccount, salt, initcode, env.InputData.Span);
+
+                                EvmState nextState = ContinueCall(
+                                    stack,
+                                    env,
+                                    contractAddress,
+                                    callGas,
+                                    currentContext,
+                                    value,
+                                    initcode
+                                );
+
+                                if (nextState == null) break;
+
+                                return new CallResult(nextState);
+                            }
+                            else return CallResult.InvalidInstructionException;
                         }
                     default:
                         {
@@ -3253,6 +3486,7 @@ namespace Nethermind.Evm
                 ShouldRevert = shouldRevert;
                 ExceptionType = exceptionType;
                 FromVersion = fromVersion;
+                IsEmpty = output.Length == 0 && precompileSuccess.HasValue == false;
             }
 
             public EvmState? StateToExecute { get; }
@@ -3263,6 +3497,7 @@ namespace Nethermind.Evm
             public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
             public bool IsReturn => StateToExecute is null;
             public bool IsException => ExceptionType != EvmExceptionType.None;
+            public bool IsEmpty { get; }
         }
     }
 }

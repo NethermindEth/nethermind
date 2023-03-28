@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,6 +14,7 @@ public interface ICodeInfo
     ReadOnlyMemory<byte> TypeSection => Memory<byte>.Empty;
     ReadOnlyMemory<byte> CodeSection => MachineCode;
     ReadOnlyMemory<byte> DataSection => Memory<byte>.Empty;
-    int SectionOffset(int _) => 0;
+    ReadOnlyMemory<byte> ContainerSection => Memory<byte>.Empty;
+    (int, int) SectionOffset(int idx) => idx == 0 ? (0, MachineCode.Length) : throw new ArgumentOutOfRangeException();
     bool ValidateJump(int destination, bool isSubroutine);
 }

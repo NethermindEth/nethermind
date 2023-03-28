@@ -214,6 +214,8 @@ namespace Nethermind.Evm
                     case ExecutionType.CallCode:
                     case ExecutionType.Create:
                     case ExecutionType.Create2:
+                    case ExecutionType.Create3:
+                    case ExecutionType.Create4:
                     case ExecutionType.Transaction:
                         return Env.Caller;
                     case ExecutionType.DelegateCall:

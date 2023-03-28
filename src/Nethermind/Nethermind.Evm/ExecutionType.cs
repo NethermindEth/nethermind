@@ -11,7 +11,14 @@ namespace Nethermind.Evm
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsAnyCreate(this ExecutionType executionType)
         {
-            return executionType == ExecutionType.Create || executionType == ExecutionType.Create2;
+            return executionType == ExecutionType.Create || executionType == ExecutionType.Create2
+                || executionType == ExecutionType.Create3 || executionType == ExecutionType.Create4;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsAnyCreateEof(this ExecutionType executionType)
+        {
+            return executionType == ExecutionType.Create3 || executionType == ExecutionType.Create4;
         }
     }
 
@@ -23,6 +30,8 @@ namespace Nethermind.Evm
         CallCode,
         DelegateCall,
         Create,
-        Create2
+        Create2,
+        Create3,
+        Create4,
     }
 }

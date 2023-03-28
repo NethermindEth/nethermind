@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -43,7 +43,7 @@ namespace Nethermind.Evm
             _memory![(long)location] = value;
         }
 
-        public void Save(in UInt256 location, Span<byte> value)
+        public void Save(in UInt256 location, ReadOnlySpan<byte> value)
         {
             if (value.Length == 0)
             {

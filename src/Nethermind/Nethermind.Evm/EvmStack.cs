@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,8 +8,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
@@ -36,7 +36,7 @@ namespace Nethermind.Evm
 
         private ITxTracer _tracer;
 
-        public void PushBytes(scoped in Span<byte> value)
+        public void PushBytes(scoped in ReadOnlySpan<byte> value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
@@ -288,6 +288,17 @@ namespace Nethermind.Evm
             }
 
             return _bytes.Slice(Head * 32, 32);
+        }
+
+        public void PopBytes(out Span<byte> bytes)
+        {
+            if (Head-- == 0)
+            {
+                Metrics.EvmExceptions++;
+                throw new EvmStackUnderflowException();
+            }
+
+            bytes = _bytes.Slice(Head * 32, 32);
         }
 
         public byte PopByte()

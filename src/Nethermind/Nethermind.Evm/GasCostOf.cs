@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Evm
@@ -66,5 +66,15 @@ namespace Nethermind.Evm
         public const long AccessStorageListEntry = 1900; // eip-2930
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
+
+        public const long DataLoad = 3;
+        public const long DataLoadN = 2;
+        public const long DataCopy = 3;
+        public const long DataSize = 2;
+        public const long ReturnContract = 0; // Note(Ayman) : DUMMY VALUE waiting for actual value in spec
+        public const long Create3 = 42000; // Note(Ayman) : DUMMY VALUE waiting for actual value in spec
+        public const long Create4 = 42000; // Note(Ayman) : DUMMY VALUE waiting for actual value in spec
+
+
     }
 }

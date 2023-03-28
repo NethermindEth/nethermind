@@ -170,17 +170,28 @@ namespace Nethermind.Evm
         TSTORE = 0xb4, //TransientStorageEnabled
 
         CREATE = 0xf0,
+        CREATE2 = 0xf5, // Create2OpcodeEnabled
+        CREATE3 = 0xf6,
+        CREATE4 = 0xf7,
+        RETURNCONTRACT = 0xf8,
+        DATALOAD = 0xb7,
+        DATASIZE = 0xb8,
+        DATACOPY = 0xb9,
+        DATALOADN = 0xba,
+
+
         CALL = 0xf1,
         CALLF = 0xb0, // FunctionSection
         RETF = 0xb1, // FunctionSection
         CALLCODE = 0xf2,
         RETURN = 0xf3,
         DELEGATECALL = 0xf4, // DelegateCallEnabled
-        CREATE2 = 0xf5, // Create2OpcodeEnabled
         STATICCALL = 0xfa, // StaticCallEnabled
         REVERT = 0xfd, // RevertOpcodeEnabled
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
+
+
     }
 
     public static class InstructionExtensions
@@ -218,6 +229,8 @@ namespace Nethermind.Evm
                 Instruction.JUMPI or Instruction.JUMP => !IsEofContext,
                 Instruction.CALLF or Instruction.RETF => IsEofContext,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB => true,
+                Instruction.CALL or Instruction.DELEGATECALL or Instruction.GAS => !IsEofContext,
+
                 _ => true
             };
         }
@@ -308,6 +321,15 @@ namespace Nethermind.Evm
             Instruction.STATICCALL => (5, 1, 0),
             Instruction.REVERT => (2, 0, 0),
             Instruction.INVALID => (0, 0, 0),
+
+            Instruction.CREATE3 => (4, 1, 1),
+            Instruction.CREATE4 => (5, 1, 0),
+            Instruction.RETURNCONTRACT => (2, 2, 1),
+            Instruction.DATALOAD => (1, 1, 0),
+            Instruction.DATALOADN => (0, 1, 1),
+            Instruction.DATASIZE => (0, 1, 0),
+            Instruction.DATACOPY => (3, 1, 0),
+
             _ => throw new NotImplementedException($"Instruction {instruction} not implemented")
         };
 

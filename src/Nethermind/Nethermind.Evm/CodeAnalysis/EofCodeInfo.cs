@@ -18,7 +18,8 @@ public class EofCodeInfo : ICodeInfo
     public ReadOnlyMemory<byte> TypeSection { get; }
     public ReadOnlyMemory<byte> CodeSection { get; }
     public ReadOnlyMemory<byte> DataSection { get; }
-    public int SectionOffset(int sectionId) => _header.CodeSections[sectionId].Start - _header.TypeSection.EndOffset;
+    public ReadOnlyMemory<byte> ContainerSection { get; }
+    public (int, int) SectionOffset(int sectionId) => (_header.CodeSections[sectionId].Start - _header.TypeSection.EndOffset, _header.CodeSections[sectionId].Size);
 
     public bool ValidateJump(int destination, bool isSubroutine)
     {
@@ -34,5 +35,6 @@ public class EofCodeInfo : ICodeInfo
         TypeSection = memory.Slice(_header.TypeSection.Start, _header.TypeSection.Size);
         CodeSection = memory.Slice(_header.CodeSections[0].Start, _header.CodeSectionsSize);
         DataSection = memory.Slice(_header.DataSection.Start, _header.DataSection.Size);
+        ContainerSection = memory.Slice(_header.ContainerSection[0].Start, _header.ExtraContainersSize);
     }
 }
