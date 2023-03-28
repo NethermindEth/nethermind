@@ -56,14 +56,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public long PivotNumber => CurrentBeaconPivot?.Number ?? _syncConfig.PivotNumberParsed;
 
-        public Keccak PivotHash => CurrentBeaconPivot?.Hash ?? _syncConfig.PivotHashParsed!;
+        public Keccak? PivotHash => CurrentBeaconPivot?.Hash ?? _syncConfig.PivotHashParsed;
 
         public BlockHeader? ProcessDestination { get; set; }
         public bool ShouldForceStartNewSync { get; set; } = false;
 
         // We actually start beacon header sync from the pivot parent hash because hive test.... And because
         // we can I guess?
-        public Keccak PivotParentHash => CurrentBeaconPivot?.ParentHash ?? _syncConfig.PivotHashParsed!;
+        public Keccak? PivotParentHash => CurrentBeaconPivot?.ParentHash ?? _syncConfig.PivotHashParsed;
 
         public UInt256? PivotTotalDifficulty => CurrentBeaconPivot is null ?
             _syncConfig.PivotTotalDifficultyParsed : CurrentBeaconPivot.TotalDifficulty;
