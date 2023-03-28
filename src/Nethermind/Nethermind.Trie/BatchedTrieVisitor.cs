@@ -73,7 +73,12 @@ public class BatchedTrieVisitor
         // 3000 is about the num of file for state on mainnet, so we assume 4000 for an unpruned db. Multiplied by
         // a reasonable num of thread we want to confine to a file. If its too high, the overhead of looping through the
         // stack can get a bit high at the end of the visit. But then again its probably not much.
-        long maxPartitionCount = 4000 * Math.Min(4, visitingOptions.MaxDegreeOfParallelism);
+        int degreeOfParallelism = visitingOptions.MaxDegreeOfParallelism;
+        if (degreeOfParallelism == 0)
+        {
+            degreeOfParallelism = Environment.ProcessorCount;
+        }
+        long maxPartitionCount = 4000 * Math.Min(4, degreeOfParallelism);
 
         if (_partitionCount > maxPartitionCount)
         {
@@ -120,7 +125,13 @@ public class BatchedTrieVisitor
 
         try
         {
-            Task[]? tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
+            int degreeOfParallism = trieVisitContext.MaxDegreeOfParallelism;
+            if (degreeOfParallism == 0)
+            {
+                degreeOfParallism = Environment.ProcessorCount;
+            }
+
+            Task[]? tasks = Enumerable.Range(0, degreeOfParallism)
                 .Select((_) => Task.Run(BatchedThread))
                 .ToArray();
 
