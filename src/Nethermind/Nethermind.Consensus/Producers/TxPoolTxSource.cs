@@ -76,13 +76,14 @@ namespace Nethermind.Consensus.Producers
 
                 if (tx.Type == TxType.Blob)
                 {
-                    if ((blobsCounter + tx.BlobVersionedHashes?.Length ?? 0) > Eip4844Constants.MaxBlobsPerBlock)
+                    int txAmountOfBlobs = tx.BlobVersionedHashes?.Length ?? 0;
+                    if ((blobsCounter + txAmountOfBlobs) > Eip4844Constants.MaxBlobsPerBlock)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, no more blob space.");
                         continue;
                     }
 
-                    blobsCounter += tx.BlobVersionedHashes?.Length ?? 0;
+                    blobsCounter += txAmountOfBlobs;
                     if (_logger.IsTrace) _logger.Trace($"Selected shard blob tx {tx.ToShortString()} to be potentially included in block, total blobs included: {blobsCounter}.");
                 }
                 else

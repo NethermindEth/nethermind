@@ -195,8 +195,6 @@ public class BlockValidator : IBlockValidator
 
     private bool ValidateBlobs(Block block, IReleaseSpec spec, out string? error)
     {
-        const int maxBlobsPerBlock = 4;
-
         if (spec.IsEip4844Enabled ^ block.ExcessDataGas is not null)
         {
             error = $"ExcessDataGas cannot be null in block {block.Hash} when EIP-4844 activated.";
@@ -210,9 +208,9 @@ public class BlockValidator : IBlockValidator
             blobsInBlock += block.Transactions[txIndex].BlobVersionedHashes?.Length ?? 0;
         }
 
-        if (spec.IsEip4844Enabled && blobsInBlock > maxBlobsPerBlock)
+        if (spec.IsEip4844Enabled && blobsInBlock > Eip4844Constants.MaxBlobsPerBlock)
         {
-            error = $"A block cannot contain more than {maxBlobsPerBlock} blobs.";
+            error = $"A block cannot contain more than {Eip4844Constants.MaxBlobsPerBlock} blobs.";
             if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }
