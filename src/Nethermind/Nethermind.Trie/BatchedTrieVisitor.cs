@@ -63,10 +63,12 @@ public class BatchedTrieVisitor
         // The * 2 is just margin. RSS is still higher though, but that could be due to more deserialization.
         long recordSize = 52 * 2;
         long recordCount = visitingOptions.FullScanMemoryBudget / recordSize;
+        if (recordCount == 0) recordCount = 1;
 
         // Generally, at first, we want to attempt to maximize number of partition. This tend to increase throughput
         // compared to increasing batch size.
         _partitionCount = recordCount / _maxBatchSize;
+        if (_partitionCount == 0) _partitionCount = 1;
 
         // 3000 is about the num of file for state on mainnet, so we assume 4000 for an unpruned db. Multiplied by
         // a reasonable num of thread we want to confine to a file. If its too high, the overhead of looping through the
@@ -77,6 +79,7 @@ public class BatchedTrieVisitor
         {
             _partitionCount = maxPartitionCount;
             _maxBatchSize = (int)(recordCount / _partitionCount);
+            if (_maxBatchSize == 0) _maxBatchSize = 1;
         }
 
         // Calculating estimated pool margin at about 5% of total working size. The working set size fluctuate a bit so
