@@ -150,12 +150,15 @@ namespace Nethermind.Trie
             {
                 int totalLength = 0;
                 item.InitData();
-                item.SeekChild(0);
+                byte[] rlp = item.FullRlp ?? Array.Empty<byte>();
+                Rlp.ValueDecoderContext reader = new(rlp);
+                item.SeekChild(ref reader, 0);
+
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (item._rlpStream is not null && item._data![i] is null)
+                    if (reader.IsEmpty is false && item._data![i] is null)
                     {
-                        (int prefixLength, int contentLength) = item._rlpStream.PeekPrefixAndContentLength();
+                        (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
                         totalLength += prefixLength + contentLength;
                     }
                     else
@@ -176,7 +179,10 @@ namespace Nethermind.Trie
                         }
                     }
 
-                    item._rlpStream?.SkipItem();
+                    if (reader.IsEmpty == false)
+                    {
+                        reader.SkipItem();
+                    }
                 }
 
                 return totalLength;
@@ -185,22 +191,29 @@ namespace Nethermind.Trie
             private static void WriteChildrenRlp(ITrieNodeResolver tree, TrieNode item, Span<byte> destination)
             {
                 int position = 0;
-                RlpStream rlpStream = item._rlpStream;
+                byte[] data = item.FullRlp ?? Array.Empty<byte>();
+                Rlp.ValueDecoderContext reader = new(data);
+
                 item.InitData();
-                item.SeekChild(0);
+                item.SeekChild(ref reader, 0);
+
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (rlpStream is not null && item._data![i] is null)
+                    if (reader.IsEmpty is false && item._data![i] is null)
                     {
-                        int length = rlpStream.PeekNextRlpLength();
-                        Span<byte> nextItem = rlpStream.Data.AsSpan(rlpStream.Position, length);
+                        int length = reader.PeekNextRlpLength();
+                        Span<byte> nextItem = data.AsSpan(reader.Position, length);
                         nextItem.CopyTo(destination.Slice(position, nextItem.Length));
                         position += nextItem.Length;
-                        rlpStream.SkipItem();
+                        reader.SkipItem();
                     }
                     else
                     {
-                        rlpStream?.SkipItem();
+                        if (reader.IsEmpty is false)
+                        {
+                            reader.SkipItem();
+                        }
+
                         if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] is null)
                         {
                             destination[position++] = 128;

@@ -79,8 +79,6 @@ namespace Nethermind.Monitoring
                 MetricPusher metricPusher = new MetricPusher(pusherOptions);
 
                 metricPusher.Start();
-
-
             }
             if (_exposePort is not null)
             {
@@ -89,11 +87,6 @@ namespace Nethermind.Monitoring
             }
             await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
-        }
-
-        public void RegisterMetrics(Type type)
-        {
-            _metricsController.RegisterMetrics(type);
         }
 
         public Task StopAsync()

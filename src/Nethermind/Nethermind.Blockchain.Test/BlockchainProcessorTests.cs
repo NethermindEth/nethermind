@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -498,6 +499,7 @@ namespace Nethermind.Blockchain.Test
         public void Will_update_metrics_on_processing()
         {
             long metricsBefore = Metrics.LastBlockProcessingTimeInMs;
+
             When.ProcessingBlocks
                 .FullyProcessed(_block0).BecomesGenesis();
 

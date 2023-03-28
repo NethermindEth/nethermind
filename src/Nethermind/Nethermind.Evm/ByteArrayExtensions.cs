@@ -12,7 +12,7 @@ namespace Nethermind.Evm
         {
             if (startIndex >= span.Length)
             {
-                return new ZeroPaddedSpan(Span<byte>.Empty, length, padDirection);
+                return new ZeroPaddedSpan(default, length, padDirection);
             }
 
             if (length == 1)
@@ -20,8 +20,8 @@ namespace Nethermind.Evm
                 // why do we return zero length here?
                 // it was passing all the tests like this...
                 // return bytes.Length == 0 ? new byte[0] : new[] {bytes[startIndex]};
-                return span.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 0, padDirection) : new ZeroPaddedSpan(span.Slice(startIndex, 1), 0, padDirection);
-                // return bytes.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 1) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
+                return span.Length == 0 ? new ZeroPaddedSpan(default, 0, padDirection) : new ZeroPaddedSpan(span.Slice(startIndex, 1), 0, padDirection);
+                // return bytes.Length == 0 ? new ZeroPaddedSpan(default, 1) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
             }
 
             int copiedLength = Math.Min(span.Length - startIndex, length);
@@ -32,7 +32,7 @@ namespace Nethermind.Evm
         {
             if (startIndex >= memory.Length)
             {
-                return new ZeroPaddedMemory(ReadOnlyMemory<byte>.Empty, length, padDirection);
+                return new ZeroPaddedMemory(default, length, padDirection);
             }
 
             if (length == 1)
@@ -40,8 +40,8 @@ namespace Nethermind.Evm
                 // why do we return zero length here?
                 // it was passing all the tests like this...
                 // return bytes.Length == 0 ? new byte[0] : new[] {bytes[startIndex]};
-                return memory.Length == 0 ? new ZeroPaddedMemory(ReadOnlyMemory<byte>.Empty, 0, padDirection) : new ZeroPaddedMemory(memory.Slice(startIndex, 1), 0, padDirection);
-                // return bytes.Length == 0 ? new ZeroPaddedSpan(Span<byte>.Empty, 1) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
+                return memory.Length == 0 ? new ZeroPaddedMemory(default, 0, padDirection) : new ZeroPaddedMemory(memory.Slice(startIndex, 1), 0, padDirection);
+                // return bytes.Length == 0 ? new ZeroPaddedSpan(default, 1) : new ZeroPaddedSpan(bytes.Slice(startIndex, 1), 0);
             }
 
             int copiedLength = Math.Min(memory.Length - startIndex, length);
@@ -52,7 +52,7 @@ namespace Nethermind.Evm
         {
             if (startIndex >= span.Length || startIndex > int.MaxValue)
             {
-                return new ZeroPaddedSpan(Span<byte>.Empty, length, PadDirection.Right);
+                return new ZeroPaddedSpan(default, length, PadDirection.Right);
             }
 
             return SliceWithZeroPadding(span, (int)startIndex, length, padDirection);
@@ -62,7 +62,7 @@ namespace Nethermind.Evm
         {
             if (startIndex >= bytes.Length || startIndex > int.MaxValue)
             {
-                return new ZeroPaddedMemory(ReadOnlyMemory<byte>.Empty, length, PadDirection.Right);
+                return new ZeroPaddedMemory(default, length, PadDirection.Right);
             }
 
             return MemoryWithZeroPadding(bytes, (int)startIndex, length, padDirection);
