@@ -31,7 +31,7 @@ public class NethermindApiCustomResolver : IServiceProvider
         // If the original ServiceProvider cannot resolve, try NethermindApi
         PropertyInfo prop = _nethermindApi.GetType().GetProperties()
             .FirstOrDefault(p => p.PropertyType == serviceType
-                    ||  Nullable.GetUnderlyingType(p.PropertyType) == serviceType
+                    || Nullable.GetUnderlyingType(p.PropertyType) == serviceType
                     || p.PropertyType == Nullable.GetUnderlyingType(serviceType));
         if (prop != null && prop.GetValue(_nethermindApi) is object porpValue)
         {
@@ -64,7 +64,7 @@ public class NethermindApiCustomResolver : IServiceProvider
             {
                 PropertyInfo property = _nethermindApi.GetType().GetProperties()
                     .FirstOrDefault(p => p.PropertyType == parameterType
-                    ||  Nullable.GetUnderlyingType(p.PropertyType) == parameterType
+                    || Nullable.GetUnderlyingType(p.PropertyType) == parameterType
                     || p.PropertyType == Nullable.GetUnderlyingType(parameterType));
                 if (property != null && property.GetValue(_nethermindApi) is object propertyValue)
                 {
