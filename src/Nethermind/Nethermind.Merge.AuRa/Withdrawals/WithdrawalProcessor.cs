@@ -3,6 +3,7 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -47,7 +48,14 @@ public class WithdrawalProcessor : IWithdrawalProcessor
             if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.AmountInWei / (BigInteger)Unit.Ether:N3}GNO to account {withdrawal.Address}");
         }
 
-        _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
+        try
+        {
+            _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidBlockException(block, ex);
+        }
 
         if (_logger.IsTrace) _logger.Trace($"Withdrawals applied for block {block}");
     }
