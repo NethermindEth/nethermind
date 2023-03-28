@@ -20,7 +20,6 @@ do
     -p:Commit=$2 \
     -p:Deterministic=true \
     -p:IncludeAllContentForSelfExtract=true \
-    -p:ProduceReferenceAssembly=true \
     -p:PublishSingleFile=true
 
   rm -rf $OUTPUT_PATH/$rid/*.pdb
@@ -33,6 +32,6 @@ done
 
 cd ..
 mkdir $OUTPUT_PATH/ref
-cp **/obj/release/**/ref/*.dll $OUTPUT_PATH/ref
+cp **/obj/release/**/refint/*.dll $OUTPUT_PATH/ref
 
 echo "Build completed"
