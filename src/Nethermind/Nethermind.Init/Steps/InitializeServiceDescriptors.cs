@@ -55,6 +55,7 @@ public class InitializeServiceDescriptors : IStep
         services.AddSingleton<ITxSigner, WalletTxSigner>();
         services.AddSingleton<INonceManager, NonceManager>();
         services.AddSingleton<ITxPoolInfoProvider, TxPoolInfoProvider>();
+        services.AddSingleton<ITxSender, TxPoolSender>();
 
         foreach (INethermindPlugin plugin in _api.Plugins)
         {
