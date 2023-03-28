@@ -289,6 +289,11 @@ namespace Nethermind.Core.Specs
         bool IsEip4844Enabled { get; }
 
         /// <summary>
+        /// Generalized Swaps and Dups
+        /// </summary>
+        bool IsEip633Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -364,6 +369,8 @@ namespace Nethermind.Core.Specs
         public bool BaseFeeEnabled => IsEip3198Enabled;
 
         // EVM Related
+        public bool IncludeGeneralSwapsAndDup => IsEip633Enabled;
+
         public bool IncludePush0Instruction => IsEip3855Enabled;
 
         public bool TransientStorageEnabled => IsEip1153Enabled;

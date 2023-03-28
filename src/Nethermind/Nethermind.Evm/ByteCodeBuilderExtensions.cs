@@ -121,9 +121,13 @@ namespace Nethermind.Evm
         public static Prepare MSIZE(this Prepare @this)
             => @this.Op(Instruction.MSIZE);
         public static Prepare SWAPx(this Prepare @this, byte i)
-            => @this.Op(Instruction.SWAP1 + i - 1);
+            => i > 17
+                ? @this.Op(Instruction.SWAPN).Data((byte)(i - 17))
+                : @this.Op(Instruction.SWAP1 + i - 1);
         public static Prepare DUPx(this Prepare @this, byte i)
-            => @this.Op(Instruction.DUP1 + i - 1);
+            => i > 17
+                ? @this.Op(Instruction.DUPN).Data((byte)(i - 17))
+                : @this.Op(Instruction.DUP1 + i - 1);
         public static Prepare BEGINSUB(this Prepare @this)
             => @this.Op(Instruction.BEGINSUB);
         public static Prepare RETURNSUB(this Prepare @this)
@@ -366,6 +370,34 @@ namespace Nethermind.Evm
             => @this.PushSingle(cond)
                         .Op(Instruction.RJUMPI)
                         .Data(BitConverter.GetBytes(to).Reverse().ToArray());
+
+
+        public static Prepare DUPx(this Prepare @this, UInt256?[] values)
+        {
+            byte i = (byte)(values.Length - 17);
+            var result = @this.PushSequence(values)
+                .Op(i < 0 ? Instruction.DUP1 + i - 1 : Instruction.DUPN);
+
+            if (i > 0)
+            {
+                result.Data(i);
+            }
+            return result;
+        }
+
+        public static Prepare SWAPx(this Prepare @this, UInt256?[] values)
+        {
+            byte i = (byte)(values.Length - 17);
+            var result = @this.PushSequence(values)
+                .Op(values.Length < 0 ? Instruction.SWAP1 + i - 1 : Instruction.SWAPN);
+
+            if (i > 0)
+            {
+                result.Data(i);
+            }
+            return result;
+        }
+
         #endregion
     }
 }

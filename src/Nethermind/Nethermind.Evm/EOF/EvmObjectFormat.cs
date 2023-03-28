@@ -500,6 +500,10 @@ internal static class EvmObjectFormat
 
                     pos += ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH;
                 }
+                else if (opcode is Instruction.SWAPN or Instruction.DUPN)
+                {
+                    pos += ONE_BYTE_LENGTH;
+                }
                 else if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
                 {
                     int len = opcode - Instruction.PUSH0;
@@ -559,7 +563,7 @@ internal static class EvmObjectFormat
                             break;
                         case Instruction.SWAPN:
                             imm = code[posPostOpcode];
-                            outputs = inputs = 17 + imm + 1;
+                            outputs = inputs = 17 + imm;
                             break;
                     }
 

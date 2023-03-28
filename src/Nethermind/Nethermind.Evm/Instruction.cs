@@ -215,6 +215,7 @@ namespace Nethermind.Evm
                 Instruction.CALLCODE or Instruction.SELFDESTRUCT => !IsEofContext,
                 Instruction.JUMPI or Instruction.JUMP => !IsEofContext,
                 Instruction.CALLF or Instruction.RETF => IsEofContext,
+                Instruction.DUPN or Instruction.SWAPN => IsEofContext,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB => true,
                 _ => true
             };
@@ -329,6 +330,7 @@ namespace Nethermind.Evm
         {
             Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
             Instruction.RETF or Instruction.CALLF => true,
+            Instruction.SWAPN or Instruction.DUPN => true,
             _ => false
         };
     }

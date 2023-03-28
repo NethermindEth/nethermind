@@ -2308,15 +2308,19 @@ namespace Nethermind.Evm
                         }
                     case Instruction.DUPN:
                         {
-                            if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                            if (spec.IncludeGeneralSwapsAndDup)
                             {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
+                                if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
 
-                            byte imm = codeSection[programCounter];
-                            stack.Dup(imm + 17);
-                            break;
+                                byte imm = codeSection[programCounter];
+                                stack.Dup(imm + 17);
+                                break;
+                            }
+                            else return CallResult.InvalidInstructionException;
                         }
                     case Instruction.SWAP1:
                     case Instruction.SWAP2:
@@ -2346,15 +2350,19 @@ namespace Nethermind.Evm
                         }
                     case Instruction.SWAPN:
                         {
-                            if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                            if (spec.IncludeGeneralSwapsAndDup)
                             {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
+                                if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                                {
+                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                    return CallResult.OutOfGasException;
+                                }
 
-                            byte imm = codeSection[programCounter];
-                            stack.Swap(imm + 17 + 1);
-                            break;
+                                byte imm = codeSection[programCounter];
+                                stack.Swap(imm + 17);
+                                break;
+                            }
+                            else return CallResult.InvalidInstructionException;
                         }
                     case Instruction.LOG0:
                     case Instruction.LOG1:
