@@ -3,8 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net7.0</TargetFramework>
     <Nullable>annotations</Nullable>
-    <Deterministic>true</Deterministic>
-    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+    
+    
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
