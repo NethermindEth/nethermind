@@ -23,8 +23,13 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
         return _baseResolver.FindCachedOrUnknown(hash);
     }
 
-    public byte[]? LoadRlp(Keccak hash)
+    public byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None)
     {
-        return _baseResolver.Get(hash.Bytes, _flags);
+        if (flags != ReadFlags.None)
+        {
+            return _baseResolver.LoadRlp(hash, flags);
+        }
+
+        return _baseResolver.LoadRlp(hash, _flags);
     }
 }
