@@ -173,7 +173,7 @@ public class BatchedTrieVisitor
                 for (int i = 0; i < _maxBatchSize; i++)
                 {
                     if (!theStack.TryPop(out Job item)) break;
-                    finalBatch.Add((new TrieNode(NodeType.Unknown, item.Key.ToKeccak()), item.Context));
+                    finalBatch.Add((_resolver.FindCachedOrUnknown(item.Key.ToKeccak()), item.Context));
                     Interlocked.Decrement(ref _queuedJobs);
                 }
             }

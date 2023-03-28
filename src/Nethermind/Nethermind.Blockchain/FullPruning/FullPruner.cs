@@ -200,8 +200,9 @@ namespace Nethermind.Blockchain.FullPruning
                     pruning.Dispose();
                 }
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                _logger.Error("Error during pruning. ", e);
                 pruning.Dispose();
                 throw;
             }
