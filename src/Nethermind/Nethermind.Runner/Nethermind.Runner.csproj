@@ -111,6 +111,9 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
+    <Content Remove="..\Chains\gnosis_withdrawals_devnet.json" />
+  </ItemGroup>
+  <ItemGroup>
     <_ContentIncludedByDefault Remove="Contracts\EntryPoint.json" />
   </ItemGroup>
 
