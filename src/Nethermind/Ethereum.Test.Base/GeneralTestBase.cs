@@ -91,7 +91,7 @@ namespace Ethereum.Test.Base
             header.MixHash = test.CurrentRandom;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            var txValidator = new TxValidator((MainnetSpecProvider.Instance.ChainId));
+            var txValidator = new TxValidator((MainnetSpecProvider.Instance));
             var spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
             if (test.Transaction.ChainId == null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;

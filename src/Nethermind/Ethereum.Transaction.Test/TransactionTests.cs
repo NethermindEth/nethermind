@@ -14,6 +14,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -173,8 +174,9 @@ namespace Ethereum.Transaction.Test
             }
 
             bool useChainId = transaction.Signature.V > 28UL;
-
-            TxValidator validator = new(useChainId ? BlockchainIds.Mainnet : 0UL);
+            ulong chainId = useChainId ? BlockchainIds.Mainnet : 0UL;
+            ISpecProvider specProvider = new SingleReleaseSpecProvider(spec, chainId, chainId);
+            TxValidator validator = new(specProvider);
 
             if (validTest != null)
             {
