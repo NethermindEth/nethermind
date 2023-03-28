@@ -8,6 +8,8 @@ public static class ExitCodes
     public const int Ok = 0;
     public const int GeneralError = 1;
 
+    public const int EnvironmentVariableConfigChanged = 99;
+
     // config errors 100...199
     public const int NoEngineModule = 100;
 

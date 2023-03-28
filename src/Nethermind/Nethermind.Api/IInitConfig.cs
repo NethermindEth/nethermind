@@ -70,6 +70,9 @@ namespace Nethermind.Api
 
         [ConfigItem(Description = "A hint for the max memory that will allow us to configure the DB and Netty memory allocations.", DefaultValue = "null")]
         long? MemoryHint { get; set; }
+
+        [ConfigItem(Description = "Hints level of memory conservation in .NET. Allows values [0-9], the higher value the more memory saved. Overwrites environment variable `DOTNET_GCConserveMemory`.", DefaultValue = "0")]
+        int ConserveMemory { get; set; }
     }
 
     public enum DiagnosticMode

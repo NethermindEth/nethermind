@@ -10,6 +10,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
+using System.Security;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,6 +31,7 @@ using Nethermind.Hive;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
+using Nethermind.Runner.EnvironmentVariables;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
@@ -162,6 +164,12 @@ namespace Nethermind.Runner
 
                 _logger = logManager.GetClassLogger();
                 ConfigureSeqLogger(configProvider);
+                if (ConfigureEnvironmentVariables(configProvider))
+                {
+                    if(_logger.IsWarn) _logger.Warn("Environment variables changed, the process needs to be restarted.");
+                    return ExitCodes.EnvironmentVariableConfigChanged;
+                }
+
                 SetFinalDbPath(dbBasePath.HasValue() ? dbBasePath.Value() : null, initConfig);
                 LogMemoryConfiguration();
 
@@ -539,6 +547,22 @@ namespace Nethermind.Runner
                 // Clear it up, otherwise internally it will keep requesting to localhost as `all` target include this.
                 NLogConfigurator.ClearSeqTarget();
             }
+        }
+
+        private static bool ConfigureEnvironmentVariables(IConfigProvider configProvider)
+        {
+            IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+            const string dotnetGcConserveMemory = "DOTNET_GCConserveMemory";
+            string gcConserveMemoryString = Environment.GetEnvironmentVariable(dotnetGcConserveMemory, EnvironmentVariableTarget.User);
+            if (!int.TryParse(gcConserveMemoryString, out int gcConserveMemory))
+            {
+                gcConserveMemory = 0;
+            }
+
+            int conserveMemory = Math.Min(9, Math.Max(0, initConfig.ConserveMemory));
+
+            return gcConserveMemory != conserveMemory
+                   && EnvironmentVariable.TrySetEnvironmentVariable(dotnetGcConserveMemory, conserveMemory.ToString(), _logger);
         }
 
         private static string GetProductInfo()

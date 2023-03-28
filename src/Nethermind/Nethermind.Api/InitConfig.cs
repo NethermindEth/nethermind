@@ -28,8 +28,9 @@ namespace Nethermind.Api
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
         public DumpOptions AutoDump { get; set; } = DumpOptions.Receipts;
 
-        public string RpcDbUrl { get; set; } = String.Empty;
+        public string RpcDbUrl { get; set; } = string.Empty;
         public long? MemoryHint { get; set; }
+        public int ConserveMemory { get; set; } = 0;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb
