@@ -12,9 +12,11 @@ ARG COMMIT_HASH
 
 COPY . .
 
-RUN if [ "$TARGETARCH" = "amd64" ] ; \
-    then dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -p:Commit=$COMMIT_HASH -p:BuildTimestamp=$BUILD_TIMESTAMP -o out ; \
-    else dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -p:Commit=$COMMIT_HASH -p:BuildTimestamp=$BUILD_TIMESTAMP -o out ; \
+RUN if [ "$TARGETARCH" = "amd64" ]; \
+    then dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-x64 -o out \
+      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH -p:Deterministic=true ; \
+    else dotnet publish src/Nethermind/Nethermind.Runner -c release -r $TARGETOS-$TARGETARCH -o out \
+      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH -p:Deterministic=true ; \
     fi
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:7.0-jammy
