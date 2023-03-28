@@ -59,7 +59,7 @@ namespace Nethermind.Network.Benchmarks
                 ecdsa,
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
-                new TxValidator(TestBlockchainIds.ChainId),
+                new TxValidator(TestSpecProvider.Instance),
                 LimboLogs.Instance,
                 new TransactionComparerProvider(specProvider, tree).GetDefaultComparer());
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
