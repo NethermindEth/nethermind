@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            tree.Commit(blockNumber, skipRoot: true);
+            tree.Commit(blockNumber, skipRoot: false);
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }

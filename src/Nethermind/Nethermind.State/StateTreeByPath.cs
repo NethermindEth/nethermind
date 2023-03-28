@@ -33,7 +33,7 @@ namespace Nethermind.State
             TrieType = TrieType.State;
         }
 
-        [DebuggerStepThrough]
+        //[DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
             byte[]? bytes = null;
@@ -42,13 +42,9 @@ namespace Nethermind.State
             {
                 Span<byte> nibbleBytes = stackalloc byte[64];
                 Nibbles.BytesToNibbleBytes(addressKeyBytes, nibbleBytes);
-                var nodeBytes = TrieStore.LoadRlp(nibbleBytes, rootHash);
-                if (nodeBytes is not null)
-                {
-                    TrieNode node = new(NodeType.Unknown, nodeBytes);
-                    node.ResolveNode(TrieStore);
+                TrieNode node = TrieStore.FindCachedOrUnknown(nibbleBytes, rootHash);
+                if (node is not null && node.NodeType == NodeType.Leaf)
                     bytes = node.Value;
-                }
             }
 
             if (bytes is null && (rootHash is null || RootHash == rootHash))
@@ -72,7 +68,7 @@ namespace Nethermind.State
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
-        [DebuggerStepThrough]
+        //[DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
         {
             byte[] addressKeyBytes = keccak.Bytes;

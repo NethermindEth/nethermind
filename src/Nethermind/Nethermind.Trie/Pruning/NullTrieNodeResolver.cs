@@ -16,13 +16,9 @@ namespace Nethermind.Trie.Pruning
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
 
         public TrieNode FindCachedOrUnknown(Keccak hash) => new(NodeType.Unknown, hash);
+        public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath) => new(NodeType.Unknown, nodePath, hash);
 
         public byte[]? LoadRlp(Keccak hash) => null;
-
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath)
-        {
-            return null;
-        }
 
         public byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash)
         {
@@ -32,6 +28,11 @@ namespace Nethermind.Trie.Pruning
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles)
         {
             return false;
+        }
+
+        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Keccak rootHash)
+        {
+            throw new NotImplementedException();
         }
     }
 }

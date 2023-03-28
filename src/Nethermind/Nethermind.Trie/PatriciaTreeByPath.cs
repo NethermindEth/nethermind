@@ -298,8 +298,7 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                RootRef = TrieStore.FindCachedOrUnknown(Array.Empty<byte>());
-                RootRef.Keccak = _rootHash;
+                RootRef = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>());
             }
         }
 
@@ -508,7 +507,7 @@ namespace Nethermind.Trie
                             if (childNode.IsBranch)
                             {
                                 TrieNode extensionFromBranch =
-                                    TrieNodeFactory.CreateExtension(new[] { (byte)childNodeIndex }, childNode);
+                                    TrieNodeFactory.CreateExtension(new[] { (byte)childNodeIndex }, childNode, node.PathToNode);
                                 if (_logger.IsTrace)
                                     _logger.Trace(
                                         $"Extending child {childNodeIndex} {childNode} of {node} into {extensionFromBranch}");
@@ -543,7 +542,7 @@ namespace Nethermind.Trie
                                    L L - - - - - - - - - - - - - - */
 
                                 byte[] newKey = Bytes.Concat((byte)childNodeIndex, childNode.Key);
-                                TrieNode extendedExtension = childNode.CloneWithChangedKey(newKey);
+                                TrieNode extendedExtension = childNode.CloneWithChangedKey(newKey, node.PathToNode);
                                 if (_logger.IsTrace)
                                     _logger.Trace(
                                         $"Extending child {childNodeIndex} {childNode} of {node} into {extendedExtension}");
@@ -617,7 +616,7 @@ namespace Nethermind.Trie
                            L L - - - - - - - - - - - - - - */
 
                         byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
-                        TrieNode extendedExtension = nextNode.CloneWithChangedKey(newKey);
+                        TrieNode extendedExtension = nextNode.CloneWithChangedKey(newKey, node.PathToNode);
                         if (_logger.IsTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedExtension}");
 
@@ -682,7 +681,6 @@ namespace Nethermind.Trie
                 return traverseContext.UpdateValue;
             }
 
-            byte a = traverseContext.UpdatePath[61];
             TrieNode childNode = node.GetChild(TrieStore, traverseContext.UpdatePath.Slice(0, traverseContext.CurrentIndex + 1), traverseContext.UpdatePath[traverseContext.CurrentIndex]);
             if (traverseContext.IsUpdate)
             {
@@ -1027,10 +1025,18 @@ namespace Nethermind.Trie
             TrieNode rootRef = null;
             if (!rootHash.Equals(Keccak.EmptyTreeHash))
             {
-                rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(Array.Empty<byte>());
+                rootRef = RootHash == rootHash ?
+                    RootRef :
+                    TrieStore.FindCachedOrUnknown(rootHash, Array.Empty<byte>());
                 try
                 {
-                    rootRef!.ResolveNode(TrieStore);
+                    if (rootRef.NodeType == NodeType.Unknown)
+                    {
+                        rootRef!.ResolveNode(TrieStore);
+                        rootRef!.ResolveKey(TrieStore, true);
+                        if (rootRef.Keccak != rootHash)
+                            throw new TrieException("Root ref hash mismatch!");
+                    }
                 }
                 catch (TrieException)
                 {

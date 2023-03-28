@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization.FastSync
             _pendingItems = new PendingSyncItems();
             _branchProgress = new BranchProgress(0, _logger);
 
-            _stateStore = new TrieStoreByPath(stateDb, logManager);
+            _stateStore = new TrieStoreByPath(stateDb, Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager, 0);
             //_stateStore = new TrieStore(stateDb, logManager);
             _additionalLeafNibbles = new ConcurrentDictionary<Keccak, List<byte>>();
         }

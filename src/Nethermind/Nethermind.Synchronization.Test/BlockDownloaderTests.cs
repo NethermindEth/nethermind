@@ -955,7 +955,7 @@ namespace Nethermind.Synchronization.Test
                     BlockTree,
                     ReceiptStorage,
                     _stateDb,
-                    new TrieStore(_stateDb, LimboLogs.Instance),
+                    new TrieStoreByPath(_stateDb, LimboLogs.Instance),
                     ProgressTracker,
                     syncConfig,
                     LimboLogs.Instance);

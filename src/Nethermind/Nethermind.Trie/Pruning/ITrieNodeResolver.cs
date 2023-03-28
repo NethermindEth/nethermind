@@ -17,8 +17,8 @@ namespace Nethermind.Trie.Pruning
         /// <param name="hash">Keccak hash of the RLP of the node.</param>
         /// <returns></returns>
         TrieNode FindCachedOrUnknown(Keccak hash);
-
-        TrieNode FindCachedOrUnknown(Span<byte> nodePath);
+        TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath);
+        TrieNode FindCachedOrUnknown(Span<byte> nodePath, Keccak rootHash);
 
         /// <summary>
         /// Loads RLP of the node.

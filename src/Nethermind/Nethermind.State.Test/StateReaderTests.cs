@@ -36,7 +36,7 @@ namespace Nethermind.Store.Test
             return new (string, ITrieStore)[]
             {
                 ("Keccak Store", new TrieStore(new MemDb(), Logger)),
-                ("Path Store", new TrieStoreByPath(new MemDb(), Trie.Pruning.No.Pruning, Persist.EveryBlock, Logger, new FullLeafHistory(128)))
+                ("Path Store", new TrieStoreByPath(new MemDb(), Trie.Pruning.No.Pruning, Persist.EveryBlock, Logger))
             };
         }
 

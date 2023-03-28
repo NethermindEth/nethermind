@@ -361,7 +361,7 @@ namespace Nethermind.Synchronization.SnapSync
                     Trie.Pruning.No.Pruning,
                     Persist.EveryBlock,
                     _logManager,
-                    null);
+                    0); //no in memory caching
             }
 
             public bool Return(ITrieStore obj)

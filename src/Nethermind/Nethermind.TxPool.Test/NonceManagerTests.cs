@@ -34,7 +34,8 @@ public class NonceManagerTests
     {
         ILogManager logManager = LimboLogs.Instance;
         _specProvider = RopstenSpecProvider.Instance;
-        var trieStore = new TrieStore(new MemDb(), logManager);
+        //var trieStore = new TrieStore(new MemDb(), logManager);
+        var trieStore = new TrieStoreByPath(new MemDb(), logManager);
         var codeDb = new MemDb();
         _stateProvider = new StateProvider(trieStore, codeDb, logManager);
         _blockTree = Substitute.For<IBlockTree>();

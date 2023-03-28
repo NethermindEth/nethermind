@@ -60,8 +60,9 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = "1";
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
+            TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
 
-            SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, trieStore, progressTracker, syncConfig, LimboLogs.Instance);
             var head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(head.Header);
@@ -78,8 +79,9 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = "1";
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
+            TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
 
-            SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, trieStore, progressTracker, syncConfig, LimboLogs.Instance);
             var head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             var suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
             blockTree.Head.Returns(head);
@@ -100,8 +102,9 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = "1";
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
+            TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
 
-            SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, trieStore, progressTracker, syncConfig, LimboLogs.Instance);
             var head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             var suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
             blockTree.Head.Returns(head);

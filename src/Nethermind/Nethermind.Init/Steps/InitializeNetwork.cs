@@ -108,7 +108,7 @@ public class InitializeNetwork : IStep
             _api.BlockTree!,
             _api.ReceiptStorage!,
             _api.DbProvider.StateDb,
-            new TrieStoreByPath(_api.DbProvider.StateDb, Trie.Pruning.No.Pruning, Persist.EveryBlock, _api.LogManager),
+            new TrieStoreByPath(_api.DbProvider.StateDb, Trie.Pruning.No.Pruning, Persist.EveryBlock, _api.LogManager, 0),
             progressTracker,
             _syncConfig,
             _api.LogManager);

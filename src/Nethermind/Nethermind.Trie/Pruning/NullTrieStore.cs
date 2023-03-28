@@ -37,6 +37,11 @@ namespace Nethermind.Trie.Pruning
             return new(NodeType.Unknown, hash);
         }
 
+        public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath)
+        {
+            return new(NodeType.Unknown, nodePath, hash);
+        }
+
         public byte[] LoadRlp(Keccak hash)
         {
             return Array.Empty<byte>();
@@ -46,7 +51,7 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose() { }
 
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath)
+        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Keccak rootHash)
         {
             return new(NodeType.Unknown, nodePath.ToArray());
         }
