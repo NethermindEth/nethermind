@@ -132,22 +132,22 @@ public class GCKeeper
 
     private async Task ScheduleGCInternal()
     {
-        (int generation, int compacting) = _gcStrategy.GetForcedGCParams();
-        if (generation > IGCStrategy.NoGC)
+        (GcLevel generation, GcCompaction compacting) = _gcStrategy.GetForcedGCParams();
+        if (generation > GcLevel.NoGC)
         {
             // This should give time to finalize response in Engine API
             // Normally we should get block every 12s (5s on some chains)
             // Lets say we process block in 2s, then delay 1s, then invoke GC
             await Task.Delay(100);
             if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
-            if (generation == IGCStrategy.Gen2 && compacting == IGCStrategy.LOHCompacting)
+            if (generation == GcLevel.Gen2 && compacting == GcCompaction.Full)
             {
                 GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
             }
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
             {
-                System.GC.Collect(generation, GCCollectionMode.Forced, blocking: true, compacting: compacting > 0);
+                System.GC.Collect((int)generation, GCCollectionMode.Forced, blocking: true, compacting: compacting > 0);
             }
         }
     }

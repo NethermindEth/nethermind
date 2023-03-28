@@ -5,6 +5,7 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.GC;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -46,10 +47,10 @@ namespace Nethermind.Merge.Plugin
         [ConfigItem(Description = "Reduces block EngineApi latency by disabling Garbage Collection during EngineApi calls.", DefaultValue = "true")]
         public bool PrioritizeBlockLatency { get; set; }
 
-        [ConfigItem(Description = "Reduces memory usage by forcing Garbage Collection between EngineApi calls. Accept values [-1,2]. -1 disables it.", DefaultValue = "1")]
-        public int GCGenerationToCollect { get; set; }
+        [ConfigItem(Description = "Reduces memory usage by forcing Garbage Collection between EngineApi calls. Accept values `NoGc` (-1), Gen0 (0), Gen1 (1), Gen2 (2).", DefaultValue = "Gen1")]
+        public GcLevel SweepMemory { get; set; }
 
-        [ConfigItem(Description = "Reduces process used memory. 0 is disabled, 1 compacts normal heaps, 2 compacts large object heap too (only when GCGenerationToCollect is set to 2).", DefaultValue = "1")]
-        public int AggressivelyCompactMemory { get; set; }
+        [ConfigItem(Description = "Reduces process used memory. Accept values `No` which disables it, `Yes` which compacts normal heaps, `Full` compacts large object heap too (only when SweepMemory is set to `Gen2`).", DefaultValue = "Yes")]
+        public GcCompaction CompactMemory { get; set; }
     }
 }
