@@ -76,7 +76,7 @@ public class BatchedTrieVisitor
         int degreeOfParallelism = visitingOptions.MaxDegreeOfParallelism;
         if (degreeOfParallelism == 0)
         {
-            degreeOfParallelism = Environment.ProcessorCount;
+            degreeOfParallelism = Math.Max(Environment.ProcessorCount, 1);
         }
         long maxPartitionCount = 4000 * Math.Min(4, degreeOfParallelism);
 
@@ -125,13 +125,13 @@ public class BatchedTrieVisitor
 
         try
         {
-            int degreeOfParallism = trieVisitContext.MaxDegreeOfParallelism;
-            if (degreeOfParallism == 0)
+            int degreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism;
+            if (degreeOfParallelism == 0)
             {
-                degreeOfParallism = Environment.ProcessorCount;
+                degreeOfParallelism = Math.Max(Environment.ProcessorCount, 1);
             }
 
-            Task[]? tasks = Enumerable.Range(0, degreeOfParallism)
+            Task[]? tasks = Enumerable.Range(0, degreeOfParallelism)
                 .Select((_) => Task.Run(BatchedThread))
                 .ToArray();
 
