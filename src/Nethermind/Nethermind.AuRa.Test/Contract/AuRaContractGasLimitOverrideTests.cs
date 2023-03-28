@@ -84,6 +84,7 @@ namespace Nethermind.AuRa.Test.Contract
                 BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
                     new ReadOnlyTxProcessingEnv(
                         DbProvider,
+                        new TrieStoreByPath(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                         new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                         BlockTree, SpecProvider, LimboLogs.Instance));
 

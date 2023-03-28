@@ -28,6 +28,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IReceiptStorage _receiptStorage;
         private readonly IReceiptsMigration _receiptsMigration;
         private readonly IReadOnlyTrieStore _trieStore;
+        private readonly IReadOnlyTrieStore _storageTrieStore;
         private readonly IConfigProvider _configProvider;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
@@ -47,6 +48,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IReceiptStorage receiptStorage,
             IReceiptsMigration receiptsMigration,
             IReadOnlyTrieStore trieStore,
+            IReadOnlyTrieStore storageTrieStore,
             IConfigProvider configProvider,
             ISpecProvider specProvider,
             ISyncModeSelector syncModeSelector,
@@ -61,6 +63,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
             _trieStore = (trieStore ?? throw new ArgumentNullException(nameof(trieStore)));
+            _storageTrieStore = (storageTrieStore ?? throw new ArgumentNullException(nameof(storageTrieStore)));
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -73,6 +76,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             ReadOnlyTxProcessingEnv txEnv = new(
                 _dbProvider,
                 _trieStore,
+                _storageTrieStore,
                 _blockTree,
                 _specProvider,
                 _logManager);

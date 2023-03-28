@@ -112,6 +112,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
                 TrieStore = Substitute.For<ITrieStore>(),
                 ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>(),
+                ReadOnlyStorageTrieStore = Substitute.For<IReadOnlyTrieStore>(),
                 ChainSpec = new ChainSpec(),
                 BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
                 TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),

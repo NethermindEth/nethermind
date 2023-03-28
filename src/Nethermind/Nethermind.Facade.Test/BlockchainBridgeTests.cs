@@ -61,6 +61,7 @@ namespace Nethermind.Facade.Test
 
             ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
+                new TrieStoreByPath(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
@@ -204,6 +205,7 @@ namespace Nethermind.Facade.Test
         {
             ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
+                new TrieStoreByPath(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,

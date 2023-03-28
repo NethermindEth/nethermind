@@ -138,6 +138,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 AbiEncoder abiEncoder = AbiEncoder.Instance;
                 ReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessingEnv(
                     DbProvider,
+                    new TrieStoreByPath(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                     new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 BlockTree, SpecProvider,
                     LimboLogs.Instance);

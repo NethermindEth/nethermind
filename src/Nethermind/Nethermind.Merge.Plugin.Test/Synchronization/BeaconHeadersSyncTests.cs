@@ -106,7 +106,7 @@ public class BeaconHeadersSyncTests
                         BlockTree,
                         NullReceiptStorage.Instance,
                         stateDb,
-                        new TrieStore(stateDb, LimboLogs.Instance),
+                        new TrieStoreByPath(stateDb, LimboLogs.Instance),
                         progressTracker,
                         SyncConfig,
                         LimboLogs.Instance);
