@@ -313,7 +313,7 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
-    public async Task getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(
+    public virtual async Task getPayloadBodiesByHashV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(
         IList<Withdrawal> withdrawals)
     {
         using var chain = await CreateShanghaiBlockChain();
@@ -342,7 +342,7 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
-    public async Task getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(
+    public virtual async Task getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(
         IList<Withdrawal> withdrawals)
     {
         using var chain = await CreateShanghaiBlockChain();
@@ -415,7 +415,7 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
-    public async Task getPayloadBodiesByRangeV1_should_return_canonical(IList<Withdrawal> withdrawals)
+    public virtual async Task getPayloadBodiesByRangeV1_should_return_canonical(IList<Withdrawal> withdrawals)
     {
         using var chain = await CreateShanghaiBlockChain();
         var rpc = CreateEngineModule(chain);
@@ -636,7 +636,7 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(WithdrawalsTestCases))]
-    public async Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
+    public virtual async Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
     {
         using MergeTestBlockchain chain = await CreateShanghaiBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -670,7 +670,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task Should_handle_withdrawals_transition_when_Shanghai_fork_activated()
+    public virtual async Task Should_handle_withdrawals_transition_when_Shanghai_fork_activated()
     {
         // Shanghai fork, ForkActivation.Timestamp = 3
         CustomSpecProvider specProvider = new(
