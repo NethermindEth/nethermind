@@ -32,11 +32,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             IBlockFinder blockFinder,
             ISpecProvider specProvider,
             ILogManager logManager,
-            UInt256? minGasPrice = null)
+            IBlocksConfig? blocksConfig = null)
         {
             _blockFinder = blockFinder;
             _logger = logManager.GetClassLogger();
-            _minGasPrice = minGasPrice ?? new BlocksConfig().MinGasPrice;
+            _minGasPrice = blocksConfig?.MinGasPrice ?? new BlocksConfig().MinGasPrice;
             SpecProvider = specProvider;
         }
 

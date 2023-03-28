@@ -28,7 +28,9 @@ namespace Nethermind.Facade.Test
         {
             _txPool = Substitute.For<ITxPool>();
             _txSigner = Substitute.For<ITxSigner>();
-            _nonceManager = new NonceManager(Substitute.For<IAccountStateProvider>());
+            IChainHeadInfoProvider chainHeadinfoProvider = Substitute.For<IChainHeadInfoProvider>();
+            chainHeadinfoProvider.AccountStateProvider.Returns(Substitute.For<IAccountStateProvider>());
+            _nonceManager = new NonceManager(chainHeadinfoProvider);
             _ecdsa = Substitute.For<IEthereumEcdsa>();
             _txSender = new TxPoolSender(_txPool, new TxSealer(_txSigner, Timestamper.Default), _nonceManager, _ecdsa);
         }

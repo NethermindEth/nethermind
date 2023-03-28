@@ -254,7 +254,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             return CreateTxPoolTxComparer();
         }
 
-        protected override TxPool.TxPool CreateTxPool()
+        protected TxPool.TxPool CreateTxPool()
         {
             // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
             var txPoolReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();

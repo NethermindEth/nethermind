@@ -278,7 +278,7 @@ namespace Nethermind.AccountAbstraction.Test
                 HeaderValidator headerValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
 
                 return new BlockValidator(
-                    new TxValidator(SpecProvider.ChainId),
+                    new TxValidator(SpecProvider),
                     headerValidator,
                     Always.Valid,
                     SpecProvider,

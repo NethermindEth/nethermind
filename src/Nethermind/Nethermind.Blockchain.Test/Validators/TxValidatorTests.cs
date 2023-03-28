@@ -17,6 +17,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -52,8 +53,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
-
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
         }
 
@@ -110,7 +110,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Signature signature = new(sigData);
             Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
         }
 
@@ -130,7 +130,7 @@ namespace Nethermind.Blockchain.Test.Validators
             releaseSpec.IsEip155Enabled.Returns(false);
             releaseSpec.ValidateChainId.Returns(validateChainId);
 
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             txValidator.IsWellFormed(tx, releaseSpec).Should().Be(!validateChainId);
         }
 
@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             tx.Type = txType;
 
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             return txValidator.IsWellFormed(tx, eip2930 ? Berlin.Instance : MuirGlacier.Instance);
         }
 
@@ -184,7 +184,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             tx.Type = txType;
 
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             IReleaseSpec releaseSpec = new ReleaseSpec() { IsEip2930Enabled = eip2930, IsEip1559Enabled = eip1559 };
             return txValidator.IsWellFormed(tx, releaseSpec);
         }
@@ -207,7 +207,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             tx.Type = txType;
 
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             return txValidator.IsWellFormed(tx, Berlin.Instance);
         }
 
@@ -235,7 +235,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             tx.Type = txType;
 
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             return txValidator.IsWellFormed(tx, London.Instance);
         }
 
@@ -260,7 +260,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 .To(null)
                 .WithData(initCode).TestObject;
 
-            TxValidator txValidator = new(1);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             txValidator.IsWellFormed(tx, releaseSpec).Should().Be(expectedResult);
         }
 
@@ -284,7 +284,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 .WithChainId(TestBlockchainIds.ChainId)
                 .WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            TxValidator txValidator = new(TestSpecProvider.Instance);
             return txValidator.IsWellFormed(tx, Cancun.Instance);
         }
     }

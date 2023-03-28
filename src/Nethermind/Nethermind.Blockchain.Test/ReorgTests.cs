@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Test
                 ecdsa,
                 new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider),
                 new TxPoolConfig(),
-                new TxValidator(specProvider.ChainId),
+                new TxValidator(specProvider),
                 LimboLogs.Instance,
                 transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);

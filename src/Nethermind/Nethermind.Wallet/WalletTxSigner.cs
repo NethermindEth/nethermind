@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Wallet
@@ -12,10 +13,10 @@ namespace Nethermind.Wallet
         private readonly IWallet _wallet;
         private readonly ulong _chainId;
 
-        public WalletTxSigner(IWallet wallet, ulong chainId)
+        public WalletTxSigner(IWallet wallet, ISpecProvider specProvider)
         {
             _wallet = wallet;
-            _chainId = chainId;
+            _chainId = specProvider.ChainId;
         }
 
         public ValueTask Sign(Transaction tx)

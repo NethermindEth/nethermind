@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -46,7 +47,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, gasPrice);
+            IBlocksConfig blocksConfig = new BlocksConfig();
+            if (gasPrice.HasValue)
+                blocksConfig.MinGasPrice = gasPrice.Value;
+            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, blocksConfig);
 
             UInt256 estimate = testGasPriceOracle.GetGasPriceEstimate();
             UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.Wei()) / 100;
@@ -79,7 +83,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockFinder.FindBlock(0).Returns(headBlock);
             blockFinder.Head.Returns(headBlock);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, gasPrice);
+            IBlocksConfig blocksConfig = new BlocksConfig();
+            if (gasPrice.HasValue)
+                blocksConfig.MinGasPrice = gasPrice.Value;
+            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, blocksConfig);
 
             UInt256 estimate = testGasPriceOracle.GetGasPriceEstimate();
             estimate.Should().Be((baseFeePerGas + (gasPrice ?? 1.Wei())) * 110 / 100);

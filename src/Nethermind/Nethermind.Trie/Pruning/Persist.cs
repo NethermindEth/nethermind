@@ -5,7 +5,7 @@ namespace Nethermind.Trie.Pruning
 {
     public static class Persist
     {
-        public static IPersistenceStrategy EveryBlock = Archive.Instance;
+        public static IPersistenceStrategy EveryBlock => Archive.Instance;
 
         public static IPersistenceStrategy IfBlockOlderThan(long length)
             => new ConstantInterval(length);

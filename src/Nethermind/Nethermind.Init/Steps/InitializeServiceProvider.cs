@@ -1,5 +1,7 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
+using MathNet.Numerics;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 
@@ -17,7 +19,8 @@ public class InitializeServiceProvider : IStep
 
     public Task Execute(CancellationToken cancellationToken)
     {
-        _api.Services = _api.ServiceDescriptors.BuildServiceProvider();
+        var originalProvider = _api.ServiceDescriptors.BuildServiceProvider();
+        _api.Services = new NethermindApiCustomResolver(originalProvider, _api);
         return Task.CompletedTask;
     }
 }

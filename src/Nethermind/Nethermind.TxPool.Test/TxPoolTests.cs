@@ -1514,7 +1514,7 @@ namespace Nethermind.TxPool.Test
                 _ethereumEcdsa,
                 _headInfo,
                 config ?? new TxPoolConfig() { GasLimit = _txGasLimit },
-                new TxValidator(_specProvider.ChainId),
+                new TxValidator(_specProvider),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
                 incomingTxFilter,

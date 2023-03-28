@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -159,8 +160,8 @@ namespace Nethermind.Init.Steps
 
             IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
 
-            setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
-            setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
+            setApi.TransactionComparerProvider = _api.Services.GetRequiredService<ITransactionComparerProvider>();
+            setApi.ChainHeadStateProvider = _api.Services.GetRequiredService<IReadOnlyStateProvider>();
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
             stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
@@ -193,9 +194,9 @@ namespace Nethermind.Init.Steps
                 stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
 
-            TxValidator txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
+            ITxValidator txValidator = setApi.TxValidator = getApi.Services.GetRequiredService<ITxValidator>();
 
-            ITxPool txPool = _api.TxPool = CreateTxPool();
+            ITxPool txPool = _api.TxPool = _api.Services.GetRequiredService<ITxPool>();
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
             getApi.DisposeStack.Push(receiptCanonicalityMonitor);
@@ -243,19 +244,9 @@ namespace Nethermind.Init.Steps
                 getApi.SpecProvider,
                 getApi.LogManager);
 
-            IChainHeadInfoProvider chainHeadInfoProvider =
-                new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
-
-            // TODO: can take the tx sender from plugin here maybe
-            ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
-            TxSealer nonceReservingTxSealer =
-                new(txSigner, getApi.Timestamper);
-            INonceManager nonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
-            setApi.NonceManager = nonceManager;
-            setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
-
-            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
-            setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
+            setApi.TxSender = _api.Services.GetRequiredService<ITxSender>();
+            setApi.TxPoolInfoProvider = _api.Services.GetRequiredService<ITxPoolInfoProvider>();
+            setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree, getApi.SpecProvider, _api.LogManager, blocksConfig);
             IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(
@@ -332,14 +323,6 @@ namespace Nethermind.Init.Steps
 
         protected virtual IHealthHintService CreateHealthHintService() =>
             new HealthHintService(_api.ChainSpec!);
-
-        protected virtual TxPool.TxPool CreateTxPool() =>
-            new(_api.EthereumEcdsa!,
-                new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!),
-                _api.Config<ITxPoolConfig>(),
-                _api.TxValidator!,
-                _api.LogManager,
-                CreateTxPoolTxComparer());
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 

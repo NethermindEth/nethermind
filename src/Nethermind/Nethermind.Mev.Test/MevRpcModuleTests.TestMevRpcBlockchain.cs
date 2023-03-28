@@ -221,7 +221,7 @@ namespace Nethermind.Mev.Test
                 TxBundleSimulator txBundleSimulator = new(_tracerFactory, GasLimitCalculator, Timestamper, TxPool,
                     SpecProvider, Signer);
                 BundlePool = new TestBundlePool(BlockTree, txBundleSimulator, Timestamper,
-                    new TxValidator(BlockTree.ChainId), SpecProvider, _mevConfig, LogManager, EthereumEcdsa);
+                    new TxValidator(SpecProvider), SpecProvider, _mevConfig, LogManager, EthereumEcdsa);
 
                 return blockProcessor;
             }
@@ -246,7 +246,7 @@ namespace Nethermind.Mev.Test
                 HeaderValidator headerValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
 
                 return new BlockValidator(
-                    new TxValidator(SpecProvider.ChainId),
+                    new TxValidator(SpecProvider),
                     headerValidator,
                     Always.Valid,
                     SpecProvider,

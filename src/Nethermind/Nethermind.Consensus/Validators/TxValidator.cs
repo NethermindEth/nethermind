@@ -15,9 +15,9 @@ namespace Nethermind.Consensus.Validators
     {
         private readonly ulong _chainIdValue;
 
-        public TxValidator(ulong chainId)
+        public TxValidator(ISpecProvider specProvider)
         {
-            _chainIdValue = chainId;
+            _chainIdValue = specProvider.ChainId;
         }
 
         /* Full and correct validation is only possible in the context of a specific block

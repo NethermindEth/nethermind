@@ -218,7 +218,7 @@ public partial class EngineModuleTests
             HeaderValidator = new MergeHeaderValidator(PoSSwitcher, preMergeHeaderValidator, BlockTree, SpecProvider, SealValidator, LogManager);
 
             return new BlockValidator(
-                new TxValidator(SpecProvider.ChainId),
+                new TxValidator(SpecProvider),
                 HeaderValidator,
                 Always.Valid,
                 SpecProvider,

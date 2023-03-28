@@ -147,7 +147,7 @@ public class TestBlockchain : IDisposable
         IChainHeadInfoProvider chainHeadInfoProvider =
             new ChainHeadInfoProvider(SpecProvider, BlockTree, StateReader);
 
-        NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
+        NonceManager = new NonceManager(chainHeadInfoProvider);
 
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(TrieStore, BlockTree, LogManager);
 
@@ -160,7 +160,7 @@ public class TestBlockchain : IDisposable
         new ReceiptCanonicalityMonitor(BlockTree, ReceiptStorage, LogManager);
 
         BlockValidator = new BlockValidator(
-            new TxValidator(SpecProvider.ChainId),
+            new TxValidator(SpecProvider),
             HeaderValidator,
             Always.Valid,
             SpecProvider,
@@ -271,7 +271,7 @@ public class TestBlockchain : IDisposable
             EthereumEcdsa,
             new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
             new TxPoolConfig(),
-            new TxValidator(SpecProvider.ChainId),
+            new TxValidator(SpecProvider),
             LogManager,
             TransactionComparerProvider.GetDefaultComparer());
 

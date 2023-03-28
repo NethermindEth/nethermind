@@ -519,7 +519,7 @@ namespace Nethermind.Mev.Test
                     BlockTree,
                     Simulator,
                     Timestamper,
-                    new TxValidator(BlockTree.ChainId),
+                    new TxValidator(TestSpecProvider.Instance),
                     new TestSpecProvider(London.Instance),
                     config ?? new MevConfig() { TrustedRelays = TestItem.AddressA.ToString() },
                     LimboLogs.Instance,

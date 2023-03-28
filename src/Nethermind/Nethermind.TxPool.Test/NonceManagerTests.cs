@@ -43,7 +43,7 @@ public class NonceManagerTests
         _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
 
         _headInfo = new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider);
-        _nonceManager = new NonceManager(_headInfo.AccountStateProvider);
+        _nonceManager = new NonceManager(_headInfo);
     }
 
     [Test]
@@ -118,7 +118,9 @@ public class NonceManagerTests
         IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
         Account account = new(0);
         accountStateProvider.GetAccount(TestItem.AddressA).Returns(account);
-        _nonceManager = new NonceManager(accountStateProvider);
+        IChainHeadInfoProvider chainHeadinfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        chainHeadinfoProvider.AccountStateProvider.Returns(accountStateProvider);
+        _nonceManager = new NonceManager(chainHeadinfoProvider);
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
             nonce.Should().Be(0);

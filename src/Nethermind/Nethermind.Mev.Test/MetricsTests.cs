@@ -208,12 +208,11 @@ namespace Nethermind.Mev.Test
 
             blockTree.Head.Returns(head);
             //blockTree.FindLevel(0).ReturnsForAnyArgs(info);
-
             TestBundlePool bundlePool = new(
                 blockTree,
                 Substitute.For<IBundleSimulator>(),
                 new ManualTimestamper(DateTimeOffset.UnixEpoch.DateTime),
-                new TxValidator(blockTree.ChainId),
+                new TxValidator(TestSpecProvider.Instance),
                 new TestSpecProvider(London.Instance),
                 config ?? new MevConfig() { TrustedRelays = $"{TestItem.AddressA},{TestItem.AddressB}" },
                 LimboLogs.Instance,

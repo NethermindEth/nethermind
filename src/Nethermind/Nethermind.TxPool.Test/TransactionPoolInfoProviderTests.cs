@@ -25,8 +25,10 @@ namespace Nethermind.TxPool.Test
         {
             _address = Address.FromNumber(1);
             _stateReader = Substitute.For<IAccountStateProvider>();
+            IChainHeadInfoProvider chainHeadinfoProvider = Substitute.For<IChainHeadInfoProvider>();
+            chainHeadinfoProvider.AccountStateProvider.Returns(_stateReader);
             _txPool = Substitute.For<ITxPool>();
-            _infoProvider = new TxPoolInfoProvider(_stateReader, _txPool);
+            _infoProvider = new TxPoolInfoProvider(chainHeadinfoProvider, _txPool);
         }
 
         [Test]

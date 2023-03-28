@@ -15,9 +15,9 @@ public class NonceManager : INonceManager
     private readonly ConcurrentDictionary<Address, AddressNonceManager> _addressNonceManagers = new();
     private readonly IAccountStateProvider _accounts;
 
-    public NonceManager(IAccountStateProvider accounts)
+    public NonceManager(IChainHeadInfoProvider headInfoProvider)
     {
-        _accounts = accounts;
+        _accounts = headInfoProvider.AccountStateProvider;
     }
 
     public NonceLocker ReserveNonce(Address address, out UInt256 reservedNonce)

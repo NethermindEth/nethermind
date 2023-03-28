@@ -277,7 +277,7 @@ namespace Nethermind.Synchronization.Test
                 new TransactionComparerProvider(specProvider, tree);
 
             TxPool.TxPool txPool = new(ecdsa, new ChainHeadInfoProvider(specProvider, tree, stateReader),
-                new TxPoolConfig(), new TxValidator(specProvider.ChainId), logManager, transactionComparerProvider.GetDefaultComparer());
+                new TxPoolConfig(), new TxValidator(specProvider), logManager, transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, logManager);
 
