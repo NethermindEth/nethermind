@@ -215,7 +215,7 @@ namespace Nethermind.Evm
                 Instruction.PC => !IsEofContext,
                 Instruction.CALLCODE or Instruction.SELFDESTRUCT => !IsEofContext,
                 Instruction.JUMPI or Instruction.JUMP => !IsEofContext,
-                Instruction.CALLF or Instruction.RETF => IsEofContext,
+                Instruction.CALLF or Instruction.RETF or Instruction.JUMPF => IsEofContext,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB => true,
                 _ => true
             };
@@ -307,6 +307,7 @@ namespace Nethermind.Evm
             Instruction.STATICCALL => (6, 1, 0),
             Instruction.REVERT => (2, 0, 0),
             Instruction.INVALID => (0, 0, 0),
+            Instruction.JUMPF => (0, 0, 2),
             _ => throw new NotImplementedException($"Instruction {instruction} not implemented")
         };
 
@@ -328,6 +329,7 @@ namespace Nethermind.Evm
         {
             Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
             Instruction.RETF or Instruction.CALLF => true,
+            Instruction.JUMPF => true,
             _ => false
         };
     }
