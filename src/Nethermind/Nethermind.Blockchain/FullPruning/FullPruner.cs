@@ -175,7 +175,7 @@ namespace Nethermind.Blockchain.FullPruning
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
-                    FullScanMemoryBudget = ((long) _pruningConfig.FullPruningMemoryBudgetMb).MiB(),
+                    FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
                 };
                 _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
 
