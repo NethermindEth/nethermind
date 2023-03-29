@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
                 if (receipt.StatusCode != StatusCode.Success)
                 {
-                    receipt.StatusCode = receipt.Logs.Length == 0 ? StatusCode.Failure : StatusCode.Success;
+                    receipt.StatusCode = (receipt.Logs?.Length ?? 0) == 0 ? StatusCode.Failure : StatusCode.Success;
                 }
 
                 IncrementContext(receipt.GasUsedTotal);
@@ -147,7 +147,7 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
                 if (receipt.StatusCode != StatusCode.Success)
                 {
-                    receipt.StatusCode = receipt.Logs.Length == 0 ? StatusCode.Failure : StatusCode.Success;
+                    receipt.StatusCode = (receipt.Logs?.Length ?? 0) == 0 ? StatusCode.Failure : StatusCode.Success;
                 }
 
                 IncrementContext(receipt.GasUsedTotal);

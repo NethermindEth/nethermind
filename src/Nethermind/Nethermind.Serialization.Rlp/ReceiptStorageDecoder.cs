@@ -39,7 +39,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
-            if (isStorage && rlpStream.PeekNumberOfItemsRemaining(checkPosition) == 2)
+            if (isStorage && rlpStream.PeekNumberOfItemsRemaining(checkPosition, maxSearch: 3) == 2)
             {
                 txReceipt = Decode(rlpStream, rlpBehaviors & ~RlpBehaviors.Storage);
                 txReceipt.Sender = rlpStream.DecodeAddress();
@@ -124,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            if (isStorage && decoderContext.PeekNumberOfItemsRemaining(checkPosition) == 2)
+            if (isStorage && decoderContext.PeekNumberOfItemsRemaining(checkPosition, maxSearch: 3) == 2)
             {
                 txReceipt = Decode(ref decoderContext, rlpBehaviors & ~RlpBehaviors.Storage);
                 txReceipt!.Sender = decoderContext.DecodeAddress();
@@ -295,7 +295,7 @@ namespace Nethermind.Serialization.Rlp
                 return (contentLength, 0);
             }
 
-            bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
+            bool isStorage = (rlpBehaviors & RlpBehaviors.LegacyReceipts) != 0;
 
             if (isStorage)
             {
@@ -385,7 +385,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            if (isStorage && decoderContext.PeekNumberOfItemsRemaining(checkPosition) == 2)
+            if (isStorage && decoderContext.PeekNumberOfItemsRemaining(checkPosition, maxSearch: 3) == 2)
             {
                 DecodeStructRef(ref decoderContext, rlpBehaviors & ~RlpBehaviors.Storage, out item);
                 decoderContext.DecodeAddressStructRef(out item.Sender);
