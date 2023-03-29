@@ -20,15 +20,16 @@ namespace Nethermind.Blockchain.Test.Receipts
     {
         private MemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
         private PersistentReceiptStorage _storage = null!;
+        private ReceiptsRecovery _receiptsRecovery;
 
         [SetUp]
         public void SetUp()
         {
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
             EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
-            ReceiptsRecovery receiptsRecovery = new(ethereumEcdsa, specProvider);
+            _receiptsRecovery = new(ethereumEcdsa, specProvider);
             _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
-            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, receiptsRecovery) { MigratedBlockNumber = 0 };
+            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, _receiptsRecovery, Build.A.BlockTree().TestObject) { MigratedBlockNumber = 0 };
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         }
 
@@ -181,6 +182,7 @@ namespace Nethermind.Blockchain.Test.Receipts
 
             var receipts = new[] { Build.A.Receipt.TestObject };
             _storage.Insert(block, receipts);
+            _receiptsRecovery.TryRecover(block, receipts);
             return (block, receipts);
         }
     }

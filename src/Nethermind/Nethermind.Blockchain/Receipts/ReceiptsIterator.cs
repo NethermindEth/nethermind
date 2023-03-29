@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -15,18 +16,26 @@ namespace Nethermind.Blockchain.Receipts
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
 
-        private readonly TxReceipt[] _receipts;
+        private readonly TxReceipt[]? _receipts;
         private int _position;
+        private readonly Block _block;
+        private readonly IReceiptsRecovery _receiptsRecovery;
 
-        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb)
+        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb, Block block, IReceiptsRecovery receiptsRecovery)
         {
             _decoderContext = receiptsData.AsRlpValueContext();
             _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
             _blocksDb = blocksDb;
             _receipts = null;
             _position = 0;
+            _block = block;
+            _receiptsRecovery = receiptsRecovery;
         }
 
+        /// <summary>
+        /// Note: This code path assume the receipts already have other info recovered. Its used only by cache.
+        /// </summary>
+        /// <param name="receipts"></param>
         public ReceiptsIterator(TxReceipt[] receipts)
         {
             _decoderContext = new Rlp.ValueDecoderContext();

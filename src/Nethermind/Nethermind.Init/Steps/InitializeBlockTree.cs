@@ -69,7 +69,7 @@ namespace Nethermind.Init.Steps
 
             ReceiptsRecovery receiptsRecovery = new(_get.EthereumEcdsa, _get.SpecProvider);
             IReceiptStorage receiptStorage = _set.ReceiptStorage = initConfig.StoreReceipts
-                ? new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider!, receiptsRecovery)
+                ? new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider!, receiptsRecovery, blockTree)
                 : NullReceiptStorage.Instance;
 
             IReceiptFinder receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
