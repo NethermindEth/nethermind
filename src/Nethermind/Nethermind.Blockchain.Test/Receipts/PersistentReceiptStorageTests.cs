@@ -183,6 +183,12 @@ namespace Nethermind.Blockchain.Test.Receipts
             var receipts = new[] { Build.A.Receipt.TestObject };
             _storage.Insert(block, receipts);
             _receiptsRecovery.TryRecover(block, receipts);
+
+            foreach (TxReceipt txReceipt in receipts)
+            {
+                txReceipt.Error = "";
+            }
+
             return (block, receipts);
         }
     }

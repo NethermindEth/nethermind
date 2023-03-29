@@ -18,14 +18,10 @@ namespace Nethermind.Blockchain.Receipts
         private readonly ConcurrentDictionary<Keccak, TxReceipt[]> _receipts = new();
 
         private readonly ConcurrentDictionary<Keccak, TxReceipt> _transactions = new();
-        private readonly IReceiptsRecovery _receiptsRecovery;
-        private readonly IBlockFinder _blockFinder;
 
-        public InMemoryReceiptStorage(IBlockFinder blockFinder, IReceiptsRecovery receiptsRecovery, bool allowReceiptIterator = true)
+        public InMemoryReceiptStorage(bool allowReceiptIterator = true)
         {
             _allowReceiptIterator = allowReceiptIterator;
-            _receiptsRecovery = receiptsRecovery;
-            _blockFinder = blockFinder;
         }
 
         public Keccak FindBlockHash(Keccak txHash)
@@ -52,11 +48,7 @@ namespace Nethermind.Blockchain.Receipts
             if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out var receipts))
             {
 #pragma warning disable 618
-                ReceiptStorageDecoder decoder = ReceiptStorageDecoder.Instance;
-                RlpStream stream = new RlpStream(decoder.GetLength(receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts));
-                decoder.Encode(stream, receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-                Block block = _blockFinder.FindBlock(blockHash);
-                iterator = new ReceiptsIterator(stream.Data, new MemDb(), block!, _receiptsRecovery);
+                iterator = new ReceiptsIterator(receipts);
 #pragma warning restore 618
                 return true;
             }

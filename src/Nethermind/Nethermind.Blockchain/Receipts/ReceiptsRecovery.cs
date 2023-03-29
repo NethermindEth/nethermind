@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Receipts
             return ReceiptsRecoveryResult.Fail;
         }
 
-        public RecoveryContext CreateRecoveryContext(Block block, bool forceRecoverSender = true, bool recoverSenderOnly = false)
+        public IReceiptsRecovery.IRecoveryContext CreateRecoveryContext(Block block, bool forceRecoverSender = true, bool recoverSenderOnly = false)
         {
             var releaseSpec = _specProvider.GetSpec(block.Header);
             return new RecoveryContext(releaseSpec, block, forceRecoverSender, recoverSenderOnly, _ecdsa);
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Receipts
             return (receipts[0].BlockHash is null || (forceRecoverSender && receipts[0].Sender is null));
         }
 
-        public class RecoveryContext
+        public class RecoveryContext: IReceiptsRecovery.IRecoveryContext
         {
             private readonly IReleaseSpec _releaseSpec;
             private readonly Block _block;

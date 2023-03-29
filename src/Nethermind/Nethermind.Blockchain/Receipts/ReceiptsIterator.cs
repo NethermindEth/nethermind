@@ -18,8 +18,7 @@ namespace Nethermind.Blockchain.Receipts
 
         private readonly TxReceipt[]? _receipts;
         private int _position;
-        private readonly Block _block;
-        private readonly IReceiptsRecovery _receiptsRecovery;
+        private readonly IReceiptsRecovery.IRecoveryContext _recoveryContext;
 
         public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb, Block block, IReceiptsRecovery receiptsRecovery)
         {
@@ -28,8 +27,7 @@ namespace Nethermind.Blockchain.Receipts
             _blocksDb = blocksDb;
             _receipts = null;
             _position = 0;
-            _block = block;
-            _receiptsRecovery = receiptsRecovery;
+            _recoveryContext = receiptsRecovery.CreateRecoveryContext(block);
         }
 
         /// <summary>
@@ -52,6 +50,7 @@ namespace Nethermind.Blockchain.Receipts
                 if (_decoderContext.Position < _length)
                 {
                     ReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    _recoveryContext.RecoverReceiptData(ref current);
                     return true;
                 }
             }

@@ -9,5 +9,13 @@ namespace Nethermind.Blockchain.Receipts
     {
         ReceiptsRecoveryResult TryRecover(Block block, TxReceipt[] receipts, bool forceRecoverSender = true, bool recoverSenderOnly = false);
         bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true, bool recoverSenderOnly = false);
+
+        IRecoveryContext CreateRecoveryContext(Block block, bool forceRecoverSender = false, bool recoverSenderOnly = false);
+
+        public interface IRecoveryContext
+        {
+            void RecoverReceiptData(TxReceipt receipt);
+            void RecoverReceiptData(ref TxReceiptStructRef receipt);
+        }
     }
 }
