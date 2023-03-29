@@ -43,7 +43,7 @@ namespace Nethermind.State
                 Span<byte> nibbleBytes = stackalloc byte[64];
                 Nibbles.BytesToNibbleBytes(addressKeyBytes, nibbleBytes);
                 TrieNode node = TrieStore.FindCachedOrUnknown(nibbleBytes, rootHash);
-                if (node is not null && node.NodeType == NodeType.Leaf)
+                if (node?.NodeType == NodeType.Leaf)
                     bytes = node.Value;
             }
 

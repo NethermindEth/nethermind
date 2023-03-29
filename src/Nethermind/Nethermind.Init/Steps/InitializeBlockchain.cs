@@ -126,7 +126,7 @@ namespace Nethermind.Init.Steps
                     stateWitnessedBy,
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
                     persistenceStrategy,
-                    getApi.LogManager, 128);
+                    getApi.LogManager, (int)pruningConfig.PersistenceInterval);
 
                 //TODO - remove seprate store for this
                 storageStore = new TrieStore(

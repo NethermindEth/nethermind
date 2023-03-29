@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Trie.ByPath;
 public class TrieNodePathCache
@@ -21,19 +22,24 @@ public class TrieNodePathCache
     class NodeVersions : ConcurrentDictionary<long, TrieNode>
     {
         public NodeVersions() : base() { }
+
+        public bool HasDataForBlock(long blockNumber) => Keys.Contains(blockNumber);
     }
 
     private ConcurrentDictionary<byte[], NodeVersions> _nodesByPath = new(Bytes.EqualityComparer);
     private ConcurrentDictionary<Keccak, HashSet<long>> _rootHashToBlock = new();
     private Tuple<long, Keccak> latestBlock;
+    private readonly ITrieStore _trieStore;
     private readonly int _maxNumberOfBlocks;
     private int _count;
     private readonly ILogger _logger;
 
     public int MaxNumberOfBlocks { get => _maxNumberOfBlocks; }
+    public int Count { get => _count; }
 
     public TrieNodePathCache(ITrieStore trieStore, int maxNumberOfBlocks, ILogManager? logManager)
     {
+        _trieStore = trieStore;
         _maxNumberOfBlocks = maxNumberOfBlocks;
         _logger = logManager?.GetClassLogger<TrieNodePathCache>() ?? throw new ArgumentNullException(nameof(logManager));
     }
@@ -94,14 +100,6 @@ public class TrieNodePathCache
     {
         if (_nodesByPath.TryGetValue(pathToNode, out NodeVersions nodeVersions))
         {
-            if (nodeVersions.Keys.Count >= _maxNumberOfBlocks)
-            {
-                long minVal = nodeVersions.Keys.Min();
-                nodeVersions.TryRemove(minVal, out _);
-
-                Pruning.Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
-                _logger.Info($"Block {minVal} removed from cache");
-            }
             nodeVersions[blockNumber] = trieNode;
         }
         else
@@ -125,6 +123,40 @@ public class TrieNodePathCache
         if (blockNo >= (latestBlock?.Item1 ?? 0))
         {
             latestBlock = new Tuple<long, Keccak>(blockNo, rootHash);
+        }
+    }
+
+    public void PersistUntilBlock(long blockNumber)
+    {
+        ICollection<NodeVersions> allPaths = _nodesByPath.Values;
+        foreach (NodeVersions nodeVersion in allPaths)
+        {
+            ICollection<long> keys = nodeVersion.Keys;
+            long toPersist = keys.Max(b => Math.Max(b, blockNumber));
+
+            TrieNode node = nodeVersion[toPersist];
+            if (!node.IsPersisted && node.IsLeaf && node.PathToNode.Length < 64)
+                continue;
+            _trieStore.SaveNodeDirectly(blockNumber, node);
+            node.IsPersisted = true;
+        }
+    }
+
+    public void Prune()
+    {
+        if (_nodesByPath.TryGetValue(Array.Empty<byte>(), out NodeVersions nodeVersions))
+        {
+            while (nodeVersions.Keys.Count > _maxNumberOfBlocks)
+            {
+                long blockToRemove = nodeVersions.Keys.Min();
+                Parallel.ForEach(_nodesByPath, (kvp) => {
+                    if (kvp.Value.TryRemove(blockToRemove, out _))
+                    {
+                        Pruning.Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
+                    }
+                });
+                if (_logger.IsInfo) _logger.Info($"Block {blockToRemove} removed from cache");
+            }
         }
     }
 }

@@ -103,9 +103,8 @@ namespace Nethermind.Trie.Pruning
         {
             get
             {
-                //Metrics.CachedNodesCount = _dirtyNodes.Count;
-                //return _dirtyNodes.Count;
-                return 0;
+                Metrics.CachedNodesCount = _dirtyNodes.Count;
+                return _dirtyNodes.Count;
             }
         }
 
@@ -166,6 +165,10 @@ namespace Nethermind.Trie.Pruning
                     if (shouldPersistSnapshot)
                     {
                         Persist(set);
+                    }
+                    else
+                    {
+                        _dirtyNodes.Prune();
                     }
                     _dirtyNodes?.SetRootHashForBlock(set.BlockNumber, set.Root?.Keccak);
 
@@ -463,6 +466,7 @@ namespace Nethermind.Trie.Pruning
 
         private void PersistOnShutdown()
         {
+            //_dirtyNodes.PersistBlock(LatestCommittedBlockNumber);
         }
 
         #endregion
