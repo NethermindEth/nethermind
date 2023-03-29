@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Receipts
             return (receipts[0].BlockHash is null || (forceRecoverSender && receipts[0].Sender is null));
         }
 
-        public class RecoveryContext: IReceiptsRecovery.IRecoveryContext
+        public class RecoveryContext : IReceiptsRecovery.IRecoveryContext
         {
             private readonly IReleaseSpec _releaseSpec;
             private readonly Block _block;
