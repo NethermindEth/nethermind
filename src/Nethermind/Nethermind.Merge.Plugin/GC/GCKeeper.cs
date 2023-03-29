@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime;
+using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core.Extensions;
@@ -12,6 +13,7 @@ namespace Nethermind.Merge.Plugin.GC;
 
 public class GCKeeper
 {
+    private static ulong _forcedGcCount = 0;
     private readonly IGCStrategy _gcStrategy;
     private readonly ILogger _logger;
     private static readonly long _defaultSize = 512.MB();
@@ -33,7 +35,7 @@ public class GCKeeper
             FailCause failCause = FailCause.None;
             try
             {
-                System.Runtime.GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+                GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
                 //if (!System.GC.TryStartNoGCRegion(size.Value, true))
                 //{
                 //    failCause = FailCause.GCFailedToStartNoGCRegion;
@@ -147,7 +149,18 @@ public class GCKeeper
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
             {
-                System.GC.Collect((int)generation, GCCollectionMode.Forced, blocking: true, compacting: compacting > 0);
+                ulong forcedGcCount = Interlocked.Increment(ref _forcedGcCount);
+                int collectionsPerDecommit = _gcStrategy.CollectionsPerDecommit;
+
+                GCCollectionMode mode = GCCollectionMode.Forced;
+                if (collectionsPerDecommit == 0 || (forcedGcCount % (ulong)collectionsPerDecommit == 0))
+                {
+                    // Also decommit memory back to O/S
+                    mode = GCCollectionMode.Aggressive;
+                    generation = GcLevel.Gen2;
+                }
+
+                System.GC.Collect((int)generation, mode, blocking: true, compacting: compacting > 0);
             }
         }
     }

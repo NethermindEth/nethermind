@@ -17,11 +17,13 @@ public class NoSyncGcRegionStrategy : IGCStrategy
     {
         _syncModeSelector = syncModeSelector;
         _canStartNoGCRegion = mergeConfig.PrioritizeBlockLatency;
+        CollectionsPerDecommit = mergeConfig.CollectionsPerDecommit;
         GcLevel gcLevel = (GcLevel)Math.Min((int)GcLevel.Gen2, (int)mergeConfig.SweepMemory);
         GcCompaction gcCompaction = (GcCompaction)Math.Min((int)GcCompaction.Full, (int)mergeConfig.CompactMemory);
         _gcParams = (gcLevel, gcCompaction);
     }
 
+    public int CollectionsPerDecommit { get; }
     public bool CanStartNoGCRegion() => _canStartNoGCRegion && _syncModeSelector.Current == SyncMode.WaitingForBlock;
     public (GcLevel, GcCompaction) GetForcedGCParams() => _gcParams;
 }

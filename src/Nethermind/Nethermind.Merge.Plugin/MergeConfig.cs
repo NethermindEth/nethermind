@@ -28,5 +28,7 @@ namespace Nethermind.Merge.Plugin
         public GcLevel SweepMemory { get; set; } = GcLevel.Gen1;
 
         public GcCompaction CompactMemory { get; set; } = GcCompaction.Yes;
+
+        public int CollectionsPerDecommit { get; set; } = 10;
     }
 }
