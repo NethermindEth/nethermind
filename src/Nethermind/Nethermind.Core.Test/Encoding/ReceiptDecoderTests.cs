@@ -284,7 +284,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt txReceipt = testCase.TxReceipt;
 
             ReceiptStorageDecoder decoder = new();
-            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.LegacyReceipts);
+            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.LegacyReceiptStorage);
             TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage);
 
             AssertStorageLegaxyReceipt(txReceipt, deserialized);

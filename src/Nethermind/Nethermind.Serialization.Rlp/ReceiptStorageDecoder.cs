@@ -220,7 +220,7 @@ namespace Nethermind.Serialization.Rlp
             (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
             int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
 
-            bool legacyReceipts = (rlpBehaviors & RlpBehaviors.LegacyReceipts) != 0;
+            bool legacyReceipts = (rlpBehaviors & RlpBehaviors.LegacyReceiptStorage) != 0;
             bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
             if (item.TxType != TxType.Legacy)
@@ -295,7 +295,7 @@ namespace Nethermind.Serialization.Rlp
                 return (contentLength, 0);
             }
 
-            bool isStorage = (rlpBehaviors & RlpBehaviors.LegacyReceipts) != 0;
+            bool isStorage = (rlpBehaviors & RlpBehaviors.LegacyReceiptStorage) != 0;
 
             if (isStorage)
             {
