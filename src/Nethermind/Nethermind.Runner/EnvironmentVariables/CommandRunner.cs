@@ -29,7 +29,7 @@ public static class CommandRunner
     }
 
     private static string GetArguments(string command) =>
-        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"/C {command}": $"-c \"{command}\"";
+        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"/C {command}" : $"-c \"{command}\"";
 
     private static string GetFileName() =>
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "cmd.exe" : "bash";

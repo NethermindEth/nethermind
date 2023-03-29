@@ -166,7 +166,7 @@ namespace Nethermind.Runner
                 ConfigureSeqLogger(configProvider);
                 if (ConfigureEnvironmentVariables(configProvider))
                 {
-                    if(_logger.IsWarn) _logger.Warn("Environment variables changed, the process needs to be restarted.");
+                    if (_logger.IsWarn) _logger.Warn("Environment variables changed, the process needs to be restarted.");
                     return ExitCodes.EnvironmentVariableConfigChanged;
                 }
 
