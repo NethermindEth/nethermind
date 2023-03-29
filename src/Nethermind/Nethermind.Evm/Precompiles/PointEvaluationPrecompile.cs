@@ -51,6 +51,6 @@ public class PointEvaluationPrecompile : IPrecompile
         Metrics.PointEvaluationPrecompile++;
         return IsValid(inputData)
             ? (PointEvaluationSuccessfulResponse, true)
-            : (ReadOnlyMemory<byte>.Empty, false);
+            : (default, false);
     }
 }

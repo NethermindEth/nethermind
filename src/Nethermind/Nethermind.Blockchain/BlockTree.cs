@@ -263,8 +263,6 @@ namespace Nethermind.Blockchain
                     .AsRlpStream().DecodeKeccak();
                 _lowestInsertedBeaconHeader = FindHeader(lowestBeaconHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
-
-            if (_logger.IsInfo) _logger.Info($"Loaded LowestInsertedBeaconHeader: {LowestInsertedBeaconHeader}");
         }
 
         private void LoadLowestInsertedHeader()
@@ -1559,7 +1557,7 @@ namespace Nethermind.Blockchain
                 if (data is not null)
                 {
                     startBlock = FindBlock(new Keccak(data), BlockTreeLookupOptions.None);
-                    _logger.Warn($"Start block loaded from HEAD - {startBlock?.ToString(Block.Format.Short)}");
+                    if (_logger.IsInfo) _logger.Info($"Start block loaded from HEAD - {startBlock?.ToString(Block.Format.Short)}");
                 }
             }
 

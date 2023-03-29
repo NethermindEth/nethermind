@@ -223,7 +223,7 @@ namespace Nethermind.Evm
 
         public Address To => Env.CodeSource;
         internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
-        public ExecutionEnvironment Env { get; }
+        public readonly ExecutionEnvironment Env;
 
         internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
         public bool IsTopLevel { get; } // TODO: move to CallEnv
