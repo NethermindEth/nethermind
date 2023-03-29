@@ -56,13 +56,12 @@ public static class KzgPolynomialCommitments
 
         if (commitment.Length != Ckzg.Ckzg.BytesPerCommitment)
         {
-            throw new ArgumentException($"Commitment should be {Ckzg.Ckzg.BytesPerCommitment} bytes",
-                nameof(commitment));
+            return false;
         }
 
         if (hashBuffer.Length != bytesPerHash)
         {
-            throw new ArgumentException($"Commitment should be {bytesPerHash} bytes", nameof(hashBuffer));
+            throw new ArgumentException($"{nameof(hashBuffer)} should be {bytesPerHash} bytes", nameof(hashBuffer));
         }
 
         if (_sha256.Value!.TryComputeHash(commitment, hashBuffer, out _))

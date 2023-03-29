@@ -30,10 +30,10 @@ namespace Nethermind.Core
         public UInt256? GasBottleneck { get; set; }
         public UInt256 MaxPriorityFeePerGas => GasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
-        public UInt256 MaxFeePerGas => IsEip1559 ? DecodedMaxFeePerGas : GasPrice;
-        public bool IsEip1559 => Type >= TxType.EIP1559;
-        public bool IsEip2930 => Type >= TxType.AccessList;
-        public bool IsEip4844 => Type >= TxType.Blob;
+        public UInt256 MaxFeePerGas => Supports1559Fields ? DecodedMaxFeePerGas : GasPrice;
+        public bool SupportsAccessList => Type >= TxType.AccessList;
+        public bool Supports1559Fields => Type >= TxType.EIP1559;
+        public bool SupportsBlobs => Type >= TxType.Blob;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
@@ -145,7 +145,7 @@ namespace Nethermind.Core
         public string ToShortString()
         {
             string gasPriceString =
-                IsEip1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
+                Supports1559Fields ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
             return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
         }
 
@@ -155,7 +155,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Hash:      {Hash}");
             builder.AppendLine($"{indent}From:      {SenderAddress}");
             builder.AppendLine($"{indent}To:        {To}");
-            if (IsEip1559)
+            if (Supports1559Fields)
             {
                 builder.AppendLine($"{indent}MaxPriorityFeePerGas: {MaxPriorityFeePerGas}");
                 builder.AppendLine($"{indent}MaxFeePerGas: {MaxFeePerGas}");
@@ -174,7 +174,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
 
-            if (IsEip4844)
+            if (SupportsBlobs)
             {
                 builder.AppendLine($"{indent}BlobVersionedHashes: {BlobVersionedHashes?.Length}");
             }

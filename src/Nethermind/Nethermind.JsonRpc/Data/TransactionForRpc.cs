@@ -28,7 +28,7 @@ public class TransactionForRpc
         GasPrice = transaction.GasPrice;
         Gas = transaction.GasLimit;
         Input = Data = transaction.Data;
-        if (transaction.IsEip1559)
+        if (transaction.Supports1559Fields)
         {
             GasPrice = baseFee is not null
                 ? transaction.CalculateEffectiveGasPrice(true, baseFee.Value)
@@ -44,7 +44,7 @@ public class TransactionForRpc
         if (signature is not null)
         {
 
-            YParity = transaction.IsEip2930 ? signature.RecoveryId : null;
+            YParity = transaction.SupportsAccessList ? signature.RecoveryId : null;
             R = new UInt256(signature.R, true);
             S = new UInt256(signature.S, true);
             V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
@@ -122,12 +122,12 @@ public class TransactionForRpc
             Hash = Hash
         };
 
-        if (tx.IsEip1559)
+        if (tx.Supports1559Fields)
         {
             tx.GasPrice = MaxPriorityFeePerGas ?? 0;
         }
 
-        if (tx.IsEip4844)
+        if (tx.SupportsBlobs)
         {
             tx.MaxFeePerDataGas = MaxFeePerDataGas;
         }
@@ -154,13 +154,13 @@ public class TransactionForRpc
             MaxFeePerDataGas = MaxFeePerDataGas,
         };
 
-        if (tx.IsEip1559)
+        if (tx.Supports1559Fields)
         {
             tx.GasPrice = MaxPriorityFeePerGas ?? 0;
             tx.DecodedMaxFeePerGas = MaxFeePerGas ?? 0;
         }
 
-        if (tx.IsEip4844)
+        if (tx.SupportsBlobs)
         {
             tx.MaxFeePerDataGas = MaxFeePerDataGas;
         }

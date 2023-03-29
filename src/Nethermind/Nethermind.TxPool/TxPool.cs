@@ -237,7 +237,7 @@ namespace Nethermind.TxPool
                     discoveredForPendingTxs++;
                 }
 
-                if (transaction.IsEip1559)
+                if (transaction.Supports1559Fields)
                 {
                     eip1559Txs++;
                 }
@@ -353,7 +353,7 @@ namespace Nethermind.TxPool
                 {
                     _transactions.UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
                     Metrics.PendingTransactionsAdded++;
-                    if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
+                    if (tx.Supports1559Fields) { Metrics.Pending1559TransactionsAdded++; }
 
                     if (removed is not null)
                     {
@@ -474,7 +474,7 @@ namespace Nethermind.TxPool
                 {
                     shouldBeDumped = true;
                 }
-                else if (!tx.IsEip1559)
+                else if (!tx.Supports1559Fields)
                 {
                     shouldBeDumped = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256)tx.GasLimit, out UInt256 cost);
                     shouldBeDumped |= UInt256.AddOverflow(cost, tx.Value, out cost);

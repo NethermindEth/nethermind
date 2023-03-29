@@ -15,9 +15,9 @@ namespace Nethermind.Core.Test
             bool isEip1559Supported, bool isEip4844Supported)
         {
             Transaction transaction = new() { Type = txType };
-            Assert.That(transaction.IsEip2930, Is.EqualTo(isEip2930Supported));
-            Assert.That(transaction.IsEip1559, Is.EqualTo(isEip1559Supported));
-            Assert.That(transaction.IsEip4844, Is.EqualTo(isEip4844Supported));
+            Assert.That(transaction.SupportsAccessList, Is.EqualTo(isEip2930Supported));
+            Assert.That(transaction.Supports1559Fields, Is.EqualTo(isEip1559Supported));
+            Assert.That(transaction.SupportsBlobs, Is.EqualTo(isEip4844Supported));
         }
     }
 }
