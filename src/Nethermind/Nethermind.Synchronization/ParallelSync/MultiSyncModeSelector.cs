@@ -348,10 +348,21 @@ namespace Nethermind.Synchronization.ParallelSync
             bool isPostMerge = _beaconSyncStrategy.GetFinalizedHash() != null;
             bool stateSyncNotFinished = _syncProgressResolver.FindBestFullState() == 0;
 
-            return updateRequestedAndNotFinished &&
-                   FastSyncEnabled &&
-                   isPostMerge &&
-                   stateSyncNotFinished;
+            bool result = updateRequestedAndNotFinished &&
+                          FastSyncEnabled &&
+                          isPostMerge &&
+                          stateSyncNotFinished;
+
+            if (_logger.IsTrace)
+            {
+                LogDetailedSyncModeChecks("UPDATING PIVOT",
+                    (nameof(updateRequestedAndNotFinished), updateRequestedAndNotFinished),
+                    (nameof(FastSyncEnabled), FastSyncEnabled),
+                    (nameof(isPostMerge), isPostMerge),
+                    (nameof(stateSyncNotFinished), stateSyncNotFinished));
+            }
+
+            return result;
         }
 
         private bool ShouldBeInFastSyncMode(Snapshot best)
