@@ -568,21 +568,19 @@ public partial class EthRpcModule : IEthRpcModule
             {
                 return _blockchainBridge.FilterExists(id)
                     ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.", ErrorCodes.InvalidInput);
+                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
             }
             case FilterType.PendingTransactionFilter:
             {
                 return _blockchainBridge.FilterExists(id)
-                    ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
-                        .GetPendingTransactionFilterChanges(id))
-                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.", ErrorCodes.InvalidInput);
+                    ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetPendingTransactionFilterChanges(id))
+                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
             }
             case FilterType.LogFilter:
             {
                 return _blockchainBridge.FilterExists(id)
-                    ? ResultWrapper<IEnumerable<object>>.Success(
-                        _blockchainBridge.GetLogFilterChanges(id).ToArray())
-                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.", ErrorCodes.InvalidInput);
+                    ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id).ToArray())
+                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
             }
             default:
             {
