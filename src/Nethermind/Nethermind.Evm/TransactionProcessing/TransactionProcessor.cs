@@ -330,7 +330,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     inputData: data ?? Array.Empty<byte>(),
                     codeInfo: machineCode is null
                         ? _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec)
-                        : new CodeInfo(machineCode)
+                        : CodeInfoFactory.CreateCodeInfo(machineCode, spec)
                 );
                 ExecutionType executionType =
                     transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Transaction;

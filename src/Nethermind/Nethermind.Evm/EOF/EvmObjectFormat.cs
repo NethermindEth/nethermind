@@ -22,7 +22,7 @@ internal static class EvmObjectFormat
     }
 
     // magic prefix : EofFormatByte is the first byte, EofFormatDiff is chosen to diff from previously rejected contract according to EIP3541
-    private static byte[] MAGIC = { 0xEF, 0x00 };
+    public static byte[] MAGIC = { 0xEF, 0x00 };
     private const byte ONE_BYTE_LENGTH = 1;
     private const byte TWO_BYTE_LENGTH = 2;
     private const byte VERSION_OFFSET = TWO_BYTE_LENGTH; // magic lenght
