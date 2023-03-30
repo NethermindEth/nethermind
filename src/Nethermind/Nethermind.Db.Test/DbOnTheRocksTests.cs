@@ -183,16 +183,15 @@ namespace Nethermind.Db.Test
         [Test]
         public void Test_columndb_put_and_get_span_correctly_store_value()
         {
-            string path = Path.Join(Path.GetTempPath(), "test");
+            string path = Path.Join(Path.GetTempPath(), "test_", Path.GetRandomFileName());
+
             Directory.CreateDirectory(path);
             try
             {
                 IDbConfig config = new DbConfig();
                 using ColumnsDb<ReceiptsColumns> columnDb = new(path, GetRocksDbSettings("blocks", "Blocks"), config,
                     LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
-
                 using IDbWithSpan db = columnDb.GetColumnDb(ReceiptsColumns.Blocks);
-
                 Keccak key = Keccak.Compute("something");
                 Keccak value = Keccak.Compute("something");
 

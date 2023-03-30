@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
@@ -13,7 +14,7 @@ public class DbConfig : IDbConfig
     public uint WriteBufferNumber { get; set; } = 4;
     public ulong BlockCacheSize { get; set; } = (ulong)64.MiB();
     public bool CacheIndexAndFilterBlocks { get; set; } = false;
-    public int? MaxOpenFiles { get; set; }
+    public int? MaxOpenFiles { get; set; } = -1;
     public long? MaxWriteBytesPerSec { get; set; }
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -93,4 +94,11 @@ public class DbConfig : IDbConfig
     public bool EnableDbStatistics { get; set; } = false;
     public bool EnableMetricsUpdater { get; set; } = false;
     public uint StatsDumpPeriodSec { get; set; } = 600;
+
+    public int DisableAutoCompactions { get; set; } = 1;
+    public bool AdviseRandomOnOpen { get; set; } = true;
+    public bool AllowMmapReads { get; set; } = true;
+    public int MaxBackgroundCompactions { get; set; } = Environment.ProcessorCount;
+
+
 }

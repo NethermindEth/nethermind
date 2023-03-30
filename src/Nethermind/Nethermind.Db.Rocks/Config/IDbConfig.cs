@@ -98,4 +98,10 @@ public interface IDbConfig : IConfig
     /// Default: 600 (10 min)
     /// </summary>
     uint StatsDumpPeriodSec { get; set; }
+
+    int DisableAutoCompactions { get; set; }
+    bool AdviseRandomOnOpen { get; set; }
+    bool AllowMmapReads { get; set; }
+    int MaxBackgroundCompactions { get; set; }
+
 }
