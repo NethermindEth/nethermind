@@ -22,7 +22,14 @@ namespace Nethermind.Blockchain.Receipts
 
         public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb, Block block, IReceiptsRecovery receiptsRecovery)
         {
-            _decoderContext = receiptsData.AsRlpValueContext();
+            if (receiptsData.Length > 0)
+            {
+                _decoderContext = receiptsData.Slice(1).AsRlpValueContext();
+            }
+            else
+            {
+                _decoderContext = receiptsData.Slice(0).AsRlpValueContext();
+            }
             _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
             _blocksDb = blocksDb;
             _receipts = null;

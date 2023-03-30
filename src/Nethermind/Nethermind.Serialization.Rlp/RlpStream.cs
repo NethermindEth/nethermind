@@ -469,7 +469,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(string value)
+        public void Encode(string? value)
         {
             if (string.IsNullOrEmpty(value))
             {

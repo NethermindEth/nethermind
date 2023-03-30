@@ -30,6 +30,8 @@ namespace Nethermind.Blockchain.Receipts
         private static readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
         private readonly IBlockFinder _blockFinder;
 
+        private const int SlimEncoding = 127;
+
         private const int CacheSize = 64;
         private readonly LruCache<KeccakKey, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
@@ -137,15 +139,23 @@ namespace Nethermind.Blockchain.Receipts
 
         private static TxReceipt[] DecodeArray(in Span<byte> receiptsData)
         {
-            var decoderContext = new Rlp.ValueDecoderContext(receiptsData);
-            try
+            if (receiptsData.Length > 0 && receiptsData[0] == SlimEncoding)
             {
-                return StorageDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+                var decoderContext = new Rlp.ValueDecoderContext(receiptsData.Slice(1));
+                return CompactReceiptStorageDecoder.Instance.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
             }
-            catch (RlpException)
+            else
             {
-                decoderContext.Position = 0;
-                return StorageDecoder.DecodeArray(ref decoderContext);
+                var decoderContext = new Rlp.ValueDecoderContext(receiptsData);
+                try
+                {
+                    return StorageDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+                }
+                catch (RlpException)
+                {
+                    decoderContext.Position = 0;
+                    return StorageDecoder.DecodeArray(ref decoderContext);
+                }
             }
         }
 
@@ -183,7 +193,7 @@ namespace Nethermind.Blockchain.Receipts
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(block.Header);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
-            using (NettyRlpStream stream = StorageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
+            using (NettyRlpStream stream = CompactReceiptStorageDecoder.Instance.EncodeToNewNettyStream(txReceipts, behaviors, SlimEncoding))
             {
                 _blocksDb.Set(block.Hash!, stream.AsSpan());
             }

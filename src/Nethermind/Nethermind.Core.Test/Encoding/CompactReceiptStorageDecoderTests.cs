@@ -12,10 +12,13 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Encoding
 {
     [TestFixture]
-    public class ReceiptDecoderTests
+    public class CompactReceiptDecoderTests
     {
         [Test]
-        public void Can_do_roundtrip_storage([Values(true, false)] bool encodeWithTxHash, [Values(RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, RlpBehaviors.Storage)] RlpBehaviors encodeBehaviors, [Values(true, false)] bool withError, [Values(true, false)] bool valueDecoder)
+        public void Can_do_roundtrip_storage(
+            [Values(RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, RlpBehaviors.Storage)] RlpBehaviors encodeBehaviors,
+            [Values(true, false)] bool withError,
+            [Values(true, false)] bool valueDecoder)
         {
             TxReceipt GetExpected()
             {
@@ -30,9 +33,15 @@ namespace Nethermind.Core.Test.Encoding
                     receiptBuilder.WithStatusCode(0);
                 }
 
-                if (!encodeWithTxHash)
+                if ((encodeBehaviors & RlpBehaviors.Storage) != 0)
                 {
+                    receiptBuilder.WithBlockNumber(0);
+                    receiptBuilder.WithBlockHash(null!);
                     receiptBuilder.WithTransactionHash(null!);
+                    receiptBuilder.WithIndex(0);
+                    receiptBuilder.WithGasUsed(0);
+                    receiptBuilder.WithContractAddress(null!);
+                    receiptBuilder.WithRecipient(null!);
                 }
 
                 if (!withError)
@@ -40,7 +49,7 @@ namespace Nethermind.Core.Test.Encoding
                     receiptBuilder.WithError(string.Empty);
                 }
 
-                return receiptBuilder.TestObject;
+                return receiptBuilder.WithCalculatedBloom().TestObject;
             }
 
             TxReceipt BuildReceipt()
@@ -56,10 +65,10 @@ namespace Nethermind.Core.Test.Encoding
 
             TxReceipt txReceipt = BuildReceipt();
 
-            ReceiptStorageDecoder encoder = new(encodeWithTxHash);
+            CompactReceiptStorageDecoder encoder = new();
             Rlp rlp = encoder.Encode(txReceipt, encodeBehaviors);
 
-            ReceiptStorageDecoder decoder = new();
+            CompactReceiptStorageDecoder decoder = new();
             TxReceipt deserialized;
             if (valueDecoder)
             {
@@ -80,8 +89,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
             txReceipt.BlockHash = TestItem.KeccakA;
-            txReceipt.Bloom = new Bloom();
-            txReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
+            txReceipt.Bloom = new Bloom(txReceipt.Logs);
             txReceipt.ContractAddress = TestItem.AddressA;
             txReceipt.Sender = TestItem.AddressB;
             txReceipt.Recipient = TestItem.AddressC;
@@ -91,44 +99,11 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.PostTransactionState = TestItem.KeccakH;
             txReceipt.StatusCode = 1;
 
-            ReceiptStorageDecoder decoder = new();
+            CompactReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
             TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
             AssertStorageReceipt(txReceipt, deserialized);
-        }
-
-        [Test]
-        public void Can_do_roundtrip_root()
-        {
-            TxReceipt txReceipt = Build.A.Receipt.TestObject;
-            txReceipt.BlockNumber = 1;
-            txReceipt.BlockHash = TestItem.KeccakA;
-            txReceipt.Bloom = new Bloom();
-            txReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
-            txReceipt.ContractAddress = TestItem.AddressA;
-            txReceipt.Sender = TestItem.AddressB;
-            txReceipt.Recipient = TestItem.AddressC;
-            txReceipt.GasUsed = 100;
-            txReceipt.GasUsedTotal = 1000;
-            txReceipt.Index = 2;
-            txReceipt.PostTransactionState = TestItem.KeccakH;
-
-            ReceiptStorageDecoder decoder = new();
-            Rlp rlp = decoder.Encode(txReceipt);
-            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream());
-
-            Assert.AreEqual(null, deserialized.BlockHash, "block hash");
-            Assert.AreEqual(0L, deserialized.BlockNumber, "block number");
-            Assert.AreEqual(0, deserialized.Index, "index");
-            Assert.AreEqual(null, deserialized.ContractAddress, "contract");
-            Assert.AreEqual(null, deserialized.Sender, "sender");
-            Assert.AreEqual(0L, deserialized.GasUsed, "gas used");
-            Assert.AreEqual(1000L, deserialized.GasUsedTotal, "gas used total");
-            Assert.AreEqual(txReceipt.Bloom, deserialized.Bloom, "bloom");
-            Assert.AreEqual(txReceipt.PostTransactionState, deserialized.PostTransactionState, "post transaction state");
-            Assert.AreEqual(null, deserialized.Recipient, "recipient");
-            Assert.AreEqual(txReceipt.StatusCode, deserialized.StatusCode, "status");
         }
 
         [Test]
@@ -137,8 +112,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
             txReceipt.BlockHash = TestItem.KeccakA;
-            txReceipt.Bloom = new Bloom();
-            txReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
+            txReceipt.Bloom = new Bloom(txReceipt.Logs);
             txReceipt.ContractAddress = TestItem.AddressA;
             txReceipt.Sender = TestItem.AddressB;
             txReceipt.Recipient = TestItem.AddressC;
@@ -147,7 +121,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.Index = 2;
             txReceipt.PostTransactionState = TestItem.KeccakH;
 
-            ReceiptStorageDecoder decoder = new();
+            CompactReceiptStorageDecoder decoder = new();
 
             byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
             TxReceipt deserialized = decoder.Decode(new RlpStream(rlpStreamResult), RlpBehaviors.Storage);
@@ -159,8 +133,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Can_do_roundtrip_none_rlp_stream()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
-            txReceipt.Bloom = new Bloom();
-            txReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
+            txReceipt.Bloom = new Bloom(txReceipt.Logs);
             txReceipt.GasUsedTotal = 1000;
             txReceipt.PostTransactionState = TestItem.KeccakH;
 
@@ -176,8 +149,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Can_do_roundtrip_with_receipt_message_and_tx_type_access_list()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
-            txReceipt.Bloom = new Bloom();
-            txReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
+            txReceipt.Bloom = new Bloom(txReceipt.Logs);
             txReceipt.GasUsedTotal = 1000;
             txReceipt.PostTransactionState = TestItem.KeccakH;
             txReceipt.TxType = TxType.AccessList;
@@ -196,8 +168,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
             txReceipt.BlockHash = TestItem.KeccakA;
-            txReceipt.Bloom = new Bloom();
-            txReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
+            txReceipt.Bloom = new Bloom(txReceipt.Logs);
             txReceipt.ContractAddress = TestItem.AddressA;
             txReceipt.Sender = TestItem.AddressB;
             txReceipt.Recipient = TestItem.AddressC;
@@ -208,7 +179,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.StatusCode = 1;
             txReceipt.TxType = TxType.AccessList;
 
-            ReceiptStorageDecoder decoder = new();
+            CompactReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
             TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
@@ -224,7 +195,7 @@ namespace Nethermind.Core.Test.Encoding
                 Build.A.Receipt.WithAllFieldsFilled.TestObject
             };
 
-            ReceiptStorageDecoder decoder = new();
+            CompactReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(receipts);
             using (NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts))
             {
@@ -235,12 +206,10 @@ namespace Nethermind.Core.Test.Encoding
 
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
         {
-            Bloom bloom = new();
-            bloom.Set(Keccak.EmptyTreeHash.Bytes);
-            yield return (Build.A.Receipt.TestObject, "basic with defaults");
-            yield return (Build.A.Receipt.WithBloom(bloom).WithGasUsedTotal(1000).WithState(TestItem.KeccakH).TestObject, "basic");
-            yield return (Build.A.Receipt.WithBloom(bloom).WithGasUsedTotal(500).WithState(TestItem.KeccakA).WithTxType(TxType.AccessList).TestObject, "access list");
-            yield return (Build.A.Receipt.WithBloom(bloom).WithGasUsedTotal(100).WithState(TestItem.KeccakH).WithTxType(TxType.EIP1559).TestObject, "eip 1559");
+            yield return (Build.A.Receipt.WithCalculatedBloom().TestObject, "basic with defaults");
+            yield return (Build.A.Receipt.WithCalculatedBloom().WithGasUsedTotal(1000).WithState(TestItem.KeccakH).TestObject, "basic");
+            yield return (Build.A.Receipt.WithCalculatedBloom().WithGasUsedTotal(500).WithState(TestItem.KeccakA).WithTxType(TxType.AccessList).TestObject, "access list");
+            yield return (Build.A.Receipt.WithCalculatedBloom().WithGasUsedTotal(100).WithState(TestItem.KeccakH).WithTxType(TxType.EIP1559).TestObject, "eip 1559");
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -248,7 +217,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             TxReceipt txReceipt = testCase.TxReceipt;
 
-            ReceiptStorageDecoder decoder = new();
+            CompactReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
             TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
@@ -278,6 +247,21 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         private void AssertStorageReceipt(TxReceipt txReceipt, TxReceipt deserialized)
+        {
+            Assert.AreEqual(txReceipt.TxType, deserialized.TxType, "tx type");
+            Assert.AreEqual(null, deserialized.BlockHash, "block hash");
+            Assert.AreEqual(0, deserialized.BlockNumber, "block number");
+            Assert.AreEqual(0, deserialized.Index, "index");
+            Assert.AreEqual(null, deserialized.ContractAddress, "contract");
+            Assert.AreEqual(txReceipt.Sender, deserialized.Sender, "sender");
+            Assert.AreEqual(0, deserialized.GasUsed, "gas used");
+            Assert.AreEqual(txReceipt.GasUsedTotal, deserialized.GasUsedTotal, "gas used total");
+            Assert.AreEqual(txReceipt.Bloom, deserialized.Bloom, "bloom");
+            Assert.AreEqual(null, deserialized.Recipient, "recipient");
+            Assert.AreEqual(txReceipt.StatusCode, deserialized.StatusCode, "status");
+        }
+
+        private void AssertStorageLegaxyReceipt(TxReceipt txReceipt, TxReceipt deserialized)
         {
             Assert.AreEqual(txReceipt.TxType, deserialized.TxType, "tx type");
             Assert.AreEqual(txReceipt.BlockHash, deserialized.BlockHash, "block hash");

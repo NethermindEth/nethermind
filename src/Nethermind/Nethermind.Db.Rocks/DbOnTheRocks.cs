@@ -287,6 +287,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         WriteOptions = new WriteOptions();
         WriteOptions.SetSync(dbConfig
             .WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
+        WriteOptions.DisableWal(1);
 
         if (dbConfig.EnableDbStatistics)
         {
