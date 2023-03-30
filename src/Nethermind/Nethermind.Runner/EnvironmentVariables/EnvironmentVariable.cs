@@ -11,27 +11,23 @@ public static class EnvironmentVariable
 {
     public static bool TrySetEnvironmentVariable(string variable, string value, ILogger logger)
     {
-        (string command, string arguments) = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? ("setx", $"{variable} {value}")
-            : ($"export {variable}={value}", string.Empty);
+        string command = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? $"setx {variable} {value}"
+            : $"export {variable}={value}";
 
         try
         {
             if (logger.IsInfo) logger.Info($"Setting environment variable {variable} to {value}");
 
-            int exitCode = CommandRunner.RunCommand(command, arguments);
+            (int exitCode, string output, string error) = CommandRunner.RunCommand(command);
 
             if (exitCode == 0)
             {
                 if (logger.IsInfo) logger.Info($"Successfully set environment variable {variable} to {value}");
             }
-            else if (exitCode == CommandRunner.CouldNotStartProcess)
-            {
-                if (logger.IsError) logger.Error($"Failed to set environment variable {variable} to {value}. Couldn't start external process.");
-            }
             else
             {
-                if (logger.IsError) logger.Error($"Failed to set environment variable {variable} to {value}. Exit code: {exitCode}.");
+                if (logger.IsError) logger.Error($"Failed to set environment variable {variable} to {value}. Exit code: {exitCode}. Output: {output}. Error: {error}");
             }
 
             return exitCode == 0;
