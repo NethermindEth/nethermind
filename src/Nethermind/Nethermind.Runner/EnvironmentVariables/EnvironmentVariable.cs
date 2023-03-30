@@ -13,7 +13,7 @@ public static class EnvironmentVariable
     {
         string command = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? $"setx {variable} {value}"
-            : $"export {variable}={value}";
+            : $"echo 'export {variable}={value}' >> ~/.bashrc";
 
         try
         {
