@@ -413,7 +413,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _syncConfig,
                 _blockCacheService,
                 _beaconSync,
-                _api.DbProvider.GetDb<IDb>(DbNames.Metadata),
+                _api.DbProvider.MetadataDb,
                 _api.LogManager);
 
             SyncReport syncReport = new(_api.SyncPeerPool, _api.NodeStatsManager, _api.SyncModeSelector, _syncConfig, _beaconPivot, _api.LogManager);
