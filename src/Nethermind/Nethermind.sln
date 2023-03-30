@@ -47,7 +47,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\energyweb.json = Chains\energyweb.json
 		Chains\foundation.json = Chains\foundation.json
 		Chains\genesis.json = Chains\genesis.json
-		Chains\gnosis_withdrawals_devnet.json = Chains\gnosis_withdrawals_devnet.json
 		Chains\goerli.json = Chains\goerli.json
 		Chains\kovan.json = Chains\kovan.json
 		Chains\poacore.json = Chains\poacore.json
@@ -237,7 +236,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Merkleization", 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ssz", "Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj", "{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Contract", "Nethermind.Network.Contract\Nethermind.Network.Contract.csproj", "{AD151E35-4BBC-4A83-8F57-CC8665F6E007}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Contract", "Nethermind.Network.Contract\Nethermind.Network.Contract.csproj", "{AD151E35-4BBC-4A83-8F57-CC8665F6E007}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
