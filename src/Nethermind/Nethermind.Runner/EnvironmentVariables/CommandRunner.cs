@@ -26,7 +26,7 @@ public static class CommandRunner
         if (process is not null)
         {
             process.StandardInput.WriteLine(command);
-            process.StandardInput.Close();
+            process.StandardInput.WriteLine("exit");
             process.WaitForExit();
             return (process.ExitCode, process.StandardOutput.ReadToEnd(), process.StandardError.ReadToEnd());
         }
