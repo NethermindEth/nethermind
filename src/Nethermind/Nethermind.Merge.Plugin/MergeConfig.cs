@@ -29,6 +29,6 @@ namespace Nethermind.Merge.Plugin
 
         public GcCompaction CompactMemory { get; set; } = GcCompaction.Yes;
 
-        public int CollectionsPerDecommit { get; set; } = 10;
+        public int CollectionsPerDecommit { get; set; } = 25;
     }
 }

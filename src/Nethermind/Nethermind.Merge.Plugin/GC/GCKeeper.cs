@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -118,12 +119,22 @@ public class GCKeeper
         }
     }
 
+    private static long _lastGcTimeStamp;
+
     private void ScheduleGC()
     {
         if (_gcScheduleTask.IsCompleted)
         {
             lock (_gcStrategy)
             {
+                long timeStamp = Stopwatch.GetTimestamp();
+                if (TimeSpan.FromTicks(timeStamp - _lastGcTimeStamp).TotalSeconds <= 10)
+                {
+                    return;
+                }
+
+                _lastGcTimeStamp = timeStamp;
+
                 if (_gcScheduleTask.IsCompleted)
                 {
                     _gcScheduleTask = ScheduleGCInternal();
@@ -141,11 +152,6 @@ public class GCKeeper
             // Normally we should get block every 12s (5s on some chains)
             // Lets say we process block in 2s, then delay 1s, then invoke GC
             await Task.Delay(100);
-            if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
-            if (generation == GcLevel.Gen2 && compacting == GcCompaction.Full)
-            {
-                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-            }
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
             {
@@ -158,6 +164,13 @@ public class GCKeeper
                     // Also decommit memory back to O/S
                     mode = GCCollectionMode.Aggressive;
                     generation = GcLevel.Gen2;
+                    compacting = GcCompaction.Full;
+                }
+
+                if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
+                if (generation == GcLevel.Gen2 && compacting == GcCompaction.Full)
+                {
+                    GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
                 }
 
                 System.GC.Collect((int)generation, mode, blocking: true, compacting: compacting > 0);
