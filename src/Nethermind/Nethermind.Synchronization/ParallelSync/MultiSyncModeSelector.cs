@@ -408,6 +408,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("FAST",
+                    (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(notInBeaconModes), notInBeaconModes),
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
                     (nameof(notReachedFullSyncTransition), notReachedFullSyncTransition),
@@ -451,6 +452,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("FULL",
+                    (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(notInBeaconModes), notInBeaconModes),
                     (nameof(desiredPeerKnown), desiredPeerKnown),
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
@@ -478,6 +480,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("FULL",
+                    (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(notInBeaconModes), notInBeaconModes),
                     (nameof(desiredPeerKnown), desiredPeerKnown));
             }
@@ -495,6 +498,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("HEADERS",
+                    (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(fastBlocksHeadersNotFinished), fastBlocksHeadersNotFinished));
             }
 
@@ -596,6 +600,7 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 LogDetailedSyncModeChecks("STATE",
                     (nameof(fastSyncEnabled), fastSyncEnabled),
+                    (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(hasAnyPostPivotPeer), hasAnyPostPivotPeer),
                     (nameof(notInFastSync), notInFastSync),
