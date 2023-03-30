@@ -250,7 +250,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized2 = ctx.Test.TestEthRpc("eth_getFilterChanges", "0");
-        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Filter with id: '0' does not exist.\"},\"id\":67}", serialized2);
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Filter not found\"},\"id\":67}", serialized2);
     }
 
     [Test]
