@@ -41,23 +41,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Mining.Test", "N
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Blockchain.Test", "Nethermind.Blockchain.Test\Nethermind.Blockchain.Test.csproj", "{E6C8C319-1BA8-437D-961D-1357FF5A9699}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83BB-6092-45A4-B751-D05D4A6ED995}"
-	ProjectSection(SolutionItems) = preProject
-		Chains\AuRaTest.json = Chains\AuRaTest.json
-		Chains\energyweb.json = Chains\energyweb.json
-		Chains\foundation.json = Chains\foundation.json
-		Chains\genesis.json = Chains\genesis.json
-		Chains\goerli.json = Chains\goerli.json
-		Chains\kovan.json = Chains\kovan.json
-		Chains\poacore.json = Chains\poacore.json
-		Chains\rinkeby.json = Chains\rinkeby.json
-		Chains\ropsten.json = Chains\ropsten.json
-		Chains\spaceneth.json = Chains\spaceneth.json
-		Chains\volta.json = Chains\volta.json
-		Chains\wit.json = Chains\wit.json
-		Chains\xdai.json = Chains\xdai.json
-	EndProjectSection
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.State.Test", "Nethermind.State.Test\Nethermind.State.Test.csproj", "{0A927E80-884F-4F41-BC5E-1825D32726DB}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Config", "Nethermind.Config\Nethermind.Config.csproj", "{56791AE4-2679-47A5-9918-6D0199FD2EE9}"
