@@ -14,20 +14,19 @@ public static class CommandRunner
         static string GetFileName() =>
             RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "cmd.exe" : "/bin/bash";
 
-        ProcessStartInfo info = new(GetFileName())
+        static string GetArguments(string command) =>
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"/C {command}" : $"-c \"{command}\"";
+
+        ProcessStartInfo info = new(GetFileName(), GetArguments(command))
         {
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            RedirectStandardInput = true,
+            RedirectStandardError = true
         };
         Process? process = Process.Start(info);
         if (process is not null)
         {
-            process.StandardInput.WriteLine(command);
-            process.StandardInput.WriteLine("exit");
-            process.StandardInput.Close();
             process.WaitForExit();
             return (process.ExitCode, process.StandardOutput.ReadToEnd(), process.StandardError.ReadToEnd());
         }
