@@ -27,6 +27,7 @@ public static class CommandRunner
         {
             process.StandardInput.WriteLine(command);
             process.StandardInput.WriteLine("exit");
+            process.StandardInput.Close();
             process.WaitForExit();
             return (process.ExitCode, process.StandardOutput.ReadToEnd(), process.StandardError.ReadToEnd());
         }
