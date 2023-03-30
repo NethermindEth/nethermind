@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
 using FluentAssertions;
@@ -541,6 +542,16 @@ namespace Nethermind.Abi.Test
             };
 
             objects.Should().BeEquivalentTo(expectedObjects);
+        }
+
+        [Test]
+        public void Should_encode_arrays_and_lists_equally()
+        {
+            var abi = new AbiArray(AbiType.UInt256);
+            var array = new UInt256[] { 1, 2, 3, UInt256.MaxValue };
+            var list = new List<UInt256>() { 1, 2, 3, UInt256.MaxValue };
+
+            abi.Encode(array, false).Should().BeEquivalentTo(abi.Encode(list, false));
         }
 
         private class UserOperationAbi

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
@@ -25,7 +26,7 @@ public class WithdrawalContract : CallableContract, IWithdrawalContract
         Address contractAddress)
         : base(transactionProcessor, abiEncoder, contractAddress) { }
 
-    public void ExecuteWithdrawals(BlockHeader blockHeader, UInt256 failedMaxCount, ulong[] amounts, Address[] addresses)
+    public void ExecuteWithdrawals(BlockHeader blockHeader, UInt256 failedMaxCount, IList<ulong> amounts, IList<Address> addresses)
     {
         ArgumentNullException.ThrowIfNull(blockHeader);
         ArgumentNullException.ThrowIfNull(amounts);
