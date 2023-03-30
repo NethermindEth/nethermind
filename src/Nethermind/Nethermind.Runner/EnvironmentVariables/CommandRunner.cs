@@ -9,28 +9,22 @@ namespace Nethermind.Runner.EnvironmentVariables;
 
 public static class CommandRunner
 {
-    public static (int exitCode, string output, string error) RunCommand(string command)
+    public const int CouldNotStartProcess = int.MaxValue;
+
+    public static int RunCommand(string command, string arguments)
     {
-        ProcessStartInfo info = new(GetFileName(), GetArguments(command))
+        ProcessStartInfo info = new(command, arguments)
         {
-            UseShellExecute = false,
+            UseShellExecute = true,
             CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
         };
         Process? process = Process.Start(info);
         if (process is not null)
         {
             process.WaitForExit();
-            return (process.ExitCode, process.StandardOutput.ReadToEnd(), process.StandardError.ReadToEnd());
+            return process.ExitCode;
         }
 
-        return (-1, $"Couldn't start process {info.FileName} {info.Arguments}", string.Empty);
+        return CouldNotStartProcess;
     }
-
-    private static string GetArguments(string command) =>
-        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"/C {command}" : $"-c \"{command}\"";
-
-    private static string GetFileName() =>
-        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "cmd.exe" : "bash";
 }
