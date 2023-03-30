@@ -2502,16 +2502,17 @@ namespace Nethermind.Evm
                             }
 
                             _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
-                            ExecutionEnvironment callEnv = new();
-                            callEnv.TxExecutionContext = env.TxExecutionContext;
-                            callEnv.CallDepth = env.CallDepth + 1;
-                            callEnv.Caller = env.ExecutingAccount;
-                            callEnv.ExecutingAccount = contractAddress;
-                            callEnv.CodeSource = null;
-                            callEnv.CodeInfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec);
-                            callEnv.InputData = ReadOnlyMemory<byte>.Empty;
-                            callEnv.TransferValue = value;
-                            callEnv.Value = value;
+                            ExecutionEnvironment callEnv = new(
+                                txExecutionContext: env.TxExecutionContext,
+                                callDepth: env.CallDepth + 1,
+                                caller: env.ExecutingAccount,
+                                executingAccount: contractAddress,
+                                codeSource: null,
+                                codeInfo: CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec),
+                                inputData: ReadOnlyMemory<byte>.Empty,
+                                transferValue: value,
+                                value: value
+                            );
 
                             EvmState callState = new(
                                 callGas,
@@ -2682,16 +2683,17 @@ namespace Nethermind.Evm
                             Snapshot snapshot = _worldState.TakeSnapshot();
                             _state.SubtractFromBalance(caller, transferValue, spec);
 
-                            ExecutionEnvironment callEnv = new();
-                            callEnv.TxExecutionContext = env.TxExecutionContext;
-                            callEnv.CallDepth = env.CallDepth + 1;
-                            callEnv.Caller = caller;
-                            callEnv.CodeSource = codeSource;
-                            callEnv.ExecutingAccount = target;
-                            callEnv.TransferValue = transferValue;
-                            callEnv.Value = callValue;
-                            callEnv.InputData = callData;
-                            callEnv.CodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+                            ExecutionEnvironment callEnv = new(
+                                txExecutionContext: env.TxExecutionContext,
+                                callDepth: env.CallDepth + 1,
+                                caller: caller,
+                                codeSource: codeSource,
+                                executingAccount: target,
+                                transferValue: transferValue,
+                                value: callValue,
+                                inputData: callData,
+                                codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+                            );
 
                             if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
                             if (outputLength == 0)

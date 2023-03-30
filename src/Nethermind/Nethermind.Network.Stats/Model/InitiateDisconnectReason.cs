@@ -23,7 +23,6 @@ public enum InitiateDisconnectReason : byte
     TxFlooding,
     NoCapabilityMatched,
 
-    UselessInFastBlocks,
     DropWorstPeer,
     PeerRefreshFailed,
 
@@ -76,8 +75,6 @@ public static class InitiateDisconnectReasonExtension
             case InitiateDisconnectReason.NoCapabilityMatched:
                 return DisconnectReason.UselessPeer;
 
-            case InitiateDisconnectReason.UselessInFastBlocks:
-                return DisconnectReason.UselessPeer;
             case InitiateDisconnectReason.DropWorstPeer:
                 return DisconnectReason.TooManyPeers;
             case InitiateDisconnectReason.PeerRefreshFailed:

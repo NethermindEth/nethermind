@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
 
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            _pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), 25, LimboLogs.Instance);
+            _pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
             _pool.Start();
 
             var feed = Substitute.For<ISyncFeed<StateSyncBatch>>();
