@@ -34,7 +34,7 @@ public class PivotUpdator
     private readonly CancellationTokenSource _cancellation = new();
 
     private int _attemptsLeft;
-    private long _updateInProgress;
+    private int _updateInProgress;
     private Keccak _alreadyAnnouncedNewPivotHash = Keccak.Zero;
 
     public PivotUpdator(IBlockTree blockTree,
@@ -95,16 +95,15 @@ public class PivotUpdator
 
     private async void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs syncMode)
     {
-        if ((syncMode.Current & SyncMode.UpdatingPivot) != 0 && Interlocked.Read(ref _updateInProgress) == 0)
+        if ((syncMode.Current & SyncMode.UpdatingPivot) != 0 && Interlocked.CompareExchange(ref _updateInProgress, 1, 0) == 0)
         {
-            Interlocked.Increment(ref _updateInProgress);
             if (await TrySetFreshPivot(_cancellation.Token))
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
             }
             else if (_attemptsLeft-- > 0)
             {
-                Interlocked.Decrement(ref _updateInProgress);
+                Interlocked.CompareExchange(ref _updateInProgress, 0, 1);
             }
             else
             {
@@ -115,7 +114,7 @@ public class PivotUpdator
         }
 
         // if sync mode is different than UpdatePivot, it means it will never be in UpdatePivot
-        if ((syncMode.Current & SyncMode.UpdatingPivot) == 0 && Interlocked.Read(ref _updateInProgress) == 0)
+        if ((syncMode.Current & SyncMode.UpdatingPivot) == 0)
         {
             _syncModeSelector.Changed -= OnSyncModeChanged;
             _syncConfig.MaxAttemptsToUpdatePivot = 0;
