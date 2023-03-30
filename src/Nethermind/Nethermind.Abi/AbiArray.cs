@@ -37,14 +37,23 @@ namespace Nethermind.Abi
 
         public override byte[] Encode(object? arg, bool packed)
         {
-            byte[][] encodedItems = arg switch
+            int length;
+            byte[][] encodedItems;
+            switch (arg)
             {
-                Array array => EncodeSequence(array.Length, ElementTypes, array.Cast<object?>(), packed, 1),
-                IList list => EncodeSequence(list.Count, ElementTypes, list.Cast<object?>(), packed, 1),
-                _ => throw new AbiException(AbiEncodingExceptionMessage)
-            };
+                case Array array:
+                    length = array.Length;
+                    encodedItems = EncodeSequence(array.Length, ElementTypes, array.Cast<object?>(), packed, 1);
+                    break;
+                case IList list:
+                    length = list.Count;
+                    encodedItems = EncodeSequence(list.Count, ElementTypes, list.Cast<object?>(), packed, 1);
+                    break;
+                default:
+                    throw new AbiException(AbiEncodingExceptionMessage);
+            }
 
-            encodedItems[0] = UInt256.Encode((BigInteger)encodedItems.Length, packed);
+            encodedItems[0] = UInt256.Encode((BigInteger)length, packed);
             return Bytes.Concat(encodedItems);
         }
 
