@@ -229,7 +229,7 @@ public static partial class Merkle
         }
         else
         {
-            Ize(out root, MemoryMarshal.Cast<byte, UInt256>(value), Span<UInt256>.Empty, limit);
+            Ize(out root, MemoryMarshal.Cast<byte, UInt256>(value), default, limit);
         }
 
         MixIn(ref root, length);

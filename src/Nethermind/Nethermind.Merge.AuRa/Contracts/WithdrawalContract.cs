@@ -10,8 +10,15 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.AuRa.Contracts;
 
+/// <summary>
+/// Represents the smart contract for withdrawals as defined in the
+/// <see href="https://github.com/gnosischain/specs/blob/master/execution/withdrawals.md#specification">specification</see>
+/// of the Gnosis Chain withdrawals.
+/// </summary>
 public class WithdrawalContract : CallableContract, IWithdrawalContract
 {
+    private const long GasLimit = 30_000_000L;
+
     public WithdrawalContract(
         ITransactionProcessor transactionProcessor,
         IAbiEncoder abiEncoder,
@@ -24,6 +31,6 @@ public class WithdrawalContract : CallableContract, IWithdrawalContract
         ArgumentNullException.ThrowIfNull(amounts);
         ArgumentNullException.ThrowIfNull(addresses);
 
-        Call(blockHeader, "executeSystemWithdrawals", Address.SystemUser, UnlimitedGas, failedMaxCount, amounts, addresses);
+        Call(blockHeader, "executeSystemWithdrawals", Address.SystemUser, GasLimit, failedMaxCount, amounts, addresses);
     }
 }

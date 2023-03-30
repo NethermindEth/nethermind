@@ -4,8 +4,6 @@
     <TargetFramework>net7.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <RootNamespace>Nethermind.Stats</RootNamespace>
-    <Deterministic>true</Deterministic>
-    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 

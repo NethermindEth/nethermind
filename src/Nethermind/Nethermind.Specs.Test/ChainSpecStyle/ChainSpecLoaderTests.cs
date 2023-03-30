@@ -373,5 +373,14 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
             chainSpec.AuRa.RewriteBytecode.Should().BeEquivalentTo(expected);
         }
+
+        [Test(Description = "To move to Gnosis spec once ready")]
+        public void Should_load_withdrawals_contract_address()
+        {
+            var path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
+            var chainSpec = LoadChainSpec(path);
+
+            chainSpec.AuRa.WithdrawalContractAddress.ToString().Should().Be("0xbabe2bed00000000000000000000000000000003");
+        }
     }
 }

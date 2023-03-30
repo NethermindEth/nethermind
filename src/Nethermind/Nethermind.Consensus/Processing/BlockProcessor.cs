@@ -137,7 +137,7 @@ namespace Nethermind.Consensus.Processing
 
                 return processedBlocks;
             }
-            catch (Exception ex) // try to restore for all cost
+            catch (Exception ex) // try to restore at all cost
             {
                 _logger.Trace($"Encountered exception {ex} while processing blocks.");
                 RestoreBranch(previousBranchStateRoot);
