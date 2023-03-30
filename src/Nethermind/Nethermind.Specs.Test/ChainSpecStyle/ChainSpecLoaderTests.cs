@@ -228,13 +228,28 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual("GnosisChain", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
 
-            int berlinXdaiBlockNumber = 16101500;
-            chainSpec.Parameters.Eip2565Transition.Should().Be(berlinXdaiBlockNumber);
-            chainSpec.Parameters.Eip2929Transition.Should().Be(berlinXdaiBlockNumber);
-            chainSpec.Parameters.Eip2930Transition.Should().Be(berlinXdaiBlockNumber);
+            int berlinGnosisBlockNumber = 16101500;
+            chainSpec.Parameters.Eip2565Transition.Should().Be(berlinGnosisBlockNumber);
+            chainSpec.Parameters.Eip2929Transition.Should().Be(berlinGnosisBlockNumber);
+            chainSpec.Parameters.Eip2930Transition.Should().Be(berlinGnosisBlockNumber);
 
             chainSpec.Parameters.TerminalTotalDifficulty.ToString()
                 .Should().Be("8626000000000000000000058750000000000000000000");
+        }
+
+        [Test]
+        public void Can_load_chiado()
+        {
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/chiado.json");
+            ChainSpec chainSpec = LoadChainSpec(path);
+
+            Assert.AreEqual(1.GWei(), chainSpec.Parameters.Eip1559BaseFeeInitialValue, $"fork base fee");
+            Assert.AreEqual(10200, chainSpec.NetworkId, $"{nameof(chainSpec.NetworkId)}");
+            Assert.AreEqual("chiado", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
+
+            chainSpec.Parameters.TerminalTotalDifficulty.ToString()
+                .Should().Be("231707791542740786049188744689299064356246512");
         }
 
         [Test]
