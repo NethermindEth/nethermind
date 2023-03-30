@@ -14,7 +14,7 @@ public static class EnvironmentVariable
         string command = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? $"setx {variable} {value}"
             : RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                ? $"echo 'export {variable}=\"{value}\"' >> ~/.zshrc"
+                ? $"echo 'export {variable}={value}' >> ~/.zshrc"
                 : $"echo 'export {variable}={value}' >> ~/.bashrc";
 
         try

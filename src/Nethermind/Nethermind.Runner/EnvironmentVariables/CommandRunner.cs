@@ -24,7 +24,7 @@ public static class CommandRunner
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
-        Process? process = Process.Start(info);
+        using Process? process = Process.Start(info);
         if (process is not null)
         {
             process.WaitForExit();
