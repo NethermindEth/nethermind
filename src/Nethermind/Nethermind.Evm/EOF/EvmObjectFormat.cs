@@ -394,7 +394,7 @@ internal static class EvmObjectFormat
                     var targetSectionId = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
 
                     BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, ref codeBitmap, ref postInstructionByte);
-                    if (targetSectionId < header.CodeSectionsSize)
+                    if (targetSectionId >= header.CodeSectionsSize)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EIP-6206 : JUMPF to unknown code section");
                         return false;
@@ -496,7 +496,7 @@ internal static class EvmObjectFormat
                 }
 
                 pos++;
-                if (opcode is Instruction.RJUMP or Instruction.RJUMPI or Instruction.CALLF)
+                if (opcode is Instruction.RJUMP or Instruction.RJUMPI or Instruction.CALLF or Instruction.JUMPF)
                 {
                     pos += TWO_BYTE_LENGTH;
                 }
@@ -520,6 +520,7 @@ internal static class EvmObjectFormat
             Dictionary<int, int> recordedStackHeight = new();
             int peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE];
             ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
+            int curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
 
             Stack<(int Position, int StackHeigth)> workSet = new();
             workSet.Push((0, peakStackHeight));
@@ -563,18 +564,22 @@ internal static class EvmObjectFormat
                         return false;
                     }
 
-                    stackHeight += outputs - inputs;
+                    stackHeight += outputs - inputs + (opcode is Instruction.JUMPF ? curr_outputs : 0);
                     peakStackHeight = Math.Max(peakStackHeight, stackHeight);
 
                     switch (opcode)
                     {
                         case Instruction.JUMPF:
                             {
-                                int curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-
                                 if (curr_outputs < outputs)
                                 {
                                     if (Logger.IsTrace) Logger.Trace($"EIP-6206 : Output Count {outputs} must be less or equal than sectionId {sectionId} output count {curr_outputs}");
+                                    return false;
+                                }
+
+                                if (stackHeight != curr_outputs + inputs - outputs)
+                                {
+                                    if (Logger.IsTrace) Logger.Trace($"EIP-6206 : Stack Height must {curr_outputs + inputs - outputs} but found {stackHeight}");
                                     return false;
                                 }
 
@@ -622,11 +627,9 @@ internal static class EvmObjectFormat
 
                     if (opcode.IsTerminating())
                     {
-                        int curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
                         var expectedHeight = opcode switch
                         {
                             Instruction.RETF => typesection[sectionId * MINIMUM_TYPESECTION_SIZE + 1],
-                            Instruction.JUMPF => curr_outputs + inputs - outputs,
                             _ => stackHeight
                         };
 

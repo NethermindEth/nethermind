@@ -198,7 +198,7 @@ namespace Nethermind.Evm
         public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
             Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
-            Instruction.JUMPF => true,
+            // Instruction.JUMPF => true,
             // Instruction.SELFDESTRUCT => true
             _ => false
         };

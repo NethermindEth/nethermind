@@ -3138,15 +3138,14 @@ namespace Nethermind.Evm
                             }
 
                             var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
-                            env.CodeInfo.GetSectionMetadata(index, out int targetInputCount, out int targetOutputCount, out int maxStackHeight);
-                            env.CodeInfo.GetSectionMetadata(sectionIndex, out int currentInputCount, out int currentOutputCount, out _);
-                            if (stack.Head > maxStackHeight - MaxCallDepth)
+                            env.CodeInfo.GetSectionMetadata(index, out _, out _, out int maxStackHeight);
+                            if (stack.Head > MaxCallDepth - maxStackHeight)
                             {
                                 return CallResult.StackOverflowException;
                             }
 
                             sectionIndex = index;
-                            programCounter = 0;
+                            programCounter = env.CodeInfo.SectionOffset(index);
 
                             break;
                         }

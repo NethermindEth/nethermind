@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm.EOF;
@@ -21,8 +22,8 @@ public static class EofExtensions
     public static void GetSectionMetadata(this ICodeInfo codeinfo, int sectionIndex, out int sectionInput, out int sectionOutput, out int maxStackHeight)
     {
 
-        sectionInput = codeinfo.TypeSection.Span[sectionIndex * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE];
+        sectionInput = codeinfo.TypeSection.Span[sectionIndex * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + EvmObjectFormat.Eof1.INPUTS_OFFSET];
         sectionOutput = codeinfo.TypeSection.Span[sectionIndex * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + EvmObjectFormat.Eof1.OUTPUTS_OFFSET];
-        maxStackHeight = codeinfo.TypeSection.Span[sectionIndex * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_OFFSET];
+        maxStackHeight = codeinfo.TypeSection.Span.Slice(sectionIndex * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE + EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_OFFSET, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
     }
 }
