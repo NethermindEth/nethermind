@@ -44,8 +44,8 @@ public class WithdrawalProcessor : IWithdrawalProcessor
         {
             Withdrawal withdrawal = block.Withdrawals[i];
 
-            addresses[i] = withdrawal.Address;
-            amounts[i] = withdrawal.AmountInGwei;
+            addresses.Add(withdrawal.Address);
+            amounts.Add(withdrawal.AmountInGwei);
 
             if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.AmountInWei / (BigInteger)Unit.Ether:N3}GNO to account {withdrawal.Address}");
         }
