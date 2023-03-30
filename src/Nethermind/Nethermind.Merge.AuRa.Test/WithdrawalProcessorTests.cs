@@ -1,8 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -39,6 +43,15 @@ public class WithdrawalProcessorTests
 
         spec.WithdrawalsEnabled.Returns(true);
 
+        // we need to capture those values, because the ArrayPools will be disposed before we can match them
+        ulong[] values = Array.Empty<ulong>();
+        Address[] addresses = Array.Empty<Address>();
+        contract.ExecuteWithdrawals(
+            block.Header,
+            4,
+            Arg.Do<IList<ulong>>(a => values = a.ToArray()),
+            Arg.Do<IList<Address>>(a => addresses = a.ToArray()));
+
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
         contract
@@ -46,8 +59,8 @@ public class WithdrawalProcessorTests
             .ExecuteWithdrawals(
                 Arg.Is(block.Header),
                 Arg.Is<UInt256>(4),
-                Arg.Is<ulong[]>(a => a.SequenceEqual(new[] { 1_000_000UL, 2_000_000UL })),
-                Arg.Is<Address[]>(a => a.SequenceEqual(new[] { Address.SystemUser, Address.Zero })));
+                Arg.Is<IList<ulong>>(a => values.SequenceEqual(new[] { 1_000_000UL, 2_000_000UL })),
+                Arg.Is<IList<Address>>(a => addresses.SequenceEqual(new[] { Address.SystemUser, Address.Zero })));
     }
 
     [Test]
