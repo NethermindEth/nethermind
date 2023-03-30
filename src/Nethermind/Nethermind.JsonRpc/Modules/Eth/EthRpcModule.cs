@@ -584,7 +584,7 @@ public partial class EthRpcModule : IEthRpcModule
                 }
             default:
                 {
-                    return ResultWrapper<IEnumerable<object>>.Fail($"$Filter type {filterType} is not supported.", ErrorCodes.InvalidInput);
+                    return ResultWrapper<IEnumerable<object>>.Fail($"Filter type {filterType} is not supported.", ErrorCodes.InvalidInput);
                 }
         }
     }
