@@ -551,12 +551,9 @@ namespace Nethermind.Runner
 
         private static bool ConfigureEnvironmentVariables(IConfigProvider configProvider)
         {
-            static EnvironmentVariableTarget GetTarget() =>
-                RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? EnvironmentVariableTarget.User : EnvironmentVariableTarget.Machine;
-
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             const string dotnetGcConserveMemory = "DOTNET_GCConserveMemory";
-            string gcConserveMemoryString = Environment.GetEnvironmentVariable(dotnetGcConserveMemory, GetTarget());
+            string gcConserveMemoryString = Environment.GetEnvironmentVariable(dotnetGcConserveMemory, EnvironmentVariableTarget.User);
             if (!int.TryParse(gcConserveMemoryString, out int gcConserveMemory))
             {
                 gcConserveMemory = 0;
