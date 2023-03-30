@@ -43,11 +43,11 @@ namespace Nethermind.Abi
             {
                 case Array array:
                     length = array.Length;
-                    encodedItems = EncodeSequence(array.Length, ElementTypes, array.Cast<object?>(), packed, 1);
+                    encodedItems = EncodeSequence(length, ElementTypes, array.Cast<object?>(), packed, 1);
                     break;
                 case IList list:
                     length = list.Count;
-                    encodedItems = EncodeSequence(list.Count, ElementTypes, list.Cast<object?>(), packed, 1);
+                    encodedItems = EncodeSequence(length, ElementTypes, list.Cast<object?>(), packed, 1);
                     break;
                 default:
                     throw new AbiException(AbiEncodingExceptionMessage);
