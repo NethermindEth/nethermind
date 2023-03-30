@@ -6,6 +6,7 @@ using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -35,16 +36,16 @@ public class WithdrawalProcessor : IWithdrawalProcessor
 
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
-        var count = block.Withdrawals.Length;
-        var amounts = new ulong[count];
-        var addresses = new Address[count];
+        int count = block.Withdrawals.Length;
+        using ArrayPoolList<ulong> amounts = new(count);
+        using ArrayPoolList<Address> addresses = new(count);
 
-        for (var i = 0; i < count; i++)
+        for (int i = 0; i < count; i++)
         {
-            var withdrawal = block.Withdrawals[i];
+            Withdrawal withdrawal = block.Withdrawals[i];
 
-            addresses[i] = withdrawal.Address;
-            amounts[i] = withdrawal.AmountInGwei;
+            addresses.Add(withdrawal.Address);
+            amounts.Add(withdrawal.AmountInGwei);
 
             if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.AmountInWei / (BigInteger)Unit.Ether:N3}GNO to account {withdrawal.Address}");
         }

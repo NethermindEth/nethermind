@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -36,14 +37,24 @@ namespace Nethermind.Abi
 
         public override byte[] Encode(object? arg, bool packed)
         {
-            if (arg is Array input)
+            int length;
+            byte[][] encodedItems;
+            switch (arg)
             {
-                byte[][] encodedItems = EncodeSequence(input.Length, ElementTypes, input.Cast<object?>(), packed, 1);
-                encodedItems[0] = UInt256.Encode((BigInteger)input.Length, packed);
-                return Bytes.Concat(encodedItems);
+                case Array array:
+                    length = array.Length;
+                    encodedItems = EncodeSequence(length, ElementTypes, array.Cast<object?>(), packed, 1);
+                    break;
+                case IList list:
+                    length = list.Count;
+                    encodedItems = EncodeSequence(length, ElementTypes, list.Cast<object?>(), packed, 1);
+                    break;
+                default:
+                    throw new AbiException(AbiEncodingExceptionMessage);
             }
 
-            throw new AbiException(AbiEncodingExceptionMessage);
+            encodedItems[0] = UInt256.Encode((BigInteger)length, packed);
+            return Bytes.Concat(encodedItems);
         }
 
         private IEnumerable<AbiType> ElementTypes
