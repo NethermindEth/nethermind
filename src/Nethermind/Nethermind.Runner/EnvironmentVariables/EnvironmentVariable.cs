@@ -13,7 +13,7 @@ public static class EnvironmentVariable
     {
         (string command, string arguments) = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? ("setx", $"{variable} {value}")
-            : ("export", $"{variable}={value}");
+            : ($"export {variable}={value}", string.Empty);
 
         try
         {
