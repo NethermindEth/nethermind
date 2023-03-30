@@ -565,32 +565,29 @@ public partial class EthRpcModule : IEthRpcModule
         switch (filterType)
         {
             case FilterType.BlockFilter:
-                {
-                    return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-                }
-
+            {
+                return _blockchainBridge.FilterExists(id)
+                    ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
+                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.", ErrorCodes.InvalidInput);
+            }
             case FilterType.PendingTransactionFilter:
-                {
-                    return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
-                            .GetPendingTransactionFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-                }
-
+            {
+                return _blockchainBridge.FilterExists(id)
+                    ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
+                        .GetPendingTransactionFilterChanges(id))
+                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.", ErrorCodes.InvalidInput);
+            }
             case FilterType.LogFilter:
-                {
-                    return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(
-                            _blockchainBridge.GetLogFilterChanges(id).ToArray())
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-                }
-
+            {
+                return _blockchainBridge.FilterExists(id)
+                    ? ResultWrapper<IEnumerable<object>>.Success(
+                        _blockchainBridge.GetLogFilterChanges(id).ToArray())
+                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.", ErrorCodes.InvalidInput);
+            }
             default:
-                {
-                    throw new NotSupportedException($"Filter type {filterType} is not supported");
-                }
+            {
+                return ResultWrapper<IEnumerable<object>>.Fail($"$Filter type {filterType} is not supported.", ErrorCodes.InvalidInput);
+            }
         }
     }
 
