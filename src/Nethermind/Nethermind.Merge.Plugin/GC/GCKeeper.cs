@@ -128,7 +128,7 @@ public class GCKeeper
             lock (_gcStrategy)
             {
                 long timeStamp = Stopwatch.GetTimestamp();
-                if (TimeSpan.FromTicks(timeStamp - _lastGcTimeStamp).TotalSeconds <= 10)
+                if (TimeSpan.FromTicks(timeStamp - _lastGcTimeStamp).TotalSeconds <= 3)
                 {
                     return;
                 }
