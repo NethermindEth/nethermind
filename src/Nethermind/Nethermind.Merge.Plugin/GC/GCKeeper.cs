@@ -151,7 +151,7 @@ public class GCKeeper
             // This should give time to finalize response in Engine API
             // Normally we should get block every 12s (5s on some chains)
             // Lets say we process block in 2s, then delay 1s, then invoke GC
-            await Task.Delay(100);
+            await Task.Delay(1000);
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
             {
