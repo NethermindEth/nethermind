@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public override void WriteJson(JsonWriter writer, GethLikeTxTrace value, JsonSerializer serializer)
         {
-            if (value == null)
+            if (value is null)
             {
                 writer.WriteNull();
                 return;
@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
                 writer.WriteEndArray();
 
-                if (entry.Memory != null)
+                if (entry.Memory is not null)
                 {
                     writer.WritePropertyName("memory");
                     writer.WriteStartArray();
@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                     writer.WriteEndArray();
                 }
 
-                if (entry.Storage != null)
+                if (entry.Storage is not null)
                 {
                     writer.WritePropertyName("storage");
                     writer.WriteStartObject();
