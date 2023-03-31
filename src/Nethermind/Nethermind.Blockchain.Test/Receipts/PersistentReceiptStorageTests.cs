@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -12,6 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts
@@ -21,6 +23,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         private MemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
         private PersistentReceiptStorage _storage = null!;
         private ReceiptsRecovery _receiptsRecovery;
+        private IBlockFinder _blockTree;
 
         [SetUp]
         public void SetUp()
@@ -29,7 +32,8 @@ namespace Nethermind.Blockchain.Test.Receipts
             EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
             _receiptsRecovery = new(ethereumEcdsa, specProvider);
             _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
-            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, _receiptsRecovery, Build.A.BlockTree().TestObject) { MigratedBlockNumber = 0 };
+            _blockTree = Substitute.For<IBlockFinder>();
+            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, _receiptsRecovery, _blockTree) { MigratedBlockNumber = 0 };
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         }
 
@@ -106,7 +110,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             var (block, _) = InsertBlock();
 
             _storage.ClearCache();
-            _storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
+            _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
             iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
             receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
             receiptStructRef.Logs.Should().BeNullOrEmpty();
@@ -176,18 +180,15 @@ namespace Nethermind.Blockchain.Test.Receipts
         private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null)
         {
             block ??= Build.A.Block
+                .WithNumber(1)
                 .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
                 .WithReceiptsRoot(TestItem.KeccakA)
                 .TestObject;
 
-            var receipts = new[] { Build.A.Receipt.TestObject };
+            _blockTree.FindBlock(block.Hash).Returns(block);
+            var receipts = new[] { Build.A.Receipt.WithCalculatedBloom().TestObject };
             _storage.Insert(block, receipts);
             _receiptsRecovery.TryRecover(block, receipts);
-
-            foreach (TxReceipt txReceipt in receipts)
-            {
-                txReceipt.Error = "";
-            }
 
             return (block, receipts);
         }

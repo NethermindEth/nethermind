@@ -29,8 +29,6 @@ namespace Nethermind.Serialization.Rlp
             TxReceipt txReceipt = new();
             rlpStream.ReadSequenceLength();
 
-            txReceipt.TxType = (TxType)rlpStream.ReadByte();
-
             byte[] firstItem = rlpStream.DecodeByteArray();
             if (firstItem.Length == 1)
             {
@@ -61,7 +59,6 @@ namespace Nethermind.Serialization.Rlp
             }
 
             txReceipt.Bloom = new Bloom(txReceipt.Logs);
-            txReceipt.Error = rlpStream.DecodeString();
 
             return txReceipt;
         }
@@ -77,8 +74,6 @@ namespace Nethermind.Serialization.Rlp
 
             TxReceipt txReceipt = new();
             decoderContext.ReadSequenceLength();
-
-            txReceipt.TxType = (TxType)decoderContext.ReadByte();
 
             byte[] firstItem = decoderContext.DecodeByteArray();
             if (firstItem.Length == 1)
@@ -110,7 +105,6 @@ namespace Nethermind.Serialization.Rlp
             }
 
             txReceipt.Bloom = new Bloom(txReceipt.Logs);
-            txReceipt.Error = decoderContext.DecodeString();
 
             return txReceipt;
         }
@@ -128,8 +122,6 @@ namespace Nethermind.Serialization.Rlp
 
             decoderContext.SkipLength();
 
-            item.TxType = (TxType)decoderContext.ReadByte();
-
             Span<byte> firstItem = decoderContext.DecodeByteArraySpan();
             if (firstItem.Length == 1)
             {
@@ -145,13 +137,6 @@ namespace Nethermind.Serialization.Rlp
             item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            List<LogEntry> logEntries = new();
-
-            while (decoderContext.Position < lastCheck)
-            {
-                logEntries.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes));
-            }
-
             (int PrefixLength, int ContentLength) peekPrefixAndContentLength =
                 decoderContext.PeekPrefixAndContentLength();
             int logsBytes = peekPrefixAndContentLength.ContentLength + peekPrefixAndContentLength.PrefixLength;
@@ -163,8 +148,6 @@ namespace Nethermind.Serialization.Rlp
             {
                 decoderContext.Check(lastCheck);
             }
-
-            item.Error = decoderContext.DecodeString();
         }
 
         public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -186,8 +169,8 @@ namespace Nethermind.Serialization.Rlp
 
             bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
+            // Note: Any byte saved here is about 3GB on mainnet.
             rlpStream.StartSequence(totalContentLength);
-            rlpStream.WriteByte((byte)item.TxType);
             if (isEip658receipts)
             {
                 rlpStream.Encode(item.StatusCode);
@@ -206,8 +189,6 @@ namespace Nethermind.Serialization.Rlp
             {
                 rlpStream.Encode(item.Logs[i]);
             }
-
-            rlpStream.Encode(item.Error);
         }
 
         private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
@@ -218,8 +199,6 @@ namespace Nethermind.Serialization.Rlp
             {
                 return (contentLength, 0);
             }
-
-            contentLength += Rlp.LengthOf((byte)item.TxType);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
             if (isEip658Receipts)
@@ -233,7 +212,6 @@ namespace Nethermind.Serialization.Rlp
 
             contentLength += Rlp.LengthOf(item.Sender);
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
-            contentLength += Rlp.LengthOf(item.Error);
 
             logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);

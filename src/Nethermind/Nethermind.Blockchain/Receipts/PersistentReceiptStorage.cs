@@ -27,10 +27,8 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IDb _transactionDb;
         private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         private long _migratedBlockNumber;
-        private static readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
+        private static readonly ReceiptArrayStorageDecoder StorageDecoder = ReceiptArrayStorageDecoder.Instance;
         private readonly IBlockFinder _blockFinder;
-
-        private const int SlimEncoding = 127;
 
         private const int CacheSize = 64;
         private readonly LruCache<KeccakKey, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
@@ -75,20 +73,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (!receiptData.IsNullOrEmpty())
             {
-                var context = new Rlp.ValueDecoderContext(receiptData);
-                try
-                {
-                    var receipt = StorageDecoder.Decode(ref context, RlpBehaviors.Storage);
-                    receipt.TxHash = hash;
-                    return receipt;
-                }
-                catch (RlpException)
-                {
-                    context.Position = 0;
-                    var receipt = StorageDecoder.Decode(ref context);
-                    receipt.TxHash = hash;
-                    return receipt;
-                }
+                return StorageDecoder.DeserializeReceiptObsolete(hash, receiptData);
             }
 
             return null;
@@ -116,7 +101,7 @@ namespace Nethermind.Blockchain.Receipts
                 }
                 else
                 {
-                    receipts = DecodeArray(receiptsData);
+                    receipts = StorageDecoder.Decode(in receiptsData);
 
                     _receiptsRecovery.TryRecover(block, receipts);
 
@@ -137,28 +122,6 @@ namespace Nethermind.Blockchain.Receipts
             return Get(block);
         }
 
-        private static TxReceipt[] DecodeArray(in Span<byte> receiptsData)
-        {
-            if (receiptsData.Length > 0 && receiptsData[0] == SlimEncoding)
-            {
-                var decoderContext = new Rlp.ValueDecoderContext(receiptsData.Slice(1));
-                return CompactReceiptStorageDecoder.Instance.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
-            }
-            else
-            {
-                var decoderContext = new Rlp.ValueDecoderContext(receiptsData);
-                try
-                {
-                    return StorageDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
-                }
-                catch (RlpException)
-                {
-                    decoderContext.Position = 0;
-                    return StorageDecoder.DecodeArray(ref decoderContext);
-                }
-            }
-        }
-
         public bool CanGetReceiptsByHash(long blockNumber) => blockNumber >= MigratedBlockNumber;
 
         public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator)
@@ -171,8 +134,15 @@ namespace Nethermind.Blockchain.Receipts
 
             var result = CanGetReceiptsByHash(blockNumber);
             var receiptsData = _blocksDb.GetSpan(blockHash);
-            var block = _blockFinder.FindBlock(blockHash);
-            iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb, block, _receiptsRecovery) : new ReceiptsIterator();
+            IReceiptsRecovery.IRecoveryContext? recoveryContext = null;
+
+            if (StorageDecoder.IsCompactEncoding(receiptsData))
+            {
+                Block block = _blockFinder.FindBlock(blockHash);
+                recoveryContext = _receiptsRecovery.CreateRecoveryContext(block!);
+            }
+
+            iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb, recoveryContext) : new ReceiptsIterator();
             return result;
         }
 
@@ -193,7 +163,8 @@ namespace Nethermind.Blockchain.Receipts
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(block.Header);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
-            using (NettyRlpStream stream = CompactReceiptStorageDecoder.Instance.EncodeToNewNettyStream(txReceipts, behaviors, SlimEncoding))
+
+            using (NettyRlpStream stream = StorageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
             {
                 _blocksDb.Set(block.Hash!, stream.AsSpan());
             }

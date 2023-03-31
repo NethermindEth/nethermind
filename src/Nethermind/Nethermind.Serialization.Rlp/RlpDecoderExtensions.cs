@@ -63,7 +63,7 @@ namespace Nethermind.Serialization.Rlp
             return rlpStream;
         }
 
-        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None, byte? prefixByte = null)
+        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             NettyRlpStream rlpStream;
             if (items is null)
@@ -81,15 +81,7 @@ namespace Nethermind.Serialization.Rlp
 
             int bufferLength = Rlp.LengthOfSequence(totalLength);
 
-            if (prefixByte != null)
-            {
-                bufferLength += 1;
-            }
             rlpStream = new NettyRlpStream(PooledByteBufferAllocator.Default.Buffer(bufferLength));
-            if (prefixByte != null)
-            {
-                rlpStream.WriteByte(prefixByte.Value);
-            }
             rlpStream.StartSequence(totalLength);
 
             for (int i = 0; i < items.Length; i++)

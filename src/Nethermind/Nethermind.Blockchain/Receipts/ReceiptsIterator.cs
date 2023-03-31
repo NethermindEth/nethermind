@@ -18,23 +18,28 @@ namespace Nethermind.Blockchain.Receipts
 
         private readonly TxReceipt[]? _receipts;
         private int _position;
-        private readonly IReceiptsRecovery.IRecoveryContext _recoveryContext;
+        private readonly IReceiptsRecovery.IRecoveryContext? _recoveryContext;
+        private readonly bool _compactEncoding;
 
-        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb, Block block, IReceiptsRecovery receiptsRecovery)
+        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb, IReceiptsRecovery.IRecoveryContext? receiptsRecoveryContext)
         {
-            if (receiptsData.Length > 0)
-            {
-                _decoderContext = receiptsData.Slice(1).AsRlpValueContext();
-            }
-            else
-            {
-                _decoderContext = receiptsData.Slice(0).AsRlpValueContext();
-            }
-            _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
+            _decoderContext = receiptsData.AsRlpValueContext();
             _blocksDb = blocksDb;
             _receipts = null;
             _position = 0;
-            _recoveryContext = receiptsRecovery.CreateRecoveryContext(block);
+            _recoveryContext = receiptsRecoveryContext;
+
+            if (_decoderContext.Length > 0 && _decoderContext.PeekByte() == ReceiptArrayStorageDecoder.CompactEncoding)
+            {
+                _compactEncoding = true;
+                _decoderContext.ReadByte();
+            }
+            else
+            {
+                _compactEncoding = false;
+            }
+
+            _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
         }
 
         /// <summary>
@@ -56,8 +61,15 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (_decoderContext.Position < _length)
                 {
-                    ReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
-                    _recoveryContext.RecoverReceiptData(ref current);
+                    if (_compactEncoding)
+                    {
+                        CompactReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    }
+                    else
+                    {
+                        ReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    }
+                    _recoveryContext?.RecoverReceiptData(ref current);
                     return true;
                 }
             }
