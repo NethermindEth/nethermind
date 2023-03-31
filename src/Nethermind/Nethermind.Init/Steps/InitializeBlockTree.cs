@@ -13,6 +13,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
 namespace Nethermind.Init.Steps
@@ -69,7 +70,7 @@ namespace Nethermind.Init.Steps
 
             ReceiptsRecovery receiptsRecovery = new(_get.EthereumEcdsa, _get.SpecProvider);
             IReceiptStorage receiptStorage = _set.ReceiptStorage = initConfig.StoreReceipts
-                ? new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider!, receiptsRecovery, blockTree)
+                ? new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider!, receiptsRecovery, blockTree, new ReceiptArrayStorageDecoder(initConfig.CompactReceiptStore))
                 : NullReceiptStorage.Instance;
 
             IReceiptFinder receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);

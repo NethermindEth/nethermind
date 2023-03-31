@@ -16,8 +16,9 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
     public const int CompactEncoding = 127;
     private bool _useCompactEncoding = true;
 
-    private ReceiptArrayStorageDecoder()
+    public ReceiptArrayStorageDecoder(bool compactEncoding = true)
     {
+        _useCompactEncoding = compactEncoding;
     }
 
     public int GetLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
@@ -28,7 +29,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         }
 
         int bufferLength = Rlp.LengthOfSequence(GetContentLength(items, rlpBehaviors));
-        if (_useCompactEncoding)
+        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             bufferLength++;
         }
@@ -37,7 +38,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
 
     private int GetContentLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
     {
-        if (_useCompactEncoding)
+        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             int totalLength = 0;
             for (int i = 0; i < items.Length; i++)
@@ -80,7 +81,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
             return;
         }
 
-        if (_useCompactEncoding)
+        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             int totalLength = GetContentLength(items, rlpBehaviors);
             stream.WriteByte(CompactEncoding);
