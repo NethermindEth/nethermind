@@ -8,6 +8,7 @@ using System.Text;
 using FluentAssertions;
 using MathNet.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -550,8 +551,14 @@ public class AbiTests
         var abi = new AbiArray(AbiType.UInt256);
         var array = new UInt256[] { 1, 2, 3, UInt256.MaxValue };
         var list = new List<UInt256>() { 1, 2, 3, UInt256.MaxValue };
+        var pool = new ArrayPoolList<UInt256>(4);
 
-        abi.Encode(array, false).Should().BeEquivalentTo(abi.Encode(list, false));
+        pool.AddRange(array);
+
+        var encoded = abi.Encode(array, false);
+
+        abi.Encode(list, false).Should().BeEquivalentTo(encoded);
+        abi.Encode(pool, false).Should().BeEquivalentTo(encoded);
     }
 
     private class UserOperationAbi
