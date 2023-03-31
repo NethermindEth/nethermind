@@ -1286,8 +1286,8 @@ namespace Nethermind.Evm
                                     // to reduce storage access from trying to load the code
                                     if (traceOpcodes)
                                     {
-                                        EndInstructionTrace();
-                                        StartInstructionTrace(Instruction.ISZERO, stack);
+                                        EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+                                        StartInstructionTrace(Instruction.ISZERO, vmState, gasAvailable, programCounter, in stack);
                                     }
 
                                     programCounter++;
