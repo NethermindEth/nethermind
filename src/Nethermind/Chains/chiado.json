@@ -30,7 +30,7 @@
         "randomnessContractAddress": {
           "0": "0x3000000000000000000000000000000000000001"
         },
-        "withdrawalContractAddress": "0xbabe2bed00000000000000000000000000000003",
+        "withdrawalContractAddress": "0xb97036A26259B7147018913bD58a774cf91acf25",
         "twoThirdsMajorityTransition": 0,
         "posdaoTransition": 0,
         "blockGasLimitContractTransitions": {

@@ -236,7 +236,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.Parameters.TerminalTotalDifficulty.ToString()
                 .Should().Be("8626000000000000000000058750000000000000000000");
 
-            chainSpec.AuRa.WithdrawalContractAddress.ToString().Should().Be("0xbabe2bed00000000000000000000000000000003");
+            chainSpec.AuRa.WithdrawalContractAddress.ToString(true)
+                .Should().Be("0x0B98057eA310F4d31F2a452B414647007d1645d9");
         }
 
         [Test]
@@ -253,7 +254,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.Parameters.TerminalTotalDifficulty.ToString()
                 .Should().Be("231707791542740786049188744689299064356246512");
 
-            chainSpec.AuRa.WithdrawalContractAddress.ToString().Should().Be("0xbabe2bed00000000000000000000000000000003");
+            chainSpec.AuRa.WithdrawalContractAddress.ToString(true)
+                .Should().Be("0xb97036A26259B7147018913bD58a774cf91acf25");
         }
 
         [Test]
