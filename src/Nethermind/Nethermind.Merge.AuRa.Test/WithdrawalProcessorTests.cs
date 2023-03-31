@@ -23,7 +23,7 @@ public class WithdrawalProcessorTests
     {
         var contract = Substitute.For<IWithdrawalContract>();
         var logManager = Substitute.For<ILogManager>();
-        var withdrawalProcessor = new WithdrawalProcessor(contract, logManager);
+        var withdrawalProcessor = new ContractWithdrawalProcessor(contract, logManager);
         var block = Build.A.Block
             .WithNumber(123)
             .WithWithdrawals(
@@ -66,7 +66,7 @@ public class WithdrawalProcessorTests
     {
         var contract = Substitute.For<IWithdrawalContract>();
         var logManager = Substitute.For<ILogManager>();
-        var withdrawalProcessor = new WithdrawalProcessor(contract, logManager);
+        var withdrawalProcessor = new ContractWithdrawalProcessor(contract, logManager);
         var block = Build.A.Block.TestObject;
         var spec = Substitute.For<IReleaseSpec>();
 
