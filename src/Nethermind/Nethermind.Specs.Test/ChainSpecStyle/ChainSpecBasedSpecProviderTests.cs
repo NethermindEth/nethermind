@@ -101,7 +101,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
         }
 
-        
+
         [TestCase(0, null, false, false, false)]
         [TestCase(0, 0ul, false, false, false)]
         [TestCase(0, 4660ul, false, false, false)]
