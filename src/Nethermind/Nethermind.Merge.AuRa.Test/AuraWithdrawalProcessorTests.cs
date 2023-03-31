@@ -16,14 +16,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Merge.AuRa.Test;
 
-public class WithdrawalProcessorTests
+public class AuraWithdrawalProcessorTests
 {
     [Test]
     public void Should_invoke_contract_as_expected()
     {
         var contract = Substitute.For<IWithdrawalContract>();
         var logManager = Substitute.For<ILogManager>();
-        var withdrawalProcessor = new ContractWithdrawalProcessor(contract, logManager);
+        var withdrawalProcessor = new AuraWithdrawalProcessor(contract, logManager);
         var block = Build.A.Block
             .WithNumber(123)
             .WithWithdrawals(
@@ -66,7 +66,7 @@ public class WithdrawalProcessorTests
     {
         var contract = Substitute.For<IWithdrawalContract>();
         var logManager = Substitute.For<ILogManager>();
-        var withdrawalProcessor = new ContractWithdrawalProcessor(contract, logManager);
+        var withdrawalProcessor = new AuraWithdrawalProcessor(contract, logManager);
         var block = Build.A.Block.TestObject;
         var spec = Substitute.For<IReleaseSpec>();
 

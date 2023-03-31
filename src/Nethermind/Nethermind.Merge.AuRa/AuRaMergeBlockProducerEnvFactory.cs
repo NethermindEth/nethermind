@@ -84,7 +84,7 @@ namespace Nethermind.Merge.AuRa
                 logManager,
                 _blockTree,
                 new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
-                    new ContractWithdrawalProcessor(
+                    new AuraWithdrawalProcessor(
                         withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
                         logManager
                         )

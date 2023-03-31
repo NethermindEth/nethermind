@@ -15,13 +15,13 @@ using Nethermind.Merge.AuRa.Contracts;
 
 namespace Nethermind.Merge.AuRa.Withdrawals;
 
-public class ContractWithdrawalProcessor : IWithdrawalProcessor
+public class AuraWithdrawalProcessor : IWithdrawalProcessor
 {
     private readonly IWithdrawalContract _contract;
     private readonly UInt256 _failedWithdrawalsMaxCount = 4;
     private readonly ILogger _logger;
 
-    public ContractWithdrawalProcessor(IWithdrawalContract contract, ILogManager logManager)
+    public AuraWithdrawalProcessor(IWithdrawalContract contract, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(logManager);
 
