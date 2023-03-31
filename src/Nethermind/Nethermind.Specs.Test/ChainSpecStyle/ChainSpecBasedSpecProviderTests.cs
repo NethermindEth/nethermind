@@ -61,9 +61,16 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
         }
 
-        [Test]
+        [TestCase(0, null, false)]
+        [TestCase(0, 0ul, false)]
+        [TestCase(0, 4660ul, false)]
+        [TestCase(1, 4660ul, false)]
+        [TestCase(1, 4661ul, false)]
+        [TestCase(4, 4672ul, true)]
+        [TestCase(4, 4673ul, true)]
+        [TestCase(5, 4680ul, true)]
         [NonParallelizable]
-        public void Timstamp_activation_equal_to_genesis_timestamp_loads_correctly()
+        public void Timstamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
         {
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
@@ -80,34 +87,35 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             expectedSpec.IsEip3198Enabled = false;
             expectedSpec.Eip1559TransitionBlock = 0;
             expectedSpec.DifficultyBombDelay = 0;
+            expectedSpec.IsEip3855Enabled = isEip3855Enabled;
             TestSpecProvider testProvider = TestSpecProvider.Instance;
             testProvider.SpecToReturn = expectedSpec;
             testProvider.TerminalTotalDifficulty = 0;
             testProvider.GenesisSpec = expectedSpec;
             List<ForkActivation> forkActivationsToTest = new()
             {
-                (0, null),
-                (0, 0),
-                (0, 4660),
-                (1, 4660),
-                (1, 4661),
+                (blockNumber, timestamp),
             };
             CompareSpecProviders(testProvider, provider, forkActivationsToTest);
             Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
-            expectedSpec.IsEip3855Enabled = true;
-            List<ForkActivation> forkActivationsToTest3 = new()
-            {
-                (4, 4672),
-                (4, 4673),
-                (5, 4680),
-            };
-            CompareSpecProviders(testProvider, provider, forkActivationsToTest3);
         }
 
-        [Test]
+        
+        [TestCase(0, null, false, false, false)]
+        [TestCase(0, 0ul, false, false, false)]
+        [TestCase(0, 4660ul, false, false, false)]
+        [TestCase(1, 4660ul, false, false, false)]
+        [TestCase(1, 4661ul, false, false, false)]
+        [TestCase(1, 4672ul, false, false, false)]
+        [TestCase(2, 4673ul, false, false, true)]
+        [TestCase(3, 4680ul, false, false, true)]
+        [TestCase(4, 4672ul, false, true, false)]
+        [TestCase(5, 4672ul, true, true, false)]
+        [TestCase(5, 4673ul, true, true, false)]
+        [TestCase(6, 4680ul, true, true, false)]
         [NonParallelizable]
-        public void Logs_warning_when_timestampActivation_happens_before_blockActivation()
+        public void Logs_warning_when_timestampActivation_happens_before_blockActivation(long blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
         {
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
@@ -122,7 +130,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
             expectedSpec.Name = "Genesis_with_non_zero_timestamp";
             expectedSpec.IsEip3651Enabled = true;
-            expectedSpec.IsEip3198Enabled = false;
+            expectedSpec.IsEip3198Enabled = isEip3198Enabled;
+            expectedSpec.IsEip3855Enabled = isEip3855Enabled;
             expectedSpec.Eip1559TransitionBlock = 0;
             expectedSpec.DifficultyBombDelay = 0;
             TestSpecProvider testProvider = TestSpecProvider.Instance;
@@ -131,38 +140,17 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             testProvider.GenesisSpec = expectedSpec;
             List<ForkActivation> forkActivationsToTest = new()
             {
-                (0, null),
-                (0, 0),
-                (0, 4660),
-                (1, 4660),
-                (1, 4661),
+                (blockNumber, timestamp),
             };
             CompareSpecProviders(testProvider, provider, forkActivationsToTest);
-            Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
-            Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
-            expectedSpec.IsEip3855Enabled = false; // this will only activate in the block after the last block activation happens
-            List<ForkActivation> forkActivationsToTest2 = new()
+            if (receivesWarning)
             {
-                (1, 4672),
-                (2, 4673),
-                (3, 4680),
-            };
-            CompareSpecProviders(testProvider, provider, forkActivationsToTest2);
-            logger.Received(2).Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
-            expectedSpec.IsEip3198Enabled = true;
-            List<ForkActivation> forkActivationsToTest3 = new()
+                logger.Received(1).Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
+            }
+            else
             {
-                (4, 4672),
-            };
-            CompareSpecProviders(testProvider, provider, forkActivationsToTest3);
-            expectedSpec.IsEip3855Enabled = true; // since the block transition happened the block before, now the timestamp transition activates, even though it should have activated long ago.
-            List<ForkActivation> forkActivationsToTest4 = new()
-            {
-                (5, 4672),
-                (5, 4673),
-                (6, 4680),
-            };
-            CompareSpecProviders(testProvider, provider, forkActivationsToTest4);
+                logger.DidNotReceive().Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
+            }
         }
 
         [Test]
