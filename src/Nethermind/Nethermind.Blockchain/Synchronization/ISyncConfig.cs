@@ -5,6 +5,7 @@ using System;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -90,5 +91,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         [ConfigItem(Description = "[EXPERIMENTAL] Only for non validator nodes! If set to true, DownloadReceiptsInFastSync and/or DownloadBodiesInFastSync can be set to false.", DefaultValue = "false")]
         public bool NonValidatorNode { get; set; }
+
+        [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync. Significantly reduce total writes written and some sync time if you are not network limited.", DefaultValue = "Default")]
+        public ITunableDb.TuneType TuneDbMode { get; set; }
     }
 }

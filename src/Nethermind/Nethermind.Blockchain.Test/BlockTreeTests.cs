@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -32,15 +33,15 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class BlockTreeTests
     {
-        private MemDb _blocksInfosDb;
-        private MemDb _headersDb;
-        private MemDb _blocksDb;
+        private TestMemDb _blocksInfosDb;
+        private TestMemDb _headersDb;
+        private TestMemDb _blocksDb;
 
         private BlockTree BuildBlockTree()
         {
-            _blocksDb = new MemDb();
-            _headersDb = new MemDb();
-            _blocksInfosDb = new MemDb();
+            _blocksDb = new TestMemDb();
+            _headersDb = new TestMemDb();
+            _blocksInfosDb = new TestMemDb();
             _chainLevelInfoRepository = new ChainLevelInfoRepository(_blocksInfosDb);
             return new BlockTree(_blocksDb, _headersDb, _blocksInfosDb, _chainLevelInfoRepository, MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
         }
@@ -289,13 +290,20 @@ namespace Nethermind.Blockchain.Test
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_load_best_known_up_to_256million()
         {
-            _blocksDb = new MemDb();
-            _headersDb = new MemDb();
-            IDb blocksInfosDb = Substitute.For<IDb>();
+            _blocksDb = new TestMemDb();
+            _headersDb = new TestMemDb();
+            TestMemDb blocksInfosDb = new TestMemDb();
 
             Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
-            blocksInfosDb[BlockTree.DeletePointerAddressInDb.Bytes].Returns((byte[])null);
-            blocksInfosDb[Arg.Is<byte[]>(b => !Bytes.AreEqual(b, BlockTree.DeletePointerAddressInDb.Bytes))].Returns(chainLevel.Bytes);
+            blocksInfosDb.ReadFunc = (key) =>
+            {
+                if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.Bytes))
+                {
+                    return chainLevel.Bytes;
+                }
+
+                return null;
+            };
 
             BlockTree blockTree = new(_blocksDb, _headersDb, blocksInfosDb, new ChainLevelInfoRepository(blocksInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 

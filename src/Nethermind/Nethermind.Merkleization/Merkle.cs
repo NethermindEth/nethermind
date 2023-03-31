@@ -1,9 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.X86;
 using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,79 +34,28 @@ public static partial class Merkle
         RootOfNull = new UInt256(new Root(SHA256.HashData(Array.Empty<byte>())).AsSpan().ToArray());
     }
 
-    public static uint NextPowerOfTwo(uint v)
+    public static ulong NextPowerOfTwo(uint v)
     {
-        if (Lzcnt.IsSupported)
-        {
-            return (uint)1 << (int)(32 - Lzcnt.LeadingZeroCount(--v));
-        }
-
-        if (v != 0U) v--;
-        v |= v >> 1;
-        v |= v >> 2;
-        v |= v >> 4;
-        v |= v >> 8;
-        v |= v >> 16;
-        v++;
-
-        return v;
+        if (v == 0) return 1;
+        return BitOperations.RoundUpToPowerOf2(v);
+    }
+    public static ulong NextPowerOfTwo(ulong v)
+    {
+        if (v == 0) return 1;
+        return BitOperations.RoundUpToPowerOf2(v);
     }
 
     public static int NextPowerOfTwoExponent(ulong v)
     {
-        if (v == 0)
-        {
-            return 0;
-        }
-
-        int leadingZeros = 0;
-        if (Lzcnt.IsSupported)
-        {
-            leadingZeros = (int)Lzcnt.X64.LeadingZeroCount(--v);
-        }
-        else
-        {
-            leadingZeros = CountLeadingZeros(v);
-        }
-
-        return 64 - leadingZeros;
+        return BitOperations.Log2(BitOperations.RoundUpToPowerOf2(v));
     }
 
-    private static int CountLeadingZeros(ulong x)
+    public static int CountLeadingZeros(ulong x)
     {
-        x--;
+        if (x == 0) return 0;
+        if (x == 1) return 64;
 
-        int count = 0;
-        for (int i = 63; i >= 0; i--)
-        {
-            if (x / (1UL << i) == 1)
-            {
-                break;
-            }
-
-            count++;
-        }
-
-        return count;
-    }
-
-    public static ulong NextPowerOfTwo(ulong v)
-    {
-        if (Lzcnt.IsSupported)
-        {
-            return (ulong)1 << (int)(64 - Lzcnt.X64.LeadingZeroCount(--v));
-        }
-
-        if (v != 0UL) v--;
-        v |= v >> 1;
-        v |= v >> 2;
-        v |= v >> 4;
-        v |= v >> 8;
-        v |= v >> 16;
-        v |= v >> 32;
-        v++;
-
-        return v;
+        return BitOperations.LeadingZeroCount(x) + (BitOperations.IsPow2(x) ? 1 : 0);
     }
 
     private static UInt256 Compute(Span<UInt256> span)
@@ -280,7 +229,7 @@ public static partial class Merkle
         }
         else
         {
-            Ize(out root, MemoryMarshal.Cast<byte, UInt256>(value), Span<UInt256>.Empty, limit);
+            Ize(out root, MemoryMarshal.Cast<byte, UInt256>(value), default, limit);
         }
 
         MixIn(ref root, length);

@@ -1447,6 +1447,38 @@ namespace Nethermind.TxPool.Test
             _txPool.SubmitTx(txA, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
         }
 
+        [TestCase(true, 1, 1, true)]
+        [TestCase(true, 1, 0, true)]
+        [TestCase(true, 0, 0, true)]
+        [TestCase(false, 1, 1, true)]
+        [TestCase(false, 1, 0, false)]
+        [TestCase(false, 0, 0, false)]
+        public void Should_filter_txs_depends_on_priority_contract(bool thereIsPriorityContract, int balance, int fee, bool shouldBeAccepted)
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(specProvider: specProvider, thereIsPriorityContract: thereIsPriorityContract);
+            EnsureSenderBalance(TestItem.AddressF, (UInt256)balance * GasCostOf.Transaction);
+
+            Transaction zeroCostTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas((UInt256)fee)
+                .WithMaxPriorityFeePerGas((UInt256)fee)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
+
+            AcceptTxResult result = _txPool.SubmitTx(zeroCostTx, TxHandlingOptions.None);
+            if (shouldBeAccepted)
+            {
+                result.Should().Be(AcceptTxResult.Accepted);
+            }
+            else
+            {
+                result.Should().NotBe(AcceptTxResult.Accepted);
+            }
+        }
+
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
         {
             var peers = new Dictionary<ITxPoolPeer, PrivateKey>();
@@ -1465,7 +1497,8 @@ namespace Nethermind.TxPool.Test
             ITxPoolConfig config = null,
             ISpecProvider specProvider = null,
             ChainHeadInfoProvider chainHeadInfoProvider = null,
-            IIncomingTxFilter incomingTxFilter = null)
+            IIncomingTxFilter incomingTxFilter = null,
+            bool thereIsPriorityContract = false)
         {
             specProvider ??= RopstenSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -1484,7 +1517,8 @@ namespace Nethermind.TxPool.Test
                 new TxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
-                incomingTxFilter);
+                incomingTxFilter,
+                thereIsPriorityContract);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
@@ -1590,7 +1624,6 @@ namespace Nethermind.TxPool.Test
                 .WithGasPrice(gasPrice)
                 .WithData(data)
                 .To(to)
-                .DeliveredBy(privateKey.PublicKey)
                 .SignedAndResolved(_ethereumEcdsa, privateKey)
                 .TestObject;
 
