@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Merge.Plugin.GC;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -21,5 +22,13 @@ namespace Nethermind.Merge.Plugin
         public ulong SecondsPerSlot { get; set; } = 12;
 
         public string? BuilderRelayUrl { get; set; }
+
+        public bool PrioritizeBlockLatency { get; set; } = true;
+
+        public GcLevel SweepMemory { get; set; } = GcLevel.Gen1;
+
+        public GcCompaction CompactMemory { get; set; } = GcCompaction.Yes;
+
+        public int CollectionsPerDecommit { get; set; } = 75;
     }
 }
