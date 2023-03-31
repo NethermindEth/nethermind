@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.AuRa.Withdrawals;
+
 public class NullWithdrawalProcessor : IWithdrawalProcessor
 {
     public void ProcessWithdrawals(Block block, IReleaseSpec spec) { }

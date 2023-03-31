@@ -20,91 +20,90 @@ using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
-namespace Nethermind.Merge.AuRa
+namespace Nethermind.Merge.AuRa;
+
+public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
 {
-    public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
+    private readonly AuRaNethermindApi _auraApi;
+    private readonly IAuraConfig _auraConfig;
+    private readonly DisposableStack _disposeStack;
+
+    public AuRaMergeBlockProducerEnvFactory(
+        AuRaNethermindApi auraApi,
+        IAuraConfig auraConfig,
+        DisposableStack disposeStack,
+        IDbProvider dbProvider,
+        IBlockTree blockTree,
+        IReadOnlyTrieStore readOnlyTrieStore,
+        ISpecProvider specProvider,
+        IBlockValidator blockValidator,
+        IRewardCalculatorSource rewardCalculatorSource,
+        IReceiptStorage receiptStorage,
+        IBlockPreprocessorStep blockPreprocessorStep,
+        ITxPool txPool,
+        ITransactionComparerProvider transactionComparerProvider,
+        IBlocksConfig blocksConfig,
+        ILogManager logManager) : base(
+            dbProvider,
+            blockTree,
+            readOnlyTrieStore,
+            specProvider,
+            blockValidator,
+            rewardCalculatorSource,
+            receiptStorage,
+            blockPreprocessorStep,
+            txPool,
+            transactionComparerProvider,
+            blocksConfig,
+            logManager)
     {
-        private readonly AuRaNethermindApi _auraApi;
-        private readonly IAuraConfig _auraConfig;
-        private readonly DisposableStack _disposeStack;
+        _auraApi = auraApi;
+        _auraConfig = auraConfig;
+        _disposeStack = disposeStack;
+    }
 
-        public AuRaMergeBlockProducerEnvFactory(
-            AuRaNethermindApi auraApi,
-            IAuraConfig auraConfig,
-            DisposableStack disposeStack,
-            IDbProvider dbProvider,
-            IBlockTree blockTree,
-            IReadOnlyTrieStore readOnlyTrieStore,
-            ISpecProvider specProvider,
-            IBlockValidator blockValidator,
-            IRewardCalculatorSource rewardCalculatorSource,
-            IReceiptStorage receiptStorage,
-            IBlockPreprocessorStep blockPreprocessorStep,
-            ITxPool txPool,
-            ITransactionComparerProvider transactionComparerProvider,
-            IBlocksConfig blocksConfig,
-            ILogManager logManager) : base(
-                dbProvider,
-                blockTree,
-                readOnlyTrieStore,
-                specProvider,
-                blockValidator,
-                rewardCalculatorSource,
-                receiptStorage,
-                blockPreprocessorStep,
-                txPool,
-                transactionComparerProvider,
-                blocksConfig,
-                logManager)
-        {
-            _auraApi = auraApi;
-            _auraConfig = auraConfig;
-            _disposeStack = disposeStack;
-        }
+    protected override BlockProcessor CreateBlockProcessor(
+        ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+        ISpecProvider specProvider,
+        IBlockValidator blockValidator,
+        IRewardCalculatorSource rewardCalculatorSource,
+        IReceiptStorage receiptStorage,
+        ILogManager logManager,
+        IBlocksConfig blocksConfig)
+    {
+        var withdrawalContractFactory = new WithdrawalContractFactory(_auraApi.ChainSpec!.AuRa, _auraApi.AbiEncoder);
 
-        protected override BlockProcessor CreateBlockProcessor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
-            ISpecProvider specProvider,
-            IBlockValidator blockValidator,
-            IRewardCalculatorSource rewardCalculatorSource,
-            IReceiptStorage receiptStorage,
-            ILogManager logManager,
-            IBlocksConfig blocksConfig)
-        {
-            var withdrawalContractFactory = new WithdrawalContractFactory(_auraApi.ChainSpec!.AuRa, _auraApi.AbiEncoder);
-
-            return new AuRaMergeBlockProcessor(
-                specProvider,
-                blockValidator,
-                rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
-                receiptStorage,
-                logManager,
-                _blockTree,
-                new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
-                    new AuraWithdrawalProcessor(
-                        withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
-                        logManager
-                        )
+        return new AuRaMergeBlockProcessor(
+            specProvider,
+            blockValidator,
+            rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
+            TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
+            readOnlyTxProcessingEnv.StateProvider,
+            readOnlyTxProcessingEnv.StorageProvider,
+            receiptStorage,
+            logManager,
+            _blockTree,
+            new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
+                new AuraWithdrawalProcessor(
+                    withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
+                    logManager
                     )
-                );
-        }
+                )
+            );
+    }
 
-        protected override TxPoolTxSource CreateTxPoolTxSource(
-            ReadOnlyTxProcessingEnv processingEnv,
-            ITxPool txPool,
-            IBlocksConfig blocksConfig,
-            ITransactionComparerProvider transactionComparerProvider,
-            ILogManager logManager)
-        {
-            ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(
-                _dbProvider.AsReadOnly(false),
-                _blockTree.AsReadOnly());
+    protected override TxPoolTxSource CreateTxPoolTxSource(
+        ReadOnlyTxProcessingEnv processingEnv,
+        ITxPool txPool,
+        IBlocksConfig blocksConfig,
+        ITransactionComparerProvider transactionComparerProvider,
+        ILogManager logManager)
+    {
+        ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(
+            _dbProvider.AsReadOnly(false),
+            _blockTree.AsReadOnly());
 
-            return new StartBlockProducerAuRa(_auraApi)
-                .CreateTxPoolTxSource(processingEnv, constantContractsProcessingEnv);
-        }
+        return new StartBlockProducerAuRa(_auraApi)
+            .CreateTxPoolTxSource(processingEnv, constantContractsProcessingEnv);
     }
 }
