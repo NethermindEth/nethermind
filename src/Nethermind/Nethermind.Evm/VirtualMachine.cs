@@ -1514,7 +1514,7 @@ namespace Nethermind.Evm
 
                             if (vmState.IsStatic) goto StaticCallViolation;
 
-							// fail fast before the first storage read if gas is not enough even for reset
+                            // fail fast before the first storage read if gas is not enough even for reset
                             if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) goto OutOfGas;
 
                             if (spec.UseNetGasMeteringWithAStipendFix)
