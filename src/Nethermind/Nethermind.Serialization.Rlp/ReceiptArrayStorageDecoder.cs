@@ -84,7 +84,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         {
             int totalLength = GetContentLength(items, rlpBehaviors);
             stream.WriteByte(CompactEncoding);
-            stream.StartSequence(totalLength-1);
+            stream.StartSequence(totalLength - 1);
 
             for (int i = 0; i < items.Length; i++)
             {
