@@ -78,5 +78,6 @@
     <PackageVersion Include="System.Text.Encodings.Web" Version="7.0.0" />
     <PackageVersion Include="Websocket.Client" Version="4.5.2" />
     <PackageVersion Include="YamlDotNet" Version="13.0.1" />
+    <PackageVersion Include="Terminal.Gui" Version="1.10" />
   </ItemGroup>
 </Project>

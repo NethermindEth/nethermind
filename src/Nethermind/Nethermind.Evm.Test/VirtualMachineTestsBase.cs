@@ -1,24 +1,27 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+
+[assembly: InternalsVisibleTo("Nethermind.Evm.Lab")]
 
 namespace Nethermind.Evm.Test
 {
@@ -48,7 +51,19 @@ namespace Nethermind.Evm.Test
 
         protected virtual long BlockNumber => MainnetSpecProvider.ByzantiumBlockNumber;
         protected virtual ulong Timestamp => 0UL;
-        protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+        internal ISpecProvider _SpecProvider = MainnetSpecProvider.Instance;
+        internal virtual ISpecProvider SpecProvider
+        {
+            get
+            {
+                return _SpecProvider;
+            }
+
+            set
+            {
+                _SpecProvider = value;
+            }
+        }
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber, Timestamp);
 
         protected virtual ILogManager GetLogManager()
@@ -80,7 +95,7 @@ namespace Nethermind.Evm.Test
             return tracer.BuildResult();
         }
 
-        protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
+        internal GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
         {
             GethLikeTxTracer tracer = new(GethTraceOptions.Default);
             (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code);
@@ -103,9 +118,16 @@ namespace Nethermind.Evm.Test
 
         protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
-        protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
+        internal T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, timestamp: Timestamp);
+            _processor.Execute(transaction, block.Header, tracer);
+            return tracer;
+        }
+
+        internal T Execute<T>(T tracer, long blockNumber, ulong timestamp, long gas, params byte[] code) where T : ITxTracer
+        {
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, gas, code, timestamp: timestamp);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }

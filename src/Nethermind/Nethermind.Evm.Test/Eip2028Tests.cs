@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Test
         private class AfterIstanbul : Eip2028Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
+            internal override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
 
             [Test]
             public void non_zero_transaction_data_cost_should_be_16()
@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test
         private class BeforeIstanbul : Eip2028Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber - 1;
-            protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+            internal override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
             [Test]
             public void non_zero_transaction_data_cost_should_be_68()

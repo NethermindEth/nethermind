@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -14,6 +14,12 @@ namespace Nethermind.Specs
         public TestSpecProvider(IReleaseSpec initialSpecToReturn)
         {
             SpecToReturn = initialSpecToReturn;
+            GenesisSpec = initialSpecToReturn;
+        }
+
+        public TestSpecProvider(IReleaseSpec initialSpecToReturn, IReleaseSpec targetSpec)
+        {
+            SpecToReturn = targetSpec;
             GenesisSpec = initialSpecToReturn;
         }
 

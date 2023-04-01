@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Test
     {
         protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
 
-        protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
+        internal override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
 
         private void AssertEip145(TestAllTracerWithOutput receipt, byte result)
         {

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -16,7 +15,7 @@ namespace Nethermind.Evm.Test
     {
         protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
 
-        protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
+        internal override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
 
         [TestCase("0x60006000556000600055", 412, 0, 0)]
         [TestCase("0x60006000556001600055", 20212, 0, 0)]

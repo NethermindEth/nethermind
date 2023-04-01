@@ -1,14 +1,13 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.State;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -16,7 +15,7 @@ namespace Nethermind.Evm.Test
     public class Eip1884Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+        internal override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [Test]
         public void after_istanbul_selfbalance_opcode_puts_current_address_balance_onto_the_stack()

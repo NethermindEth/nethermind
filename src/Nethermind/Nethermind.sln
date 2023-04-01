@@ -236,7 +236,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Merkleization", 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ssz", "Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj", "{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Contract", "Nethermind.Network.Contract\Nethermind.Network.Contract.csproj", "{AD151E35-4BBC-4A83-8F57-CC8665F6E007}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Contract", "Nethermind.Network.Contract\Nethermind.Network.Contract.csproj", "{AD151E35-4BBC-4A83-8F57-CC8665F6E007}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Evm.Lab", "Nethermind.Evm.Lab\Nethermind.Evm.Lab.csproj", "{E4A3157B-49BC-46D6-B342-5AF2A490DAF8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -632,6 +634,10 @@ Global
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E4A3157B-49BC-46D6-B342-5AF2A490DAF8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E4A3157B-49BC-46D6-B342-5AF2A490DAF8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E4A3157B-49BC-46D6-B342-5AF2A490DAF8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E4A3157B-49BC-46D6-B342-5AF2A490DAF8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

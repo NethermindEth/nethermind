@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net7.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Terminal.Gui" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
+  </ItemGroup>
+
+</Project>

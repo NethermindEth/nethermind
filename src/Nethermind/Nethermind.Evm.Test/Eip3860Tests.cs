@@ -1,14 +1,13 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Extensions;
-using Nethermind.Specs;
-using Nethermind.Core.Test.Builders;
-using NUnit.Framework;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using System;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Specs;
+using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -7,12 +7,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -22,7 +21,7 @@ namespace Nethermind.Evm.Test
     {
         protected override long BlockNumber => MainnetSpecProvider.MuirGlacierBlockNumber;
 
-        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+        internal override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [Test]
         public void Load_self_destruct()

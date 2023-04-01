@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -59,7 +59,7 @@ namespace Nethermind.Evm.Test.Tracing
                     {SenderRecipientAndMiner.Default.Recipient, new HashSet<UInt256>{105}}});
         }
 
-        protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
+        internal override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
 
         protected (AccessTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
         {
