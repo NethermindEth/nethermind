@@ -8,7 +8,7 @@ using Terminal.Gui;
 namespace Nethermind.Evm.Lab.Componants;
 internal class StorageView : IComponent<MachineState>
 {
-    public (View, Rectangle) View(IState<MachineState> state, Rectangle? rect = null)
+    public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
         var innerState = state.GetState();
 
@@ -26,24 +26,22 @@ internal class StorageView : IComponent<MachineState>
             Height = frameBoundaries.Height,
         };
 
-        if (innerState.StoragesByDepth.TryPeek(out var storage))
+        var dataTable = new DataTable();
+        dataTable.Columns.Add("Address");
+        dataTable.Columns.Add("Value");
+        foreach (var (k, v) in innerState.Current.Storage)
         {
-            var dataTable = new DataTable();
-            foreach (var (k, v) in storage)
-            {
-                dataTable.Rows.Add(k);
-                dataTable.Columns.Add(v);
-            }
-
-            frameView.Add(new TableView()
-            {
-                X = 0,
-                Y = 0,
-                Width = Dim.Fill(2),
-                Height = Dim.Fill(2),
-                Table = dataTable
-            });
+            dataTable.Rows.Add(k, v);
         }
+
+        frameView.Add(new TableView()
+        {
+            X = 0,
+            Y = 0,
+            Width = Dim.Fill(2),
+            Height = Dim.Fill(2),
+            Table = dataTable
+        });
         return (frameView, frameBoundaries);
     }
 }

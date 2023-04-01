@@ -8,7 +8,7 @@ using Terminal.Gui;
 namespace Nethermind.Evm.Lab.Components.MachineLab;
 internal class InputsView : IComponent<MachineState>
 {
-    public (View, Rectangle) View(IState<MachineState> state, Rectangle? rect = null)
+    public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
         var innerState = state.GetState();
 

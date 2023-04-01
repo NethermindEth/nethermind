@@ -7,6 +7,6 @@ namespace Nethermind.Evm.Lab.Interfaces;
 public record struct Rectangle(Pos? X, Pos? Y, Dim? Width, Dim? Height);
 internal interface IComponent<T> where T : IState<T>, new()
 {
-    (View, Rectangle) View(IState<T> _, Rectangle? rect = null);
+    (View, Rectangle?) View(IState<T> _, Rectangle? rect = null);
     IState<T> Update(IState<T> state, ActionsBase action) => state;
 }

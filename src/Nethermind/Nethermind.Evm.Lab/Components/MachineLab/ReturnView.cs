@@ -7,7 +7,7 @@ using Terminal.Gui;
 namespace Nethermind.Evm.Lab.Componants;
 internal class ReturnView : IComponent<MachineState>
 {
-    public (View, Rectangle) View(IState<MachineState> state, Rectangle? rect = null)
+    public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
         var innerState = state.GetState();
 

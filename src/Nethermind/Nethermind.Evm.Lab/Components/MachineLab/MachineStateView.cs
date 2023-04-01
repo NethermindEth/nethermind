@@ -11,7 +11,8 @@ namespace Nethermind.Evm.Lab.Componants
 {
     internal class MachineOverview : IComponent<MachineState>
     {
-        private static readonly string[] Columns = { "Pc", "Gas", "Depth", "Error" };
+        private static readonly string[] Columns_Overview = { "Pc", "Gas", "Depth", "Error" };
+        private static readonly string[] Columns_Opcode = { "Opcode", "Operation", "GasCost" };
         private View? _cache { get; set; }
         public IState<MachineState> Update(IState<MachineState> currentState, ActionsBase action)
         {
@@ -25,7 +26,7 @@ namespace Nethermind.Evm.Lab.Componants
             };
         }
 
-        public (View, Rectangle) View(IState<MachineState> state, Rectangle? rect = null)
+        public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
         {
             var innerState = state.GetState();
 
@@ -44,23 +45,58 @@ namespace Nethermind.Evm.Lab.Componants
             };
 
             var dataTable = new DataTable();
-            foreach (var h in Columns)
+            foreach (var h in Columns_Overview)
             {
                 dataTable.Columns.Add(h);
             }
 
             dataTable.Rows.Add(
-                Columns.Select(propertyName => typeof(GethTxTraceEntry).GetProperty(propertyName)?.GetValue(innerState.Current)).ToArray()
+                Columns_Overview.Select(propertyName => typeof(GethTxTraceEntry).GetProperty(propertyName)?.GetValue(innerState.Current)).ToArray()
             );
 
-            frameView.Add(new TableView()
+            var opcodeData = new DataTable();
+            foreach (var h in Columns_Opcode)
+            {
+                opcodeData.Columns.Add(h);
+            }
+            opcodeData.Rows.Add(
+                Columns_Opcode.Select(
+                    proeprtyName =>
+                    {
+                        if (proeprtyName == "Opcode")
+                        {
+                            var opcodeNane = innerState.Current.Operation;
+                            var Instruction = (byte)Enum.Parse<Evm.Instruction>(opcodeNane);
+                            return (Object?)$"{Instruction:X4}";
+                        }
+                        else
+                        {
+                            return typeof(GethTxTraceEntry).GetProperty(proeprtyName)?.GetValue(innerState.Current);
+                        }
+                    }
+                ).ToArray()
+            );
+
+            var overviewViewTable = new TableView()
             {
                 X = 0,
                 Y = 0,
                 Width = Dim.Fill(2),
-                Height = Dim.Fill(2),
+                Height = Dim.Percent(50),
                 Table = dataTable
-            });
+            };
+
+            var opcodeTable = new TableView()
+            {
+                X = 0,
+                Y = Pos.Bottom(overviewViewTable),
+                Width = Dim.Fill(2),
+                Height = Dim.Percent(50),
+                Table = opcodeData
+            };
+
+
+            frameView.Add(overviewViewTable, opcodeTable);
             return (frameView, frameBoundaries);
         }
     }

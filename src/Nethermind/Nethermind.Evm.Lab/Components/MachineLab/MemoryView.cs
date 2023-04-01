@@ -6,7 +6,7 @@ using Terminal.Gui;
 namespace Nethermind.Evm.Lab.Componants;
 internal class MemoryView : IComponent<MachineState>
 {
-    public (View, Rectangle) View(IState<MachineState> state, Rectangle? rect = null)
+    public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
         var innerState = state.GetState();
         var ram = Nethermind.Core.Extensions.Bytes.FromHexString(String.Join(string.Empty, innerState.Current.Memory.Select(row => row.Replace("0x", String.Empty))));
