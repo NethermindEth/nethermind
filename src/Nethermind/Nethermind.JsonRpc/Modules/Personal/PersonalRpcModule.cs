@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         public ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature)
         {
             message = ToEthSignedMessage(message);
-            Keccak msgHash = Keccak.Compute(message);
+            ValueKeccak msgHash = ValueKeccak.Compute(message);
             PublicKey publicKey = _ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
             return ResultWrapper<Address>.Success(publicKey.Address);
         }
@@ -99,7 +99,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             }
 
             message = ToEthSignedMessage(message);
-            return ResultWrapper<byte[]>.Success(_wallet.Sign(Keccak.Compute(message), address).Bytes);
+            return ResultWrapper<byte[]>.Success(_wallet.Sign(ValueKeccak.Compute(message), address).Bytes);
         }
     }
 }

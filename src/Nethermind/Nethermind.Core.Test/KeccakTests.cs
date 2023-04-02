@@ -29,7 +29,7 @@ namespace Nethermind.Core.Test
             byte[] bytes = new byte[32];
             new Random(42).NextBytes(bytes);
 
-            string result = Keccak.Compute(bytes).ToString();
+            string result = ValueKeccak.Compute(bytes).ToString();
 
             KeccakHash keccakHash = KeccakHash.Create();
             keccakHash.Reset();
@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Empty_byte_array()
         {
-            string result = Keccak.Compute(new byte[] { }).ToString();
+            string result = ValueKeccak.Compute(new byte[] { }).ToString();
             Assert.AreEqual(KeccakOfAnEmptyString, result);
         }
 
@@ -108,7 +108,7 @@ namespace Nethermind.Core.Test
                 byteArray[i] = (byte)(i % 256);
             }
 
-            Assert.AreEqual(Keccak.Compute(byteArray), Keccak.Compute(byteArray.AsSpan()));
+            Assert.AreEqual(ValueKeccak.Compute(byteArray), ValueKeccak.Compute(byteArray.AsSpan()));
         }
     }
 }

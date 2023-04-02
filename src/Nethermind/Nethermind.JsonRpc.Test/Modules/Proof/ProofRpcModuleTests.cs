@@ -834,15 +834,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             // just the keys for debugging
             Span<byte> span = stackalloc byte[32];
             new UInt256(0).ToBigEndian(span);
-            ValueKeccak unused = Keccak.Compute(span);
+            ValueKeccak unused = ValueKeccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(1).ToBigEndian(span);
-            ValueKeccak unused1 = Keccak.Compute(span);
+            ValueKeccak unused1 = ValueKeccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(2).ToBigEndian(span);
-            ValueKeccak unused2 = Keccak.Compute(span);
+            ValueKeccak unused2 = ValueKeccak.Compute(span);
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
             {

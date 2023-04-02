@@ -129,10 +129,10 @@ public class NodeRecordSigner : INodeRecordSigner
             throw new Exception("Cannot verify an ENR with an empty signature.");
         }
 
-        Keccak contentHash;
+        ValueKeccak contentHash;
         if (nodeRecord.OriginalContentRlp is not null)
         {
-            contentHash = Keccak.Compute(nodeRecord.OriginalContentRlp);
+            contentHash = ValueKeccak.Compute(nodeRecord.OriginalContentRlp);
         }
         else
         {

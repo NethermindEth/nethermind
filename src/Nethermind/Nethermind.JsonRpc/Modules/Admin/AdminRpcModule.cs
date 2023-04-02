@@ -52,7 +52,7 @@ public class AdminRpcModule : IAdminRpcModule
         _nodeInfo.Name = ProductInfo.ClientId;
         _nodeInfo.Enode = _enode.Info;
         byte[] publicKeyBytes = _enode.PublicKey?.Bytes;
-        _nodeInfo.Id = (publicKeyBytes is null ? Keccak.Zero : Keccak.Compute(publicKeyBytes)).ToString(false);
+        _nodeInfo.Id = publicKeyBytes is null ? Keccak.Zero.ToString(false) : ValueKeccak.Compute(publicKeyBytes).ToString(false);
         _nodeInfo.Ip = _enode.HostIp?.ToString();
         _nodeInfo.ListenAddress = $"{_enode.HostIp}:{_enode.Port}";
         _nodeInfo.Ports.Discovery = _networkConfig.DiscoveryPort;

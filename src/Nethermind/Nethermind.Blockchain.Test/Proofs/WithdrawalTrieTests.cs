@@ -42,7 +42,7 @@ public class WithdrawalTrieTests
         for (var i = proof.Length - 1; i >= 0; i--)
         {
             var p = proof[i];
-            var hash = Keccak.Compute(p);
+            var hash = ValueKeccak.Compute(p);
 
             if (i > 0)
             {

@@ -44,7 +44,7 @@ namespace Nethermind.Crypto
 
             //Keccak hash = Keccak.Compute(Bytes.Concat((byte)tx.Type, Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes));
 
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
+            ValueKeccak hash = ValueKeccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
             tx.Signature = Sign(privateKey, hash);
 
             if (tx.Type != TxType.Legacy)
@@ -106,11 +106,16 @@ namespace Nethermind.Crypto
                     break;
             }
 
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
+            ValueKeccak hash = ValueKeccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
             return RecoverAddress(tx.Signature, hash);
         }
 
         public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
+        
+        public Address? RecoverAddress(Signature signature, ValueKeccak message)
+        {
+            return RecoverAddress(signature.BytesWithRecovery, message);
+        }
 
         public Address? RecoverAddress(Signature signature, Keccak message)
         {
@@ -118,6 +123,11 @@ namespace Nethermind.Crypto
         }
 
         public Address? RecoverAddress(Span<byte> signatureBytes, Keccak message)
+        {
+            return RecoverAddress(signatureBytes, message.ValueKeccak);
+        }
+
+        public Address? RecoverAddress(Span<byte> signatureBytes, ValueKeccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
             bool success = Proxy.RecoverKeyFromCompact(

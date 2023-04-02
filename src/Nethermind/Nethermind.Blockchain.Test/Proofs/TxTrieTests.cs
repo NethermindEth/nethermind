@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         {
             for (int i = proof.Length; i > 0; i--)
             {
-                Keccak proofHash = Keccak.Compute(proof[i - 1]);
+                ValueKeccak proofHash = ValueKeccak.Compute(proof[i - 1]);
                 if (i > 1)
                 {
                     if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))

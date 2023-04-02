@@ -38,6 +38,11 @@ namespace Nethermind.Consensus
 
         public Signature Sign(Keccak message)
         {
+            return Sign(message.ValueKeccak);
+        }
+
+        public Signature Sign(ValueKeccak message)
+        {
             if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
             byte[] rs = Proxy.SignCompact(message.ToByteArray(), _key!.KeyBytes, out int v);
             return new Signature(rs, v);
@@ -45,7 +50,7 @@ namespace Nethermind.Consensus
 
         public ValueTask Sign(Transaction tx)
         {
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
+            ValueKeccak hash = ValueKeccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
             tx.Signature = Sign(hash);
             tx.Signature.V = tx.Signature.V + 8 + 2 * _chainId;
             return default;

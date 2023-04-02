@@ -44,7 +44,7 @@ public abstract class DiscoveryMsgSerializerBase
         byteBuffer.WriteBytes(data.ToArray(), 0, data.Length);
 
         byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
-        ValueKeccak toSign = Keccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        ValueKeccak toSign = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
         byteBuffer.SetReaderIndex(startReadIndex);
 
         Signature signature = _ecdsa.Sign(_privateKey, toSign);
@@ -72,7 +72,7 @@ public abstract class DiscoveryMsgSerializerBase
 
         byteBuffer.SetWriterIndex(startWriteIndex + length);
         byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
-        ValueKeccak toSign = Keccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        ValueKeccak toSign = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
         byteBuffer.SetReaderIndex(startReadIndex);
 
         Signature signature = _ecdsa.Sign(_privateKey, toSign);

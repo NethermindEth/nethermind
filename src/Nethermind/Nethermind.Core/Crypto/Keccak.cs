@@ -264,14 +264,9 @@ namespace Nethermind.Core.Crypto
         }
 
         [DebuggerStepThrough]
-        public static ValueKeccak Compute(ReadOnlySpan<byte> input)
+        public static Keccak Compute(ReadOnlySpan<byte> input)
         {
-            if (input.Length == 0)
-            {
-                return OfAnEmptyString;
-            }
-
-            return new ValueKeccak(KeccakHash.ComputeHashBytes(input));
+            return new Keccak(ValueKeccak.Compute(input));
         }
 
         private static ValueKeccak InternalCompute(byte[] input)

@@ -753,14 +753,10 @@ namespace Nethermind.Core.Extensions
             return string.Create(length, stateToPass, static (chars, state) =>
             {
                 // this path is rarely used - only in wallets
-                Debugger.Break();
                 byte[] bytesArray = state.Bytes;
                 string hexString = bytesArray.ToHexString(false);
-                Debugger.Break();
                 ValueKeccak keccak = Keccak.Compute(hexString);
-                Debugger.Break();
                 string hashHex = keccak.ToString(false);
-                Debugger.Break();
                 Span<byte> bytes = bytesArray;
 
                 if (state.WithZeroX)

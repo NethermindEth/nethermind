@@ -125,7 +125,7 @@ namespace Nethermind.Consensus.Ethash
             byte[] seed = new byte[32];
             for (uint i = 0; i < epoch; i++)
             {
-                seed = Keccak.Compute(seed).ToByteArray(); // TODO: optimize
+                seed = ValueKeccak.Compute(seed).ToByteArray(); // TODO: optimize
             }
 
             return new Keccak(seed);
@@ -305,7 +305,7 @@ namespace Nethermind.Consensus.Ethash
                 return (null, null, false);
             }
 
-            return (cmix, Keccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).ToByteArray(), true); // this tests fine
+            return (cmix, ValueKeccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).ToByteArray(), true); // this tests fine
         }
     }
 }

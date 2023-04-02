@@ -282,7 +282,7 @@ namespace Nethermind.State
                 return Keccak.OfAnEmptyString;
             }
 
-            ValueKeccak codeHash = Keccak.Compute(code.Span);
+            ValueKeccak codeHash = ValueKeccak.Compute(code.Span);
 
             _codeDb[codeHash.Bytes] = code.ToArray();
 
