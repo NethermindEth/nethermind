@@ -390,8 +390,8 @@ namespace Nethermind.Synchronization.SnapSync
                 foreach (KeyValuePair<ValueKeccak, AccountRangePartition> kv in AccountRangePartitions)
                 {
                     AccountRangePartition? partiton = kv.Value;
-                    int nextAccount = partiton.NextAccountPath.Span[0] * 256 + partiton.NextAccountPath.Span[1];
-                    int startAccount = partiton.AccountPathStart.Span[0] * 256 + partiton.AccountPathStart.Span[1];
+                    int nextAccount = partiton.NextAccountPath.Bytes[0] * 256 + partiton.NextAccountPath.Bytes[1];
+                    int startAccount = partiton.AccountPathStart.Bytes[0] * 256 + partiton.AccountPathStart.Bytes[1];
                     totalPathProgress += nextAccount - startAccount;
                 }
 

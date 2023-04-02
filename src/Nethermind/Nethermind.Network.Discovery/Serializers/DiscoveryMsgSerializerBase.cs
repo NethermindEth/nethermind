@@ -58,7 +58,7 @@ public abstract class DiscoveryMsgSerializerBase
         byteBuffer.SetReaderIndex(startReadIndex);
 
         byteBuffer.SetWriterIndex(startWriteIndex);
-        byteBuffer.WriteBytes(mdc.Span.ToArray(), 0, 32);
+        byteBuffer.WriteBytes(mdc.Bytes.ToArray(), 0, 32);
         byteBuffer.SetWriterIndex(startWriteIndex + length);
     }
 
@@ -86,7 +86,7 @@ public abstract class DiscoveryMsgSerializerBase
         byteBuffer.SetReaderIndex(startReadIndex);
 
         byteBuffer.SetWriterIndex(startWriteIndex);
-        byteBuffer.WriteBytes(mdc.Span.ToArray(), 0, 32);
+        byteBuffer.WriteBytes(mdc.Bytes.ToArray(), 0, 32);
 
         byteBuffer.SetReaderIndex(startReadIndex);
         byteBuffer.SetWriterIndex(startWriteIndex + length);
@@ -102,7 +102,7 @@ public abstract class DiscoveryMsgSerializerBase
         Memory<byte> msgBytes = msg.ReadAllBytesAsMemory();
         Memory<byte> mdc = msgBytes.Slice(0, 32);
         Span<byte> sigAndData = msgBytes.Span.Slice(32);
-        ReadOnlySpan<byte> computedMdc = ValueKeccak.Compute(sigAndData).Span;
+        ReadOnlySpan<byte> computedMdc = ValueKeccak.Compute(sigAndData).Bytes;
 
         if (!Bytes.AreEqual(mdc.Span, computedMdc))
         {

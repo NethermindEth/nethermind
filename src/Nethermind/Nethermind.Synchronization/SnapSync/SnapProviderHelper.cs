@@ -150,11 +150,11 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             Span<byte> leftBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(startingHash.GetValueOrDefault().Span, leftBoundary);
+            Nibbles.BytesToNibbleBytes(startingHash.GetValueOrDefault().Bytes, leftBoundary);
             Span<byte> rightBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(endHash.Span, rightBoundary);
+            Nibbles.BytesToNibbleBytes(endHash.Bytes, rightBoundary);
             Span<byte> rightLimit = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(limitHash.Span, rightLimit);
+            Nibbles.BytesToNibbleBytes(limitHash.Bytes, rightLimit);
 
             // For when in very-very unlikely case where the last remaining address is Keccak.MaxValue, (who knows why,
             // the chain have special handling for it maybe) and it is not included the returned account range, (again,

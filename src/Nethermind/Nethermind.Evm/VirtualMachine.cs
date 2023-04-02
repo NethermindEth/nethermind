@@ -1128,7 +1128,7 @@ namespace Nethermind.Evm
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in memSrc, memLength)) goto OutOfGas;
 
                             Span<byte> memData = vmState.Memory.LoadSpan(in memSrc, memLength);
-                            stack.PushBytes(ValueKeccak.Compute(memData).Span);
+                            stack.PushBytes(ValueKeccak.Compute(memData).Bytes);
                             break;
                         }
                     case Instruction.ADDRESS:
@@ -1332,7 +1332,7 @@ namespace Nethermind.Evm
                             stack.PopUInt256(out UInt256 a);
                             long number = a > long.MaxValue ? long.MaxValue : (long)a;
                             Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
-                            stack.PushBytes(blockHash is null ? BytesZero32 : blockHash.Span);
+                            stack.PushBytes(blockHash is null ? BytesZero32 : blockHash.Bytes);
 
                             if (isTrace)
                             {
@@ -1357,7 +1357,7 @@ namespace Nethermind.Evm
 
                             if (txCtx.Header.IsPostMerge)
                             {
-                                stack.PushBytes(txCtx.Header.Random.Span);
+                                stack.PushBytes(txCtx.Header.Random.Bytes);
                             }
                             else
                             {
@@ -2348,7 +2348,7 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                stack.PushBytes(_state.GetCodeHash(address).Span);
+                                stack.PushBytes(_state.GetCodeHash(address).Bytes);
                             }
 
                             break;

@@ -21,12 +21,12 @@ namespace Nethermind.Db
 
         public static void Set(this IDb db, Keccak key, byte[] value)
         {
-            db[key.Span] = value;
+            db[key.Bytes] = value;
         }
 
         public static void Set(this IDb db, ValueKeccak key, byte[] value)
         {
-            db[key.Span] = value;
+            db[key.Bytes] = value;
         }
 
         public static byte[]? Get(this IDb db, Keccak key)
@@ -38,7 +38,7 @@ namespace Nethermind.Db
             }
 #endif
 
-            return db[key.Span];
+            return db[key.Bytes];
         }
 
         public static byte[]? Get(this IDb db, ValueKeccak key)
@@ -50,18 +50,18 @@ namespace Nethermind.Db
             }
 #endif
 
-            return db[key.Span];
+            return db[key.Bytes];
         }
 
         public static void Set(this IDb db, Keccak key, Span<byte> value)
         {
             if (db is IDbWithSpan dbWithSpan)
             {
-                dbWithSpan.PutSpan(key.Span, value);
+                dbWithSpan.PutSpan(key.Bytes, value);
             }
             else
             {
-                db[key.Span] = value.ToArray();
+                db[key.Bytes] = value.ToArray();
             }
         }
 
@@ -69,11 +69,11 @@ namespace Nethermind.Db
         {
             if (db is IDbWithSpan dbWithSpan)
             {
-                dbWithSpan.PutSpan(key.Span, value.Span);
+                dbWithSpan.PutSpan(key.Bytes, value.Bytes);
             }
             else
             {
-                db[key.Span] = value.ToByteArray();
+                db[key.Bytes] = value.ToByteArray();
             }
         }
 
@@ -81,17 +81,17 @@ namespace Nethermind.Db
         {
             if (db is IDbWithSpan dbWithSpan)
             {
-                dbWithSpan.PutSpan(key.Span, value);
+                dbWithSpan.PutSpan(key.Bytes, value);
             }
             else
             {
-                db[key.Span] = value.ToArray();
+                db[key.Bytes] = value.ToArray();
             }
         }
 
         public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<ValueKeccak> keys)
         {
-            var k = keys.Select(k => k.Span.ToArray()).ToArray();
+            var k = keys.Select(k => k.Bytes.ToArray()).ToArray();
             return db[k];
         }
 
@@ -111,7 +111,7 @@ namespace Nethermind.Db
             }
 #endif
 
-            return db.GetSpan(key.Span);
+            return db.GetSpan(key.Bytes);
         }
 
         /// <summary>
@@ -130,7 +130,7 @@ namespace Nethermind.Db
             }
 #endif
 
-            return db.GetSpan(key.Span);
+            return db.GetSpan(key.Bytes);
         }
 
         public static bool KeyExists(this IDb db, Keccak key)
@@ -142,7 +142,7 @@ namespace Nethermind.Db
             }
 #endif
 
-            return db.KeyExists(key.Span);
+            return db.KeyExists(key.Bytes);
         }
 
         public static bool KeyExists(this IDb db, ValueKeccak key)
@@ -154,7 +154,7 @@ namespace Nethermind.Db
             }
 #endif
 
-            return db.KeyExists(key.Span);
+            return db.KeyExists(key.Bytes);
         }
 
         public static bool KeyExists(this IDb db, long key)
@@ -164,12 +164,12 @@ namespace Nethermind.Db
 
         public static void Delete(this IDb db, Keccak key)
         {
-            db.Remove(key.Span);
+            db.Remove(key.Bytes);
         }
 
         public static void Delete(this IDb db, ValueKeccak key)
         {
-            db.Remove(key.Span);
+            db.Remove(key.Bytes);
         }
 
         public static void Set(this IDb db, byte[] key, byte[] value)

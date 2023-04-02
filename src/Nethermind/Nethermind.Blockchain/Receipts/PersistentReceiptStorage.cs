@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain.Receipts
             using IBatch batch = _transactionDb.StartBatch();
             foreach (TxReceipt txReceipt in receipts)
             {
-                batch[txReceipt.TxHash.Span] = block.Hash.ToByteArray();
+                batch[txReceipt.TxHash.Bytes] = block.Hash.ToByteArray();
             }
         }
     }

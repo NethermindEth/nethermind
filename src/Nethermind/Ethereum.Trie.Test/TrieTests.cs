@@ -302,7 +302,7 @@ namespace Ethereum.Trie.Test
         public void Delete_on_empty()
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
-            patriciaTree.Set(Keccak.Compute("1").Span, new byte[0]);
+            patriciaTree.Set(Keccak.Compute("1").Bytes, new byte[0]);
             patriciaTree.Commit(0);
             Assert.AreEqual(PatriciaTree.EmptyTreeHash, patriciaTree.RootHash);
         }
@@ -311,10 +311,10 @@ namespace Ethereum.Trie.Test
         public void Delete_missing_resolved_on_branch()
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
-            patriciaTree.Set(Keccak.Compute("1123").Span, new byte[] { 1 });
-            patriciaTree.Set(Keccak.Compute("1124").Span, new byte[] { 2 });
+            patriciaTree.Set(Keccak.Compute("1123").Bytes, new byte[] { 1 });
+            patriciaTree.Set(Keccak.Compute("1124").Bytes, new byte[] { 2 });
             Keccak rootBefore = patriciaTree.RootHash;
-            patriciaTree.Set(Keccak.Compute("1125").Span, new byte[0]);
+            patriciaTree.Set(Keccak.Compute("1125").Bytes, new byte[0]);
             Assert.AreEqual(rootBefore, patriciaTree.RootHash);
         }
 
@@ -335,11 +335,11 @@ namespace Ethereum.Trie.Test
         public void Delete_missing_resolved_on_leaf()
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
-            patriciaTree.Set(Keccak.Compute("1234567").Span, new byte[] { 1 });
-            patriciaTree.Set(Keccak.Compute("1234501").Span, new byte[] { 2 });
+            patriciaTree.Set(Keccak.Compute("1234567").Bytes, new byte[] { 1 });
+            patriciaTree.Set(Keccak.Compute("1234501").Bytes, new byte[] { 2 });
             patriciaTree.UpdateRootHash();
             Keccak rootBefore = patriciaTree.RootHash;
-            patriciaTree.Set(Keccak.Compute("1234502").Span, new byte[0]);
+            patriciaTree.Set(Keccak.Compute("1234502").Bytes, new byte[0]);
             patriciaTree.UpdateRootHash();
             Assert.AreEqual(rootBefore, patriciaTree.RootHash);
         }

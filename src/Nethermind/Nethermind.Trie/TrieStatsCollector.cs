@@ -103,7 +103,7 @@ namespace Nethermind.Trie
 
         public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
         {
-            byte[] code = _codeKeyValueStore[codeHash.Span];
+            byte[] code = _codeKeyValueStore[codeHash.Bytes];
             if (code is not null)
             {
                 Interlocked.Add(ref Stats._codeSize, code.Length);

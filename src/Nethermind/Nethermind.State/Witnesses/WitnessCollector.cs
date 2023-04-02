@@ -61,11 +61,11 @@ namespace Nethermind.State.Witnesses
                 for (var index = 0; index < collected.Length; index++)
                 {
                     Keccak keccak = collected[index];
-                    keccak.ValueKeccak.Span.CopyTo(witnessSpan.Slice(i * Keccak.Size, Keccak.Size));
+                    keccak.ValueKeccak.Bytes.CopyTo(witnessSpan.Slice(i * Keccak.Size, Keccak.Size));
                     i++;
                 }
 
-                _keyValueStore[blockHash.ValueKeccak.Span] = witness;
+                _keyValueStore[blockHash.ValueKeccak.Bytes] = witness;
                 _witnessCache.Set(blockHash, collected);
             }
             else
@@ -90,7 +90,7 @@ namespace Nethermind.State.Witnesses
             }
             else // not cached
             {
-                byte[]? witnessData = _keyValueStore[blockHash.Span];
+                byte[]? witnessData = _keyValueStore[blockHash.Bytes];
                 if (witnessData is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Missing witness for {blockHash}");
@@ -120,7 +120,7 @@ namespace Nethermind.State.Witnesses
         public void Delete(Keccak blockHash)
         {
             _witnessCache.Delete(blockHash);
-            _keyValueStore[blockHash.Span] = null;
+            _keyValueStore[blockHash.Bytes] = null;
         }
 
         private readonly ResettableHashSet<Keccak> _collected = new();

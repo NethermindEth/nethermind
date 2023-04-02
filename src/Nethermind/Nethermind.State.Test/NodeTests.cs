@@ -139,7 +139,7 @@ namespace Nethermind.Store.Test
             node.ResolveKey(null, true);
 
             MemDb memDb = new();
-            memDb[node.Keccak.Span] = rlp;
+            memDb[node.Keccak.Bytes] = rlp;
 
             // ITrieNodeResolver tree = new PatriciaTree(memDb, node.Keccak, false, true);
             return new TrieStore(memDb, NullLogManager.Instance);

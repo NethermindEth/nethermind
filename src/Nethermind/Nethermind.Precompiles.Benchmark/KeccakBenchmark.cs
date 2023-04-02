@@ -46,7 +46,7 @@ namespace Nethermind.Precompiles.Benchmark
         [Benchmark(Baseline = true)]
         public ReadOnlySpan<byte> Baseline()
         {
-            return ValueKeccak.Compute(Input.Bytes).Span;
+            return ValueKeccak.Compute(Input.Bytes).Bytes;
         }
     }
 }

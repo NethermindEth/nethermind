@@ -53,7 +53,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public ReadOnlySpan<byte> ValueKeccak()
         {
-            return Nethermind.Core.Crypto.ValueKeccak.Compute(_a).Span;
+            return Nethermind.Core.Crypto.ValueKeccak.Compute(_a).Bytes;
         }
 
         //[Benchmark]

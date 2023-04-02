@@ -196,11 +196,11 @@ namespace Nethermind.Db.Test
                 ValueKeccak key = Keccak.Compute("something");
                 ValueKeccak value = Keccak.Compute("something");
 
-                db.KeyExists(key.Span).Should().BeFalse();
-                db.PutSpan(key.Span, value.Span);
-                db.KeyExists(key.Span).Should().BeTrue();
-                Span<byte> data = db.GetSpan(key.Span);
-                data.SequenceEqual(value.Span);
+                db.KeyExists(key.Bytes).Should().BeFalse();
+                db.PutSpan(key.Bytes, value.Bytes);
+                db.KeyExists(key.Bytes).Should().BeTrue();
+                Span<byte> data = db.GetSpan(key.Bytes);
+                data.SequenceEqual(value.Bytes);
                 db.DangerousReleaseMemory(data);
             }
             finally

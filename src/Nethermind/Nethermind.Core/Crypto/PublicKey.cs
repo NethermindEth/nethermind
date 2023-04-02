@@ -79,13 +79,13 @@ namespace Nethermind.Core.Crypto
 
         private Address ComputeAddress()
         {
-            ReadOnlySpan<byte> hash = ValueKeccak.Compute(Bytes).Span;
+            ReadOnlySpan<byte> hash = ValueKeccak.Compute(Bytes).Bytes;
             return new Address(hash[12..].ToArray());
         }
 
         public static Address ComputeAddress(ReadOnlySpan<byte> publicKeyBytes)
         {
-            ReadOnlySpan<byte> hash = ValueKeccak.Compute(publicKeyBytes).Span;
+            ReadOnlySpan<byte> hash = ValueKeccak.Compute(publicKeyBytes).Bytes;
             return new Address(hash[12..].ToArray());
         }
 

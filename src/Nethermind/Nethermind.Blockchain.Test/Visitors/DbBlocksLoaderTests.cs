@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Span);
+                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new(

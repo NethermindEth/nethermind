@@ -558,7 +558,7 @@ namespace Nethermind.Serialization.Rlp
 
             byte[] result = new byte[LengthOfKeccakRlp];
             result[0] = 160;
-            keccak.GetValueOrDefault().Span.CopyTo(result.AsSpan(1, 32));
+            keccak.GetValueOrDefault().Bytes.CopyTo(result.AsSpan(1, 32));
             return new Rlp(result);
         }
 
@@ -576,7 +576,7 @@ namespace Nethermind.Serialization.Rlp
 
             byte[] result = new byte[LengthOfKeccakRlp];
             result[0] = 160;
-            keccak.Span.CopyTo(result.AsSpan(1, 32));
+            keccak.Bytes.CopyTo(result.AsSpan(1, 32));
             return new Rlp(result);
         }
 
@@ -599,7 +599,7 @@ namespace Nethermind.Serialization.Rlp
 
             byte[] result = new byte[LengthOfKeccakRlp];
             result[0] = 160;
-            keccak.Span.CopyTo(result.AsSpan(1, 32));
+            keccak.Bytes.CopyTo(result.AsSpan(1, 32));
             return new Rlp(result);
         }
 
@@ -971,12 +971,12 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 Span<byte> keccakSpan = Read(32);
-                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Span))
+                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
                 {
                     return Keccak.OfAnEmptyString;
                 }
 
-                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Span))
+                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
                 {
                     return Keccak.EmptyTreeHash;
                 }
@@ -1015,11 +1015,11 @@ namespace Nethermind.Serialization.Rlp
                 else
                 {
                     Span<byte> keccakSpan = Read(32);
-                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Span))
+                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
                     {
                         return ref Keccak.OfAnEmptyString.ToStructRef();
                     }
-                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Span))
+                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
                     {
                         return ref Keccak.EmptyTreeHash.ToStructRef();
                     }

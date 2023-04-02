@@ -297,7 +297,7 @@ namespace Nethermind.Blockchain.Test
             Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
             blocksInfosDb.ReadFunc = (key) =>
             {
-                if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.Span))
+                if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.Bytes))
                 {
                     return chainLevel.Bytes;
                 }

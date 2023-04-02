@@ -94,7 +94,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private Destination DecodeDestination(LogEntry log, BlockHeader blockHeader) =>
             new Destination(
                 new Address(log.Topics[1]),
-                log.Topics[2].Span.Slice(0, 4).ToArray(),
+                log.Topics[2].Bytes.Slice(0, 4).ToArray(),
                 AbiType.UInt256.DecodeUInt(log.Data, 0, false).Item1,
                 DestinationSource.Contract,
                 blockHeader.Number);

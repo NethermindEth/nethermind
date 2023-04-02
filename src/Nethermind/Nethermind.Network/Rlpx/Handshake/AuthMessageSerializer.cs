@@ -40,7 +40,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             byteBuffer.EnsureWritable(Length, true);
             byteBuffer.WriteBytes(msg.Signature.Bytes);
             byteBuffer.WriteByte(msg.Signature.RecoveryId);
-            byteBuffer.WriteBytes(msg.EphemeralPublicHash.Span);
+            byteBuffer.WriteBytes(msg.EphemeralPublicHash.Bytes);
             byteBuffer.WriteBytes(msg.PublicKey.Bytes);
             byteBuffer.WriteBytes(msg.Nonce);
             byteBuffer.WriteByte(msg.IsTokenUsed ? 0x01 : 0x00);

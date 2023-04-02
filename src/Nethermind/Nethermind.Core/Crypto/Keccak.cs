@@ -20,7 +20,7 @@ namespace Nethermind.Core.Crypto
         public const int MemorySize = 32;
         public int Length => MemorySize;
 
-        public ReadOnlySpan<byte> Span => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
+        public ReadOnlySpan<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
 
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
@@ -133,7 +133,7 @@ namespace Nethermind.Core.Crypto
 
         public int CompareTo(ValueKeccak other)
         {
-            return Extensions.Bytes.Comparer.Compare(Span, other.Span);
+            return Extensions.Bytes.Comparer.Compare(Bytes, other.Bytes);
         }
 
         public override string ToString()
@@ -143,18 +143,18 @@ namespace Nethermind.Core.Crypto
 
         public string ToShortString(bool withZeroX = true)
         {
-            string hash = Span.ToHexString(withZeroX);
+            string hash = Bytes.ToHexString(withZeroX);
             return $"{hash.Substring(0, withZeroX ? 8 : 6)}...{hash.Substring(hash.Length - 6)}";
         }
 
         public string ToString(bool withZeroX)
         {
-            return Span.ToHexString(withZeroX);
+            return Bytes.ToHexString(withZeroX);
         }
 
         public byte[] ToByteArray()
         {
-            return Span.ToArray();
+            return Bytes.ToArray();
         }
 
         public static bool operator ==(ValueKeccak left, ValueKeccak right) => left.Equals(right);
@@ -206,7 +206,7 @@ namespace Nethermind.Core.Crypto
 
         public ValueKeccak ValueKeccak => _keccak;
 
-        public ReadOnlySpan<byte> Span => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _keccak), 1));
+        public ReadOnlySpan<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _keccak), 1));
 
         public Keccak(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString)) { }
@@ -243,13 +243,13 @@ namespace Nethermind.Core.Crypto
 
         public string ToShortString(bool withZeroX = true)
         {
-            string hash = Span.ToHexString(withZeroX);
+            string hash = Bytes.ToHexString(withZeroX);
             return $"{hash.Substring(0, withZeroX ? 8 : 6)}...{hash.Substring(hash.Length - 6)}";
         }
 
         public string ToString(bool withZeroX)
         {
-            return Span.ToHexString(withZeroX);
+            return Bytes.ToHexString(withZeroX);
         }
 
         [DebuggerStepThrough]

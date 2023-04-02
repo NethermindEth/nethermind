@@ -26,14 +26,14 @@ namespace Nethermind.Core.Test.Builders
             {
                 Keccak key = TestItem.Keccaks[j];
                 byte[] value = GenerateIndexedAccountRlp(j);
-                TestObjectInternal.Set(key.Span, value);
+                TestObjectInternal.Set(key.Bytes, value);
             }
 
             for (int j = 0; j < end; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
                 byte[] value = GenerateIndexedAccountRlp(j + 1);
-                TestObjectInternal.Set(key.Span, value);
+                TestObjectInternal.Set(key.Bytes, value);
             }
 
             TestObjectInternal.Commit(0);

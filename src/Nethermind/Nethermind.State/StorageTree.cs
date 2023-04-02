@@ -86,7 +86,7 @@ namespace Nethermind.State
 
         public void Set(Keccak key, byte[] value, bool rlpEncode = true)
         {
-            SetInternal(key.Span, value, rlpEncode);
+            SetInternal(key.Bytes, value, rlpEncode);
         }
 
         private void SetInternal(ReadOnlySpan<byte> rawKey, byte[] value, bool rlpEncode = true)

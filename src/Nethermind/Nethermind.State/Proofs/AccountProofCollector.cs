@@ -75,7 +75,7 @@ namespace Nethermind.State.Proofs
 
             for (int i = 0; i < keccakStorageKeys.Length; i++)
             {
-                _fullStoragePaths[i] = Nibbles.FromBytes(keccakStorageKeys[i].Span);
+                _fullStoragePaths[i] = Nibbles.FromBytes(keccakStorageKeys[i].Bytes);
 
                 _accountProof.StorageProofs[i] = new StorageProof();
                 // we don't know the key (index)
@@ -104,7 +104,7 @@ namespace Nethermind.State.Proofs
 
             for (int i = 0; i < localStorageKeys.Length; i++)
             {
-                _fullStoragePaths[i] = Nibbles.FromBytes(localStorageKeys[i].Span);
+                _fullStoragePaths[i] = Nibbles.FromBytes(localStorageKeys[i].Bytes);
 
                 _accountProof.StorageProofs[i] = new StorageProof();
                 _accountProof.StorageProofs[i].Key = storageKeys[i];

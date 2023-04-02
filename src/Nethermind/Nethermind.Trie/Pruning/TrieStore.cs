@@ -318,7 +318,7 @@ namespace Nethermind.Trie.Pruning
         internal byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore)
         {
             keyValueStore ??= _keyValueStore;
-            byte[]? rlp = _currentBatch?[keccak.Span] ?? keyValueStore[keccak.Span];
+            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? keyValueStore[keccak.Bytes];
 
             if (rlp is null)
             {
@@ -334,7 +334,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(Keccak keccak)
         {
-            byte[]? rlp = _currentBatch?[keccak.Span] ?? _keyValueStore[keccak.Span];
+            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
 
             if (rlp is null)
             {
@@ -643,7 +643,7 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch[currentNode.Keccak.Span] = currentNode.FullRlp;
+                _currentBatch[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
@@ -786,7 +786,7 @@ namespace Nethermind.Trie.Pruning
                     Keccak? hash = n.Keccak;
                     if (hash?.ValueKeccak is not null)
                     {
-                        store[hash.Span] = n.FullRlp;
+                        store[hash.Bytes] = n.FullRlp;
                         int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
                         if (_logger.IsInfo && persistedNodesCount % million == 0)
                         {

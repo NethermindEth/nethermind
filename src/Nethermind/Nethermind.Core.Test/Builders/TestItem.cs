@@ -21,7 +21,7 @@ namespace Nethermind.Core.Test.Builders
         static TestItem()
         {
             NonZeroBloom = new Bloom();
-            NonZeroBloom.Set(KeccakA.Span);
+            NonZeroBloom.Set(KeccakA.Bytes);
 
             PrivateKeys = new PrivateKey[255];
             PublicKeys = new PublicKey[255];

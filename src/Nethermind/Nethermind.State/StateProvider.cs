@@ -270,7 +270,7 @@ namespace Nethermind.State
         {
             if (_codeDb is WitnessingStore witnessingStore)
             {
-                witnessingStore.Touch(codeHash.Span);
+                witnessingStore.Touch(codeHash.Bytes);
             }
         }
 
@@ -284,7 +284,7 @@ namespace Nethermind.State
 
             ValueKeccak codeHash = Keccak.Compute(code.Span);
 
-            _codeDb[codeHash.Span] = code.ToArray();
+            _codeDb[codeHash.Bytes] = code.ToArray();
 
             return new Keccak(codeHash);
         }
@@ -297,7 +297,7 @@ namespace Nethermind.State
 
         public byte[] GetCode(Keccak codeHash)
         {
-            byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Span];
+            byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
             if (code is null)
             {
                 throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
@@ -602,12 +602,12 @@ namespace Nethermind.State
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()
-                            : _codeDb[beforeCodeHash.Span];
+                            : _codeDb[beforeCodeHash.Bytes];
                     byte[]? afterCode = afterCodeHash is null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()
-                            : _codeDb[afterCodeHash.Span];
+                            : _codeDb[afterCodeHash.Bytes];
 
                     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
                     {

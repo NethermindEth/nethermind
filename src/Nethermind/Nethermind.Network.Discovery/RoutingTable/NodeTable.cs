@@ -42,7 +42,7 @@ public class NodeTable : INodeTable
         CheckInitialization();
 
         if (_logger.IsTrace) _logger.Trace($"Adding node to NodeTable: {node}");
-        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Span, node.IdHash.Span);
+        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, node.IdHash.Bytes);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
         return bucket.AddNode(node);
     }
@@ -51,7 +51,7 @@ public class NodeTable : INodeTable
     {
         CheckInitialization();
 
-        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Span, nodeToAdd.IdHash.Span);
+        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, nodeToAdd.IdHash.Bytes);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
         bucket.ReplaceNode(nodeToRemove, nodeToAdd);
     }
@@ -68,7 +68,7 @@ public class NodeTable : INodeTable
     {
         CheckInitialization();
 
-        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Span, node.IdHash.Span);
+        int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, node.IdHash.Bytes);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
         bucket.RefreshNode(node);
     }

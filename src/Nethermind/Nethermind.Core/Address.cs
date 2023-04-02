@@ -26,7 +26,7 @@ namespace Nethermind.Core
 
         public Address(Keccak keccak) : this(keccak.ValueKeccak) { }
 
-        public Address(in ValueKeccak keccak) : this(keccak.Span.Slice(12, ByteLength).ToArray()) { }
+        public Address(in ValueKeccak keccak) : this(keccak.Bytes.Slice(12, ByteLength).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
 
@@ -200,7 +200,7 @@ namespace Nethermind.Core
 
         public Span<byte> Bytes { get; }
 
-        public AddressStructRef(in ValueKeccak keccak) : this(keccak.Span.Slice(12, ByteLength).ToArray()) { }
+        public AddressStructRef(in ValueKeccak keccak) : this(keccak.Bytes.Slice(12, ByteLength).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
 
