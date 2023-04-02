@@ -111,7 +111,7 @@ namespace Nethermind.Crypto
         }
 
         public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
-        
+
         public Address? RecoverAddress(Signature signature, ValueKeccak message)
         {
             return RecoverAddress(signature.BytesWithRecovery, message);
