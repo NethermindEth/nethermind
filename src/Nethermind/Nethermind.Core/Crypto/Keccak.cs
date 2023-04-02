@@ -111,16 +111,16 @@ namespace Nethermind.Core.Crypto
                 return OfAnEmptyString;
             }
 
-            Span<byte> span = stackalloc byte[MemorySize];
-            KeccakHash.ComputeHashBytesToSpan(input, span);
-            return new ValueKeccak(span);
+            Unsafe.SkipInit(out ValueKeccak keccak);
+            KeccakHash.ComputeHashBytesToSpan(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keccak, 1)));
+            return keccak;
         }
 
         internal static ValueKeccak InternalCompute(byte[] input)
         {
-            Span<byte> span = stackalloc byte[MemorySize];
-            KeccakHash.ComputeHashBytesToSpan(input, span);
-            return new ValueKeccak(span);
+            Unsafe.SkipInit(out ValueKeccak keccak);
+            KeccakHash.ComputeHashBytesToSpan(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keccak, 1)));
+            return keccak;
         }
 
         public override bool Equals(object? obj) => obj is ValueKeccak keccak && Equals(keccak);
