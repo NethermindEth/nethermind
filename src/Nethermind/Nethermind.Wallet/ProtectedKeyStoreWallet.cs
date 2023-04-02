@@ -86,9 +86,6 @@ namespace Nethermind.Wallet
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.Contains(address.ToString());
 
-        public Signature Sign(Keccak message, Address address, SecureString passphrase)
-            => Sign(message.ValueKeccak, address, passphrase);
-
         public Signature Sign(ValueKeccak message, Address address, SecureString passphrase)
             => SignCore(message, address, () =>
             {
@@ -96,7 +93,6 @@ namespace Nethermind.Wallet
                 return _keyStore.GetKey(address, passphrase).PrivateKey;
             });
 
-        public Signature Sign(Keccak message, Address address) => Sign(message.ValueKeccak, address);
         public Signature Sign(ValueKeccak message, Address address) => SignCore(message, address, () => throw new SecurityException("Can only sign without passphrase when account is unlocked."));
 
         private Signature SignCore(ValueKeccak message, Address address, Func<PrivateKey> getPrivateKeyWhenNotFound)

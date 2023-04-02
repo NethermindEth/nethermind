@@ -369,7 +369,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_balance_incorrect_parameters()
     {
         using Context ctx = await Context.Create();
-        string serialized = ctx.Test.TestEthRpc("eth_getBalance", TestItem.KeccakA.ToByteArray().ToHexString(true), "0x01");
+        string serialized = ctx.Test.TestEthRpc("eth_getBalance", TestItem.KeccakA.Bytes.ToHexString(true), "0x01");
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}", serialized);
     }
 

@@ -100,10 +100,6 @@ namespace Nethermind.Wallet
 
             return true;
         }
-        public Signature Sign(Keccak message, Address address, SecureString passphrase)
-        {
-            return Sign(message.ValueKeccak, address, passphrase);
-        }
 
         public Signature Sign(ValueKeccak message, Address address, SecureString passphrase)
         {
@@ -119,11 +115,6 @@ namespace Nethermind.Wallet
         private bool CheckPassword(Address address, SecureString passphrase)
         {
             return _passwords[address] == AnyPassword || passphrase?.Unsecure() == _passwords[address];
-        }
-
-        public Signature Sign(Keccak message, Address address)
-        {
-            return Sign(message.ValueKeccak, address);
         }
 
         public Signature Sign(ValueKeccak message, Address address)
