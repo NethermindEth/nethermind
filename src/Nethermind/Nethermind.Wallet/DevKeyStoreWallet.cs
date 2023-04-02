@@ -87,7 +87,7 @@ namespace Nethermind.Wallet
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.ContainsKey(address);
 
-        public Signature Sign(ValueKeccak message, Address address, SecureString passphrase)
+        public Signature Sign(in ValueKeccak message, Address address, SecureString passphrase)
         {
             PrivateKey key;
             if (_unlockedAccounts.ContainsKey(address))
@@ -105,7 +105,7 @@ namespace Nethermind.Wallet
             return new Signature(rs, v);
         }
 
-        public Signature Sign(ValueKeccak message, Address address)
+        public Signature Sign(in ValueKeccak message, Address address)
         {
             PrivateKey key;
             if (_unlockedAccounts.ContainsKey(address))

@@ -24,6 +24,8 @@ namespace Nethermind.Mev.Test
 
         public Signature Sign(Keccak message) => null!;
 
+        public Signature Sign(in ValueKeccak message) => null!;
+
         public bool CanSign => true;
     }
 }

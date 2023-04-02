@@ -53,7 +53,7 @@ namespace Nethermind.Tools.GasHistorian
                 BlockInfo? mainChainBlock = chainLevelInfo?.MainChainBlock;
                 if (mainChainBlock is not null)
                 {
-                    Block? block = blocksDb.Get(mainChainBlock.BlockHash, _blockDecoder);
+                    Block? block = blocksDb.Get(in mainChainBlock.BlockHash.ValueKeccak, _blockDecoder);
 
                     if (block is not null)
                     {

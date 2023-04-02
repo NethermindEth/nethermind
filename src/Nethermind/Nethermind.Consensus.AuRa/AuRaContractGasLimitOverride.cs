@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa
 
         private long? GetGasLimitFromContract(BlockHeader parentHeader)
         {
-            if (_cache.GasLimitCache.TryGet(parentHeader.Hash, out long? gasLimit))
+            if (_cache.GasLimitCache.TryGet(in parentHeader.Hash.ValueKeccak, out long? gasLimit))
             {
                 return gasLimit;
             }
@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 UInt256? contractLimit = GetContractGasLimit(parentHeader, contract);
                 gasLimit = contractLimit.HasValue ? (long)contractLimit.Value : (long?)null;
-                _cache.GasLimitCache.Set(parentHeader.Hash, gasLimit);
+                _cache.GasLimitCache.Set(in parentHeader.Hash.ValueKeccak, gasLimit);
                 if (gasLimit.HasValue)
                 {
                     if (gasLimit.Value != parentHeader.GasLimit)

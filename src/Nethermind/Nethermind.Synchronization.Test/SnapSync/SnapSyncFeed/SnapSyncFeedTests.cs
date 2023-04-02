@@ -27,7 +27,7 @@ public class SnapSyncFeedTests
             .Returns(AddRangeResult.ExpiredRootHash);
 
         SnapSyncBatch response = new SnapSyncBatch();
-        response.AccountRangeRequest = new AccountRange(Keccak.Zero, Keccak.Zero);
+        response.AccountRangeRequest = new AccountRange(in Keccak.Zero.ValueKeccak, in Keccak.Zero.ValueKeccak);
         response.AccountRangeResponse = new AccountsAndProofs();
 
         PeerInfo peer = new PeerInfo(Substitute.For<ISyncPeer>());

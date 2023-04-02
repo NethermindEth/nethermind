@@ -24,7 +24,7 @@ namespace Nethermind.Db
             db[key.Bytes] = value;
         }
 
-        public static void Set(this IDb db, ValueKeccak key, byte[] value)
+        public static void Set(this IDb db, in ValueKeccak key, byte[] value)
         {
             db[key.Bytes] = value;
         }
@@ -41,7 +41,7 @@ namespace Nethermind.Db
             return db[key.Bytes];
         }
 
-        public static byte[]? Get(this IDb db, ValueKeccak key)
+        public static byte[]? Get(this IDb db, in ValueKeccak key)
         {
 #if DEBUG
             if (key == Keccak.OfAnEmptyString)
@@ -65,7 +65,7 @@ namespace Nethermind.Db
             }
         }
 
-        public static void Set(this IDb db, ValueKeccak key, ValueKeccak value)
+        public static void Set(this IDb db, in ValueKeccak key, in ValueKeccak value)
         {
             if (db is IDbWithSpan dbWithSpan)
             {
@@ -77,7 +77,7 @@ namespace Nethermind.Db
             }
         }
 
-        public static void Set(this IDb db, ValueKeccak key, ReadOnlySpan<byte> value)
+        public static void Set(this IDb db, in ValueKeccak key, ReadOnlySpan<byte> value)
         {
             if (db is IDbWithSpan dbWithSpan)
             {
@@ -121,7 +121,7 @@ namespace Nethermind.Db
         /// <param name="key"></param>
         /// <returns>Can return null or empty Span on missing key</returns>
         /// <exception cref="InvalidOperationException"></exception>
-        public static Span<byte> GetSpan(this IDbWithSpan db, ValueKeccak key)
+        public static Span<byte> GetSpan(this IDbWithSpan db, in ValueKeccak key)
         {
 #if DEBUG
             if (key == Keccak.OfAnEmptyString)
@@ -145,7 +145,7 @@ namespace Nethermind.Db
             return db.KeyExists(key.Bytes);
         }
 
-        public static bool KeyExists(this IDb db, ValueKeccak key)
+        public static bool KeyExists(this IDb db, in ValueKeccak key)
         {
 #if DEBUG
             if (key == Keccak.OfAnEmptyString)
@@ -167,7 +167,7 @@ namespace Nethermind.Db
             db.Remove(key.Bytes);
         }
 
-        public static void Delete(this IDb db, ValueKeccak key)
+        public static void Delete(this IDb db, in ValueKeccak key)
         {
             db.Remove(key.Bytes);
         }
@@ -200,7 +200,7 @@ namespace Nethermind.Db
             db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());
         }
 
-        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
+        public static TItem? Get<TItem>(this IDb db, in ValueKeccak key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
         {
             TItem item = cache?.Get(key);
             if (item is null)

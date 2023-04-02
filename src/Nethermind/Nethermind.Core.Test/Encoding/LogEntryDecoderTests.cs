@@ -42,7 +42,7 @@ namespace Nethermind.Core.Test.Encoding
             for (int i = 0; i < logEntry.Topics.Length; i++)
             {
                 iterator.TryGetNext(out KeccakIteratorRef keccak);
-                Assert.That(logEntry.Topics[i] == keccak.Keccak, $"topics[{i}]");
+                Assert.That(logEntry.Topics[i].ValueKeccak == keccak.Keccak, $"topics[{i}]");
             }
         }
 

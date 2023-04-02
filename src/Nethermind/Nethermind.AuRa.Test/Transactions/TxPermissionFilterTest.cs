@@ -205,7 +205,7 @@ namespace Nethermind.AuRa.Test.Transactions
             using TestTxPermissionsBlockchain chain = await chainFactory();
             Block? head = chain.BlockTree.Head;
             AcceptTxResult isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header);
-            chain.TransactionPermissionContractVersions.Get(head.Header.Hash).Should().Be(version);
+            chain.TransactionPermissionContractVersions.Get(head.Header.Hash.ValueKeccak).Should().Be(version);
             return (isAllowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
         }
 

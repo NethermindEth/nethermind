@@ -727,7 +727,7 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
-            if (_invalidBlocks.Contains(header.Hash))
+            if (_invalidBlocks.Contains(in header.Hash.ValueKeccak))
             {
                 return AddBlockResult.InvalidBlock;
             }
@@ -846,11 +846,11 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: false);
+            BlockHeader? header = _headerDb.Get(in blockHash.ValueKeccak, _headerDecoder, _headerCache, shouldCache: false);
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
-                if (allowInvalid && _invalidBlocks.TryGet(blockHash, out Block block))
+                if (allowInvalid && _invalidBlocks.TryGet(in blockHash.ValueKeccak, out Block block))
                 {
                     header = block.Header;
                 }
@@ -899,7 +899,7 @@ namespace Nethermind.Blockchain
 
             if (header is not null && ShouldCache(header.Number))
             {
-                _headerCache.Set(blockHash, header);
+                _headerCache.Set(in blockHash.ValueKeccak, header);
             }
 
             return header;
@@ -1108,7 +1108,7 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsDebug) _logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
-            _invalidBlocks.Set(invalidBlock.Hash, invalidBlock);
+            _invalidBlocks.Set(in invalidBlock.Hash.ValueKeccak, invalidBlock);
 
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
@@ -1183,10 +1183,10 @@ namespace Nethermind.Blockchain
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
-                _blockCache.Delete(currentHash);
-                _blockDb.Delete(currentHash);
-                _headerCache.Delete(currentHash);
-                _headerDb.Delete(currentHash);
+                _blockCache.Delete(in currentHash.ValueKeccak);
+                _blockDb.Delete(in currentHash.ValueKeccak);
+                _headerCache.Delete(in currentHash.ValueKeccak);
+                _headerDb.Delete(in currentHash.ValueKeccak);
 
                 if (nextHash is null)
                 {
@@ -1273,8 +1273,8 @@ namespace Nethermind.Blockchain
                 Block block = blocks[i];
                 if (ShouldCache(block.Number))
                 {
-                    _blockCache.Set(block.Hash, blocks[i]);
-                    _headerCache.Set(block.Hash, block.Header);
+                    _blockCache.Set(in block.Hash.ValueKeccak, blocks[i]);
+                    _headerCache.Set(in block.Hash.ValueKeccak, block.Header);
                 }
 
                 ChainLevelInfo? level = LoadLevel(block.Number);
@@ -1347,8 +1347,8 @@ namespace Nethermind.Blockchain
                 Block block = blocks[i];
                 if (ShouldCache(block.Number))
                 {
-                    _blockCache.Set(block.Hash, blocks[i]);
-                    _headerCache.Set(block.Hash, block.Header);
+                    _blockCache.Set(in block.Hash.ValueKeccak, blocks[i]);
+                    _headerCache.Set(in block.Hash.ValueKeccak, block.Header);
                 }
 
                 // we only force update head block for last block in processed blocks
@@ -1632,19 +1632,19 @@ namespace Nethermind.Blockchain
             else
             {
                 if (_logger.IsInfo) _logger.Info($"Deleting an invalid block or its descendant {hash}");
-                _blockInfoDb.Set(DeletePointerAddressInDb, hash.Bytes);
+                _blockInfoDb.Set(in DeletePointerAddressInDb.ValueKeccak, hash.Bytes);
             }
         }
 
         public void UpdateHeadBlock(Keccak blockHash)
         {
             if (_logger.IsError) _logger.Error($"Block tree override detected - updating head block to {blockHash}.");
-            _blockInfoDb.Set(HeadAddressInDb, blockHash.Bytes);
+            _blockInfoDb.Set(in HeadAddressInDb.ValueKeccak, blockHash.Bytes);
             BlockHeader? header = FindHeader(blockHash, BlockTreeLookupOptions.None);
             if (header is not null)
             {
                 if (_logger.IsError) _logger.Error($"Block tree override detected - updating head block to {blockHash}.");
-                _blockInfoDb.Set(HeadAddressInDb, blockHash.Bytes);
+                _blockInfoDb.Set(in HeadAddressInDb.ValueKeccak, blockHash.Bytes);
                 BestPersistedState = header.Number;
             }
             else
@@ -1666,7 +1666,7 @@ namespace Nethermind.Blockchain
             }
 
             Head = block;
-            _blockInfoDb.Set(HeadAddressInDb, block.Hash.Bytes);
+            _blockInfoDb.Set(in HeadAddressInDb.ValueKeccak, block.Hash.Bytes);
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
         }
 
@@ -1792,13 +1792,13 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Block block = _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache: false);
+            Block block = _blockDb.Get(in blockHash.ValueKeccak, _blockDecoder, _blockCache, shouldCache: false);
             if (block is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
                 if (allowInvalid)
                 {
-                    _invalidBlocks.TryGet(blockHash, out block);
+                    _invalidBlocks.TryGet(in blockHash.ValueKeccak, out block);
                 }
 
                 return block;
@@ -1847,8 +1847,8 @@ namespace Nethermind.Blockchain
 
             if (block is not null && ShouldCache(block.Number))
             {
-                _blockCache.Set(blockHash, block);
-                _headerCache.Set(blockHash, block.Header);
+                _blockCache.Set(in blockHash.ValueKeccak, block);
+                _headerCache.Set(in blockHash.ValueKeccak, block.Header);
             }
 
             return block;

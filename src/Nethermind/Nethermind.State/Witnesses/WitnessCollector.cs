@@ -66,11 +66,11 @@ namespace Nethermind.State.Witnesses
                 }
 
                 _keyValueStore[blockHash.ValueKeccak.Bytes] = witness;
-                _witnessCache.Set(blockHash, collected);
+                _witnessCache.Set(in blockHash.ValueKeccak, collected);
             }
             else
             {
-                _witnessCache.Set(blockHash, Array.Empty<Keccak>());
+                _witnessCache.Set(in blockHash.ValueKeccak, Array.Empty<Keccak>());
             }
         }
 
@@ -84,7 +84,7 @@ namespace Nethermind.State.Witnesses
 
         public Keccak[]? Load(Keccak blockHash)
         {
-            if (_witnessCache.TryGet(blockHash, out Keccak[]? witness))
+            if (_witnessCache.TryGet(in blockHash.ValueKeccak, out Keccak[]? witness))
             {
                 if (_logger.IsTrace) _logger.Trace($"Loading cached witness for {blockHash} ({witness!.Length})");
             }
@@ -109,7 +109,7 @@ namespace Nethermind.State.Witnesses
                         writableWitness[i] = new Keccak(keccakBytes);
                     }
 
-                    _witnessCache.Set(blockHash, writableWitness);
+                    _witnessCache.Set(in blockHash.ValueKeccak, writableWitness);
                     witness = writableWitness;
                 }
             }
@@ -119,7 +119,7 @@ namespace Nethermind.State.Witnesses
 
         public void Delete(Keccak blockHash)
         {
-            _witnessCache.Delete(blockHash);
+            _witnessCache.Delete(in blockHash.ValueKeccak);
             _keyValueStore[blockHash.Bytes] = null;
         }
 

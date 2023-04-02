@@ -30,7 +30,7 @@ namespace Nethermind.TxPool.Collections
         protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetReplacementComparer();
 
         protected override Address MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
-        protected override ValueKeccak GetKey(Transaction value) => value.Hash!;
+        protected override ValueKeccak GetKey(Transaction value) => value.Hash!.ValueKeccak;
 
         protected override void UpdateGroup(Address groupKey, EnhancedSortedSet<Transaction> bucket, Func<Address, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
@@ -49,7 +49,7 @@ namespace Nethermind.TxPool.Collections
                     change(tx);
                     if (reAdd)
                     {
-                        _worstSortedValues.Add(tx, tx.Hash!);
+                        _worstSortedValues.Add(tx, tx.Hash!.ValueKeccak);
                     }
 
                     UpdateWorstValue();
@@ -62,7 +62,7 @@ namespace Nethermind.TxPool.Collections
 
             for (int i = 0; i < _transactionsToRemove.Count; i++)
             {
-                TryRemove(_transactionsToRemove[i].Hash!);
+                TryRemove(_transactionsToRemove[i].Hash!.ValueKeccak);
             }
         }
 
@@ -95,7 +95,7 @@ namespace Nethermind.TxPool.Collections
                     tx.GasBottleneck = changedGasBottleneck;
                     if (reAdd)
                     {
-                        _worstSortedValues.Add(tx, tx.Hash!);
+                        _worstSortedValues.Add(tx, tx.Hash!.ValueKeccak);
                     }
 
                     UpdateWorstValue();
@@ -109,7 +109,7 @@ namespace Nethermind.TxPool.Collections
             ReadOnlySpan<Transaction> txs = CollectionsMarshal.AsSpan(_transactionsToRemove);
             for (int i = 0; i < txs.Length; i++)
             {
-                TryRemove(txs[i].Hash!);
+                TryRemove(txs[i].Hash!.ValueKeccak);
             }
         }
 

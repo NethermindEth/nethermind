@@ -13,6 +13,8 @@ namespace Nethermind.Crypto
         Address? RecoverAddress(Transaction tx, bool useSignatureChainId = false);
         Address? RecoverAddress(Signature signature, Keccak message);
         Address? RecoverAddress(Span<byte> signatureBytes, Keccak message);
+        Address? RecoverAddress(Signature signature, in ValueKeccak message);
+        Address? RecoverAddress(Span<byte> signatureBytes, in ValueKeccak message);
         bool Verify(Address sender, Transaction tx);
     }
 }

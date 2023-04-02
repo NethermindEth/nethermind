@@ -136,7 +136,7 @@ public class NodeRecordSigner : INodeRecordSigner
         }
         else
         {
-            contentHash = nodeRecord.ContentHash;
+            contentHash = nodeRecord.ContentHash.ValueKeccak;
         }
 
         CompressedPublicKey publicKeyA =

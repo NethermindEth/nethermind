@@ -191,13 +191,13 @@ namespace Nethermind.Serialization.Rlp
             return PeekByte() >= 192;
         }
 
-        public void Encode(ValueKeccak keccak)
+        public void Encode(in ValueKeccak keccak)
         {
             WriteByte(160);
             Write(keccak.Bytes);
         }
 
-        public void Encode(ValueKeccak? keccak)
+        public void Encode(in ValueKeccak? keccak)
         {
             if (keccak is null)
             {
@@ -808,6 +808,24 @@ namespace Nethermind.Serialization.Rlp
             {
                 throw new RlpException($"Data checkpoint failed. Expected {nextCheck} and is {Position}");
             }
+        }
+
+        public ValueKeccak DecodeValueKeccak()
+        {
+            int prefix = ReadByte();
+            if (prefix == 128)
+            {
+                return default;
+            }
+
+            if (prefix != 128 + 32)
+            {
+                throw new RlpException(
+                    $"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Length} starting with {Description}");
+            }
+
+            Span<byte> keccakSpan = Read(32);
+            return new ValueKeccak(keccakSpan);
         }
 
         public Keccak? DecodeKeccak()

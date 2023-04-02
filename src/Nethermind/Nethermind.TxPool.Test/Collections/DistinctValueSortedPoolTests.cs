@@ -78,7 +78,7 @@ namespace Nethermind.TxPool.Test.Collections
 
             foreach (var transaction in transactions)
             {
-                pool.TryInsert(transaction.Hash, transaction);
+                pool.TryInsert(transaction.Hash.ValueKeccak, transaction);
             }
 
             pool.Count.Should().Be(expectedCount);
@@ -96,7 +96,7 @@ namespace Nethermind.TxPool.Test.Collections
 
             foreach (var transaction in transactions)
             {
-                pool.TryInsert(transaction.Hash, transaction);
+                pool.TryInsert(transaction.Hash.ValueKeccak, transaction);
             }
 
             pool.Count.Should().Be(1);

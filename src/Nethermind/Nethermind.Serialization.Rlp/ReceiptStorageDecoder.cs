@@ -355,7 +355,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 item.PostTransactionState = ref
-                    firstItem.Length == 0 ? ref Keccak.Zero.ToStructRef() : ref new Keccak(firstItem).ToStructRef();
+                    firstItem.Length == 0 ? ref Keccak.Zero.ValueKeccak : ref new Keccak(firstItem).ValueKeccak;
             }
 
             if (isStorage) item.BlockHash = ref decoderContext.DecodeKeccakStructRef();

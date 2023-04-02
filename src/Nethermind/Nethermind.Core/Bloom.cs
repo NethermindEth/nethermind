@@ -166,9 +166,9 @@ namespace Nethermind.Core
 
         public bool Matches(Address address) => Matches(address.Bytes);
 
-        public bool Matches(Keccak topic) => Matches(topic.ValueKeccak.Bytes);
+        public bool Matches(Keccak topic) => Matches(topic.Bytes);
 
-        public bool Matches(ValueKeccak topic) => Matches(topic.Bytes);
+        public bool Matches(in ValueKeccak topic) => Matches(topic.Bytes);
 
         public bool Matches(ref BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 
@@ -176,9 +176,9 @@ namespace Nethermind.Core
 
         public static BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
 
-        public static BloomExtract GetExtract(Keccak topic) => GetExtract(topic.ValueKeccak.Bytes);
+        public static BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
 
-        public static BloomExtract GetExtract(ValueKeccak topic) => GetExtract(topic.Bytes);
+        public static BloomExtract GetExtract(in ValueKeccak topic) => GetExtract(topic.Bytes);
 
         private static BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {
@@ -354,7 +354,7 @@ namespace Nethermind.Core
 
         public bool Matches(Keccak topic) => Matches(topic.Bytes);
 
-        public bool Matches(ValueKeccak topic) => Matches(topic.Bytes);
+        public bool Matches(in ValueKeccak topic) => Matches(topic.Bytes);
 
         public bool Matches(ref Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 

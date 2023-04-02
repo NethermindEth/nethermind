@@ -14,6 +14,7 @@ namespace Nethermind.Consensus
         PrivateKey? Key { get; }
         Address Address { get; }
         Signature Sign(Keccak message);
+        Signature Sign(in ValueKeccak message);
         bool CanSign { get; }
     }
 }

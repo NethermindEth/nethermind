@@ -53,8 +53,8 @@ namespace Nethermind.TxPool.Test.Collections
             {
                 var tx = _transactions[^(i + 1)];
                 tx.Hash = tx.CalculateHash();
-                _sortedPool.TryInsert(tx.Hash, tx);
-                Assert.AreEqual(i > 15 ? null : tx, _sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null);
+                _sortedPool.TryInsert(tx.Hash.ValueKeccak, tx);
+                Assert.AreEqual(i > 15 ? null : tx, _sortedPool.TryGetValue(tx.Hash.ValueKeccak, out Transaction txOther) ? txOther : null);
                 Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
             }
 
@@ -76,7 +76,7 @@ namespace Nethermind.TxPool.Test.Collections
             {
                 var tx = _transactions[i];
                 tx.Hash = tx.CalculateHash();
-                _sortedPool.TryInsert(tx.Hash, tx);
+                _sortedPool.TryInsert(tx.Hash.ValueKeccak, tx);
                 Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
             }
 
@@ -96,10 +96,10 @@ namespace Nethermind.TxPool.Test.Collections
                 .WithSenderAddress(TestItem.AddressA)
                 .WithHash(TestItem.KeccakA).TestObject;
 
-            _sortedPool.TryInsert(tx.Hash, tx);
+            _sortedPool.TryInsert(tx.Hash.ValueKeccak, tx);
             _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeTrue();
 
-            _sortedPool.TryRemove(tx.Hash);
+            _sortedPool.TryRemove(tx.Hash.ValueKeccak);
             _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeFalse();
         }
     }

@@ -35,28 +35,28 @@ namespace Nethermind.TxPool
 
         public bool Get(Keccak hash)
         {
-            return _currentBlockCache.Get(hash) || _longTermCache.Get(hash);
+            return _currentBlockCache.Get(hash.ValueKeccak) || _longTermCache.Get(hash.ValueKeccak);
         }
 
         public void SetLongTerm(Keccak hash)
         {
-            _longTermCache.Set(hash);
+            _longTermCache.Set(hash.ValueKeccak);
         }
 
         public void SetForCurrentBlock(Keccak hash)
         {
-            _currentBlockCache.Set(hash);
+            _currentBlockCache.Set(hash.ValueKeccak);
         }
 
         public void DeleteFromLongTerm(Keccak hash)
         {
-            _longTermCache.Delete(hash);
+            _longTermCache.Delete(hash.ValueKeccak);
         }
 
         public void Delete(Keccak hash)
         {
-            _longTermCache.Delete(hash);
-            _currentBlockCache.Delete(hash);
+            _longTermCache.Delete(hash.ValueKeccak);
+            _currentBlockCache.Delete(hash.ValueKeccak);
         }
 
         public void ClearCurrentBlockCache()

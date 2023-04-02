@@ -18,10 +18,10 @@ namespace Nethermind.Synchronization.SnapSync
         bool CanSync();
 
         AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response);
-        AddRangeResult AddAccountRange(long blockNumber, ValueKeccak expectedRootHash, ValueKeccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, ValueKeccak? limitHash = null!);
+        AddRangeResult AddAccountRange(long blockNumber, in ValueKeccak expectedRootHash, in ValueKeccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, ValueKeccak? limitHash = null!);
 
         AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response);
-        AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, ValueKeccak expectedRootHash, ValueKeccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null);
+        AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueKeccak expectedRootHash, in ValueKeccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null);
 
         void AddCodes(Keccak[] requestedHashes, byte[][] codes);
 

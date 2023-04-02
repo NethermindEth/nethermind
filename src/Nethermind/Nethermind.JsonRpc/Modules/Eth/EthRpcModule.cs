@@ -304,7 +304,7 @@ public partial class EthRpcModule : IEthRpcModule
             string messageText = _messageEncoding.GetString(message);
             const string signatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
             string signatureText = string.Format(signatureTemplate, messageText.Length, messageText);
-            sig = _wallet.Sign(Keccak.Compute(signatureText), address);
+            sig = _wallet.Sign(ValueKeccak.Compute(signatureText), address);
         }
         catch (SecurityException e)
         {

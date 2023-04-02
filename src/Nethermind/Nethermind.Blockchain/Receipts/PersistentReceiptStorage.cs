@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public TxReceipt[] Get(Keccak blockHash)
         {
-            if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? receipts))
+            if (_receiptsCache.TryGet(in blockHash.ValueKeccak, out TxReceipt[]? receipts))
             {
                 return receipts ?? Array.Empty<TxReceipt>();
             }
@@ -116,7 +116,7 @@ namespace Nethermind.Blockchain.Receipts
                 else
                 {
                     receipts = DecodeArray(receiptsData);
-                    _receiptsCache.Set(blockHash, receipts);
+                    _receiptsCache.Set(in blockHash.ValueKeccak, receipts);
                     return receipts;
                 }
             }
@@ -144,7 +144,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator)
         {
-            if (_receiptsCache.TryGet(blockHash, out var receipts))
+            if (_receiptsCache.TryGet(in blockHash.ValueKeccak, out var receipts))
             {
                 iterator = new ReceiptsIterator(receipts);
                 return true;
@@ -183,7 +183,7 @@ namespace Nethermind.Blockchain.Receipts
                 MigratedBlockNumber = blockNumber;
             }
 
-            _receiptsCache.Set(block.Hash, txReceipts);
+            _receiptsCache.Set(in block.Hash.ValueKeccak, txReceipts);
 
             if (ensureCanonical)
             {
@@ -221,7 +221,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool HasBlock(Keccak hash)
         {
-            return _receiptsCache.Contains(hash) || _blocksDb.KeyExists(hash);
+            return _receiptsCache.Contains(in hash.ValueKeccak) || _blocksDb.KeyExists(hash);
         }
 
         public void EnsureCanonical(Block block)

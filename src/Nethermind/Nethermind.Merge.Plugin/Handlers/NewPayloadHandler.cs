@@ -266,14 +266,14 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             // if we return SYNCING for example, and don't know yet whether
             // the block is valid or invalid because we haven't processed it yet
             if (result == ValidationResult.Valid || result == ValidationResult.Invalid)
-                _latestBlocks?.Set(block.GetOrCalculateHash(), result == ValidationResult.Valid);
+                _latestBlocks?.Set(in block.GetOrCalculateHash().ValueKeccak, result == ValidationResult.Valid);
             return result;
         }
 
         (ValidationResult? result, string? validationMessage) = (null, null);
 
         // If duplicate, reuse results
-        if (_latestBlocks is not null && _latestBlocks.TryGet(block.Hash!, out bool isValid))
+        if (_latestBlocks is not null && _latestBlocks.TryGet(in block.Hash!.ValueKeccak, out bool isValid))
         {
             if (!isValid)
             {

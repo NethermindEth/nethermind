@@ -17,7 +17,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetAccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                AccountRange = new(Keccak.OfAnEmptyString, new Keccak("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), new Keccak("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")),
+                AccountRange = new(Keccak.OfAnEmptyString.ValueKeccak, new Keccak("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").ValueKeccak, new Keccak("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").ValueKeccak),
                 ResponseBytes = 10
             };
             GetAccountRangeMessageSerializer serializer = new();

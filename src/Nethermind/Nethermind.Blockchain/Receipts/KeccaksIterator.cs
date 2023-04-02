@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Receipts
             }
             else
             {
-                current = new KeccakIteratorRef(in Keccak.Zero.ToStructRef());
+                current = new KeccakIteratorRef(in Keccak.Zero.ValueKeccak);
                 return false;
             }
         }

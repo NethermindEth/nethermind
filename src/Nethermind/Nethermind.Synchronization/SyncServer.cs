@@ -179,7 +179,7 @@ namespace Nethermind.Synchronization
                 return;
             }
 
-            if (_recentlySuggested.Set(block.Hash, nodeWhoSentTheBlock))
+            if (_recentlySuggested.Set(in block.Hash.ValueKeccak, nodeWhoSentTheBlock))
             {
                 if (_specProvider.TerminalTotalDifficulty is not null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
                 {
@@ -232,7 +232,7 @@ namespace Nethermind.Synchronization
         {
             string message = $"Peer {nodeWhoSentTheBlock.Node:c} sent an invalid block.";
             if (_logger.IsDebug) _logger.Debug(message);
-            _recentlySuggested.Delete(block.Hash!);
+            _recentlySuggested.Delete(in block.Hash!.ValueKeccak);
             throw new EthSyncException(message);
         }
 
@@ -377,7 +377,7 @@ namespace Nethermind.Synchronization
                 syncPeer.HeadNumber = number;
                 syncPeer.HeadHash = hash;
 
-                if (!_recentlySuggested.Contains(hash) && !_blockTree.IsKnownBlock(number, hash))
+                if (!_recentlySuggested.Contains(in hash.ValueKeccak) && !_blockTree.IsKnownBlock(number, hash))
                 {
                     _pool.RefreshTotalDifficulty(syncPeer, hash);
                 }
@@ -442,7 +442,7 @@ namespace Nethermind.Synchronization
             Block block = blockEventArgs.Block;
             if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
             {
-                BroadcastBlock(block, true, _recentlySuggested.Get(block.Hash));
+                BroadcastBlock(block, true, _recentlySuggested.Get(in block.Hash.ValueKeccak));
             }
         }
 

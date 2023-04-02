@@ -57,13 +57,13 @@ namespace Nethermind.Consensus.Ethash
             }
 
             // the cache will return false both if the seal was invalid and if it has never been checked before
-            if (_sealCache.Get(header.Hash))
+            if (_sealCache.Get(in header.Hash.ValueKeccak))
             {
                 return true;
             }
 
             bool result = _ethash.Validate(header);
-            _sealCache.Set(header.Hash, result);
+            _sealCache.Set(in header.Hash.ValueKeccak, result);
 
             return result;
         }

@@ -182,7 +182,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="secretHash">The Keccak-256 hash of the validator's secret.</param>
         /// <param name="cipher">The cipher of the validator's secret. Can be used by the node to restore the lost secret after the node is restarted (see the `getCipher` getter).</param>
         /// <returns>Transaction to be included in block.</returns>
-        public Transaction CommitHash(in Keccak secretHash, byte[] cipher) => GenerateTransaction<GeneratedTransaction>(nameof(CommitHash), SignerAddress, secretHash.ValueKeccak, cipher);
+        public Transaction CommitHash(in Keccak secretHash, byte[] cipher) => GenerateTransaction<GeneratedTransaction>(nameof(CommitHash), SignerAddress, secretHash, cipher);
 
         /// <summary>
         /// Called by the validator's node to XOR its number with the current random seed.

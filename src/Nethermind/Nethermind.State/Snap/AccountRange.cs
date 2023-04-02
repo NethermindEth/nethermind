@@ -8,7 +8,7 @@ namespace Nethermind.State.Snap
 {
     public class AccountRange
     {
-        public AccountRange(ValueKeccak rootHash, ValueKeccak startingHash, ValueKeccak? limitHash = null, long? blockNumber = null)
+        public AccountRange(in ValueKeccak rootHash, in ValueKeccak startingHash, in ValueKeccak? limitHash = null, long? blockNumber = null)
         {
             RootHash = rootHash;
             StartingHash = startingHash;

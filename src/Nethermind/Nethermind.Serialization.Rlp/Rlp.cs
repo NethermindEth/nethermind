@@ -539,7 +539,7 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(result);
         }
 
-        public static Rlp Encode(ValueKeccak? keccak)
+        public static Rlp Encode(in ValueKeccak? keccak)
         {
             if (!keccak.HasValue)
             {
@@ -562,7 +562,7 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(result);
         }
 
-        public static Rlp Encode(ValueKeccak keccak)
+        public static Rlp Encode(in ValueKeccak keccak)
         {
             if (keccak == ValueKeccak.EmptyTreeHash)
             {
@@ -1006,7 +1006,7 @@ namespace Nethermind.Serialization.Rlp
                 int prefix = ReadByte();
                 if (prefix == 128)
                 {
-                    return ref Keccak.Zero.ToStructRef();
+                    return ref Keccak.Zero.ValueKeccak;
                 }
                 else if (prefix != 128 + 32)
                 {
@@ -1017,15 +1017,15 @@ namespace Nethermind.Serialization.Rlp
                     Span<byte> keccakSpan = Read(32);
                     if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
                     {
-                        return ref Keccak.OfAnEmptyString.ToStructRef();
+                        return ref Keccak.OfAnEmptyString.ValueKeccak;
                     }
                     else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
                     {
-                        return ref Keccak.EmptyTreeHash.ToStructRef();
+                        return ref Keccak.EmptyTreeHash.ValueKeccak;
                     }
                     else
                     {
-                        return ref (new Keccak(keccakSpan)).ToStructRef();
+                        return ref (new Keccak(keccakSpan)).ValueKeccak;
                     }
                 }
             }
@@ -1510,12 +1510,12 @@ namespace Nethermind.Serialization.Rlp
             return item is null ? 1 : 33;
         }
 
-        public static int LengthOf(ValueKeccak item)
+        public static int LengthOf(in ValueKeccak item)
         {
             return 33;
         }
 
-        public static int LengthOf(ValueKeccak? item)
+        public static int LengthOf(in ValueKeccak? item)
         {
             return !item.HasValue ? 1 : 33;
         }

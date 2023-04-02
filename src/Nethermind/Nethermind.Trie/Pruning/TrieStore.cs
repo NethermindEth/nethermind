@@ -33,7 +33,7 @@ namespace Nethermind.Trie.Pruning
             public void SaveInCache(TrieNode node)
             {
                 Debug.Assert(node.Keccak is not null, "Cannot store in cache nodes without resolved key.");
-                if (_objectsCache.TryAdd(node.Keccak!, node))
+                if (_objectsCache.TryAdd(node.Keccak!.ValueKeccak, node))
                 {
                     Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
                     _trieStore.MemoryUsedByDirtyCache += node.GetMemorySize(false);
@@ -42,7 +42,7 @@ namespace Nethermind.Trie.Pruning
 
             public TrieNode FindCachedOrUnknown(Keccak hash)
             {
-                if (_objectsCache.TryGetValue(hash, out TrieNode trieNode))
+                if (_objectsCache.TryGetValue(hash.ValueKeccak, out TrieNode trieNode))
                 {
                     Metrics.LoadedFromCacheNodesCount++;
                 }
@@ -59,7 +59,7 @@ namespace Nethermind.Trie.Pruning
             public TrieNode FromCachedRlpOrUnknown(Keccak hash)
             {
                 // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-                if (_objectsCache.TryGetValue(hash, out TrieNode? trieNode))
+                if (_objectsCache.TryGetValue(hash.ValueKeccak, out TrieNode? trieNode))
                 {
                     if (trieNode!.FullRlp is null)
                     {
@@ -84,7 +84,7 @@ namespace Nethermind.Trie.Pruning
                 return trieNode;
             }
 
-            public bool IsNodeCached(Keccak hash) => _objectsCache.ContainsKey(hash);
+            public bool IsNodeCached(Keccak hash) => _objectsCache.ContainsKey(hash.ValueKeccak);
 
             public ConcurrentDictionary<ValueKeccak, TrieNode> AllNodes => _objectsCache;
 
@@ -96,7 +96,7 @@ namespace Nethermind.Trie.Pruning
 
             public void Remove(Keccak hash)
             {
-                if (_objectsCache.Remove(hash, out _))
+                if (_objectsCache.Remove(hash.ValueKeccak, out _))
                 {
                     Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
                 }
@@ -498,7 +498,7 @@ namespace Nethermind.Trie.Pruning
                     if (node.Keccak is null)
                     {
                         node.ResolveKey(this, true); // TODO: hack
-                        if (node.Keccak != key)
+                        if (node.Keccak.ValueKeccak != key)
                         {
                             throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                         }
@@ -784,7 +784,7 @@ namespace Nethermind.Trie.Pruning
                 void PersistNode(TrieNode n)
                 {
                     Keccak? hash = n.Keccak;
-                    if (hash?.ValueKeccak is not null)
+                    if (hash is not null)
                     {
                         store[hash.Bytes] = n.FullRlp;
                         int persistedNodesCount = Interlocked.Increment(ref persistedNodes);

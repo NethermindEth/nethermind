@@ -35,7 +35,7 @@ namespace Nethermind.Wallet
         public static void Sign(this IWallet @this, Transaction tx, ulong chainId)
         {
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
-            tx.Signature = @this.Sign(hash, tx.SenderAddress);
+            tx.Signature = @this.Sign(in hash.ValueKeccak, tx.SenderAddress);
             if (tx.Signature is null)
             {
                 throw new CryptographicException($"Failed to sign tx {tx.Hash} using the {tx.SenderAddress} address.");

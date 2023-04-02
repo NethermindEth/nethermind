@@ -112,7 +112,7 @@ namespace Nethermind.Crypto
 
         public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
 
-        public Address? RecoverAddress(Signature signature, ValueKeccak message)
+        public Address? RecoverAddress(Signature signature, in ValueKeccak message)
         {
             return RecoverAddress(signature.BytesWithRecovery, message);
         }
@@ -124,10 +124,10 @@ namespace Nethermind.Crypto
 
         public Address? RecoverAddress(Span<byte> signatureBytes, Keccak message)
         {
-            return RecoverAddress(signatureBytes, message.ValueKeccak);
+            return RecoverAddress(signatureBytes, in message.ValueKeccak);
         }
 
-        public Address? RecoverAddress(Span<byte> signatureBytes, ValueKeccak message)
+        public Address? RecoverAddress(Span<byte> signatureBytes, in ValueKeccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
             bool success = Proxy.RecoverKeyFromCompact(

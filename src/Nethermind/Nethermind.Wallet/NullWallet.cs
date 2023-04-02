@@ -43,7 +43,7 @@ namespace Nethermind.Wallet
             return true;
         }
 
-        public Signature Sign(ValueKeccak message, Address address, SecureString passphrase)
+        public Signature Sign(in ValueKeccak message, Address address, SecureString passphrase)
         {
             return null;
         }
@@ -58,7 +58,7 @@ namespace Nethermind.Wallet
             return true;
         }
 
-        public Signature Sign(ValueKeccak message, Address address)
+        public Signature Sign(in ValueKeccak message, Address address)
         {
             return null;
         }

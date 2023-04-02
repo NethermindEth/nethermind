@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.SnapSync
                 Interlocked.Increment(ref _activeAccountRequests);
 
                 AccountRange range = new(
-                    rootHash,
+                    in rootHash.ValueKeccak,
                     partition.NextAccountPath,
                     partition.AccountPathLimit,
                     blockNumber);
@@ -182,7 +182,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (TryDequeNextSlotRange(out StorageRange slotRange))
             {
-                slotRange.RootHash = rootHash;
+                slotRange.RootHash = rootHash.ValueKeccak;
                 slotRange.BlockNumber = blockNumber;
 
                 LogRequest($"NextSlotRange:{slotRange.Accounts.Length}");
@@ -204,9 +204,9 @@ namespace Nethermind.Synchronization.SnapSync
 
                 StorageRange storageRange = new()
                 {
-                    RootHash = rootHash,
+                    RootHash = rootHash.ValueKeccak,
                     Accounts = storagesToQuery.ToArray(),
-                    StartingHash = Keccak.Zero,
+                    StartingHash = Keccak.Zero.ValueKeccak,
                     BlockNumber = blockNumber
                 };
 
@@ -287,7 +287,7 @@ namespace Nethermind.Synchronization.SnapSync
             StoragesToRetrieve.Enqueue(pwa);
         }
 
-        public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, ValueKeccak startingHash)
+        public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueKeccak startingHash)
         {
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash });
         }
@@ -320,7 +320,7 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Decrement(ref _activeStorageRequests);
         }
 
-        public void ReportAccountRangePartitionFinished(ValueKeccak hashLimit)
+        public void ReportAccountRangePartitionFinished(in ValueKeccak hashLimit)
         {
             AccountRangePartition partition = AccountRangePartitions[hashLimit];
 
@@ -331,7 +331,7 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Decrement(ref _activeAccountRequests);
         }
 
-        public void UpdateAccountRangePartitionProgress(ValueKeccak hashLimit, ValueKeccak nextPath, bool moreChildrenToRight)
+        public void UpdateAccountRangePartitionProgress(in ValueKeccak hashLimit, in ValueKeccak nextPath, bool moreChildrenToRight)
         {
             AccountRangePartition partition = AccountRangePartitions[hashLimit];
 
@@ -424,9 +424,9 @@ namespace Nethermind.Synchronization.SnapSync
         // A partition of the top level account range starting from `AccountPathStart` to `AccountPathLimit` (exclusive).
         private class AccountRangePartition
         {
-            public ValueKeccak NextAccountPath { get; set; } = Keccak.Zero;
-            public ValueKeccak AccountPathStart { get; set; } = Keccak.Zero; // Not really needed, but useful
-            public ValueKeccak AccountPathLimit { get; set; } = Keccak.MaxValue;
+            public ValueKeccak NextAccountPath { get; set; } = Keccak.Zero.ValueKeccak;
+            public ValueKeccak AccountPathStart { get; set; } = Keccak.Zero.ValueKeccak; // Not really needed, but useful
+            public ValueKeccak AccountPathLimit { get; set; } = Keccak.MaxValue.ValueKeccak;
             public bool MoreAccountsToRight { get; set; } = true;
         }
     }

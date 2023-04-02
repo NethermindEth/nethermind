@@ -43,7 +43,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public TValue Get(TKey key)
+        public TValue Get(in TKey key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -59,7 +59,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGet(TKey key, out TValue value)
+        public bool TryGet(in TKey key, out TValue value)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -76,7 +76,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Set(TKey key, TValue val)
+        public bool Set(in TKey key, TValue val)
         {
             if (val is null)
             {
@@ -107,7 +107,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Delete(TKey key)
+        public bool Delete(in TKey key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -120,7 +120,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Contains(TKey key) => _cacheMap.ContainsKey(key);
+        public bool Contains(in TKey key) => _cacheMap.ContainsKey(key);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public KeyValuePair<TKey, TValue>[] ToArray()

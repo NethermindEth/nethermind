@@ -48,7 +48,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithParentHash(ValueKeccak parentHash)
+    public BlockHeaderBuilder WithParentHash(in ValueKeccak parentHash)
     {
         TestObjectInternal.ParentHash = new Keccak(parentHash);
         return this;
@@ -60,7 +60,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithHash(ValueKeccak hash)
+    public BlockHeaderBuilder WithHash(in ValueKeccak hash)
     {
         TestObjectInternal.Hash = new Keccak(hash);
         _doNotCalculateHash = true;
@@ -106,7 +106,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithStateRoot(ValueKeccak stateRoot)
+    public BlockHeaderBuilder WithStateRoot(in ValueKeccak stateRoot)
     {
         TestObjectInternal.StateRoot = new Keccak(stateRoot);
         return this;
@@ -130,7 +130,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithReceiptsRoot(ValueKeccak receiptsRoot)
+    public BlockHeaderBuilder WithReceiptsRoot(in ValueKeccak receiptsRoot)
     {
         TestObjectInternal.ReceiptsRoot = new Keccak(receiptsRoot);
         return this;
@@ -184,7 +184,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithMixHash(ValueKeccak mixHash)
+    public BlockHeaderBuilder WithMixHash(in ValueKeccak mixHash)
     {
         TestObjectInternal.MixHash = new Keccak(mixHash);
         return this;
@@ -209,7 +209,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithWithdrawalsRoot(ValueKeccak root)
+    public BlockHeaderBuilder WithWithdrawalsRoot(in ValueKeccak root)
     {
         TestObjectInternal.WithdrawalsRoot = new Keccak(root);
 

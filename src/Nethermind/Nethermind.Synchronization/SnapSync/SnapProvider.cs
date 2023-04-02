@@ -66,17 +66,17 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddAccountRange(long blockNumber, ValueKeccak expectedRootHash, ValueKeccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, ValueKeccak? hashLimit = null!)
+        public AddRangeResult AddAccountRange(long blockNumber, in ValueKeccak expectedRootHash, in ValueKeccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, ValueKeccak? hashLimit = null!)
         {
             ITrieStore store = _trieStorePool.Get();
             try
             {
                 StateTree tree = new(store, _logManager);
 
-                if (hashLimit == null) hashLimit = Keccak.MaxValue;
+                if (hashLimit == null) hashLimit = Keccak.MaxValue.ValueKeccak;
 
                 (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes) =
-                    SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, hashLimit.GetValueOrDefault(), accounts, proofs);
+                    SnapProviderHelper.AddAccountRange(tree, blockNumber, in expectedRootHash, in startingHash, hashLimit.GetValueOrDefault(), accounts, proofs);
 
                 if (result == AddRangeResult.OK)
                 {
@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.SnapSync
                     }
 
                     _progressTracker.EnqueueCodeHashes(codeHashes);
-                    _progressTracker.UpdateAccountRangePartitionProgress(hashLimit.GetValueOrDefault(), accounts[^1].Path, moreChildrenToRight);
+                    _progressTracker.UpdateAccountRangePartitionProgress(hashLimit.GetValueOrDefault(), in accounts[^1].Path.ValueKeccak, moreChildrenToRight);
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization.SnapSync
                         proofs = response.Proofs;
                     }
 
-                    result = AddStorageRange(request.BlockNumber.Value, request.Accounts[i], request.Accounts[i].Account.StorageRoot, request.StartingHash.GetValueOrDefault(), response.PathsAndSlots[i], proofs);
+                    result = AddStorageRange(request.BlockNumber.Value, request.Accounts[i], in request.Accounts[i].Account.StorageRoot.ValueKeccak, request.StartingHash.GetValueOrDefault(), response.PathsAndSlots[i], proofs);
 
                     slotCount += response.PathsAndSlots[i].Length;
                 }
@@ -156,7 +156,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, ValueKeccak expectedRootHash, ValueKeccak startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
+        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueKeccak expectedRootHash, in ValueKeccak startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
             ITrieStore store = _trieStorePool.Get();
             StorageTree tree = new(store, _logManager);
@@ -171,7 +171,7 @@ namespace Nethermind.Synchronization.SnapSync
                         StorageRange range = new()
                         {
                             Accounts = new[] { pathWithAccount },
-                            StartingHash = slots.Last().Path
+                            StartingHash = slots.Last().Path.ValueKeccak
                         };
 
                         _progressTracker.EnqueueStorageRange(range);
@@ -227,7 +227,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                             requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(node.Keccak);
 
-                            if (requestedPath.StorageStartingHash > Keccak.Zero)
+                            if (requestedPath.StorageStartingHash > Keccak.Zero.ValueKeccak)
                             {
                                 StorageRange range = new()
                                 {

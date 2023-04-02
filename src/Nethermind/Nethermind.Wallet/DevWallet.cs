@@ -101,7 +101,7 @@ namespace Nethermind.Wallet
             return true;
         }
 
-        public Signature Sign(ValueKeccak message, Address address, SecureString passphrase)
+        public Signature Sign(in ValueKeccak message, Address address, SecureString passphrase)
         {
             if (!_isUnlocked.ContainsKey(address)) throw new SecurityException("Account does not exist.");
 
@@ -117,7 +117,7 @@ namespace Nethermind.Wallet
             return _passwords[address] == AnyPassword || passphrase?.Unsecure() == _passwords[address];
         }
 
-        public Signature Sign(ValueKeccak message, Address address)
+        public Signature Sign(in ValueKeccak message, Address address)
         {
             var rs = Proxy.SignCompact(message.ToByteArray(), _keys[address].KeyBytes, out int v);
             return new Signature(rs, v);

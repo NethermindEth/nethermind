@@ -36,18 +36,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             this.BlockActivationCheck(blockHeader);
 
-            if (!_versionsCache.TryGet(blockHeader.Hash, out var versionNumber))
+            if (!_versionsCache.TryGet(in blockHeader.Hash.ValueKeccak, out var versionNumber))
             {
                 try
                 {
                     versionNumber = _versionSelectorContract.ContractVersion(blockHeader);
-                    _versionsCache.Set(blockHeader.Hash, versionNumber);
+                    _versionsCache.Set(in blockHeader.Hash.ValueKeccak, versionNumber);
                 }
                 catch (AbiException ex)
                 {
                     if (_logger.IsDebug) _logger.Debug($"The contract version set to 1: {ex}");
                     versionNumber = UInt256.One;
-                    _versionsCache.Set(blockHeader.Hash, versionNumber);
+                    _versionsCache.Set(in blockHeader.Hash.ValueKeccak, versionNumber);
                 }
             }
 

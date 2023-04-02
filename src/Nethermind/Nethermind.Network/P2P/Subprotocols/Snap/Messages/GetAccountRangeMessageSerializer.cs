@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.ReadSequenceLength();
 
             message.RequestId = rlpStream.DecodeLong();
-            message.AccountRange = new(rlpStream.DecodeKeccak(), rlpStream.DecodeKeccak(), rlpStream.DecodeKeccak());
+            message.AccountRange = new(rlpStream.DecodeValueKeccak(), rlpStream.DecodeValueKeccak(), rlpStream.DecodeValueKeccak());
             message.ResponseBytes = rlpStream.DecodeLong();
 
             return message;
@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.Encode(message.AccountRange.RootHash);
             rlpStream.Encode(message.AccountRange.StartingHash);
 
-            rlpStream.Encode(message.AccountRange.LimitHash ?? Keccak.MaxValue);
+            rlpStream.Encode(message.AccountRange.LimitHash ?? Keccak.MaxValue.ValueKeccak);
             rlpStream.Encode(message.ResponseBytes == 0 ? 1000_000 : message.ResponseBytes);
         }
 

@@ -106,7 +106,7 @@ namespace Nethermind.TxPool
         {
             NotifyPeersAboutLocalTx(tx);
             if (tx.Hash is not null)
-                _persistentTxs.TryInsert(tx.Hash, tx);
+                _persistentTxs.TryInsert(tx.Hash.ValueKeccak, tx);
         }
 
         private void BroadcastOnce(Transaction tx)
@@ -190,7 +190,7 @@ namespace Nethermind.TxPool
         {
             if (_persistentTxs.Count != 0)
             {
-                bool hasBeenRemoved = _persistentTxs.TryRemove(txHash, out Transaction? _);
+                bool hasBeenRemoved = _persistentTxs.TryRemove(txHash.ValueKeccak, out Transaction? _);
                 if (hasBeenRemoved)
                 {
                     if (_logger.IsTrace) _logger.Trace(
@@ -265,7 +265,7 @@ namespace Nethermind.TxPool
 
         public bool TryGetPersistentTx(Keccak hash, out Transaction? transaction)
         {
-            return _persistentTxs.TryGetValue(hash, out transaction);
+            return _persistentTxs.TryGetValue(hash.ValueKeccak, out transaction);
         }
 
         public bool AddPeer(ITxPoolPeer peer)

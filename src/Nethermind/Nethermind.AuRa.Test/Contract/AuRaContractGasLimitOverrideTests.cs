@@ -44,7 +44,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
             chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
-            long? gasLimit = chain.GasLimitOverrideCache.GasLimitCache.Get(chain.BlockTree.Head.Hash);
+            long? gasLimit = chain.GasLimitOverrideCache.GasLimitCache.Get(chain.BlockTree.Head.Hash.ValueKeccak);
             gasLimit.Should().Be(CorrectHeadGasLimit);
         }
 

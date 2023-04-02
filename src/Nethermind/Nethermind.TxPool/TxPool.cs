@@ -348,7 +348,7 @@ namespace Nethermind.TxPool
                 bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
 
                 tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
-                bool inserted = _transactions.TryInsert(tx.Hash!, tx, out Transaction? removed);
+                bool inserted = _transactions.TryInsert(tx.Hash!.ValueKeccak, tx, out Transaction? removed);
                 if (inserted)
                 {
                     _transactions.UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
@@ -511,7 +511,7 @@ namespace Nethermind.TxPool
             bool hasBeenRemoved;
             lock (_locker)
             {
-                hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction);
+                hasBeenRemoved = _transactions.TryRemove(hash.ValueKeccak, out Transaction? transaction);
                 if (transaction is null || !hasBeenRemoved)
                     return false;
                 if (hasBeenRemoved)
@@ -531,7 +531,7 @@ namespace Nethermind.TxPool
         {
             lock (_locker)
             {
-                if (!_transactions.TryGetValue(hash, out transaction))
+                if (!_transactions.TryGetValue(hash.ValueKeccak, out transaction))
                 {
                     _broadcaster.TryGetPersistentTx(hash, out transaction);
 

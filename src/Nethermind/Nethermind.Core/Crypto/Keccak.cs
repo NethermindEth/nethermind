@@ -126,6 +126,7 @@ namespace Nethermind.Core.Crypto
         public override bool Equals(object? obj) => obj is ValueKeccak keccak && Equals(keccak);
 
         public bool Equals(ValueKeccak other) => _bytes.Equals(other._bytes);
+        public bool Equals(in ValueKeccak other) => _bytes.Equals(other._bytes);
 
         public bool Equals(Keccak? other) => _bytes.Equals(other?.ValueKeccak._bytes ?? default);
 
@@ -143,6 +144,11 @@ namespace Nethermind.Core.Crypto
         }
 
         public int CompareTo(ValueKeccak other)
+        {
+            return Extensions.Bytes.Comparer.Compare(Bytes, other.Bytes);
+        }
+
+        public int CompareTo(in ValueKeccak other)
         {
             return Extensions.Bytes.Comparer.Compare(Bytes, other.Bytes);
         }
@@ -168,13 +174,13 @@ namespace Nethermind.Core.Crypto
             return Bytes.ToArray();
         }
 
-        public static bool operator ==(ValueKeccak left, ValueKeccak right) => left.Equals(right);
+        public static bool operator ==(in ValueKeccak left, in ValueKeccak right) => left.Equals(in right);
 
-        public static bool operator !=(ValueKeccak left, ValueKeccak right) => !(left == right);
-        public static bool operator >(ValueKeccak left, ValueKeccak right) => left.CompareTo(right) > 0;
-        public static bool operator <(ValueKeccak left, ValueKeccak right) => left.CompareTo(right) < 0;
-        public static bool operator >=(ValueKeccak left, ValueKeccak right) => left.CompareTo(right) >= 0;
-        public static bool operator <=(ValueKeccak left, ValueKeccak right) => left.CompareTo(right) <= 0;
+        public static bool operator !=(in ValueKeccak left, in ValueKeccak right) => !(left == right);
+        public static bool operator >(in ValueKeccak left, in ValueKeccak right) => left.CompareTo(in right) > 0;
+        public static bool operator <(in ValueKeccak left, in ValueKeccak right) => left.CompareTo(in right) < 0;
+        public static bool operator >=(in ValueKeccak left, in ValueKeccak right) => left.CompareTo(in right) >= 0;
+        public static bool operator <=(in ValueKeccak left, in ValueKeccak right) => left.CompareTo(in right) <= 0;
     }
 
     [DebuggerStepThrough]
@@ -215,14 +221,14 @@ namespace Nethermind.Core.Crypto
         /// </summary>
         public static Keccak MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
-        public ValueKeccak ValueKeccak => _keccak;
+        public ref readonly ValueKeccak ValueKeccak => ref _keccak;
 
         public ReadOnlySpan<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _keccak), 1));
 
         public Keccak(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString)) { }
 
-        public Keccak(ValueKeccak keccak)
+        public Keccak(in ValueKeccak keccak)
         {
             _keccak = keccak;
         }
@@ -371,7 +377,5 @@ namespace Nethermind.Core.Crypto
         {
             return _keccak.ToByteArray();
         }
-
-        public ref readonly ValueKeccak ToStructRef() => ref _keccak;
     }
 }

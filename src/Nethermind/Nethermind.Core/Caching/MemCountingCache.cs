@@ -45,7 +45,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public byte[]? Get(ValueKeccak key)
+        public byte[]? Get(in ValueKeccak key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -58,7 +58,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGet(ValueKeccak key, out byte[]? value)
+        public bool TryGet(in ValueKeccak key, out byte[]? value)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -72,7 +72,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Set(ValueKeccak key, byte[]? val)
+        public bool Set(in ValueKeccak key, byte[]? val)
         {
             if (val is null)
             {
@@ -118,7 +118,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Delete(ValueKeccak key)
+        public bool Delete(in ValueKeccak key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -133,9 +133,9 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Contains(ValueKeccak key) => _cacheMap.ContainsKey(key);
+        public bool Contains(in ValueKeccak key) => _cacheMap.ContainsKey(key);
 
-        private void Replace(ValueKeccak key, byte[] value)
+        private void Replace(in ValueKeccak key, byte[] value)
         {
             LinkedListNode<LruCacheItem> node = _leastRecentlyUsed!;
             if (node is null)
@@ -162,13 +162,14 @@ namespace Nethermind.Core.Caching
 
         private struct LruCacheItem
         {
-            public LruCacheItem(ValueKeccak k, byte[] v)
+            public LruCacheItem(in ValueKeccak k, byte[] v)
             {
                 Key = k;
                 Value = v;
             }
 
-            public readonly ValueKeccak Key;
+            public ValueKeccak Key;
+
             public byte[] Value;
 
             public long MemorySize => FindMemorySize(Value);

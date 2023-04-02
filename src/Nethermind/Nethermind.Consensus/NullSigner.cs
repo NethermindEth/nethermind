@@ -18,6 +18,8 @@ namespace Nethermind.Consensus
 
         public Signature Sign(Keccak message) { return new(new byte[65]); }
 
+        public Signature Sign(in ValueKeccak message) { return new(new byte[65]); }
+
         public bool CanSign { get; } = true; // TODO: why true?
 
         public PrivateKey Key { get; }

@@ -24,10 +24,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 RequestId = MessageConstants.Random.NextLong(),
                 StoragetRange = new()
                 {
-                    RootHash = TestItem.KeccakA,
+                    RootHash = TestItem.KeccakA.ValueKeccak,
                     Accounts = TestItem.Keccaks.Select(k => new PathWithAccount(k, null)).ToArray(),
-                    StartingHash = new Keccak("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
-                    LimitHash = new Keccak("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
+                    StartingHash = new Keccak("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").ValueKeccak,
+                    LimitHash = new Keccak("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").ValueKeccak
                 },
                 ResponseBytes = 1000
             };
@@ -45,10 +45,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 RequestId = MessageConstants.Random.NextLong(),
                 StoragetRange = new()
                 {
-                    RootHash = Keccak.OfAnEmptyString,
+                    RootHash = Keccak.OfAnEmptyString.ValueKeccak,
                     Accounts = Array.Empty<PathWithAccount>(),
-                    StartingHash = new Keccak("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
-                    LimitHash = new Keccak("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
+                    StartingHash = new Keccak("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").ValueKeccak,
+                    LimitHash = new Keccak("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").ValueKeccak
                 },
                 ResponseBytes = 1000
             };

@@ -72,10 +72,10 @@ public class InvalidChainTracker : IInvalidChainTracker
 
     private Node GetNode(Keccak hash)
     {
-        if (!_tree.TryGet(hash, out Node node))
+        if (!_tree.TryGet(in hash.ValueKeccak, out Node node))
         {
             node = new Node();
-            _tree.Set(hash, node);
+            _tree.Set(in hash.ValueKeccak, node);
         }
 
         return node;

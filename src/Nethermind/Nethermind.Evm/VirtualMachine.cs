@@ -388,7 +388,7 @@ namespace Nethermind.Evm
             }
 
             Keccak codeHash = state.GetCodeHash(codeSource);
-            CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
+            CodeInfo cachedCodeInfo = _codeCache.Get(in codeHash.ValueKeccak);
             if (cachedCodeInfo is null)
             {
                 byte[] code = state.GetCode(codeHash);
@@ -399,7 +399,7 @@ namespace Nethermind.Evm
                 }
 
                 cachedCodeInfo = new CodeInfo(code);
-                _codeCache.Set(codeHash, cachedCodeInfo);
+                _codeCache.Set(in codeHash.ValueKeccak, cachedCodeInfo);
             }
             else
             {

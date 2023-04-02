@@ -117,7 +117,7 @@ namespace Nethermind.Store.Test
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
-            AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
+            AddRangeResult result = snapProvider.AddAccountRange(1, in rootHash.ValueKeccak, in Keccak.Zero.ValueKeccak, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(AddRangeResult.OK, result);
             Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
@@ -141,7 +141,7 @@ namespace Nethermind.Store.Test
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
-            var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
+            var result = snapProvider.AddAccountRange(1, in rootHash.ValueKeccak, in TestItem.Tree.AccountsWithPaths[0].Path.ValueKeccak, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(AddRangeResult.OK, result);
             Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
@@ -158,7 +158,7 @@ namespace Nethermind.Store.Test
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
-            var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
+            var result = snapProvider.AddAccountRange(1, in rootHash.ValueKeccak, in TestItem.Tree.AccountsWithPaths[0].Path.ValueKeccak, TestItem.Tree.AccountsWithPaths);
 
             Assert.AreEqual(AddRangeResult.OK, result);
             Assert.AreEqual(10, db.Keys.Count);  // we don't have the proofs so we persist all nodes
@@ -184,7 +184,7 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+            var result1 = snapProvider.AddAccountRange(1, in rootHash.ValueKeccak, in Keccak.Zero.ValueKeccak, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(2, db.Keys.Count);
 
@@ -195,7 +195,7 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             lastProof = accountProofCollector.BuildResult().Proof;
 
-            var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
+            var result2 = snapProvider.AddAccountRange(1, in rootHash.ValueKeccak, in TestItem.Tree.AccountsWithPaths[2].Path.ValueKeccak, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(5, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
 
@@ -206,7 +206,7 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             lastProof = accountProofCollector.BuildResult().Proof;
 
-            var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
+            var result3 = snapProvider.AddAccountRange(1, in rootHash.ValueKeccak, in TestItem.Tree.AccountsWithPaths[4].Path.ValueKeccak, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(AddRangeResult.OK, result1);
             Assert.AreEqual(AddRangeResult.OK, result2);
@@ -234,7 +234,7 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+            var result1 = snapProvider.AddAccountRange(1, in rootHash.ValueKeccak, in Keccak.Zero.ValueKeccak, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(2, db.Keys.Count);
 
@@ -246,7 +246,7 @@ namespace Nethermind.Store.Test
             lastProof = accountProofCollector.BuildResult().Proof;
 
             // missing TestItem.Tree.AccountsWithHashes[2]
-            var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[3..4], firstProof!.Concat(lastProof!).ToArray());
+            var result2 = snapProvider.AddAccountRange(1, in rootHash.ValueKeccak, in TestItem.Tree.AccountsWithPaths[2].Path.ValueKeccak, TestItem.Tree.AccountsWithPaths[3..4], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(2, db.Keys.Count);
 
@@ -257,7 +257,7 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             lastProof = accountProofCollector.BuildResult().Proof;
 
-            var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
+            var result3 = snapProvider.AddAccountRange(1, in rootHash.ValueKeccak, in TestItem.Tree.AccountsWithPaths[4].Path.ValueKeccak, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(AddRangeResult.OK, result1);
             Assert.AreEqual(AddRangeResult.DifferentRootHash, result2);

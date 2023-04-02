@@ -18,23 +18,22 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public static class SnapProviderHelper
     {
-
         public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes) AddAccountRange(
             StateTree tree,
             long blockNumber,
-            ValueKeccak expectedRootHash,
-            ValueKeccak startingHash,
-            ValueKeccak limitHash,
+            in ValueKeccak expectedRootHash,
+            in ValueKeccak startingHash,
+            in ValueKeccak limitHash,
             PathWithAccount[] accounts,
             byte[][] proofs = null
         )
         {
             // TODO: Check the accounts boundaries and sorting
 
-            ValueKeccak lastHash = accounts[^1].Path;
+            ValueKeccak lastHash = accounts[^1].Path.ValueKeccak;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) =
-                FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, proofs);
+                FillBoundaryTree(tree, startingHash, in lastHash, in limitHash, in expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
             {
@@ -66,7 +65,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             tree.UpdateRootHash();
 
-            if (tree.RootHash != expectedRootHash)
+            if (tree.RootHash.ValueKeccak != expectedRootHash)
             {
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
@@ -89,10 +88,10 @@ namespace Nethermind.Synchronization.SnapSync
         {
             // TODO: Check the slots boundaries and sorting
 
-            ValueKeccak lastHash = slots.Last().Path;
+            ValueKeccak lastHash = slots.Last().Path.ValueKeccak;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
-                tree, startingHash, lastHash, Keccak.MaxValue, expectedRootHash, proofs);
+                tree, startingHash, in lastHash, in Keccak.MaxValue.ValueKeccak, in expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
             {
@@ -108,7 +107,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             tree.UpdateRootHash();
 
-            if (tree.RootHash != expectedRootHash)
+            if (tree.RootHash.ValueKeccak != expectedRootHash)
             {
                 return (AddRangeResult.DifferentRootHash, true);
             }
@@ -123,9 +122,9 @@ namespace Nethermind.Synchronization.SnapSync
         private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(
             PatriciaTree tree,
             ValueKeccak? startingHash,
-            ValueKeccak endHash,
-            ValueKeccak limitHash,
-            ValueKeccak expectedRootHash,
+            in ValueKeccak endHash,
+            in ValueKeccak limitHash,
+            in ValueKeccak expectedRootHash,
             byte[][]? proofs = null
         )
         {
@@ -159,7 +158,7 @@ namespace Nethermind.Synchronization.SnapSync
             // For when in very-very unlikely case where the last remaining address is Keccak.MaxValue, (who knows why,
             // the chain have special handling for it maybe) and it is not included the returned account range, (again,
             // very-very unlikely), we want `moreChildrenToRight` to return true.
-            bool noLimit = limitHash == Keccak.MaxValue;
+            bool noLimit = limitHash == Keccak.MaxValue.ValueKeccak;
 
             Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
 
@@ -179,7 +178,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                     if (childKeccak is not null)
                     {
-                        if (dict.TryGetValue(childKeccak, out TrieNode child))
+                        if (dict.TryGetValue(childKeccak.ValueKeccak, out TrieNode child))
                         {
                             node.SetChild(0, child);
 
@@ -231,7 +230,7 @@ namespace Nethermind.Synchronization.SnapSync
                             node.SetChild(ci, null);
                         }
 
-                        if (childKeccak is not null && (ci == left || ci == right) && dict.TryGetValue(childKeccak, out TrieNode child))
+                        if (childKeccak is not null && (ci == left || ci == right) && dict.TryGetValue(childKeccak.ValueKeccak, out TrieNode child))
                         {
                             if (!child.IsLeaf)
                             {
@@ -265,7 +264,7 @@ namespace Nethermind.Synchronization.SnapSync
                 node.ResolveNode(store);
                 node.ResolveKey(store, i == 0);
 
-                dict[node.Keccak] = node;
+                dict[node.Keccak.ValueKeccak] = node;
             }
 
             return dict;

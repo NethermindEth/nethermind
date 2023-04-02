@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Clique
         {
             if (header.Author is not null) return header.Author;
             if (header.Number == UInt256.Zero) return Address.Zero;
-            if (_signatures.Get(header.Hash) is not null) return _signatures.Get(header.Hash);
+            if (_signatures.Get(in header.Hash.ValueKeccak) is not null) return _signatures.Get(in header.Hash.ValueKeccak);
 
             int extraSeal = 65;
 
@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.Clique
             signature.V += Signature.VOffset;
             Keccak message = CalculateCliqueHeaderHash(header);
             Address address = _ecdsa.RecoverAddress(signatureBytes, message);
-            _signatures.Set(header.Hash, address);
+            _signatures.Set(in header.Hash.ValueKeccak, address);
             return address;
         }
 
@@ -164,7 +164,7 @@ namespace Nethermind.Consensus.Clique
                     }
                 }
 
-                _snapshotCache.Set(snapshot.Hash, snapshot);
+                _snapshotCache.Set(in snapshot.Hash.ValueKeccak, snapshot);
                 // If we've generated a new checkpoint snapshot, save to disk
             }
 
@@ -204,7 +204,7 @@ namespace Nethermind.Consensus.Clique
         {
             if (_logger.IsTrace) _logger.Trace($"Getting snapshot for {number}");
             // If an in-memory snapshot was found, use that
-            Snapshot? cachedSnapshot = _snapshotCache.Get(hash);
+            Snapshot? cachedSnapshot = _snapshotCache.Get(in hash.ValueKeccak);
             if (cachedSnapshot is not null) return cachedSnapshot;
 
             // If an on-disk checkpoint snapshot can be found, use that

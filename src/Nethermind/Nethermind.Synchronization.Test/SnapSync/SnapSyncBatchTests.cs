@@ -16,7 +16,7 @@ public class SnapSyncBatchTests
     {
         SnapSyncBatch batch = new()
         {
-            AccountRangeRequest = new AccountRange(Keccak.Zero, Keccak.MaxValue, Keccak.Compute("abc"), 999)
+            AccountRangeRequest = new AccountRange(in Keccak.Zero.ValueKeccak, in Keccak.MaxValue.ValueKeccak, ValueKeccak.Compute("abc"), 999)
         };
 
         batch.ToString().Should().Be("AccountRange: (999, 0x0000000000000000000000000000000000000000000000000000000000000000, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45)");
@@ -30,10 +30,10 @@ public class SnapSyncBatchTests
             StorageRangeRequest = new StorageRange()
             {
                 BlockNumber = 123,
-                RootHash = Keccak.Zero,
+                RootHash = Keccak.Zero.ValueKeccak,
                 Accounts = new PathWithAccount[9],
-                StartingHash = Keccak.MaxValue,
-                LimitHash = Keccak.Compute("abc"),
+                StartingHash = Keccak.MaxValue.ValueKeccak,
+                LimitHash = Keccak.Compute("abc").ValueKeccak,
             }
         };
 

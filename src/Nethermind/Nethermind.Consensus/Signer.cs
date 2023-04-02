@@ -38,10 +38,10 @@ namespace Nethermind.Consensus
 
         public Signature Sign(Keccak message)
         {
-            return Sign(message.ValueKeccak);
+            return Sign(in message.ValueKeccak);
         }
 
-        public Signature Sign(ValueKeccak message)
+        public Signature Sign(in ValueKeccak message)
         {
             if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
             byte[] rs = Proxy.SignCompact(message.ToByteArray(), _key!.KeyBytes, out int v);

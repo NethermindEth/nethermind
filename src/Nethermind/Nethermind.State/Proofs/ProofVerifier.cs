@@ -36,7 +36,7 @@ namespace Nethermind.State.Proofs
                 }
                 else
                 {
-                    if (proofHash != root)
+                    if (proofHash != root.ValueKeccak)
                     {
                         throw new InvalidDataException();
                     }

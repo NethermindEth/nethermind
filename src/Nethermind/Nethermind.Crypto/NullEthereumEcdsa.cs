@@ -15,7 +15,7 @@ namespace Nethermind.Crypto
         {
         }
 
-        public Signature Sign(PrivateKey privateKey, ValueKeccak message)
+        public Signature Sign(PrivateKey privateKey, in ValueKeccak message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
@@ -25,7 +25,7 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public PublicKey RecoverPublicKey(Signature signature, ValueKeccak message)
+        public PublicKey RecoverPublicKey(Signature signature, in ValueKeccak message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
@@ -35,7 +35,7 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, ValueKeccak message)
+        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, in ValueKeccak message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
@@ -55,7 +55,7 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public Address RecoverAddress(Signature signature, ValueKeccak message)
+        public Address RecoverAddress(Signature signature, in ValueKeccak message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
@@ -65,7 +65,7 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public Address RecoverAddress(Span<byte> signatureBytes, ValueKeccak message)
+        public Address RecoverAddress(Span<byte> signatureBytes, in ValueKeccak message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
