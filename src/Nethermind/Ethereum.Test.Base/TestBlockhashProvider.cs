@@ -13,7 +13,7 @@ namespace Ethereum.Test.Base
         {
             if (number != 0)
                 return Keccak.Zero;
-            return new Keccak(Keccak.Compute(number.ToString()));
+            return Keccak.Compute(number.ToString());
         }
     }
 }

@@ -22,7 +22,7 @@ public class HeaderDecoderTests
     public void Can_decode(bool hasWithdrawalsRoot)
     {
         BlockHeader header = Build.A.BlockHeader
-            .WithMixHash(Keccak.Compute("mix_hash"))
+            .WithMixHash(ValueKeccak.Compute("mix_hash"))
             .WithNonce(1000)
             .WithWithdrawalsRoot(hasWithdrawalsRoot ? Keccak.EmptyTreeHash : null)
             .TestObject;
@@ -40,7 +40,7 @@ public class HeaderDecoderTests
     public void Can_decode_tricky()
     {
         BlockHeader header = Build.A.BlockHeader
-            .WithMixHash(Keccak.Compute("mix_hash"))
+            .WithMixHash(ValueKeccak.Compute("mix_hash"))
             .WithTimestamp(2730)
             .WithNonce(1000)
             .TestObject;

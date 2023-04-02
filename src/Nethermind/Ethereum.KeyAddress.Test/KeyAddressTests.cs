@@ -50,7 +50,7 @@ namespace Ethereum.KeyAddress.Test
         [TestCase("0x36d85Dc3683156e63Bf880A9fAb7788CF8143a27", "Christopher Pearce", "0x34ff4b97a0ec8f735f781f250dcd3070a72ddb640072dd39553407d0320db79939e3b080ecaa2e9f248214c6f0811fb4b4ba05b7bcff254c053e47d8513e82091b")]
         public void Recovered_address_as_expected(string addressHex, string message, string sigHex)
         {
-            Keccak messageHash = new Keccak(Keccak.Compute(message));
+            Keccak messageHash = Keccak.Compute(message);
             Signature sig = new Signature(sigHex);
             Address recovered = _ecdsa.RecoverAddress(sig, messageHash);
             Address address = new Address(addressHex);

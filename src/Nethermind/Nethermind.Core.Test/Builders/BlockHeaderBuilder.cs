@@ -24,7 +24,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
     public BlockHeaderBuilder()
     {
         TestObjectInternal = new BlockHeader(
-            new Keccak(Keccak.Compute("parent")),
+            Keccak.Compute("parent"),
             Keccak.OfAnEmptySequenceRlp,
             Address.Zero,
             DefaultDifficulty, 0,
@@ -33,7 +33,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
             new byte[] { 1, 2, 3 },
             null);
         TestObjectInternal.Bloom = Bloom.Empty;
-        TestObjectInternal.MixHash = new Keccak(Keccak.Compute("mix_hash"));
+        TestObjectInternal.MixHash = Keccak.Compute("mix_hash");
         TestObjectInternal.Nonce = 1000;
         TestObjectInternal.ReceiptsRoot = Keccak.EmptyTreeHash;
         TestObjectInternal.StateRoot = Keccak.EmptyTreeHash;

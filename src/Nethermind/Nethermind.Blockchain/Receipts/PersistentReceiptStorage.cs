@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Receipts
         private long? _lowestInsertedReceiptBlock;
         private readonly IDbWithSpan _blocksDb;
         private readonly IDb _transactionDb;
-        private static readonly Keccak MigrationBlockNumberKey = new Keccak(Keccak.Compute(nameof(MigratedBlockNumber)));
+        private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         private long _migratedBlockNumber;
         private static readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
 

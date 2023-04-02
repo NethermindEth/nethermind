@@ -18,10 +18,10 @@ namespace Nethermind.Db.Blooms
         public byte Levels { get; private set; }
         public int MaxBucketSize => _storageLevels.FirstOrDefault()?.LevelElementSize ?? 1;
 
-        internal static readonly Keccak MinBlockNumberKey = new Keccak(Keccak.Compute(nameof(MinBlockNumber)));
-        internal static readonly Keccak MaxBlockNumberKey = new Keccak(Keccak.Compute(nameof(MaxBlockNumber)));
-        private static readonly Keccak MigrationBlockNumberKey = new Keccak(Keccak.Compute(nameof(MigratedBlockNumber)));
-        private static readonly Keccak LevelsKey = new Keccak(Keccak.Compute(nameof(LevelsKey)));
+        internal static readonly Keccak MinBlockNumberKey = Keccak.Compute(nameof(MinBlockNumber));
+        internal static readonly Keccak MaxBlockNumberKey = Keccak.Compute(nameof(MaxBlockNumber));
+        private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
+        private static readonly Keccak LevelsKey = Keccak.Compute(nameof(LevelsKey));
 
         private readonly BloomStorageLevel[] _storageLevels;
         private readonly IBloomConfig _config;

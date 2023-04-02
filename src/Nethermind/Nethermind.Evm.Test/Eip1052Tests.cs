@@ -111,7 +111,7 @@ namespace Nethermind.Evm.Test
             addressWithGarbage[11] = 88;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak codehash = new Keccak(Keccak.Compute("some code"));
+            Keccak codehash = Keccak.Compute("some code");
             TestState.UpdateCodeHash(TestItem.AddressC, codehash, Spec);
 
             byte[] code = Prepare.EvmCode

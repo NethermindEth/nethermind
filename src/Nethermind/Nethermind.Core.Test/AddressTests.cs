@@ -67,9 +67,9 @@ namespace Nethermind.Core.Test
         [Test]
         public void Equals_works()
         {
-            Address addressA = new(Keccak.Compute("a"));
-            Address addressA2 = new(Keccak.Compute("a"));
-            Address addressB = new(Keccak.Compute("b"));
+            Address addressA = new(ValueKeccak.Compute("a"));
+            Address addressA2 = new(ValueKeccak.Compute("a"));
+            Address addressB = new(ValueKeccak.Compute("b"));
             Assert.True(addressA.Equals(addressA2));
             // ReSharper disable once EqualExpressionComparison
             Assert.True(addressA.Equals(addressA));
@@ -80,9 +80,9 @@ namespace Nethermind.Core.Test
         [Test]
         public void Equals_operator_works()
         {
-            Address addressA = new(Keccak.Compute("a"));
-            Address addressA2 = new(Keccak.Compute("a"));
-            Address addressB = new(Keccak.Compute("b"));
+            Address addressA = new(ValueKeccak.Compute("a"));
+            Address addressA2 = new(ValueKeccak.Compute("a"));
+            Address addressB = new(ValueKeccak.Compute("b"));
             Assert.True(addressA == addressA2);
             // ReSharper disable once EqualExpressionComparison
 #pragma warning disable CS1718
@@ -99,9 +99,9 @@ namespace Nethermind.Core.Test
         [Test]
         public void Not_equals_operator_works()
         {
-            Address addressA = new(Keccak.Compute("a"));
-            Address addressA2 = new(Keccak.Compute("a"));
-            Address addressB = new(Keccak.Compute("b"));
+            Address addressA = new(ValueKeccak.Compute("a"));
+            Address addressA2 = new(ValueKeccak.Compute("a"));
+            Address addressB = new(ValueKeccak.Compute("b"));
             Assert.False(addressA != addressA2);
             // ReSharper disable once EqualExpressionComparison
 #pragma warning disable CS1718

@@ -52,28 +52,28 @@ namespace Nethermind.Core.Test
         [Test]
         public void Empty_string()
         {
-            string result = Keccak.Compute(string.Empty).ToString();
+            string result = ValueKeccak.Compute(string.Empty).ToString();
             Assert.AreEqual(KeccakOfAnEmptyString, result);
         }
 
         [Test]
         public void Null_string()
         {
-            string result = Keccak.Compute((string)null!).ToString();
+            string result = ValueKeccak.Compute((string)null!).ToString();
             Assert.AreEqual(KeccakOfAnEmptyString, result);
         }
 
         [Test]
         public void Null_bytes()
         {
-            string result = Keccak.Compute((byte[])null!).ToString();
+            string result = ValueKeccak.Compute((byte[])null!).ToString();
             Assert.AreEqual(KeccakOfAnEmptyString, result);
         }
 
         [Test]
         public void Zero()
         {
-            string result = Keccak.Zero.ToString();
+            string result = ValueKeccak.Zero.ToString();
             Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000", result);
         }
 

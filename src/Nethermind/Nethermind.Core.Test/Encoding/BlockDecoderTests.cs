@@ -37,7 +37,7 @@ public class BlockDecoderTests
         for (var i = 0; i < uncles.Length; i++)
         {
             uncles[i] = Build.A.BlockHeader
-                .WithWithdrawalsRoot(i % 3 == 0 ? null : Keccak.Compute(i.ToString()))
+                .WithWithdrawalsRoot(i % 3 == 0 ? null : ValueKeccak.Compute(i.ToString()))
                 .TestObject;
         }
 
