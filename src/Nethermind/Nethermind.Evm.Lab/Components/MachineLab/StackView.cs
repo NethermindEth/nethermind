@@ -7,18 +7,19 @@ using Terminal.Gui;
 namespace Nethermind.Evm.Lab.Componants;
 internal class StackView : IComponent<MachineState>
 {
+    bool isCached = false;
+    private FrameView? container = null;
+    private ListView? stackView = null;
     public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
         var innerState = state.GetState();
-
-
         var frameBoundaries = new Rectangle(
                 X: rect?.X ?? 0,
                 Y: rect?.Y ?? 0,
                 Width: rect?.Width ?? 50,
                 Height: rect?.Height ?? 10
             );
-        var frameView = new FrameView("StackState")
+        container ??= new FrameView("StackState")
         {
             X = frameBoundaries.X,
             Y = frameBoundaries.Y,
@@ -26,16 +27,18 @@ internal class StackView : IComponent<MachineState>
             Height = frameBoundaries.Height,
         };
 
-        var listView = new ListView()
+        stackView ??= new ListView()
         {
             X = 0,
             Y = 0,
             Width = Dim.Fill(2),
             Height = Dim.Fill(2),
         };
-        listView.SetSource(innerState.Current.Stack);
+        stackView.SetSource(innerState.Current.Stack);
 
-        frameView.Add(listView);
-        return (frameView, frameBoundaries);
+        if (!isCached)
+            container.Add(stackView);
+        isCached = true;
+        return (container, frameBoundaries);
     }
 }

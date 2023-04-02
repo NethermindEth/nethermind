@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using MachineState.Actions;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Lab.Interfaces;
 using Terminal.Gui;
 
 namespace Nethermind.Evm.Lab.Components.MachineLab;
 internal class InputsView : IComponent<MachineState>
 {
+    bool isCached = false;
+    private FrameView? container = null;
+    private TextField? bytecodeInputField = null;
+    private TextField? calldataInputField = null;
     public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
         var innerState = state.GetState();
@@ -20,7 +25,7 @@ internal class InputsView : IComponent<MachineState>
                 Width: rect?.Width ?? 50,
                 Height: rect?.Height ?? 10
             );
-        var frameView = new FrameView("InputsPanel")
+        container ??= new FrameView("InputsPanel")
         {
             X = frameBoundaries.X,
             Y = frameBoundaries.Y,
@@ -33,7 +38,7 @@ internal class InputsView : IComponent<MachineState>
             Width = Dim.Fill(),
             Height = Dim.Percent(10)
         };
-        var bytecodeBox = new TextField("[<Insert Bytecode here in HEX>]")
+        bytecodeInputField ??= new TextField(state.GetState().Bytecode.ToHexString(true))
         {
             Y = Pos.Bottom(label_bytecode),
             Width = Dim.Fill(),
@@ -42,33 +47,37 @@ internal class InputsView : IComponent<MachineState>
 
         var label_calldata = new Label("Calldata Inout Area")
         {
-            Y = Pos.Bottom(bytecodeBox),
+            Y = Pos.Bottom(bytecodeInputField),
             Width = Dim.Fill(),
             Height = Dim.Percent(10)
         };
-        var CallDataBox = new TextField("[<Insert Bytecode here in HEX>]")
+        calldataInputField ??= new TextField(state.GetState().CallData.ToHexString(true))
         {
             Y = Pos.Bottom(label_calldata),
             Width = Dim.Fill(),
             Height = Dim.Percent(20)
         };
 
-        bytecodeBox.KeyPress += (e) =>
+        if (!isCached)
         {
-            if (e.KeyEvent.Key == Key.Enter)
+            bytecodeInputField.KeyPress += (e) =>
             {
-                innerState.EnqueueEvent(new BytecodeInserted((string)bytecodeBox.Text));
-            }
-        };
-        CallDataBox.KeyPress += (e) =>
-        {
-            if (e.KeyEvent.Key == Key.Enter)
+                if (e.KeyEvent.Key == Key.Enter)
+                {
+                    EventsSink.EnqueueEvent(new BytecodeInserted((string)bytecodeInputField.Text));
+                }
+            };
+            calldataInputField.KeyPress += (e) =>
             {
-                innerState.EnqueueEvent(new CallDataInserted((String)CallDataBox.Text));
-            }
-        };
+                if (e.KeyEvent.Key == Key.Enter)
+                {
+                    EventsSink.EnqueueEvent(new CallDataInserted((string)calldataInputField.Text));
+                }
+            };
 
-        frameView.Add(label_bytecode, bytecodeBox, label_calldata, CallDataBox);
-        return (frameView, frameBoundaries);
+            container.Add(label_bytecode, bytecodeInputField, label_calldata, calldataInputField);
+        }
+        isCached = true;
+        return (container, frameBoundaries);
     }
 }

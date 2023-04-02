@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using Nethermind.Evm.Lab.Interfaces;
 using Nethermind.Evm.Tracing.GethStyle;
 
@@ -14,6 +13,7 @@ namespace MachineState.Actions
     public record CallDataInserted(string calldata) : ActionsBase;
     public record FileLoaded(string filePath) : ActionsBase;
     public record TracesLoaded(string filePath) : ActionsBase;
+    public record UpdateState(GethLikeTxTrace traces) : ActionsBase;
 }
 
 namespace Nethermind.Evm.Lab
@@ -21,17 +21,20 @@ namespace Nethermind.Evm.Lab
     public class MachineState : GethLikeTxTrace, IState<MachineState>
     {
         public MachineState(GethLikeTxTrace trace)
+            => SetState(trace);
+
+        public MachineState() { }
+
+        public MachineState SetState(GethLikeTxTrace trace)
         {
             Entries = trace.Entries;
             ReturnValue = trace.ReturnValue;
             Failed = trace.Failed;
+            Index = 0;
+            Depth = 0;
+            EventsSink.EmptyQueue();
+            return this;
         }
-
-        public MachineState() { }
-
-
-        private Stopwatch watch = new Stopwatch();
-        private Queue<ActionsBase> Events { get; set; } = new();
 
 
         public GethTxTraceEntry Current => base.Entries[Index];
@@ -63,29 +66,6 @@ namespace Nethermind.Evm.Lab
             return this;
         }
 
-        public void EnqueueEvent(ActionsBase msg)
-        {
-            if (!watch.IsRunning || watch.ElapsedMilliseconds > 100)
-            {
-                Events.Enqueue(msg);
-                if (!watch.IsRunning) watch.Start();
-                else watch.Restart();
-            }
-        }
-
-        public bool TryDequeueEvent(out ActionsBase? msg)
-        {
-            if (Events.Any())
-            {
-                msg = Events.Dequeue();
-                return true;
-            }
-            else
-            {
-                msg = null;
-                return false;
-            }
-        }
 
         IState<MachineState> IState<MachineState>.Initialize(MachineState seed) => seed;
     }

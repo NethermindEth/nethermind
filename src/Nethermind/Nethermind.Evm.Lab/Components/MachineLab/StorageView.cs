@@ -8,6 +8,9 @@ using Terminal.Gui;
 namespace Nethermind.Evm.Lab.Componants;
 internal class StorageView : IComponent<MachineState>
 {
+    bool isCached = false;
+    private FrameView? container = null;
+    private TableView? table = null;
     public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
         var innerState = state.GetState();
@@ -18,7 +21,7 @@ internal class StorageView : IComponent<MachineState>
                 Width: rect?.Width ?? 50,
                 Height: rect?.Height ?? 10
             );
-        var frameView = new FrameView("StorageState")
+        container ??= new FrameView("StorageState")
         {
             X = frameBoundaries.X,
             Y = frameBoundaries.Y,
@@ -34,14 +37,19 @@ internal class StorageView : IComponent<MachineState>
             dataTable.Rows.Add(k, v);
         }
 
-        frameView.Add(new TableView()
+        table ??= new TableView()
         {
             X = 0,
             Y = 0,
             Width = Dim.Fill(2),
             Height = Dim.Fill(2),
-            Table = dataTable
-        });
-        return (frameView, frameBoundaries);
+        };
+        table.Table = dataTable;
+        if (!isCached)
+        {
+            container.Add(table);
+        }
+        isCached = true;
+        return (container, frameBoundaries);
     }
 }

@@ -11,6 +11,10 @@ namespace Nethermind.Evm.Lab.Componants
 {
     internal class MachineOverview : IComponent<MachineState>
     {
+        bool isCached = false;
+        private FrameView? container = null;
+        private (TableView? generalState, TableView? opcodeData) machinView = (null, null);
+
         private static readonly string[] Columns_Overview = { "Pc", "Gas", "Depth", "Error" };
         private static readonly string[] Columns_Opcode = { "Opcode", "Operation", "GasCost" };
         private View? _cache { get; set; }
@@ -36,7 +40,7 @@ namespace Nethermind.Evm.Lab.Componants
                 Width: rect?.Width ?? 50,
                 Height: rect?.Height ?? 10
             );
-            var frameView = new FrameView("ProcessorState")
+            container ??= new FrameView("ProcessorState")
             {
                 X = frameBoundaries.X,
                 Y = frameBoundaries.Y,
@@ -77,27 +81,30 @@ namespace Nethermind.Evm.Lab.Componants
                 ).ToArray()
             );
 
-            var overviewViewTable = new TableView()
+            machinView.generalState ??= new TableView()
             {
                 X = 0,
                 Y = 0,
                 Width = Dim.Fill(2),
                 Height = Dim.Percent(50),
-                Table = dataTable
             };
+            machinView.generalState.Table = dataTable;
 
-            var opcodeTable = new TableView()
+            machinView.opcodeData ??= new TableView()
             {
                 X = 0,
-                Y = Pos.Bottom(overviewViewTable),
+                Y = Pos.Bottom(machinView.generalState),
                 Width = Dim.Fill(2),
                 Height = Dim.Percent(50),
-                Table = opcodeData
             };
+            machinView.opcodeData.Table = opcodeData;
 
-
-            frameView.Add(overviewViewTable, opcodeTable);
-            return (frameView, frameBoundaries);
+            if (!isCached)
+            {
+                container.Add(machinView.generalState, machinView.opcodeData);
+            }
+            isCached = true;
+            return (container, frameBoundaries);
         }
     }
 }

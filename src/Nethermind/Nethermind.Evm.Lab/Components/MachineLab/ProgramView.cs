@@ -9,6 +9,9 @@ using Terminal.Gui;
 namespace Nethermind.Evm.Lab.Componants;
 internal class ProgramView : IComponent<MachineState>
 {
+    bool isCached = false;
+    private FrameView? container = null;
+    private TableView? programView = null;
     private IReadOnlyList<(int Idx, string Operation)> Dissassemble(byte[] bytecode)
     {
         var opcodes = new List<(int Idx, string Operation)>();
@@ -38,7 +41,7 @@ internal class ProgramView : IComponent<MachineState>
                 Width: rect?.Width ?? 50,
                 Height: rect?.Height ?? 10
             );
-        var frameView = new FrameView("ProgramState")
+        container ??= new FrameView("ProgramState")
         {
             X = frameBoundaries.X,
             Y = frameBoundaries.Y,
@@ -54,14 +57,20 @@ internal class ProgramView : IComponent<MachineState>
             dataTable.Rows.Add(k, v);
         }
 
-        frameView.Add(new TableView()
+        programView ??= new TableView()
         {
             X = 0,
             Y = 0,
             Width = Dim.Fill(2),
             Height = Dim.Fill(2),
-            Table = dataTable
-        });
-        return (frameView, frameBoundaries);
+        };
+        programView.Table = dataTable;
+
+        if (!isCached)
+        {
+            container.Add(programView);
+        }
+        isCached = true;
+        return (container, frameBoundaries);
     }
 }

@@ -6,6 +6,9 @@ using Terminal.Gui;
 namespace Nethermind.Evm.Lab.Componants;
 internal class MemoryView : IComponent<MachineState>
 {
+    bool isCached = false;
+    private FrameView? container = null;
+    private HexView? memoryView = null;
     public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
         var innerState = state.GetState();
@@ -18,7 +21,7 @@ internal class MemoryView : IComponent<MachineState>
                 Width: rect?.Width ?? 50,
                 Height: rect?.Height ?? 10
             );
-        var frameView = new FrameView("MemoryState")
+        container ??= new FrameView("MemoryState")
         {
             X = frameBoundaries.X,
             Y = frameBoundaries.Y,
@@ -26,14 +29,18 @@ internal class MemoryView : IComponent<MachineState>
             Height = frameBoundaries.Height,
         };
 
-        var hexViewer = new HexView(streamFromBuffer)
+        memoryView ??= new HexView()
         {
             Width = Dim.Fill(2),
             Height = Dim.Fill(2),
         };
+        memoryView.Source = streamFromBuffer;
 
-
-        frameView.Add(hexViewer);
-        return (frameView, frameBoundaries);
+        if (!isCached)
+        {
+            container.Add(memoryView);
+        }
+        isCached = true;
+        return (container, frameBoundaries);
     }
 }

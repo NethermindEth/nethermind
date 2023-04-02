@@ -14,12 +14,12 @@ internal class HeaderView : IComponent<MachineState>
             new MenuBarItem ("_File", new MenuItem [] {
                 new MenuItem ("_Run", "", () => {
                     var fileOpenDialogue = new OpenDialog("Bytecode File", "Select a binary file that contains EVM bytecode");
-                    state.GetState().EnqueueEvent(new FileLoaded((string)fileOpenDialogue.FilePath));
+                    EventsSink.EnqueueEvent(new FileLoaded((string)fileOpenDialogue.FilePath));
                 }),
                 new MenuItem ("_Open", "", () => {
                     // open trace file
                     var fileOpenDialogue = new OpenDialog("Traces File", "Select a file that contains EVM run traces");
-                    state.GetState().EnqueueEvent(new TracesLoaded((string)fileOpenDialogue.FilePath));
+                    EventsSink.EnqueueEvent(new TracesLoaded((string)fileOpenDialogue.FilePath));
                 }),
                 new MenuItem ("_Quit", "", () => {
                     Application.RequestStop ();
