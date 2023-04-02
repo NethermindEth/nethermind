@@ -2,21 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Data;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Lab.Interfaces;
 using Terminal.Gui;
 
 namespace Nethermind.Evm.Lab.Componants;
 internal class ProgramView : IComponent<MachineState>
 {
-    private IReadOnlyList<(int Idx, string Operation)> Dissassemble(byte[] bytecode) => new List<(int Idx, string Operation)>()
+    private IReadOnlyList<(int Idx, string Operation)> Dissassemble(byte[] bytecode)
     {
-        (0, "PUSH 0"),
-        (2, "PUSH 2"),
-        (4, "MSTORE8"),
-        (5, "PUSH 0"),
-        (7, "PUSH 2"),
-        (9, "return"),
-    };
+        var opcodes = new List<(int Idx, string Operation)>();
+
+        for (int i = 0; i < bytecode.Length; i++)
+        {
+            var instruction = (Instruction)bytecode[i];
+            if (!instruction.IsValid()) throw new InvalidCodeException();
+            int immediatesCount = instruction.GetImmediateCount();
+            byte[] immediates = bytecode.Slice(i + 1, immediatesCount);
+            opcodes.Add((i, $"{instruction.ToString()} {immediates.ToHexString(immediates.Any())}"));
+        }
+        return opcodes;
+    }
     public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
         var dissassembledBytecode = Dissassemble(Core.Extensions.Bytes.FromHexString(state.GetState().Bytecode));

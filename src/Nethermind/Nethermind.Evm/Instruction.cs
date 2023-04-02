@@ -1,10 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
+using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm
 {
@@ -177,12 +178,121 @@ namespace Nethermind.Evm
 
     public static class InstructionExtensions
     {
-        public static string? GetName(this Instruction instruction, bool isPostMerge = false) =>
-            (instruction == Instruction.PREVRANDAO && !isPostMerge)
-                ? "DIFFICULTY"
-                : FastEnum.IsDefined(instruction)
-                    ? FastEnum.GetName(instruction)
-                    : null;
+        public static int GetImmediateCount(this Instruction instruction)
+            => instruction switch
+            {
+                >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
+                _ => 0
+            };
+        public static bool IsTerminating(this Instruction instruction) => instruction switch
+        {
+            Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
+            // Instruction.SELFDESTRUCT => true
+            _ => false
+        };
+
+        public static bool IsValid(this Instruction instruction)
+        {
+            if (!Enum.IsDefined(instruction))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        //Note() : Extensively test this, refactor it, 
+        public static (int InputCount, int OutputCount, int immediates) StackRequirements(this Instruction instruction) => instruction switch
+        {
+            Instruction.STOP => (0, 0, 0),
+            Instruction.ADD => (2, 1, 0),
+            Instruction.MUL => (2, 1, 0),
+            Instruction.SUB => (2, 1, 0),
+            Instruction.DIV => (2, 1, 0),
+            Instruction.SDIV => (2, 1, 0),
+            Instruction.MOD => (2, 1, 0),
+            Instruction.SMOD => (2, 1, 0),
+            Instruction.ADDMOD => (3, 1, 0),
+            Instruction.MULMOD => (3, 1, 0),
+            Instruction.EXP => (2, 1, 0),
+            Instruction.SIGNEXTEND => (2, 1, 0),
+            Instruction.LT => (2, 1, 0),
+            Instruction.GT => (2, 1, 0),
+            Instruction.SLT => (2, 1, 0),
+            Instruction.SGT => (2, 1, 0),
+            Instruction.EQ => (2, 1, 0),
+            Instruction.ISZERO => (1, 1, 0),
+            Instruction.AND => (2, 1, 0),
+            Instruction.OR => (2, 1, 0),
+            Instruction.XOR => (2, 1, 0),
+            Instruction.NOT => (1, 1, 0),
+            Instruction.BYTE => (2, 1, 0),
+            Instruction.SHL => (2, 1, 0),
+            Instruction.SHR => (2, 1, 0),
+            Instruction.SAR => (2, 1, 0),
+            Instruction.SHA3 => (2, 1, 0),
+            Instruction.ADDRESS => (0, 1, 0),
+            Instruction.BALANCE => (1, 1, 0),
+            Instruction.ORIGIN => (0, 1, 0),
+            Instruction.CALLER => (0, 1, 0),
+            Instruction.CALLVALUE => (0, 1, 0),
+            Instruction.CALLDATALOAD => (1, 1, 0),
+            Instruction.CALLDATASIZE => (0, 1, 0),
+            Instruction.CALLDATACOPY => (3, 0, 0),
+            Instruction.CODESIZE => (0, 1, 0),
+            Instruction.CODECOPY => (3, 0, 0),
+            Instruction.GASPRICE => (0, 1, 0),
+            Instruction.EXTCODESIZE => (1, 1, 0),
+            Instruction.EXTCODECOPY => (4, 0, 0),
+            Instruction.RETURNDATASIZE => (0, 1, 0),
+            Instruction.RETURNDATACOPY => (3, 0, 0),
+            Instruction.EXTCODEHASH => (1, 1, 0),
+            Instruction.BLOCKHASH => (1, 1, 0),
+            Instruction.COINBASE => (0, 1, 0),
+            Instruction.TIMESTAMP => (0, 1, 0),
+            Instruction.NUMBER => (0, 1, 0),
+            Instruction.PREVRANDAO => (0, 1, 0),
+            Instruction.GASLIMIT => (0, 1, 0),
+            Instruction.CHAINID => (0, 1, 0),
+            Instruction.SELFBALANCE => (0, 1, 0),
+            Instruction.BASEFEE => (0, 1, 0),
+            Instruction.POP => (1, 0, 0),
+            Instruction.MLOAD => (1, 1, 0),
+            Instruction.MSTORE => (2, 0, 0),
+            Instruction.MSTORE8 => (2, 0, 0),
+            Instruction.SLOAD => (1, 1, 0),
+            Instruction.SSTORE => (2, 0, 0),
+            Instruction.MSIZE => (0, 1, 0),
+            Instruction.GAS => (0, 1, 0),
+            Instruction.JUMPDEST => (0, 0, 0),
+            Instruction.DATAHASH => (1, 1, 0),
+            >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, instruction - Instruction.PUSH0),
+            >= Instruction.DUP1 and <= Instruction.DUP16 => (instruction - Instruction.DUP1 + 1, instruction - Instruction.DUP1 + 2, 0),
+            >= Instruction.SWAP1 and <= Instruction.SWAP16 => (instruction - Instruction.SWAP1 + 2, instruction - Instruction.SWAP1 + 2, 0),
+            Instruction.LOG0 => (2, 0, 0),
+            Instruction.LOG1 => (3, 0, 0),
+            Instruction.LOG2 => (4, 0, 0),
+            Instruction.LOG3 => (5, 0, 0),
+            Instruction.LOG4 => (6, 0, 0),
+            Instruction.CREATE => (3, 1, 0),
+            Instruction.CALL => (7, 1, 0),
+            Instruction.RETURN => (2, 0, 0),
+            Instruction.DELEGATECALL => (6, 1, 0),
+            Instruction.CREATE2 => (4, 1, 0),
+            Instruction.STATICCALL => (6, 1, 0),
+            Instruction.REVERT => (2, 0, 0),
+            Instruction.INVALID => (0, 0, 0),
+            _ => throw new NotImplementedException($"Instruction {instruction} not implemented")
+        };
+
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
+        {
+            spec ??= Frontier.Instance;
+            return instruction switch
+            {
+                Instruction.PREVRANDAO => isPostMerge ? "PREVRANDAO" : "DIFFICULTY",
+                _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
+            };
+        }
     }
 }
 
