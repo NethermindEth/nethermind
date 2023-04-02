@@ -35,6 +35,7 @@ namespace Nethermind.Serialization.Json
             {
                 new AddressConverter(),
                 new KeccakConverter(),
+                new ValueKeccakConverter(),
                 new BloomConverter(),
                 new ByteArrayConverter(),
                 new LongConverter(),
@@ -55,6 +56,7 @@ namespace Nethermind.Serialization.Json
         {
             new AddressConverter(),
             new KeccakConverter(),
+            new ValueKeccakConverter(),
             new BloomConverter(),
             new ByteArrayConverter(),
             new LongConverter(NumberConversion.Decimal),

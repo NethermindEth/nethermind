@@ -28,4 +28,18 @@ namespace Nethermind.Serialization.Json
             return string.IsNullOrWhiteSpace(s) ? null : new Keccak(Bytes.FromHexString(s));
         }
     }
+
+    public class ValueKeccakConverter : JsonConverter<ValueKeccak>
+    {
+        public override void WriteJson(JsonWriter writer, ValueKeccak value, JsonSerializer serializer)
+        {
+            writer.WriteValue(value.Bytes.ToHexString(true));
+        }
+
+        public override ValueKeccak ReadJson(JsonReader reader, Type objectType, ValueKeccak existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            string s = (string)reader.Value;
+            return string.IsNullOrWhiteSpace(s) ? default : new ValueKeccak(Bytes.FromHexString(s));
+        }
+    }
 }

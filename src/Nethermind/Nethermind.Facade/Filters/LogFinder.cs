@@ -243,9 +243,9 @@ namespace Nethermind.Blockchain.Find
                                     logIndexInBlock,
                                     logsIterator.Index,
                                     receipt.BlockNumber,
-                                    receipt.BlockHash,
+                                    new Keccak(receipt.BlockHash),
                                     receipt.Index,
-                                    receipt.TxHash,
+                                    new Keccak(receipt.TxHash),
                                     log.LoggersAddress.ToAddress(),
                                     log.Data.ToArray(),
                                     topics));
