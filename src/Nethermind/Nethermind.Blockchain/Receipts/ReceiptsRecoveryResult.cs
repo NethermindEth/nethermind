@@ -8,5 +8,5 @@ public enum ReceiptsRecoveryResult
     Success,
     Fail,
     Skipped,
-    SuccessNeedReset,
+    NeedReinsert,
 }

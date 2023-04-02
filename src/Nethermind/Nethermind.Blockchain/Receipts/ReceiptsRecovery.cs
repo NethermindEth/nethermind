@@ -14,13 +14,13 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ISpecProvider _specProvider;
-        private readonly bool _resetReceiptOnRecover;
+        private readonly bool _reinsertReceiptOnRecover;
 
-        public ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool resetReceiptOnRecover = true)
+        public ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _resetReceiptOnRecover = resetReceiptOnRecover;
+            _reinsertReceiptOnRecover = reinsertReceiptOnRecover;
         }
 
         public ReceiptsRecoveryResult TryRecover(Block block, TxReceipt[] receipts, bool forceRecoverSender = true)
@@ -41,14 +41,12 @@ namespace Nethermind.Blockchain.Receipts
                         }
                     }
 
-                    if (_resetReceiptOnRecover)
+                    if (_reinsertReceiptOnRecover)
                     {
-                        return ReceiptsRecoveryResult.SuccessNeedReset;
+                        return ReceiptsRecoveryResult.NeedReinsert;
                     }
-                    else
-                    {
-                        return ReceiptsRecoveryResult.Success;
-                    }
+
+                    return ReceiptsRecoveryResult.Success;
                 }
 
                 return ReceiptsRecoveryResult.Skipped;
