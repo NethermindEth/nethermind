@@ -70,8 +70,8 @@ namespace Nethermind.Network.Benchmarks
 
             StatusMessage statusMessage = new StatusMessage();
             statusMessage.ProtocolVersion = 63;
-            statusMessage.BestHash = new Keccak(Keccak.Compute("1"));
-            statusMessage.GenesisHash = new Keccak(Keccak.Compute("0"));
+            statusMessage.BestHash = Keccak.Compute("1");
+            statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
             statusMessage.NetworkId = 1;
             IByteBuffer bufStatus = _ser.ZeroSerialize(statusMessage);

@@ -16,7 +16,7 @@ namespace Nethermind.Benchmarks.Core
         {
             for (int i = 0; i < Keys.Length; i++)
             {
-                Keys[i] = new Keccak(Keccak.Compute(i.ToString()));
+                Keys[i] = Keccak.Compute(i.ToString());
             }
         }
 

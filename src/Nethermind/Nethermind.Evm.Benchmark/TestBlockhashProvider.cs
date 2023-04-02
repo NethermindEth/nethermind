@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Benchmark
     {
         public Keccak GetBlockhash(BlockHeader currentBlock, in long number)
         {
-            return new Keccak(Keccak.Compute(number.ToString()));
+            return Keccak.Compute(number.ToString());
         }
     }
 }
