@@ -7,6 +7,16 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
+    public readonly ref struct KeccakIteratorRef
+    {
+        public readonly ref readonly ValueKeccak Keccak;
+
+        public KeccakIteratorRef(in ValueKeccak keccak)
+        {
+            Keccak = ref keccak;
+        }
+    }
+
     public ref struct KeccaksIterator
     {
         private readonly int _length;
@@ -20,17 +30,17 @@ namespace Nethermind.Blockchain.Receipts
             Index = -1;
         }
 
-        public bool TryGetNext(out KeccakStructRef current)
+        public bool TryGetNext(out KeccakIteratorRef current)
         {
             if (_decoderContext.Position < _length)
             {
-                _decoderContext.DecodeKeccakStructRef(out current);
+                current = new KeccakIteratorRef(in _decoderContext.DecodeKeccakStructRef());
                 Index++;
                 return true;
             }
             else
             {
-                current = new KeccakStructRef(Keccak.Zero.Bytes);
+                current = new KeccakIteratorRef(in Keccak.Zero.ToStructRef());
                 return false;
             }
         }

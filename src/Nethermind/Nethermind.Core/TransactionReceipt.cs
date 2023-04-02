@@ -58,8 +58,8 @@ namespace Nethermind.Core
         /// </summary>
         public byte StatusCode { get; set; }
         public long BlockNumber { get; set; }
-        public KeccakStructRef BlockHash;
-        public KeccakStructRef TxHash;
+        public ref readonly ValueKeccak BlockHash;
+        public ref readonly ValueKeccak TxHash;
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
@@ -73,7 +73,7 @@ namespace Nethermind.Core
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>
-        public KeccakStructRef PostTransactionState;
+        public ref readonly ValueKeccak PostTransactionState;
 
         public BloomStructRef Bloom;
 
@@ -91,8 +91,8 @@ namespace Nethermind.Core
             TxType = receipt.TxType;
             StatusCode = receipt.StatusCode;
             BlockNumber = receipt.BlockNumber;
-            BlockHash = (receipt.BlockHash ?? Keccak.Zero).ToStructRef();
-            TxHash = (receipt.TxHash ?? Keccak.Zero).ToStructRef();
+            BlockHash = ref (receipt.BlockHash ?? Keccak.Zero).ToStructRef();
+            TxHash = ref (receipt.TxHash ?? Keccak.Zero).ToStructRef();
             Index = receipt.Index;
             GasUsed = receipt.GasUsed;
             GasUsedTotal = receipt.GasUsedTotal;
@@ -100,7 +100,7 @@ namespace Nethermind.Core
             ContractAddress = (receipt.ContractAddress ?? Address.Zero).ToStructRef();
             Recipient = (receipt.Recipient ?? Address.Zero).ToStructRef();
             ReturnValue = receipt.ReturnValue;
-            PostTransactionState = (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
+            PostTransactionState = ref (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
             Bloom = (receipt.Bloom ?? Core.Bloom.Empty).ToStructRef();
             Logs = receipt.Logs;
             LogsRlp = default;

@@ -30,11 +30,11 @@ namespace Nethermind.Blockchain.Filters.Topics
             return false;
         }
 
-        public override bool Accepts(ref KeccakStructRef topic)
+        public override bool Accepts(in ValueKeccak topic)
         {
             for (int i = 0; i < _subexpressions.Length; i++)
             {
-                if (_subexpressions[i].Accepts(ref topic))
+                if (_subexpressions[i].Accepts(in topic))
                 {
                     return true;
                 }

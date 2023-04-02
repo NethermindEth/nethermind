@@ -16,12 +16,12 @@ namespace Nethermind.Core.Crypto
     [DebuggerDisplay("{ToString()}")]
     public readonly struct ValueKeccak : IEquatable<ValueKeccak>, IComparable<ValueKeccak>, IEquatable<Keccak>
     {
-        private readonly Vector256<byte> Bytes;
+        private readonly Vector256<byte> _bytes;
 
         public const int MemorySize = 32;
         public int Length => MemorySize;
 
-        public ReadOnlySpan<byte> Span => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in Bytes), 1));
+        public ReadOnlySpan<byte> Span => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
 
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
@@ -61,25 +61,25 @@ namespace Nethermind.Core.Crypto
         {
             if (bytes is null || bytes.Length == 0)
             {
-                Bytes = OfAnEmptyString.Bytes;
+                _bytes = OfAnEmptyString._bytes;
                 return;
             }
 
             Debug.Assert(bytes.Length == ValueKeccak.MemorySize);
-            Bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
+            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
         public ValueKeccak(string? hex)
         {
             if (hex is null || hex.Length == 0)
             {
-                Bytes = OfAnEmptyString.Bytes;
+                _bytes = OfAnEmptyString._bytes;
                 return;
             }
 
             byte[] bytes = Extensions.Bytes.FromHexString(hex);
             Debug.Assert(bytes.Length == ValueKeccak.MemorySize);
-            Bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
+            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
         public ValueKeccak(Span<byte> bytes)
@@ -89,12 +89,12 @@ namespace Nethermind.Core.Crypto
         {
             if (bytes.Length == 0)
             {
-                Bytes = OfAnEmptyString.Bytes;
+                _bytes = OfAnEmptyString._bytes;
                 return;
             }
 
             Debug.Assert(bytes.Length == ValueKeccak.MemorySize);
-            Bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
+            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
 
         [DebuggerStepThrough]
@@ -119,9 +119,9 @@ namespace Nethermind.Core.Crypto
 
         public override bool Equals(object? obj) => obj is ValueKeccak keccak && Equals(keccak);
 
-        public bool Equals(ValueKeccak other) => Bytes.Equals(other.Bytes);
+        public bool Equals(ValueKeccak other) => _bytes.Equals(other._bytes);
 
-        public bool Equals(Keccak? other) => Bytes.Equals(other?.Bytes.Bytes ?? default);
+        public bool Equals(Keccak? other) => _bytes.Equals(other?.Bytes._bytes ?? default);
 
         public bool IsZero
         {
@@ -129,22 +129,22 @@ namespace Nethermind.Core.Crypto
             {
                 if (Avx.IsSupported)
                 {
-                    var v = Bytes; //Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.AsRef(in Bytes));
+                    var v = _bytes; //Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.AsRef(in Bytes));
                     return Avx.TestZ(v, v);
                 }
                 else
                 {
-                    return Bytes.Equals(default);
+                    return _bytes.Equals(default);
                 }
             }
         }
 
         public override int GetHashCode()
         {
-            long v0 = Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in Bytes));
-            long v1 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in Bytes)), 1);
-            long v2 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in Bytes)), 2);
-            long v3 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in Bytes)), 3);
+            long v0 = Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes));
+            long v1 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 1);
+            long v2 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 2);
+            long v3 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 3);
             v0 ^= v1;
             v2 ^= v3;
             v0 ^= v2;
@@ -198,6 +198,8 @@ namespace Nethermind.Core.Crypto
             MemorySizes.RefSize +
             Size;
 
+        private readonly ValueKeccak _keccak;
+
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
@@ -223,9 +225,9 @@ namespace Nethermind.Core.Crypto
         /// </summary>
         public static Keccak MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
-        public ValueKeccak Bytes { get; }
+        public ValueKeccak Bytes => _keccak;
 
-        public ReadOnlySpan<byte> Span => Bytes.Span;
+        public ReadOnlySpan<byte> Span =>  MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _keccak), 1));
 
         public Keccak(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString)) { }
@@ -237,7 +239,7 @@ namespace Nethermind.Core.Crypto
                 throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
             }
 
-            Bytes = new ValueKeccak(bytes);
+            _keccak = new ValueKeccak(bytes);
         }
 
         public Keccak(ReadOnlySpan<byte> bytes)
@@ -247,7 +249,7 @@ namespace Nethermind.Core.Crypto
                 throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
             }
 
-            Bytes = new ValueKeccak(bytes);
+            _keccak = new ValueKeccak(bytes);
         }
 
         public override string ToString()
@@ -311,12 +313,12 @@ namespace Nethermind.Core.Crypto
                 return false;
             }
 
-            return Extensions.Bytes.AreEqual(other.Bytes, Bytes);
+            return other._keccak == _keccak;
         }
 
         public int CompareTo(Keccak? other)
         {
-            return Extensions.Bytes.Comparer.Compare(Bytes.Span, other is null ? default : other.Bytes.Span);
+            return other is null ? -1 : _keccak.CompareTo(other._keccak);
         }
 
         public override bool Equals(object? obj)
@@ -326,7 +328,7 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            return Bytes.GetHashCode();
+            return _keccak.GetHashCode();
         }
 
         public static bool operator ==(Keccak? a, Keccak? b)
@@ -341,7 +343,7 @@ namespace Nethermind.Core.Crypto
                 return false;
             }
 
-            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+            return a._keccak == b._keccak;
         }
 
         public static bool operator !=(Keccak? a, Keccak? b)
@@ -355,7 +357,7 @@ namespace Nethermind.Core.Crypto
             if (k1 is null) return k2 is not null;
             if (k2 is null) return false;
 
-            return k1.Bytes > k2.Bytes;
+            return k1._keccak > k2._keccak;
         }
 
         public static bool operator <(Keccak? k1, Keccak? k2)
@@ -364,7 +366,7 @@ namespace Nethermind.Core.Crypto
             if (k1 is null) return false;
             if (k2 is null) return true;
 
-            return k1.Bytes < k2.Bytes;
+            return k1._keccak < k2._keccak;
         }
 
         public static bool operator >=(Keccak? k1, Keccak? k2)
@@ -373,7 +375,7 @@ namespace Nethermind.Core.Crypto
             if (k1 is null) return true;
             if (k2 is null) return false;
 
-            return k1.Bytes >= k2.Bytes;
+            return k1._keccak >= k2._keccak;
         }
 
         public static bool operator <=(Keccak? k1, Keccak? k2)
@@ -382,113 +384,14 @@ namespace Nethermind.Core.Crypto
             if (k1 is null) return k2 is null;
             if (k2 is null) return true;
 
-            return k1.Bytes <= k2.Bytes;
+            return k1._keccak <= k2._keccak;
         }
 
         public byte[] ToByteArray()
         {
-            return Bytes.Span.ToArray();
+            return _keccak.ToByteArray();
         }
 
-        public KeccakStructRef ToStructRef() => new(Bytes);
-    }
-
-    public ref struct KeccakStructRef
-    {
-        public const int Size = 32;
-
-        public int MemorySize => MemorySizes.ArrayOverhead + Size;
-
-        public ReadOnlySpan<byte> Bytes { get; }
-
-        public KeccakStructRef(ReadOnlySpan<byte> bytes)
-        {
-            if (bytes.Length != Size)
-            {
-                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
-            }
-
-            Bytes = bytes;
-        }
-
-        public override string ToString()
-        {
-            return ToString(true);
-        }
-
-        public string ToShortString(bool withZeroX = true)
-        {
-            string hash = Bytes.ToHexString(withZeroX);
-            return $"{hash.Substring(0, withZeroX ? 8 : 6)}...{hash.Substring(hash.Length - 6)}";
-        }
-
-        public string ToString(bool withZeroX)
-        {
-            return Bytes.ToHexString(withZeroX);
-        }
-
-        public bool Equals(Keccak? other)
-        {
-            if (other is null)
-            {
-                return false;
-            }
-
-            return Extensions.Bytes.AreEqual(other.Bytes, Bytes);
-        }
-
-        public bool Equals(KeccakStructRef other) => Extensions.Bytes.AreEqual(other.Bytes, Bytes);
-
-        public override bool Equals(object? obj)
-        {
-            return obj?.GetType() == typeof(Keccak) && Equals((Keccak)obj);
-        }
-
-        public override int GetHashCode()
-        {
-            return MemoryMarshal.Read<int>(Bytes);
-        }
-
-        public static bool operator ==(KeccakStructRef a, Keccak? b)
-        {
-            if (b is null)
-            {
-                return false;
-            }
-
-            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
-        }
-
-        public static bool operator ==(Keccak? a, KeccakStructRef b)
-        {
-            if (a is null)
-            {
-                return false;
-            }
-
-            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
-        }
-
-        public static bool operator ==(KeccakStructRef a, KeccakStructRef b)
-        {
-            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
-        }
-
-        public static bool operator !=(KeccakStructRef a, Keccak b)
-        {
-            return !(a == b);
-        }
-
-        public static bool operator !=(Keccak a, KeccakStructRef b)
-        {
-            return !(a == b);
-        }
-
-        public static bool operator !=(KeccakStructRef a, KeccakStructRef b)
-        {
-            return !(a == b);
-        }
-
-        public Keccak ToKeccak() => new(Bytes.ToArray());
+        public ref readonly ValueKeccak ToStructRef() => ref _keccak;
     }
 }

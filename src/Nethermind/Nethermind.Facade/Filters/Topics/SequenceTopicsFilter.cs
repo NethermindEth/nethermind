@@ -50,9 +50,9 @@ namespace Nethermind.Blockchain.Filters.Topics
             var iterator = new KeccaksIterator(entry.TopicsRlp);
             for (int i = 0; i < _expressions.Length; i++)
             {
-                if (iterator.TryGetNext(out var keccak))
+                if (iterator.TryGetNext(out KeccakIteratorRef keccak))
                 {
-                    if (!_expressions[i].Accepts(ref keccak))
+                    if (!_expressions[i].Accepts(in keccak.Keccak))
                     {
                         return false;
                     }

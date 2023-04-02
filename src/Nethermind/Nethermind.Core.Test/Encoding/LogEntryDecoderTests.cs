@@ -41,8 +41,8 @@ namespace Nethermind.Core.Test.Encoding
             KeccaksIterator iterator = new(decoded.TopicsRlp);
             for (int i = 0; i < logEntry.Topics.Length; i++)
             {
-                iterator.TryGetNext(out KeccakStructRef keccak);
-                Assert.That(logEntry.Topics[i] == keccak, $"topics[{i}]");
+                iterator.TryGetNext(out KeccakIteratorRef keccak);
+                Assert.That(logEntry.Topics[i] == keccak.Keccak, $"topics[{i}]");
             }
         }
 

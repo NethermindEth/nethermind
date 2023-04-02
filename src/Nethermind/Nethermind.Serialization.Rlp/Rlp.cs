@@ -1001,12 +1001,12 @@ namespace Nethermind.Serialization.Rlp
                 return new ValueKeccak(keccakSpan);
             }
 
-            public void DecodeKeccakStructRef(out KeccakStructRef keccak)
+            public ref readonly ValueKeccak DecodeKeccakStructRef()
             {
                 int prefix = ReadByte();
                 if (prefix == 128)
                 {
-                    keccak = new KeccakStructRef(Keccak.Zero.Bytes);
+                    return ref Keccak.Zero.ToStructRef();
                 }
                 else if (prefix != 128 + 32)
                 {
@@ -1015,17 +1015,17 @@ namespace Nethermind.Serialization.Rlp
                 else
                 {
                     Span<byte> keccakSpan = Read(32);
-                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Span))
                     {
-                        keccak = new KeccakStructRef(Keccak.OfAnEmptyString.Bytes);
+                        return ref Keccak.OfAnEmptyString.ToStructRef();
                     }
-                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Span))
                     {
-                        keccak = new KeccakStructRef(Keccak.EmptyTreeHash.Bytes);
+                        return ref Keccak.EmptyTreeHash.ToStructRef();
                     }
                     else
                     {
-                        keccak = new KeccakStructRef(keccakSpan);
+                        return ref (new Keccak(keccakSpan)).ToStructRef();
                     }
                 }
             }
