@@ -18,8 +18,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 63;
-            statusMessage.BestHash = new Keccak(Keccak.Compute("1"));
-            statusMessage.GenesisHash = new Keccak(Keccak.Compute("0"));
+            statusMessage.BestHash = Keccak.Compute("1");
+            statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
             statusMessage.NetworkId = 1;
 
@@ -40,8 +40,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 63;
-            statusMessage.BestHash = new Keccak(Keccak.Compute("1"));
-            statusMessage.GenesisHash = new Keccak(Keccak.Compute("0"));
+            statusMessage.BestHash = Keccak.Compute("1");
+            statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
             statusMessage.NetworkId = 1;
             statusMessage.ForkId = new ForkId(12345678, 0);
@@ -55,8 +55,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 63;
-            statusMessage.BestHash = new Keccak(Keccak.Compute("1"));
-            statusMessage.GenesisHash = new Keccak(Keccak.Compute("0"));
+            statusMessage.BestHash = Keccak.Compute("1");
+            statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
             statusMessage.NetworkId = 1;
             statusMessage.ForkId = new ForkId(12345678, long.MaxValue);

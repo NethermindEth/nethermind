@@ -141,7 +141,7 @@ namespace Nethermind.AuRa.Test.Validators
 
             int blockNumber = 10;
             Address[] validators = TestItem.Addresses.Take(10).ToArray();
-            Keccak blockHash = new Keccak(Keccak.Compute("Test"));
+            Keccak blockHash = Keccak.Compute("Test");
             PendingValidators pendingValidators = new(blockNumber, blockHash, validators);
             _validatorStore.PendingValidators.Returns(pendingValidators);
             _blockTree.Head.Returns((Block)null);
@@ -501,8 +501,8 @@ namespace Nethermind.AuRa.Test.Validators
                 _block.Header.Number = blockNumber;
                 _block.Header.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
                 _block.Header.AuRaStep = blockNumber;
-                _block.Header.Hash = new Keccak(Keccak.Compute((blockNumber + hashSeeds[blockNumber]).ToString()));
-                _block.Header.ParentHash = blockNumber == test.StartBlockNumber ? Keccak.Zero : new Keccak(Keccak.Compute((blockNumber - 1 + hashSeeds[blockNumber - 1]).ToString()));
+                _block.Header.Hash = Keccak.Compute((blockNumber + hashSeeds[blockNumber]).ToString());
+                _block.Header.ParentHash = blockNumber == test.StartBlockNumber ? Keccak.Zero : Keccak.Compute((blockNumber - 1 + hashSeeds[blockNumber - 1]).ToString());
 
                 TxReceipt[] txReceipts = test.GetReceipts(_validatorContract, _block, _contractAddress, _abiEncoder, SetupAbiAddresses);
 

@@ -361,7 +361,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             StateTree tree = new StateTree(new TrieStore(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
 
             PathWithAccount ac1 = new PathWithAccount(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
-            PathWithAccount ac2 = new PathWithAccount(new Keccak(Keccak.Compute("anything")), Build.An.Account.WithBalance(2).TestObject);
+            PathWithAccount ac2 = new PathWithAccount(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
             PathWithAccount ac3 = new PathWithAccount(Keccak.MaxValue, Build.An.Account.WithBalance(2).TestObject);
 
             tree.Set(ac1.Path, ac1.Account);

@@ -168,7 +168,7 @@ namespace Nethermind.AuRa.Test
             {
                 if (repeat == Repeat.YesChangeHash)
                 {
-                    block.Hash = new Keccak(Keccak.Compute("AAA"));
+                    block.Hash = Keccak.Compute("AAA");
                 }
 
                 validateParams = _sealValidator.ValidateParams(parentBlock, block);
