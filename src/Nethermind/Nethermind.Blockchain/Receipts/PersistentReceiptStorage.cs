@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Receipts
         private static readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
 
         private const int CacheSize = 64;
-        private readonly LruCache<KeccakKey, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
+        private readonly LruCache<ValueKeccak, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
         public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery)
         {
@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain.Receipts
             using IBatch batch = _transactionDb.StartBatch();
             foreach (TxReceipt txReceipt in receipts)
             {
-                batch[txReceipt.TxHash.Bytes] = block.Hash.Bytes;
+                batch[txReceipt.TxHash.Span] = block.Hash.ToByteArray();
             }
         }
     }

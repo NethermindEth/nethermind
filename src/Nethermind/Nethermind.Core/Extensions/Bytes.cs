@@ -85,7 +85,7 @@ namespace Nethermind.Core.Extensions
                 return y.Length > x.Length ? 1 : 0;
             }
 
-            public int Compare(Span<byte> x, Span<byte> y)
+            public int Compare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
             {
                 if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
                     x.Length == y.Length)
@@ -753,8 +753,14 @@ namespace Nethermind.Core.Extensions
             return string.Create(length, stateToPass, static (chars, state) =>
             {
                 // this path is rarely used - only in wallets
+                Debugger.Break();
                 byte[] bytesArray = state.Bytes;
-                string hashHex = Keccak.Compute(bytesArray.ToHexString(false)).ToString(false);
+                string hexString = bytesArray.ToHexString(false);
+                Debugger.Break();
+                Keccak keccak = Keccak.Compute(hexString);
+                Debugger.Break();
+                string hashHex = keccak.ToString(false);
+                Debugger.Break();
                 Span<byte> bytes = bytesArray;
 
                 if (state.WithZeroX)

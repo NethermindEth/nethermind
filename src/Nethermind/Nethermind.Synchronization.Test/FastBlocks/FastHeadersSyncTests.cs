@@ -77,7 +77,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     FastSync = true,
                     FastBlocks = true,
                     PivotNumber = "1000",
-                    PivotHash = pivot.Hash.Bytes.ToHexString(),
+                    PivotHash = pivot.Hash.ToByteArray().ToHexString(),
                     PivotTotalDifficulty = pivot.TotalDifficulty!.ToString()
                 },
                 syncReport,
@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             syncReport.HeadersInQueue.Returns(new MeasuredProgress());
 
             BlockHeader pivot = remoteBlockTree.FindHeader(500, BlockTreeLookupOptions.None)!;
-            ResettableHeaderSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "500", PivotHash = pivot.Hash.Bytes.ToHexString(), PivotTotalDifficulty = pivot.TotalDifficulty!.ToString() }, syncReport, LimboLogs.Instance);
+            ResettableHeaderSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "500", PivotHash = pivot.Hash.ToByteArray().ToHexString(), PivotTotalDifficulty = pivot.TotalDifficulty!.ToString() }, syncReport, LimboLogs.Instance);
             feed.InitializeFeed();
 
             void FulfillBatch(HeadersSyncBatch batch)
@@ -248,7 +248,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 Substitute.For<ISyncModeSelector>(),
                 blockTree,
                 Substitute.For<ISyncPeerPool>(),
-                new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "500", PivotHash = pivot.Hash.Bytes.ToHexString(), PivotTotalDifficulty = pivot.TotalDifficulty!.ToString() },
+                new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "500", PivotHash = pivot.Hash.ToByteArray().ToHexString(), PivotTotalDifficulty = pivot.TotalDifficulty!.ToString() },
                 syncReport,
                 LimboLogs.Instance,
                 hangOnBlockNumber: 400,

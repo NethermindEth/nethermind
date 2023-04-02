@@ -79,14 +79,14 @@ namespace Nethermind.Core.Crypto
 
         private Address ComputeAddress()
         {
-            Span<byte> hash = ValueKeccak.Compute(Bytes).BytesAsSpan;
-            return new Address(hash.Slice(12).ToArray());
+            ReadOnlySpan<byte> hash = ValueKeccak.Compute(Bytes).Span;
+            return new Address(hash[12..].ToArray());
         }
 
         public static Address ComputeAddress(ReadOnlySpan<byte> publicKeyBytes)
         {
-            Span<byte> hash = ValueKeccak.Compute(publicKeyBytes).BytesAsSpan;
-            return new Address(hash.Slice(12).ToArray());
+            ReadOnlySpan<byte> hash = ValueKeccak.Compute(publicKeyBytes).Span;
+            return new Address(hash[12..].ToArray());
         }
 
         public override bool Equals(object? obj)

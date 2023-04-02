@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public IValidatorStore? ValidatorStore { get; set; }
 
-        public LruCache<KeccakKey, UInt256> TransactionPermissionContractVersions { get; }
+        public LruCache<ValueKeccak, UInt256> TransactionPermissionContractVersions { get; }
             = new(
                 PermissionBasedTxFilter.Cache.MaxCacheSize,
                 nameof(TransactionPermissionContract));

@@ -22,16 +22,16 @@ namespace Nethermind.Synchronization.SnapSync
         public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes) AddAccountRange(
             StateTree tree,
             long blockNumber,
-            Keccak expectedRootHash,
-            Keccak startingHash,
-            Keccak limitHash,
+            ValueKeccak expectedRootHash,
+            ValueKeccak startingHash,
+            ValueKeccak limitHash,
             PathWithAccount[] accounts,
             byte[][] proofs = null
         )
         {
             // TODO: Check the accounts boundaries and sorting
 
-            Keccak lastHash = accounts[^1].Path;
+            ValueKeccak lastHash = accounts[^1].Path;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) =
                 FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, proofs);
@@ -81,15 +81,15 @@ namespace Nethermind.Synchronization.SnapSync
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
             StorageTree tree,
             long blockNumber,
-            Keccak? startingHash,
+            ValueKeccak? startingHash,
             PathWithStorageSlot[] slots,
-            Keccak expectedRootHash,
+            ValueKeccak expectedRootHash,
             byte[][]? proofs = null
         )
         {
             // TODO: Check the slots boundaries and sorting
 
-            Keccak lastHash = slots.Last().Path;
+            ValueKeccak lastHash = slots.Last().Path;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
                 tree, startingHash, lastHash, Keccak.MaxValue, expectedRootHash, proofs);
@@ -122,10 +122,10 @@ namespace Nethermind.Synchronization.SnapSync
 
         private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(
             PatriciaTree tree,
-            Keccak? startingHash,
-            Keccak endHash,
-            Keccak limitHash,
-            Keccak expectedRootHash,
+            ValueKeccak? startingHash,
+            ValueKeccak endHash,
+            ValueKeccak limitHash,
+            ValueKeccak expectedRootHash,
             byte[][]? proofs = null
         )
         {
@@ -139,10 +139,10 @@ namespace Nethermind.Synchronization.SnapSync
                 throw new ArgumentNullException(nameof(tree));
             }
 
-            startingHash ??= Keccak.Zero;
+            startingHash ??= ValueKeccak.Zero;
             List<TrieNode> sortedBoundaryList = new();
 
-            Dictionary<Keccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
+            Dictionary<ValueKeccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
 
             if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
             {
@@ -150,11 +150,11 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             Span<byte> leftBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(startingHash.Bytes, leftBoundary);
+            Nibbles.BytesToNibbleBytes(startingHash.GetValueOrDefault().Span, leftBoundary);
             Span<byte> rightBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(endHash.Bytes, rightBoundary);
+            Nibbles.BytesToNibbleBytes(endHash.Span, rightBoundary);
             Span<byte> rightLimit = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(limitHash.Bytes, rightLimit);
+            Nibbles.BytesToNibbleBytes(limitHash.Span, rightLimit);
 
             // For when in very-very unlikely case where the last remaining address is Keccak.MaxValue, (who knows why,
             // the chain have special handling for it maybe) and it is not included the returned account range, (again,
@@ -253,9 +253,9 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight);
         }
 
-        private static Dictionary<Keccak, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store)
+        private static Dictionary<ValueKeccak, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store)
         {
-            Dictionary<Keccak, TrieNode> dict = new();
+            Dictionary<ValueKeccak, TrieNode> dict = new();
 
             for (int i = 0; i < proofs.Length; i++)
             {

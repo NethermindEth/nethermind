@@ -21,7 +21,12 @@ namespace Nethermind.Db
 
         public static void Set(this IDb db, Keccak key, byte[] value)
         {
-            db[key.Bytes] = value;
+            db[key.Span] = value;
+        }
+
+        public static void Set(this IDb db, ValueKeccak key, byte[] value)
+        {
+            db[key.Span] = value;
         }
 
         public static byte[]? Get(this IDb db, Keccak key)
@@ -33,7 +38,19 @@ namespace Nethermind.Db
             }
 #endif
 
-            return db[key.Bytes];
+            return db[key.Span];
+        }
+
+        public static byte[]? Get(this IDb db, ValueKeccak key)
+        {
+#if DEBUG
+            if (key == Keccak.OfAnEmptyString)
+            {
+                throw new InvalidOperationException();
+            }
+#endif
+
+            return db[key.Span];
         }
 
         public static void Set(this IDb db, Keccak key, Span<byte> value)
@@ -48,9 +65,21 @@ namespace Nethermind.Db
             }
         }
 
-        public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<KeccakKey> keys)
+        public static void Set(this IDb db, ValueKeccak key, ReadOnlySpan<byte> value)
         {
-            var k = keys.Select(k => k.Bytes).ToArray();
+            if (db is IDbWithSpan dbWithSpan)
+            {
+                dbWithSpan.PutSpan(key.Span, value);
+            }
+            else
+            {
+                db[key.Span] = value.ToArray();
+            }
+        }
+
+        public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<ValueKeccak> keys)
+        {
+            var k = keys.Select(k => k.Span.ToArray()).ToArray();
             return db[k];
         }
 
@@ -70,7 +99,26 @@ namespace Nethermind.Db
             }
 #endif
 
-            return db.GetSpan(key.Bytes);
+            return db.GetSpan(key.Span);
+        }
+
+        /// <summary>
+        ///
+        /// </summary>
+        /// <param name="db"></param>
+        /// <param name="key"></param>
+        /// <returns>Can return null or empty Span on missing key</returns>
+        /// <exception cref="InvalidOperationException"></exception>
+        public static Span<byte> GetSpan(this IDbWithSpan db, ValueKeccak key)
+        {
+#if DEBUG
+            if (key == Keccak.OfAnEmptyString)
+            {
+                throw new InvalidOperationException();
+            }
+#endif
+
+            return db.GetSpan(key.Span);
         }
 
         public static bool KeyExists(this IDb db, Keccak key)
@@ -82,7 +130,19 @@ namespace Nethermind.Db
             }
 #endif
 
-            return db.KeyExists(key.Bytes);
+            return db.KeyExists(key.Span);
+        }
+
+        public static bool KeyExists(this IDb db, ValueKeccak key)
+        {
+#if DEBUG
+            if (key == Keccak.OfAnEmptyString)
+            {
+                throw new InvalidOperationException();
+            }
+#endif
+
+            return db.KeyExists(key.Span);
         }
 
         public static bool KeyExists(this IDb db, long key)
@@ -92,7 +152,12 @@ namespace Nethermind.Db
 
         public static void Delete(this IDb db, Keccak key)
         {
-            db.Remove(key.Bytes);
+            db.Remove(key.Span);
+        }
+
+        public static void Delete(this IDb db, ValueKeccak key)
+        {
+            db.Remove(key.Span);
         }
 
         public static void Set(this IDb db, byte[] key, byte[] value)
@@ -123,7 +188,7 @@ namespace Nethermind.Db
             db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());
         }
 
-        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<KeccakKey, TItem> cache = null, bool shouldCache = true) where TItem : class
+        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
         {
             TItem item = cache?.Get(key);
             if (item is null)

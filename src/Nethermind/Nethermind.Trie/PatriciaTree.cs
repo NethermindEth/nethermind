@@ -301,6 +301,12 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
+            return Get((ReadOnlySpan<byte>) rawKey, rootHash);
+        }
+
+        [DebuggerStepThrough]
+        public byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
+        {
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
@@ -322,6 +328,12 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public void Set(Span<byte> rawKey, byte[] value)
         {
+            Set((ReadOnlySpan<byte>)rawKey, value);
+        }
+
+        [DebuggerStepThrough]
+        public void Set(ReadOnlySpan<byte> rawKey, byte[] value)
+        {
             if (_logger.IsTrace)
                 _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
 
@@ -336,13 +348,19 @@ namespace Nethermind.Trie
         }
 
         [DebuggerStepThrough]
-        public void Set(Span<byte> rawKey, Rlp? value)
+        public void Set(ReadOnlySpan<byte> rawKey, Rlp? value)
         {
             Set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
         }
 
+        [DebuggerStepThrough]
+        public void Set(Span<byte> rawKey, Rlp? value)
+        {
+            Set((ReadOnlySpan<byte>)rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
+        }
+
         private byte[]? Run(
-            Span<byte> updatePath,
+            ReadOnlySpan<byte> updatePath,
             int nibblesCount,
             byte[]? updateValue,
             bool isUpdate,
@@ -954,7 +972,7 @@ namespace Nethermind.Trie
             }
 
             public TraverseContext(
-                Span<byte> updatePath,
+                ReadOnlySpan<byte> updatePath,
                 byte[]? updateValue,
                 bool isUpdate,
                 bool ignoreMissingDelete = true)

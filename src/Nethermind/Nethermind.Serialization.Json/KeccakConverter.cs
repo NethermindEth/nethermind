@@ -18,7 +18,7 @@ namespace Nethermind.Serialization.Json
             }
             else
             {
-                writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value.Bytes, true));
+                writer.WriteValue(value.Span.ToHexString(true));
             }
         }
 

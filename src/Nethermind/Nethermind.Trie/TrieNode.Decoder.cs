@@ -220,7 +220,7 @@ namespace Nethermind.Trie
                         }
                         else if (item._data[i] is Keccak)
                         {
-                            position = Rlp.Encode(destination, position, (item._data[i] as Keccak)!.Bytes);
+                            position = Rlp.Encode(destination, position, (item._data[i] as Keccak)!.Span);
                         }
                         else
                         {

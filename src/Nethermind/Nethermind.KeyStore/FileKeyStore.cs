@@ -157,7 +157,7 @@ namespace Nethermind.KeyStore
             byte[] decryptKey;
             if (kdf == "scrypt" && cipherType == "aes-128-cbc")
             {
-                decryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16);
+                decryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Span[..16].ToArray();
             }
             else
             {
@@ -238,7 +238,7 @@ namespace Nethermind.KeyStore
             var cipherType = _config.Cipher;
             if (kdf == "scrypt" && cipherType == "aes-128-cbc")
             {
-                encryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16);
+                encryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Span[..16].ToArray();
             }
             else
             {
@@ -277,7 +277,7 @@ namespace Nethermind.KeyStore
                         R = _config.KdfparamsR,
                         Salt = salt.ToHexString(false)
                     },
-                    MAC = mac.ToHexString(false),
+                    MAC = mac.Span.ToHexString(false),
                 },
                 Id = Guid.NewGuid().ToString(),
                 Version = Version

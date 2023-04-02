@@ -28,7 +28,7 @@ namespace Nethermind.Cli.Modules
             tx.From = from;
 
             Keccak? keccak = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;
-            return keccak?.Bytes.ToHexString();
+            return keccak?.ToByteArray().ToHexString();
         }
 
         [CliFunction("eth", "syncing")]

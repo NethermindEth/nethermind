@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.Json
     {
         public override void WriteJson(JsonWriter writer, Bloom value, JsonSerializer serializer)
         {
-            writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value.Bytes, true));
+            writer.WriteValue(value.Bytes.ToHexString(true));
         }
 
         public override Bloom ReadJson(JsonReader reader, Type objectType, Bloom existingValue, bool hasExistingValue, JsonSerializer serializer)

@@ -626,7 +626,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 addressWithStorage.StorageCells[j] = storageCell;
                 byte[] rawKey = new byte[32];
                 addressWithStorage.StorageCells[j].Index.ToBigEndian(rawKey);
-                TestContext.WriteLine($"Set {Keccak.Compute(rawKey).Bytes.ToHexString()}");
+                TestContext.WriteLine($"Set {Keccak.Compute(rawKey).ToByteArray().ToHexString()}");
                 storageTree.Set(addressWithStorage.StorageCells[j].Index, new byte[] { 1 });
                 storageTree.UpdateRootHash();
                 storageTree.Commit(0);

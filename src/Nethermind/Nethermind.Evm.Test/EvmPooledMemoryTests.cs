@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test
         public void Inspect_should_not_change_evm_memory()
         {
             EvmPooledMemory memory = new();
-            memory.Save(3, TestItem.KeccakA.Bytes);
+            memory.Save(3, TestItem.KeccakA.ToByteArray());
             ulong initialSize = memory.Size;
             ReadOnlyMemory<byte> result = memory.Inspect(initialSize + 32, 32);
             Assert.AreEqual(initialSize, memory.Size);
@@ -65,7 +65,7 @@ namespace Nethermind.Evm.Test
         {
             const int offset = 3;
             byte[] expectedEmptyRead = new byte[32 - offset];
-            byte[] expectedKeccakRead = TestItem.KeccakA.Bytes;
+            byte[] expectedKeccakRead = TestItem.KeccakA.ToByteArray();
             EvmPooledMemory memory = new();
             memory.Save((UInt256)offset, expectedKeccakRead);
             ulong initialSize = memory.Size;
@@ -81,7 +81,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] expectedResult = new byte[32];
             EvmPooledMemory memory = new();
-            memory.Save(3, TestItem.KeccakA.Bytes);
+            memory.Save(3, TestItem.KeccakA.ToByteArray());
             ulong initialSize = memory.Size;
             ReadOnlyMemory<byte> result = memory.Load(initialSize + 32, 32);
             Assert.AreNotEqual(initialSize, memory.Size);

@@ -24,9 +24,9 @@ namespace Nethermind.Core
 
         public byte[] Bytes { get; }
 
-        public Address(Keccak keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
+        public Address(Keccak keccak) : this(keccak.Bytes) { }
 
-        public Address(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
+        public Address(in ValueKeccak keccak) : this(keccak.Span.Slice(12, ByteLength).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
 
@@ -120,19 +120,19 @@ namespace Nethermind.Core
             return new Address(addressBytes);
         }
 
-        public override string ToString() => ToString(true, false);
+        public override string ToString() => ToString(withZeroX: true, withEip55Checksum: false);
 
         /// <summary>
         ///     https://github.com/ethereum/EIPs/issues/55
         /// </summary>
         /// <returns></returns>
-        public string ToString(bool withEip55Checksum) => ToString(true, withEip55Checksum);
+        public string ToString(bool withEip55Checksum) => ToString(withZeroX: true, withEip55Checksum);
 
         /// <summary>
         ///     https://github.com/ethereum/EIPs/issues/55
         /// </summary>
         /// <returns></returns>
-        public string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, false, withEip55Checksum);
+        public string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, noLeadingZeros: false, withEip55Checksum);
 
         public override bool Equals(object? obj)
         {
@@ -200,9 +200,7 @@ namespace Nethermind.Core
 
         public Span<byte> Bytes { get; }
 
-        public AddressStructRef(KeccakStructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
-
-        public AddressStructRef(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
+        public AddressStructRef(in ValueKeccak keccak) : this(keccak.Span.Slice(12, ByteLength).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
 

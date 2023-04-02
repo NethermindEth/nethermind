@@ -29,6 +29,6 @@ namespace Nethermind.State.Snap
     public class AccountWithStorageStartingHash
     {
         public PathWithAccount PathAndAccount { get; set; }
-        public Keccak StorageStartingHash { get; set; }
+        public ValueKeccak StorageStartingHash { get; set; }
     }
 }

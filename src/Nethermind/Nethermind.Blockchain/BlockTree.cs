@@ -38,10 +38,10 @@ namespace Nethermind.Blockchain
 
         private const int CacheSize = 64;
 
-        private readonly LruCache<KeccakKey, Block>
+        private readonly LruCache<ValueKeccak, Block>
             _blockCache = new(CacheSize, CacheSize, "blocks");
 
-        private readonly LruCache<KeccakKey, BlockHeader> _headerCache =
+        private readonly LruCache<ValueKeccak, BlockHeader> _headerCache =
             new(CacheSize, CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
 
-        private readonly LruCache<KeccakKey, Block> _invalidBlocks =
+        private readonly LruCache<ValueKeccak, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
 
         private readonly BlockDecoder _blockDecoder = new();
@@ -846,7 +846,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, false);
+            BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: false);
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -1792,7 +1792,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Block block = _blockDb.Get(blockHash, _blockDecoder, _blockCache, false);
+            Block block = _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache: false);
             if (block is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;

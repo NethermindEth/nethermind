@@ -155,7 +155,12 @@ namespace Nethermind.Serialization.Rlp
             Write(bytesToWrite.AsSpan());
         }
 
-        public virtual void Write(Span<byte> bytesToWrite)
+        public void Write(Span<byte> bytesToWrite)
+        {
+            Write((ReadOnlySpan<byte>)bytesToWrite);
+        }
+
+        public virtual void Write(ReadOnlySpan<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
@@ -186,6 +191,25 @@ namespace Nethermind.Serialization.Rlp
             return PeekByte() >= 192;
         }
 
+        public void Encode(ValueKeccak keccak)
+        {
+            WriteByte(160);
+            Write(keccak.Span);
+        }
+
+        public void Encode(ValueKeccak? keccak)
+        {
+            if (keccak is null)
+            {
+                WriteByte(EmptyArrayByte);
+            }
+            else
+            {
+                WriteByte(160);
+                Write(keccak.GetValueOrDefault().Span);
+            }
+        }
+
         public void Encode(Keccak? keccak)
         {
             if (keccak is null)
@@ -203,7 +227,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 WriteByte(160);
-                Write(keccak.Bytes);
+                Write(keccak.Span);
             }
         }
 

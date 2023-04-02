@@ -488,7 +488,6 @@ namespace Nethermind.Trie.Pruning
         {
             if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
-            List<TrieNode> toRemove = new(); // TODO: resettable
 
             long newMemory = 0;
             foreach ((ValueKeccak key, TrieNode node) in _dirtyNodes.AllNodes)
@@ -504,7 +503,7 @@ namespace Nethermind.Trie.Pruning
                             throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                         }
                     }
-                    toRemove.Add(node);
+                    _dirtyNodes.Remove(node.Keccak);
 
                     Metrics.PrunedPersistedNodesCount++;
                 }
@@ -516,7 +515,7 @@ namespace Nethermind.Trie.Pruning
                         throw new InvalidOperationException($"Removed {node}");
                     }
 
-                    toRemove.Add(node);
+                    _dirtyNodes.Remove(node.Keccak);
 
                     Metrics.PrunedTransientNodesCount++;
                 }
@@ -525,17 +524,6 @@ namespace Nethermind.Trie.Pruning
                     node.PrunePersistedRecursively(1);
                     newMemory += node.GetMemorySize(false);
                 }
-            }
-
-            for (int index = 0; index < toRemove.Count; index++)
-            {
-                TrieNode trieNode = toRemove[index];
-                if (trieNode.Keccak is null)
-                {
-                    throw new InvalidOperationException($"{trieNode} has a null key");
-                }
-
-                _dirtyNodes.Remove(trieNode.Keccak);
             }
 
             MemoryUsedByDirtyCache = newMemory;
@@ -798,7 +786,7 @@ namespace Nethermind.Trie.Pruning
                     Keccak? hash = n.Keccak;
                     if (hash?.Bytes is not null)
                     {
-                        store[hash.Bytes] = n.FullRlp;
+                        store[hash.Span] = n.FullRlp;
                         int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
                         if (_logger.IsInfo && persistedNodesCount % million == 0)
                         {

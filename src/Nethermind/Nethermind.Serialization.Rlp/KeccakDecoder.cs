@@ -15,4 +15,14 @@ namespace Nethermind.Serialization.Rlp
 
         public int GetLength(Keccak item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item);
     }
+    public class ValueKeccakDecoder : IRlpValueDecoder<ValueKeccak>
+    {
+        public static readonly ValueKeccakDecoder Instance = new();
+
+        public ValueKeccak Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeValueKeccak();
+
+        public Rlp Encode(ValueKeccak item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.Encode(item);
+
+        public int GetLength(ValueKeccak item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item);
+    }
 }

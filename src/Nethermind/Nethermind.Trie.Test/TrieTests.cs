@@ -350,7 +350,7 @@ namespace Nethermind.Trie.Test
                 Keccak key = TestItem.Keccaks[j];
                 byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
                 patriciaTree.Set(key.Bytes, value);
-                _logger.Trace($"Setting {key.Bytes.ToHexString()} = {value.ToHexString()}");
+                _logger.Trace($"Setting {key.ToString()} = {value.ToHexString()}");
             }
 
             patriciaTree.Commit(1);
@@ -362,7 +362,7 @@ namespace Nethermind.Trie.Test
                 Keccak key = TestItem.Keccaks[j];
                 byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
 
-                _logger.Trace($"Checking {key.Bytes.ToHexString()} = {value.ToHexString()}");
+                _logger.Trace($"Checking {key.ToString()} = {value.ToHexString()}");
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
         }
@@ -427,7 +427,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                checkTree.Get(key.Bytes).Should().BeNull($@"{i} {j}");
+                checkTree.Get(key.Span).Should().BeNull($@"{i} {j}");
             }
         }
 

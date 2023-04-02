@@ -250,7 +250,7 @@ namespace Nethermind.AuRa.Test.Transactions
             VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance,
                 TestItem.AddressA,
                 5,
-                Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<KeccakKey, UInt256>(100, "TestCache"),
+                Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<ValueKeccak, UInt256>(100, "TestCache"),
                 LimboLogs.Instance,
                 Substitute.For<ISpecProvider>());
 
@@ -263,7 +263,7 @@ namespace Nethermind.AuRa.Test.Transactions
             public PermissionBasedTxFilter PermissionBasedTxFilter { get; private set; }
             public PermissionBasedTxFilter.Cache TxPermissionFilterCache { get; private set; }
 
-            public LruCache<KeccakKey, UInt256> TransactionPermissionContractVersions { get; private set; }
+            public LruCache<ValueKeccak, UInt256> TransactionPermissionContractVersions { get; private set; }
 
             protected override BlockProcessor CreateBlockProcessor()
             {
@@ -274,7 +274,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 };
 
                 TransactionPermissionContractVersions =
-                    new LruCache<KeccakKey, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
+                    new LruCache<ValueKeccak, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
 
                 IReadOnlyTrieStore trieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
                 IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(

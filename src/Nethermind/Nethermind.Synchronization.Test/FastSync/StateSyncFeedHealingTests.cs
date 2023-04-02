@@ -157,10 +157,10 @@ namespace Nethermind.Synchronization.Test.FastSync
             Keccak endHash = accounts.Last().Path;
             Keccak limitHash = Keccak.MaxValue;
 
-            AccountProofCollector accountProofCollector = new(startingHash.Bytes);
+            AccountProofCollector accountProofCollector = new(startingHash.ToByteArray());
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
             byte[][] firstProof = accountProofCollector.BuildResult().Proof;
-            accountProofCollector = new(endHash.Bytes);
+            accountProofCollector = new(endHash.ToByteArray());
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 

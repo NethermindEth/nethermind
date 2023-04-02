@@ -75,7 +75,7 @@ namespace Nethermind.State.Proofs
 
             for (int i = 0; i < keccakStorageKeys.Length; i++)
             {
-                _fullStoragePaths[i] = Nibbles.FromBytes(keccakStorageKeys[i].Bytes);
+                _fullStoragePaths[i] = Nibbles.FromBytes(keccakStorageKeys[i].Span);
 
                 _accountProof.StorageProofs[i] = new StorageProof();
                 // we don't know the key (index)
@@ -113,7 +113,7 @@ namespace Nethermind.State.Proofs
         }
 
         public AccountProofCollector(Address address, params byte[][] storageKeys)
-            : this(Keccak.Compute(address?.Bytes ?? Address.Zero.Bytes).Bytes, storageKeys)
+            : this(Keccak.Compute(address?.Bytes ?? Address.Zero.Bytes).ToByteArray(), storageKeys)
         {
             _accountProof.Address = _address = address ?? throw new ArgumentNullException(nameof(address));
         }

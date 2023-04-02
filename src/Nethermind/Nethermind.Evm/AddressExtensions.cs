@@ -31,7 +31,7 @@ namespace Nethermind.Evm
             bytes[0] = 0xff;
             deployingAddress.Bytes.CopyTo(bytes.Slice(1, 20));
             salt.CopyTo(bytes.Slice(21, salt.Length));
-            ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(21 + salt.Length, 32));
+            ValueKeccak.Compute(initCode).Span.CopyTo(bytes.Slice(21 + salt.Length, 32));
 
             ValueKeccak contractAddressKeccak = ValueKeccak.Compute(bytes);
             return new Address(in contractAddressKeccak);

@@ -34,9 +34,9 @@ namespace Nethermind.Serialization.Rlp
 
         public static readonly Rlp OfEmptySequence = new(NullObjectByte);
 
-        internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
+        internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.ToByteArray()); // use bytes to avoid stack overflow
 
-        internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
+        internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.ToByteArray()); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes); // use bytes to avoid stack overflow
 
@@ -364,9 +364,9 @@ namespace Nethermind.Serialization.Rlp
             return Encode(Encoding.ASCII.GetBytes(s));
         }
 
-        public static int Encode(Span<byte> buffer, int position, byte[]? input)
+        public static int Encode(Span<byte> buffer, int position, ReadOnlySpan<byte> input)
         {
-            if (input is null || input.Length == 0)
+            if (input.Length == 0)
             {
                 buffer[position++] = OfEmptyByteArray.Bytes[0];
                 return position;
@@ -391,7 +391,7 @@ namespace Nethermind.Serialization.Rlp
                 SerializeLength(buffer, position, input.Length);
             }
 
-            input.AsSpan().CopyTo(buffer.Slice(position, input.Length));
+            input.CopyTo(buffer.Slice(position, input.Length));
             position += input.Length;
 
             return position;
@@ -535,7 +535,48 @@ namespace Nethermind.Serialization.Rlp
             result[0] = 185;
             result[1] = 1;
             result[2] = 0;
-            Buffer.BlockCopy(bloom.Bytes, 0, result, 3, 256);
+            bloom.Bytes[..256].CopyTo(result.AsSpan(3, 256));
+            return new Rlp(result);
+        }
+
+        public static Rlp Encode(ValueKeccak? keccak)
+        {
+            if (!keccak.HasValue)
+            {
+                return OfEmptyByteArray;
+            }
+
+            if (keccak == ValueKeccak.EmptyTreeHash)
+            {
+                return OfEmptyTreeHash;
+            }
+
+            if (keccak == ValueKeccak.OfAnEmptyString)
+            {
+                return OfEmptyStringHash;
+            }
+
+            byte[] result = new byte[LengthOfKeccakRlp];
+            result[0] = 160;
+            keccak.GetValueOrDefault().Span.CopyTo(result.AsSpan(1, 32));
+            return new Rlp(result);
+        }
+
+        public static Rlp Encode(ValueKeccak keccak)
+        {
+            if (keccak == ValueKeccak.EmptyTreeHash)
+            {
+                return OfEmptyTreeHash;
+            }
+
+            if (keccak == ValueKeccak.OfAnEmptyString)
+            {
+                return OfEmptyStringHash;
+            }
+
+            byte[] result = new byte[LengthOfKeccakRlp];
+            result[0] = 160;
+            keccak.Span.CopyTo(result.AsSpan(1, 32));
             return new Rlp(result);
         }
 
@@ -558,7 +599,7 @@ namespace Nethermind.Serialization.Rlp
 
             byte[] result = new byte[LengthOfKeccakRlp];
             result[0] = 160;
-            Buffer.BlockCopy(keccak.Bytes, 0, result, 1, 32);
+            keccak.Span.CopyTo(result.AsSpan(1, 32));
             return new Rlp(result);
         }
 
@@ -941,6 +982,23 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 return new Keccak(keccakSpan.ToArray());
+            }
+
+            public ValueKeccak DecodeValueKeccak()
+            {
+                int prefix = ReadByte();
+                if (prefix == 128)
+                {
+                    return default;
+                }
+
+                if (prefix != 128 + 32)
+                {
+                    throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
+                }
+
+                ReadOnlySpan<byte> keccakSpan = Read(32);
+                return new ValueKeccak(keccakSpan);
             }
 
             public void DecodeKeccakStructRef(out KeccakStructRef keccak)
@@ -1450,6 +1508,16 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOf(Keccak? item)
         {
             return item is null ? 1 : 33;
+        }
+
+        public static int LengthOf(ValueKeccak item)
+        {
+            return 33;
+        }
+
+        public static int LengthOf(ValueKeccak? item)
+        {
+            return !item.HasValue ? 1 : 33;
         }
 
         public static int LengthOf(Keccak[] keccaks, bool includeLengthOfSequenceStart = false)

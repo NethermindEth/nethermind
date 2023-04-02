@@ -30,7 +30,10 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             authMessage.EphemeralPublicHash = new Keccak(new byte[AuthMessageSerializer.EphemeralHashLength]);
             authMessage.Nonce = new byte[AuthMessageSerializer.NonceLength];
             authMessage.Signature = ecdsa.Sign(_privateKey, Keccak.Compute("anything"));
-            _random.NextBytes(authMessage.EphemeralPublicHash.Bytes);
+
+            Span<byte> span = stackalloc byte[32];
+            _random.NextBytes(span);
+            authMessage.EphemeralPublicHash = new Keccak(span);
             authMessage.PublicKey = _privateKey.PublicKey;
             _random.NextBytes(authMessage.Nonce);
             authMessage.IsTokenUsed = true;

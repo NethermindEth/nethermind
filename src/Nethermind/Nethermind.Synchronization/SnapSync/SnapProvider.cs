@@ -61,12 +61,12 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash);
+            _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash.GetValueOrDefault());
 
             return result;
         }
 
-        public AddRangeResult AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, Keccak hashLimit = null!)
+        public AddRangeResult AddAccountRange(long blockNumber, ValueKeccak expectedRootHash, ValueKeccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, ValueKeccak? hashLimit = null!)
         {
             ITrieStore store = _trieStorePool.Get();
             try
@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.SnapSync
                 if (hashLimit == null) hashLimit = Keccak.MaxValue;
 
                 (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes) =
-                    SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, hashLimit, accounts, proofs);
+                    SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, hashLimit.GetValueOrDefault(), accounts, proofs);
 
                 if (result == AddRangeResult.OK)
                 {
@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.SnapSync
                     }
 
                     _progressTracker.EnqueueCodeHashes(codeHashes);
-                    _progressTracker.UpdateAccountRangePartitionProgress(hashLimit, accounts[^1].Path, moreChildrenToRight);
+                    _progressTracker.UpdateAccountRangePartitionProgress(hashLimit.GetValueOrDefault(), accounts[^1].Path, moreChildrenToRight);
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization.SnapSync
                         proofs = response.Proofs;
                     }
 
-                    result = AddStorageRange(request.BlockNumber.Value, request.Accounts[i], request.Accounts[i].Account.StorageRoot, request.StartingHash, response.PathsAndSlots[i], proofs);
+                    result = AddStorageRange(request.BlockNumber.Value, request.Accounts[i], request.Accounts[i].Account.StorageRoot, request.StartingHash.GetValueOrDefault(), response.PathsAndSlots[i], proofs);
 
                     slotCount += response.PathsAndSlots[i].Length;
                 }
@@ -156,7 +156,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
+        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, ValueKeccak expectedRootHash, ValueKeccak startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
             ITrieStore store = _trieStorePool.Get();
             StorageTree tree = new(store, _logManager);
@@ -292,7 +292,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (batch.AccountRangeRequest is not null)
             {
-                _progressTracker.ReportAccountRangePartitionFinished(batch.AccountRangeRequest.LimitHash);
+                _progressTracker.ReportAccountRangePartitionFinished(batch.AccountRangeRequest.LimitHash.GetValueOrDefault());
             }
             else if (batch.StorageRangeRequest is not null)
             {

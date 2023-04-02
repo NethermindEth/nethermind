@@ -122,7 +122,7 @@ namespace Nethermind.Crypto
             Span<byte> publicKey = stackalloc byte[65];
             bool success = Proxy.RecoverKeyFromCompact(
                 publicKey,
-                message.Bytes,
+                message.ToByteArray(),
                 signatureBytes.Slice(0, 64),
                 signatureBytes[64],
                 false);

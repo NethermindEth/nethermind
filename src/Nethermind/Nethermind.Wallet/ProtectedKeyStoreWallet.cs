@@ -99,7 +99,7 @@ namespace Nethermind.Wallet
         {
             var protectedPrivateKey = (ProtectedPrivateKey)_unlockedAccounts.Get(address.ToString());
             using PrivateKey key = protectedPrivateKey is not null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
-            var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            var rs = Proxy.SignCompact(message.ToByteArray(), key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

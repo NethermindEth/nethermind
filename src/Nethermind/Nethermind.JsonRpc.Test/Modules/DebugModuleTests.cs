@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             debugBridge.GetBlockRlp(Keccak.Zero).Returns(rlp.Bytes);
 
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-            JsonRpcSuccessResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
+            JsonRpcSuccessResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.ToByteArray().ToHexString()}") as JsonRpcSuccessResponse;
             Assert.AreEqual(rlp.Bytes, (byte[]?)response?.Result);
         }
 
@@ -125,7 +125,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             debugBridge.GetBlockRlp(Keccak.Zero).Returns((byte[])null!);
 
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-            JsonRpcErrorResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
+            JsonRpcErrorResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.ToByteArray().ToHexString()}") as JsonRpcErrorResponse;
 
             Assert.AreEqual(-32001, response?.Error?.Code);
         }

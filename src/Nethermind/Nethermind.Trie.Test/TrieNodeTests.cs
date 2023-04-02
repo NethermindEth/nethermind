@@ -570,7 +570,7 @@ namespace Nethermind.Trie.Test
         public void Size_of_an_unknown_node_with_keccak_is_correct()
         {
             TrieNode trieNode = new(NodeType.Unknown, Keccak.Zero);
-            trieNode.GetMemorySize(false).Should().Be(128);
+            trieNode.GetMemorySize(false).Should().Be(96);
         }
 
         [Test]
@@ -607,7 +607,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Size_of_keccak_is_correct()
         {
-            Keccak.MemorySize.Should().Be(80);
+            Keccak.MemorySize.Should().Be(48);
         }
 
         [Test]
@@ -699,7 +699,7 @@ namespace Nethermind.Trie.Test
             trieNode.SetChild(0, child);
 
             trieNode.PrunePersistedRecursively(1);
-            trieNode.GetMemorySize(false).Should().Be(168);
+            trieNode.GetMemorySize(false).Should().Be(136);
         }
 
         [Test]
@@ -712,7 +712,7 @@ namespace Nethermind.Trie.Test
             trieNode.PrunePersistedRecursively(1);
             TrieNode cloned = trieNode.Clone();
 
-            cloned.GetMemorySize(false).Should().Be(168);
+            cloned.GetMemorySize(false).Should().Be(136);
         }
 
         [Test]
@@ -941,7 +941,7 @@ namespace Nethermind.Trie.Test
 
                 HeavyLeaf = new TrieNode(NodeType.Leaf);
                 HeavyLeaf.Key = new byte[20];
-                HeavyLeaf.Value = Keccak.EmptyTreeHash.Bytes.Concat(Keccak.EmptyTreeHash.Bytes).ToArray();
+                HeavyLeaf.Value = Keccak.EmptyTreeHash.ToByteArray().Concat(Keccak.EmptyTreeHash.ToByteArray()).ToArray();
 
                 Account account = new(100);
                 AccountDecoder decoder = new();

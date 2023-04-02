@@ -598,7 +598,7 @@ namespace Nethermind.Synchronization.Test
                 LimboLogs.Instance);
 
             Keccak nodeKey = TestItem.KeccakA;
-            TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
+            TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.ToByteArray());
             trieStore.CommitNode(1, new NodeCommitInfo(node));
             trieStore.FinishBlockCommit(TrieType.State, 1, node);
 

@@ -101,7 +101,7 @@ namespace Nethermind.Wallet
                 key = _keyStore.GetKey(address, passphrase).PrivateKey;
             }
 
-            var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            var rs = Proxy.SignCompact(message.ToByteArray(), key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
 
@@ -117,7 +117,7 @@ namespace Nethermind.Wallet
                 throw new SecurityException("Can only sign without passphrase when account is unlocked.");
             }
 
-            var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            var rs = Proxy.SignCompact(message.ToByteArray(), key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

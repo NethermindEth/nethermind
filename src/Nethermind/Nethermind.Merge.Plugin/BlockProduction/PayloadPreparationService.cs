@@ -226,12 +226,12 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private string ComputeNextPayloadId(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20];
-            parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(0, 32));
+            parentHeader.Hash!.Span.CopyTo(inputSpan.Slice(0, 32));
             BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, 8), payloadAttributes.Timestamp);
-            payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
+            payloadAttributes.PrevRandao.Span.CopyTo(inputSpan.Slice(64, 32));
             payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
             ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);
-            return inputHash.BytesAsSpan.Slice(0, 8).ToHexString(true);
+            return inputHash.Span[..8].ToHexString(true);
         }
     }
 }

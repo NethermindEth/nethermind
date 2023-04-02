@@ -20,7 +20,7 @@ namespace Nethermind.Serialization.Rlp
             _initialPosition = buffer.ReaderIndex;
         }
 
-        public override void Write(Span<byte> bytesToWrite)
+        public override void Write(ReadOnlySpan<byte> bytesToWrite)
         {
             _buffer.EnsureWritable(bytesToWrite.Length, true);
 

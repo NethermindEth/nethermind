@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -14,9 +17,10 @@ namespace Nethermind.Core
         public const int BitLength = 2048;
         public const int ByteLength = BitLength / 8;
 
+        private byte[] _bytes = new byte[ByteLength];
+
         public Bloom()
         {
-            Bytes = new byte[ByteLength];
         }
 
         public Bloom(Bloom[] blooms) : this()
@@ -29,23 +33,22 @@ namespace Nethermind.Core
 
         public Bloom(LogEntry[] logEntries, Bloom? blockBloom = null)
         {
-            Bytes = new byte[ByteLength];
             Add(logEntries, blockBloom);
         }
 
         public Bloom(byte[] bytes)
         {
-            Bytes = bytes;
+            bytes.CopyTo(Bytes);
         }
 
-        public byte[] Bytes { get; }
+        public Span<byte> Bytes => _bytes;
 
-        public void Set(byte[] sequence)
+        public void Set(ReadOnlySpan<byte> sequence)
         {
             Set(sequence, null);
         }
 
-        private void Set(byte[] sequence, Bloom? masterBloom)
+        private void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom)
         {
             if (ReferenceEquals(this, Empty))
             {
@@ -64,7 +67,7 @@ namespace Nethermind.Core
             }
         }
 
-        public bool Matches(byte[] sequence)
+        public bool Matches(ReadOnlySpan<byte> sequence)
         {
             BloomExtract indexes = GetExtract(sequence);
             return Matches(ref indexes);
@@ -108,7 +111,7 @@ namespace Nethermind.Core
 
         public override int GetHashCode()
         {
-            return Bytes.GetSimplifiedHashCode();
+            return _bytes.GetSimplifiedHashCode();
         }
 
         public void Add(LogEntry[] logEntries, Bloom? blockBloom = null)
@@ -128,7 +131,7 @@ namespace Nethermind.Core
 
         public void Accumulate(Bloom bloom)
         {
-            Bytes.AsSpan().Or(bloom.Bytes);
+            Bytes.Or(bloom.Bytes);
         }
 
         public bool Matches(LogEntry logEntry)
@@ -165,7 +168,9 @@ namespace Nethermind.Core
 
         public bool Matches(Address address) => Matches(address.Bytes);
 
-        public bool Matches(Keccak topic) => Matches(topic.Bytes);
+        public bool Matches(Keccak topic) => Matches(topic.Bytes.Span);
+
+        public bool Matches(ValueKeccak topic) => Matches(topic.Span);
 
         public bool Matches(ref BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 
@@ -173,16 +178,18 @@ namespace Nethermind.Core
 
         public static BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
 
-        public static BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
+        public static BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes.Span);
 
-        private static BloomExtract GetExtract(byte[] sequence)
+        public static BloomExtract GetExtract(ValueKeccak topic) => GetExtract(topic.Span);
+
+        private static BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {
-            int GetIndex(Span<byte> bytes, int index1, int index2)
+            int GetIndex(ReadOnlySpan<byte> bytes, int index1, int index2)
             {
                 return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
             }
 
-            var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
+            var keccakBytes = ValueKeccak.Compute(sequence).Span;
             var indexes = new BloomExtract(GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
             return indexes;
         }
@@ -206,7 +213,7 @@ namespace Nethermind.Core
         public Bloom Clone()
         {
             Bloom clone = new();
-            Bytes.CopyTo(clone.Bytes, 0);
+            Bytes.CopyTo(clone.Bytes);
             return clone;
         }
     }
@@ -234,7 +241,7 @@ namespace Nethermind.Core
             Set(sequence, null);
         }
 
-        private void Set(Span<byte> sequence, Bloom? masterBloom = null)
+        private void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
         {
             Bloom.BloomExtract indexes = GetExtract(sequence);
             Set(indexes.Index1);
@@ -248,7 +255,7 @@ namespace Nethermind.Core
             }
         }
 
-        public bool Matches(byte[] sequence)
+        public bool Matches(ReadOnlySpan<byte> sequence)
         {
             Bloom.BloomExtract indexes = GetExtract(sequence);
             return Matches(ref indexes);
@@ -347,7 +354,9 @@ namespace Nethermind.Core
 
         public bool Matches(Address address) => Matches(address.Bytes);
 
-        public bool Matches(Keccak topic) => Matches(topic.Bytes);
+        public bool Matches(Keccak topic) => Matches(topic.Bytes.Span);
+
+        public bool Matches(ValueKeccak topic) => Matches(topic.Span);
 
         public bool Matches(ref Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 
@@ -357,14 +366,14 @@ namespace Nethermind.Core
 
         public static Bloom.BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
 
-        private static Bloom.BloomExtract GetExtract(Span<byte> sequence)
+        private static Bloom.BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {
-            int GetIndex(Span<byte> bytes, int index1, int index2)
+            int GetIndex(ReadOnlySpan<byte> bytes, int index1, int index2)
             {
                 return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
             }
 
-            var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
+            var keccakBytes = ValueKeccak.Compute(sequence).Span;
             var indexes = new Bloom.BloomExtract(GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
             return indexes;
         }
