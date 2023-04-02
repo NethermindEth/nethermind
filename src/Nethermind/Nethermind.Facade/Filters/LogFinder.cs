@@ -290,7 +290,7 @@ namespace Nethermind.Blockchain.Find
                     var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (block is not null)
                     {
-                        if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.Success)
+                        if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.SuccessNeedReset)
                         {
                             _receiptStorage.Insert(block, receipts);
                         }
