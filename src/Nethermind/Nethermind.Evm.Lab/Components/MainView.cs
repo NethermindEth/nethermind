@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Reflection;
 using MachineState.Actions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Lab.Componants;
 using Nethermind.Evm.Lab.Components.GlobalViews;
 using Nethermind.Evm.Lab.Components.MachineLab;
@@ -40,7 +42,8 @@ internal class MainView : IComponent<MachineState>
             new InputsView(),
             new ReturnView(),
             new StorageView(),
-            new ProgramView()
+            new ProgramView(),
+            new ConfigsView()
         };
     }
 
@@ -84,6 +87,7 @@ internal class MainView : IComponent<MachineState>
         IComponent<MachineState> _component_rtrn = _components[5];
         IComponent<MachineState> _component_strg = _components[6];
         IComponent<MachineState> _component_pgr = _components[7];
+        IComponent<MachineState> _component_cnfg = _components[8];
 
         var (view1, rect1) = _component_cpu.View(state, new Rectangle(0, 0, Dim.Percent(30), 10));
         var (view2, rect2) = _component_stk.View(state, rect1.Value with
@@ -113,15 +117,20 @@ internal class MainView : IComponent<MachineState>
             Height = Dim.Percent(20),
             Width = Dim.Percent(50)
         });
-        var (view7, rect7) = _component_pgr.View(state, rect4.Value with
+        var (view8, rect8) = _component_cnfg.View(state, rect4.Value with
         {
             X = Pos.Right(view4),
-            Height = Dim.Percent(65),
+            Width = Dim.Percent(20)
+        });
+        var (view7, rect7) = _component_pgr.View(state, rect8.Value with
+        {
+            Y = Pos.Bottom(view8),
+            Height = Dim.Percent(45),
             Width = Dim.Percent(20)
         });
 
         if (!isCached)
-            MainPanel.Add(view1, view4, view2, view3, view5, view6, view7);
+            MainPanel.Add(view1, view4, view2, view3, view5, view6, view7, view8);
         isCached = true;
         return (MainPanel, null);
     }
@@ -166,11 +175,8 @@ internal class MainView : IComponent<MachineState>
                 {
                     try
                     {
-                        var bytecode = Nethermind.Core.Extensions.Bytes.FromHexString(biMsg.bytecode);
-                        state.GetState().Bytecode = bytecode;
-                        var localTracer = _tracer;
-                        context.Execute(localTracer, long.MaxValue, bytecode);
-                        EventsSink.EnqueueEvent(new UpdateState(localTracer.BuildResult()), true);
+                        state.GetState().Bytecode = Nethermind.Core.Extensions.Bytes.FromHexString(biMsg.bytecode);
+                        EventsSink.EnqueueEvent(new RunBytecode(), true);
                     }
                     catch
                     {
@@ -195,6 +201,26 @@ internal class MainView : IComponent<MachineState>
                 }
             case UpdateState updState:
                 return state.GetState().SetState(updState.traces);
+            case SetForkChoice frkMsg:
+                {
+                    var chosenFork = (IReleaseSpec)typeof(Frontier).Module.GetTypes().First(type => type.Name == frkMsg.forkName).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public).GetValue(null);
+                    context = new(chosenFork);
+                    EventsSink.EnqueueEvent(new RunBytecode(), true);
+                    return state.GetState().SetFork(frkMsg.forkName);
+                }
+            case SetGasMode gasMsg:
+                {
+                    state.GetState().SetGas(gasMsg.ignore ? int.MaxValue : gasMsg.gasValue);
+                    EventsSink.EnqueueEvent(new RunBytecode(), true);
+                    break;
+                }
+            case RunBytecode _:
+                {
+                    var localTracer = _tracer;
+                    context.Execute(localTracer, state.GetState().AvailableGas, state.GetState().Bytecode);
+                    EventsSink.EnqueueEvent(new UpdateState(localTracer.BuildResult()), true);
+                    break;
+                }
         }
         return state;
     }

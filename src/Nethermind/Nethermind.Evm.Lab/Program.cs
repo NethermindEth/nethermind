@@ -44,5 +44,5 @@ public class EthereumRestrictedInstance
     }
 
     public T Execute<T>(T tracer, long gas, params byte[] code) where T : ITxTracer
-        => _runningContext.Execute<T>(tracer, code);
+        => _runningContext.Execute<T>(tracer, Math.Min(VirtualMachineTestsBase.DefaultBlockGasLimit, gas), code);
 }

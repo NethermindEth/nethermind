@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Evm.Lab.Interfaces;
+using Nethermind.Evm.Test;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Specs.Forks;
 
 namespace MachineState.Actions
 {
@@ -14,6 +16,10 @@ namespace MachineState.Actions
     public record FileLoaded(string filePath) : ActionsBase;
     public record TracesLoaded(string filePath) : ActionsBase;
     public record UpdateState(GethLikeTxTrace traces) : ActionsBase;
+    public record SetForkChoice(string forkName) : ActionsBase;
+    public record SetGasMode(bool ignore, long gasValue) : ActionsBase;
+    public record RunBytecode : ActionsBase;
+
 }
 
 namespace Nethermind.Evm.Lab
@@ -21,11 +27,15 @@ namespace Nethermind.Evm.Lab
     public class MachineState : GethLikeTxTrace, IState<MachineState>
     {
         public MachineState(GethLikeTxTrace trace)
-            => SetState(trace);
+            => SetState(trace, true);
 
-        public MachineState() { }
+        public MachineState()
+        {
+            AvailableGas = VirtualMachineTestsBase.DefaultBlockGasLimit;
+            SelectedFork = nameof(Cancun);
+        }
 
-        public MachineState SetState(GethLikeTxTrace trace)
+        public MachineState SetState(GethLikeTxTrace trace, bool isInit = false)
         {
             Entries = trace.Entries;
             ReturnValue = trace.ReturnValue;
@@ -33,13 +43,19 @@ namespace Nethermind.Evm.Lab
             Index = 0;
             Depth = 0;
             EventsSink.EmptyQueue();
+            if (isInit)
+            {
+                AvailableGas = VirtualMachineTestsBase.DefaultBlockGasLimit;
+                SelectedFork = nameof(Cancun);
+            }
             return this;
         }
-
 
         public GethTxTraceEntry Current => base.Entries[Index];
         public int Index { get; private set; }
         public int Depth { get; private set; }
+        public long AvailableGas { get; set; }
+        public string SelectedFork { get; set; }
 
         public byte[] Bytecode { get; set; }
         public byte[] CallData { get; set; }
@@ -63,6 +79,18 @@ namespace Nethermind.Evm.Lab
         public MachineState SetDepth(int depth)
         {
             Depth = depth;
+            return this;
+        }
+
+        public MachineState SetGas(long gas)
+        {
+            AvailableGas = gas;
+            return this;
+        }
+
+        public MachineState SetFork(string forkname)
+        {
+            SelectedFork = forkname;
             return this;
         }
 

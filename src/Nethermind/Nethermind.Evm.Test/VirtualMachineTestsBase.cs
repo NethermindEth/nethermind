@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Test
         protected const string SampleHexData1 = "a01234";
         protected const string SampleHexData2 = "b15678";
         protected const string HexZero = "00";
-        protected const long DefaultBlockGasLimit = 8000000;
+        internal const long DefaultBlockGasLimit = 8000000;
 
         private IEthereumEcdsa _ethereumEcdsa;
         protected ITransactionProcessor _processor;
@@ -125,9 +125,9 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
-        internal T Execute<T>(T tracer, long blockNumber, ulong timestamp, long gas, params byte[] code) where T : ITxTracer
+        internal T Execute<T>(T tracer, long gas, params byte[] code) where T : ITxTracer
         {
-            (Block block, Transaction transaction) = PrepareTx(blockNumber, gas, code, timestamp: timestamp);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, gas, code, timestamp: Timestamp);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
