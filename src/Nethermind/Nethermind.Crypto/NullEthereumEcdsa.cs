@@ -15,12 +15,27 @@ namespace Nethermind.Crypto
         {
         }
 
+        public Signature Sign(PrivateKey privateKey, ValueKeccak message)
+        {
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
+        }
+
         public Signature Sign(PrivateKey privateKey, Keccak message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
+        public PublicKey RecoverPublicKey(Signature signature, ValueKeccak message)
+        {
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
+        }
+
         public PublicKey RecoverPublicKey(Signature signature, Keccak message)
+        {
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
+        }
+
+        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, ValueKeccak message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
@@ -40,7 +55,17 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
+        public Address RecoverAddress(Signature signature, ValueKeccak message)
+        {
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
+        }
+
         public Address RecoverAddress(Signature signature, Keccak message)
+        {
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
+        }
+
+        public Address RecoverAddress(Span<byte> signatureBytes, ValueKeccak message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }

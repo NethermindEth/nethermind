@@ -757,7 +757,7 @@ namespace Nethermind.Core.Extensions
                 byte[] bytesArray = state.Bytes;
                 string hexString = bytesArray.ToHexString(false);
                 Debugger.Break();
-                Keccak keccak = Keccak.Compute(hexString);
+                ValueKeccak keccak = Keccak.Compute(hexString);
                 Debugger.Break();
                 string hashHex = keccak.ToString(false);
                 Debugger.Break();

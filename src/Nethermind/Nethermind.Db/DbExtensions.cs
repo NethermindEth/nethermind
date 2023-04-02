@@ -65,6 +65,18 @@ namespace Nethermind.Db
             }
         }
 
+        public static void Set(this IDb db, ValueKeccak key, ValueKeccak value)
+        {
+            if (db is IDbWithSpan dbWithSpan)
+            {
+                dbWithSpan.PutSpan(key.Span, value.Span);
+            }
+            else
+            {
+                db[key.Span] = value.ToByteArray();
+            }
+        }
+
         public static void Set(this IDb db, ValueKeccak key, ReadOnlySpan<byte> value)
         {
             if (db is IDbWithSpan dbWithSpan)

@@ -61,7 +61,7 @@ namespace Nethermind.Core
 
                 void GenerateHash()
                 {
-                    _hash = Keccak.Compute(_preHash.Span);
+                    _hash = new Keccak(Keccak.Compute(_preHash.Span));
                     if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
                     {
                         ArrayPool<byte>.Shared.Return(rentedArray.Array!);

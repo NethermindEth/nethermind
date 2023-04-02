@@ -282,11 +282,11 @@ namespace Nethermind.State
                 return Keccak.OfAnEmptyString;
             }
 
-            Keccak codeHash = Keccak.Compute(code.Span);
+            ValueKeccak codeHash = Keccak.Compute(code.Span);
 
             _codeDb[codeHash.Span] = code.ToArray();
 
-            return codeHash;
+            return new Keccak(codeHash);
         }
 
         public Keccak GetCodeHash(Address address)

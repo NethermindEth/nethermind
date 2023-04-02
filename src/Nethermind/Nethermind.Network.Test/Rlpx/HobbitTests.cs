@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test.Rlpx
             var hashes = new Keccak[256];
             for (int i = 0; i < hashes.Length; i++)
             {
-                hashes[i] = Keccak.Compute(i.ToString());
+                hashes[i] = new Keccak(Keccak.Compute(i.ToString()));
             }
 
             GetBlockBodiesMessage message = new(hashes);
@@ -119,7 +119,7 @@ namespace Nethermind.Network.Test.Rlpx
             Keccak[] hashes = new Keccak[256];
             for (int i = 0; i < hashes.Length; i++)
             {
-                hashes[i] = Keccak.Compute(i.ToString());
+                hashes[i] = new Keccak(Keccak.Compute(i.ToString()));
             }
 
             GetReceiptsMessage message = new(hashes);

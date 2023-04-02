@@ -52,14 +52,14 @@ namespace Nethermind.Core.Test.Builders
         public static byte[] RandomDataC = { 1, 2, 8, 9, 10 };
         public static byte[] RandomDataD = { 1, 2, 8, 9, 10, 17 };
 
-        public static Keccak KeccakA = Keccak.Compute("A");
-        public static Keccak KeccakB = Keccak.Compute("B");
-        public static Keccak KeccakC = Keccak.Compute("C");
-        public static Keccak KeccakD = Keccak.Compute("D");
-        public static Keccak KeccakE = Keccak.Compute("E");
-        public static Keccak KeccakF = Keccak.Compute("F");
-        public static Keccak KeccakG = Keccak.Compute("G");
-        public static Keccak KeccakH = Keccak.Compute("H");
+        public static Keccak KeccakA = new Keccak(Keccak.Compute("A"));
+        public static Keccak KeccakB = new Keccak(Keccak.Compute("B"));
+        public static Keccak KeccakC = new Keccak(Keccak.Compute("C"));
+        public static Keccak KeccakD = new Keccak(Keccak.Compute("D"));
+        public static Keccak KeccakE = new Keccak(Keccak.Compute("E"));
+        public static Keccak KeccakF = new Keccak(Keccak.Compute("F"));
+        public static Keccak KeccakG = new Keccak(Keccak.Compute("G"));
+        public static Keccak KeccakH = new Keccak(Keccak.Compute("H"));
 
         public static PrivateKey PrivateKeyA = new("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
         public static PrivateKey PrivateKeyB = new("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");

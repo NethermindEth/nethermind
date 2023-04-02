@@ -58,7 +58,7 @@ namespace Nethermind.Serialization.Rlp
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
                 GasUsed = gasUsed,
-                Hash = Keccak.Compute(headerRlp)
+                Hash = new Keccak(Keccak.Compute(headerRlp))
             };
 
             if (decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
@@ -138,7 +138,7 @@ namespace Nethermind.Serialization.Rlp
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
                 GasUsed = gasUsed,
-                Hash = Keccak.Compute(headerRlp)
+                Hash = new Keccak(Keccak.Compute(headerRlp))
             };
 
             if (rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)

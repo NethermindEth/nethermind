@@ -337,7 +337,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     if (i >= MaxResponseLength) break;
 
-                    if (_filter is null || _filter.Contains(item)) responses[i] = _stateDb[item.ValueKeccak] ?? _codeDb[item.ValueKeccak];
+                    if (_filter is null || _filter.Contains(item)) responses[i] = _stateDb[item.Span] ?? _codeDb[item.Span];
 
                     i++;
                 }

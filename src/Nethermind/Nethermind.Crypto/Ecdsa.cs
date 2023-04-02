@@ -15,6 +15,11 @@ namespace Nethermind.Crypto
     {
         public Signature Sign(PrivateKey privateKey, Keccak message)
         {
+            return Sign(privateKey, message.ValueKeccak);
+        }
+
+        public Signature Sign(PrivateKey privateKey, ValueKeccak message)
+        {
             if (!Proxy.VerifyPrivateKey(privateKey.KeyBytes))
             {
                 throw new ArgumentException("Invalid private key", nameof(privateKey));
@@ -51,6 +56,11 @@ namespace Nethermind.Crypto
 
         public PublicKey? RecoverPublicKey(Signature signature, Keccak message)
         {
+            return RecoverPublicKey(signature, message.ValueKeccak);
+        }
+
+        public PublicKey? RecoverPublicKey(Signature signature, ValueKeccak message)
+        {
             Span<byte> publicKey = stackalloc byte[65];
             bool success = Proxy.RecoverKeyFromCompact(publicKey, message.ToByteArray(), signature.Bytes, signature.RecoveryId, false);
             if (!success)
@@ -62,6 +72,11 @@ namespace Nethermind.Crypto
         }
 
         public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, Keccak message)
+        {
+            return RecoverCompressedPublicKey(signature, message.ValueKeccak);
+        }
+
+        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, ValueKeccak message)
         {
             Span<byte> publicKey = stackalloc byte[33];
             bool success = Proxy.RecoverKeyFromCompact(publicKey, message.ToByteArray(), signature.Bytes, signature.RecoveryId, true);

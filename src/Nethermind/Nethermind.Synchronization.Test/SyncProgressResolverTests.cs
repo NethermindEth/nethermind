@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.Test
             var head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(head.Header);
-            stateDb[head.StateRoot.ValueKeccak] = new byte[] { 1 };
+            stateDb[head.StateRoot.Span] = new byte[] { 1 };
             Assert.AreEqual(head.Number, syncProgressResolver.FindBestFullState());
         }
 
@@ -86,8 +86,8 @@ namespace Nethermind.Synchronization.Test
             blockTree.BestSuggestedHeader.Returns(suggested);
             blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
 
-            stateDb[head.StateRoot.ValueKeccak] = new byte[] { 1 };
-            stateDb[suggested.StateRoot.ValueKeccak] = new byte[] { 1 };
+            stateDb[head.StateRoot.Span] = new byte[] { 1 };
+            stateDb[suggested.StateRoot.Span] = new byte[] { 1 };
             Assert.AreEqual(suggested.Number, syncProgressResolver.FindBestFullState());
         }
 
@@ -107,8 +107,8 @@ namespace Nethermind.Synchronization.Test
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(suggested);
             blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head?.Header);
-            stateDb[head.StateRoot.ValueKeccak] = new byte[] { 1 };
-            stateDb[suggested.StateRoot.ValueKeccak] = null;
+            stateDb[head.StateRoot.Span] = new byte[] { 1 };
+            stateDb[suggested.StateRoot.Span] = null;
             Assert.AreEqual(head.Number, syncProgressResolver.FindBestFullState());
         }
 

@@ -193,8 +193,8 @@ namespace Nethermind.Db.Test
 
                 using IDbWithSpan db = columnDb.GetColumnDb(ReceiptsColumns.Blocks);
 
-                Keccak key = Keccak.Compute("something");
-                Keccak value = Keccak.Compute("something");
+                ValueKeccak key = Keccak.Compute("something");
+                ValueKeccak value = Keccak.Compute("something");
 
                 db.KeyExists(key.Span).Should().BeFalse();
                 db.PutSpan(key.Span, value.Span);

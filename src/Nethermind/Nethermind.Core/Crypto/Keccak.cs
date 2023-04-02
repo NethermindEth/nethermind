@@ -182,17 +182,17 @@ namespace Nethermind.Core.Crypto
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static readonly Keccak OfAnEmptyString = InternalCompute(new byte[] { });
+        public static readonly Keccak OfAnEmptyString = new Keccak(InternalCompute(new byte[] { }));
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static readonly Keccak OfAnEmptySequenceRlp = InternalCompute(new byte[] { 192 });
+        public static readonly Keccak OfAnEmptySequenceRlp = new Keccak(InternalCompute(new byte[] { 192 }));
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static Keccak EmptyTreeHash = InternalCompute(new byte[] { 128 });
+        public static Keccak EmptyTreeHash = new Keccak(InternalCompute(new byte[] { 128 }));
 
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
@@ -210,6 +210,11 @@ namespace Nethermind.Core.Crypto
 
         public Keccak(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString)) { }
+
+        public Keccak(ValueKeccak keccak)
+        {
+            _keccak = keccak;
+        }
 
         public Keccak(byte[] bytes)
         {
@@ -259,23 +264,23 @@ namespace Nethermind.Core.Crypto
         }
 
         [DebuggerStepThrough]
-        public static Keccak Compute(ReadOnlySpan<byte> input)
+        public static ValueKeccak Compute(ReadOnlySpan<byte> input)
         {
             if (input.Length == 0)
             {
                 return OfAnEmptyString;
             }
 
-            return new Keccak(KeccakHash.ComputeHashBytes(input));
+            return new ValueKeccak(KeccakHash.ComputeHashBytes(input));
         }
 
-        private static Keccak InternalCompute(byte[] input)
+        private static ValueKeccak InternalCompute(byte[] input)
         {
-            return new(KeccakHash.ComputeHashBytes(input.AsSpan()));
+            return new ValueKeccak(KeccakHash.ComputeHashBytes(input.AsSpan()));
         }
 
         [DebuggerStepThrough]
-        public static Keccak Compute(string input)
+        public static ValueKeccak Compute(string input)
         {
             if (string.IsNullOrWhiteSpace(input))
             {

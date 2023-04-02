@@ -24,8 +24,8 @@ namespace Nethermind.Store.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class StateProviderTests
     {
-        private static readonly Keccak Hash1 = Keccak.Compute("1");
-        private static readonly Keccak Hash2 = Keccak.Compute("2");
+        private static readonly Keccak Hash1 = new Keccak(Keccak.Compute("1"));
+        private static readonly Keccak Hash2 = new Keccak(Keccak.Compute("2"));
         private readonly Address _address1 = new(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
         private IDb _codeDb;

@@ -24,7 +24,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
     public BlockHeaderBuilder()
     {
         TestObjectInternal = new BlockHeader(
-            Keccak.Compute("parent"),
+            new Keccak(Keccak.Compute("parent")),
             Keccak.OfAnEmptySequenceRlp,
             Address.Zero,
             DefaultDifficulty, 0,
@@ -33,7 +33,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
             new byte[] { 1, 2, 3 },
             null);
         TestObjectInternal.Bloom = Bloom.Empty;
-        TestObjectInternal.MixHash = Keccak.Compute("mix_hash");
+        TestObjectInternal.MixHash = new Keccak(Keccak.Compute("mix_hash"));
         TestObjectInternal.Nonce = 1000;
         TestObjectInternal.ReceiptsRoot = Keccak.EmptyTreeHash;
         TestObjectInternal.StateRoot = Keccak.EmptyTreeHash;
@@ -48,9 +48,22 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
+    public BlockHeaderBuilder WithParentHash(ValueKeccak parentHash)
+    {
+        TestObjectInternal.ParentHash = new Keccak(parentHash);
+        return this;
+    }
+
     public BlockHeaderBuilder WithParentHash(Keccak parentHash)
     {
         TestObjectInternal.ParentHash = parentHash;
+        return this;
+    }
+
+    public BlockHeaderBuilder WithHash(ValueKeccak hash)
+    {
+        TestObjectInternal.Hash = new Keccak(hash);
+        _doNotCalculateHash = true;
         return this;
     }
 
@@ -93,15 +106,33 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
+    public BlockHeaderBuilder WithStateRoot(ValueKeccak stateRoot)
+    {
+        TestObjectInternal.StateRoot = new Keccak(stateRoot);
+        return this;
+    }
+
     public BlockHeaderBuilder WithStateRoot(Keccak stateRoot)
     {
         TestObjectInternal.StateRoot = stateRoot;
         return this;
     }
 
+    public BlockHeaderBuilder WithTransactionsRoot(ValueKeccak transactionsRoot)
+    {
+        TestObjectInternal.TxRoot = new Keccak(transactionsRoot);
+        return this;
+    }
+
     public BlockHeaderBuilder WithTransactionsRoot(Keccak transactionsRoot)
     {
         TestObjectInternal.TxRoot = transactionsRoot;
+        return this;
+    }
+
+    public BlockHeaderBuilder WithReceiptsRoot(ValueKeccak receiptsRoot)
+    {
+        TestObjectInternal.ReceiptsRoot = new Keccak(receiptsRoot);
         return this;
     }
 
@@ -153,6 +184,12 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
+    public BlockHeaderBuilder WithMixHash(ValueKeccak mixHash)
+    {
+        TestObjectInternal.MixHash = new Keccak(mixHash);
+        return this;
+    }
+
     public BlockHeaderBuilder WithMixHash(Keccak mixHash)
     {
         TestObjectInternal.MixHash = mixHash;
@@ -169,6 +206,13 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
     {
         TestObjectInternal.AuRaStep = step;
         TestObjectInternal.AuRaSignature = signature;
+        return this;
+    }
+
+    public BlockHeaderBuilder WithWithdrawalsRoot(ValueKeccak root)
+    {
+        TestObjectInternal.WithdrawalsRoot = new Keccak(root);
+
         return this;
     }
 

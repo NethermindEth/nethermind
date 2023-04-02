@@ -22,7 +22,7 @@ namespace Nethermind.Abi
         public string Name { get; }
         public AbiType[] Types { get; }
         public byte[] Address => GetAddress(Hash.Span);
-        public Keccak Hash => _hash ??= Keccak.Compute(ToString());
+        public Keccak Hash => _hash ??= new Keccak(Keccak.Compute(ToString()));
 
         public override string ToString()
         {

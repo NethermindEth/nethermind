@@ -36,7 +36,7 @@ public class InvalidChainTrackerTest
         List<Keccak> hashList = new();
         for (int i = 0; i < n; i++)
         {
-            Keccak newHash = Keccak.Compute(Random.Shared.NextInt64().ToString());
+            Keccak newHash = new Keccak(Keccak.Compute(Random.Shared.NextInt64().ToString()));
             hashList.Add(newHash);
         }
 
@@ -157,8 +157,8 @@ public class InvalidChainTrackerTest
         Keccak? lastValidHash;
         List<Keccak> mainChain = MakeChain(50, connectInReverse);
         List<Keccak> secondChain = MakeChain(50, connectInReverse);
-        Keccak invalidBlockParent = Keccak.Compute(Random.Shared.NextInt64().ToString());
-        Keccak invalidBlock = Keccak.Compute(Random.Shared.NextInt64().ToString());
+        Keccak invalidBlockParent = new Keccak(Keccak.Compute(Random.Shared.NextInt64().ToString()));
+        Keccak invalidBlock = new Keccak(Keccak.Compute(Random.Shared.NextInt64().ToString()));
 
         _tracker.OnInvalidBlock(invalidBlock, invalidBlockParent);
         AssertInvalid(invalidBlock);
@@ -179,7 +179,7 @@ public class InvalidChainTrackerTest
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IBlockCacheService blockCacheService = new BlockCacheService();
 
-        Keccak invalidBlock = Keccak.Compute("A");
+        Keccak invalidBlock = new Keccak(Keccak.Compute("A"));
         BlockHeader parentBlockHeader = new BlockHeaderBuilder().TestObject;
 
         blockCacheService.BlockCache[parentBlockHeader.Hash] = new Block(parentBlockHeader);

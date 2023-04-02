@@ -344,12 +344,12 @@ namespace Nethermind.Synchronization.Test.SnapSync
             HasMoreChildren(TestItem.Tree.AccountsWithPaths[3].Path).Should().BeTrue();
             HasMoreChildren(TestItem.Tree.AccountsWithPaths[4].Path).Should().BeTrue();
 
-            UInt256 between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[1].Path.ValueKeccak, true);
+            UInt256 between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[1].Path.Span, true);
             between2and3 += 5;
 
             HasMoreChildren(new Keccak(between2and3.ToBigEndian())).Should().BeFalse();
 
-            between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[2].Path.ValueKeccak, true);
+            between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[2].Path.Span, true);
             between2and3 -= 1;
 
             HasMoreChildren(new Keccak(between2and3.ToBigEndian())).Should().BeFalse();
@@ -361,7 +361,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             StateTree tree = new StateTree(new TrieStore(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
 
             PathWithAccount ac1 = new PathWithAccount(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
-            PathWithAccount ac2 = new PathWithAccount(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
+            PathWithAccount ac2 = new PathWithAccount(new Keccak(Keccak.Compute("anything")), Build.An.Account.WithBalance(2).TestObject);
             PathWithAccount ac3 = new PathWithAccount(Keccak.MaxValue, Build.An.Account.WithBalance(2).TestObject);
 
             tree.Set(ac1.Path, ac1.Account);
@@ -396,7 +396,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             HasMoreChildren(ac1.Path).Should().BeFalse();
             HasMoreChildren(ac2.Path).Should().BeFalse();
 
-            UInt256 between2and3 = new UInt256(ac2.Path.ValueKeccak, true);
+            UInt256 between2and3 = new UInt256(ac2.Path.Span, true);
             between2and3 += 5;
 
             HasMoreChildren(new Keccak(between2and3.ToBigEndian())).Should().BeFalse();

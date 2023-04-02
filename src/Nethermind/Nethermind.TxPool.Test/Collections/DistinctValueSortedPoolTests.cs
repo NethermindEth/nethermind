@@ -36,7 +36,7 @@ namespace Nethermind.TxPool.Test.Collections
                 UInt256 iUint256 = (UInt256)i;
                 var transaction = Build.A.Transaction.WithGasPrice(gasPrice ?? iUint256).WithNonce(nonce ?? iUint256)
                     .WithSenderAddress(address ?? TestItem.Addresses[i]).TestObject;
-                transaction.Hash = Keccak.Compute(i.ToString());
+                transaction.Hash = new Keccak(Keccak.Compute(i.ToString()));
                 return transaction;
             }).ToArray();
 
