@@ -69,6 +69,7 @@ namespace Nethermind.Core.Test.Encoding
                     receiptBuilder.WithError(string.Empty);
                 }
 
+                receiptBuilder.WithCalculatedBloom();
                 return receiptBuilder.TestObject;
             }
 

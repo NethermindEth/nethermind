@@ -163,7 +163,7 @@ namespace Nethermind.Blockchain.Receipts
                     $"of transactions {block.Transactions.Length} and receipts {txReceipts.Length}.");
             }
 
-            _receiptsRecovery.TryRecover(block, txReceipts, forceRecoverSender: false, recoverSenderOnly: true);
+            _receiptsRecovery.TryRecover(block, txReceipts, false);
 
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(block.Header);
@@ -178,6 +178,8 @@ namespace Nethermind.Blockchain.Receipts
             {
                 MigratedBlockNumber = blockNumber;
             }
+
+            _receiptsCache.Set(block.Hash, txReceipts);
 
             if (ensureCanonical)
             {

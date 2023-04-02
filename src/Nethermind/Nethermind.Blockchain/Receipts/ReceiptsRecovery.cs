@@ -21,15 +21,15 @@ namespace Nethermind.Blockchain.Receipts
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
 
-        public ReceiptsRecoveryResult TryRecover(Block block, TxReceipt[] receipts, bool forceRecoverSender = true, bool recoverSenderOnly = false)
+        public ReceiptsRecoveryResult TryRecover(Block block, TxReceipt[] receipts, bool forceRecoverSender = true)
         {
             var canRecover = block.Transactions.Length == receipts?.Length;
             if (canRecover)
             {
-                var needRecover = NeedRecover(receipts, forceRecoverSender, recoverSenderOnly);
+                var needRecover = NeedRecover(receipts, forceRecoverSender);
                 if (needRecover)
                 {
-                    var ctx = CreateRecoveryContext(block, forceRecoverSender, recoverSenderOnly);
+                    var ctx = CreateRecoveryContext(block, forceRecoverSender);
                     for (int receiptIndex = 0; receiptIndex < block.Transactions.Length; receiptIndex++)
                     {
                         if (receipts.Length > receiptIndex)
@@ -48,10 +48,10 @@ namespace Nethermind.Blockchain.Receipts
             return ReceiptsRecoveryResult.Fail;
         }
 
-        public IReceiptsRecovery.IRecoveryContext CreateRecoveryContext(Block block, bool forceRecoverSender = true, bool recoverSenderOnly = false)
+        public IReceiptsRecovery.IRecoveryContext CreateRecoveryContext(Block block, bool forceRecoverSender = true)
         {
             var releaseSpec = _specProvider.GetSpec(block.Header);
-            return new RecoveryContext(releaseSpec, block, forceRecoverSender, recoverSenderOnly, _ecdsa);
+            return new RecoveryContext(releaseSpec, block, forceRecoverSender, _ecdsa);
         }
 
         public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true, bool recoverSenderOnly = false)
@@ -67,19 +67,16 @@ namespace Nethermind.Blockchain.Receipts
             private readonly IReleaseSpec _releaseSpec;
             private readonly Block _block;
             private readonly bool _forceRecoverSender;
-            private readonly bool _recoverSenderOnly;
             private readonly IEthereumEcdsa _ecdsa;
 
             private long _gasUsedBefore = 0;
             private int _transactionIndex = 0;
 
-            public RecoveryContext(IReleaseSpec releaseSpec, Block block, bool forceRecoverSender,
-                bool recoverSenderOnly, IEthereumEcdsa ecdsa)
+            public RecoveryContext(IReleaseSpec releaseSpec, Block block, bool forceRecoverSender, IEthereumEcdsa ecdsa)
             {
                 _releaseSpec = releaseSpec;
                 _block = block;
                 _forceRecoverSender = forceRecoverSender;
-                _recoverSenderOnly = recoverSenderOnly;
                 _ecdsa = ecdsa;
             }
 
@@ -91,14 +88,6 @@ namespace Nethermind.Blockchain.Receipts
                 }
 
                 Transaction transaction = _block.Transactions[_transactionIndex];
-
-                if (_recoverSenderOnly)
-                {
-                    receipt.Sender = transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : null);
-
-                    IncrementContext(receipt.GasUsedTotal);
-                    return;
-                }
 
                 receipt.BlockHash = _block.Hash;
                 receipt.BlockNumber = _block.Number;
@@ -126,14 +115,6 @@ namespace Nethermind.Blockchain.Receipts
                 }
 
                 Transaction transaction = _block.Transactions[_transactionIndex];
-
-                if (_recoverSenderOnly)
-                {
-                    receipt.Sender = (transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : Address.Zero))!.ToStructRef();
-
-                    IncrementContext(receipt.GasUsedTotal);
-                    return;
-                }
 
                 receipt.BlockHash = _block.Hash!.ToStructRef();
                 receipt.BlockNumber = _block.Number;
