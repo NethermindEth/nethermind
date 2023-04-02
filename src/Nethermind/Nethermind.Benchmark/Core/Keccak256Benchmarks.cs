@@ -47,13 +47,13 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark(Baseline = true)]
         public byte[] Current()
         {
-            return Keccak.Compute(_a).Bytes;
+            return Keccak.Compute(_a).ToByteArray();
         }
 
         [Benchmark]
-        public Span<byte> ValueKeccak()
+        public ReadOnlySpan<byte> ValueKeccak()
         {
-            return Nethermind.Core.Crypto.ValueKeccak.Compute(_a).BytesAsSpan;
+            return Nethermind.Core.Crypto.ValueKeccak.Compute(_a).Span;
         }
 
         //[Benchmark]

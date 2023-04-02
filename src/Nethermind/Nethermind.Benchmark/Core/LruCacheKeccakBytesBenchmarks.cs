@@ -16,7 +16,7 @@ namespace Nethermind.Benchmarks.Core
         {
             for (int i = 0; i < Keys.Length; i++)
             {
-                Keys[i] = Keccak.Compute(i.ToString());
+                Keys[i] = new Keccak(Keccak.Compute(i.ToString()));
             }
         }
 
@@ -31,14 +31,14 @@ namespace Nethermind.Benchmarks.Core
         public byte[] Value { get; set; } = new byte[0];
 
         [Benchmark]
-        public LruCache<KeccakKey, byte[]> WithItems()
+        public LruCache<ValueKeccak, byte[]> WithItems()
         {
-            LruCache<KeccakKey, byte[]> cache = new LruCache<KeccakKey, byte[]>(MaxCapacity, MaxCapacity, String.Empty);
+            LruCache<ValueKeccak, byte[]> cache = new LruCache<ValueKeccak, byte[]>(MaxCapacity, MaxCapacity, String.Empty);
             Fill(cache);
 
             return cache;
 
-            void Fill(LruCache<KeccakKey, byte[]> cache)
+            void Fill(LruCache<ValueKeccak, byte[]> cache)
             {
                 for (int j = 0; j < ItemsCount; j++)
                 {

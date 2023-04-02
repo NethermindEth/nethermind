@@ -59,7 +59,7 @@ namespace Ethereum.PoW.Test
         {
             BlockHeader blockHeader = Rlp.Decode<BlockHeader>(new Rlp(test.Header));
             Assert.AreEqual(test.Nonce, blockHeader.Nonce, "header nonce vs test nonce");
-            Assert.AreEqual(test.MixHash.Bytes, blockHeader.MixHash.Bytes, "header mix hash vs test mix hash");
+            Assert.AreEqual(test.MixHash.ToByteArray(), blockHeader.MixHash.ToByteArray(), "header mix hash vs test mix hash");
 
             Keccak headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing).Bytes);
             Assert.AreEqual(test.HeaderHash, headerHash, "header hash");
@@ -72,21 +72,21 @@ namespace Ethereum.PoW.Test
             uint cacheSize = Ethash.GetCacheSize(Ethash.GetEpoch(blockHeader.Number));
             Assert.AreEqual((ulong)test.CacheSize, cacheSize, "cache size requested");
 
-            IEthashDataSet cache = new EthashCache(cacheSize, test.Seed.Bytes);
+            IEthashDataSet cache = new EthashCache(cacheSize, test.Seed.ToByteArray());
             Assert.AreEqual((ulong)test.CacheSize, (ulong)cache.Size, "cache size returned");
 
             // below we confirm that headerAndNonceHashed is calculated correctly
             // & that the method for calculating the result from mix hash is correct
             byte[] nonceBytes = new byte[8];
             BinaryPrimitives.WriteUInt64LittleEndian(nonceBytes, test.Nonce);
-            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonceBytes)).Bytes;
-            byte[] resultHalfTest = Keccak.Compute(Bytes.Concat(headerAndNonceHashed, test.MixHash.Bytes)).Bytes;
-            Assert.AreEqual(resultHalfTest, test.Result.Bytes, "half test");
+            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.ToByteArray(), nonceBytes)).Bytes;
+            byte[] resultHalfTest = Keccak.Compute(Bytes.Concat(headerAndNonceHashed, test.MixHash.ToByteArray())).ToByteArray();
+            Assert.AreEqual(resultHalfTest, test.Result.ToByteArray(), "half test");
 
             // here we confirm that the whole mix hash calculation is fine
             (byte[] mixHash, byte[] result, bool success) = ethash.Hashimoto((ulong)test.FullSize, cache, headerHash, blockHeader.MixHash, test.Nonce);
-            Assert.AreEqual(test.MixHash.Bytes, mixHash, "mix hash");
-            Assert.AreEqual(test.Result.Bytes, result, "result");
+            Assert.AreEqual(test.MixHash.ToByteArray(), mixHash, "mix hash");
+            Assert.AreEqual(test.Result.ToByteArray(), result, "result");
 
             // not that the test's result value suggests that the result of the PoW operation is not below difficulty / block is invalid...
             // Assert.True(ethash.Validate(blockHeader), "validation");
