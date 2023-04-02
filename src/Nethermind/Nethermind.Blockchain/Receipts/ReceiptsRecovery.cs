@@ -96,6 +96,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 Transaction transaction = _block.Transactions[_transactionIndex];
 
+                receipt.TxType = transaction.Type;
                 receipt.BlockHash = _block.Hash;
                 receipt.BlockNumber = _block.Number;
                 receipt.TxHash = transaction.Hash;
@@ -123,6 +124,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 Transaction transaction = _block.Transactions[_transactionIndex];
 
+                receipt.TxType = transaction.Type;
                 receipt.BlockHash = _block.Hash!.ToStructRef();
                 receipt.BlockNumber = _block.Number;
                 receipt.TxHash = transaction.Hash!.ToStructRef();
