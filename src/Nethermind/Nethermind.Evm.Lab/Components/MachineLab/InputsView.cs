@@ -53,13 +53,19 @@ internal class InputsView : IComponent<MachineState>
             Height = Dim.Percent(20)
         };
 
-        bytecodeBox.TextChanged += (e) =>
+        bytecodeBox.KeyPress += (e) =>
         {
-            innerState.Events.Enqueue(new BytecodeInserted((String)e));
+            if (e.KeyEvent.Key == Key.Enter)
+            {
+                innerState.EnqueueEvent(new BytecodeInserted((string)bytecodeBox.Text));
+            }
         };
-        CallDataBox.TextChanged += (e) =>
+        CallDataBox.KeyPress += (e) =>
         {
-            innerState.Events.Enqueue(new CallDataInserted((String)e));
+            if (e.KeyEvent.Key == Key.Enter)
+            {
+                innerState.EnqueueEvent(new CallDataInserted((String)CallDataBox.Text));
+            }
         };
 
         frameView.Add(label_bytecode, bytecodeBox, label_calldata, CallDataBox);

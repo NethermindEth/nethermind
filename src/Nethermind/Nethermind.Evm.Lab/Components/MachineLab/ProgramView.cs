@@ -16,16 +16,21 @@ internal class ProgramView : IComponent<MachineState>
         for (int i = 0; i < bytecode.Length; i++)
         {
             var instruction = (Instruction)bytecode[i];
-            if (!instruction.IsValid()) throw new InvalidCodeException();
+            if (!instruction.IsValid())
+            {
+                opcodes.Add((i, "INVALID"));
+                continue;
+            }
             int immediatesCount = instruction.GetImmediateCount();
             byte[] immediates = bytecode.Slice(i + 1, immediatesCount);
             opcodes.Add((i, $"{instruction.ToString()} {immediates.ToHexString(immediates.Any())}"));
+            i += immediatesCount;
         }
         return opcodes;
     }
     public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
-        var dissassembledBytecode = Dissassemble(Core.Extensions.Bytes.FromHexString(state.GetState().Bytecode));
+        var dissassembledBytecode = Dissassemble(state.GetState().Bytecode);
 
         var frameBoundaries = new Rectangle(
                 X: rect?.X ?? 0,
