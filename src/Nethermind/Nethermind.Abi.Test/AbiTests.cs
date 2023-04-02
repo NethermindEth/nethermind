@@ -382,7 +382,7 @@ namespace Nethermind.Abi.Test
                 AbiType.Address,
                 AbiType.Address);
 
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.Packed, abiDef, assetId.Bytes, units, value, expiryTime, salt, Address.Zero, Address.Zero);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.Packed, abiDef, assetId.ValueKeccak, units, value, expiryTime, salt, Address.Zero, Address.Zero);
             Assert.AreEqual(108, encoded.Length);
         }
 

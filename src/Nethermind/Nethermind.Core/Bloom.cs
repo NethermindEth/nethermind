@@ -124,7 +124,7 @@ namespace Nethermind.Core
                 for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
                 {
                     Keccak topic = logEntry.Topics[topicIndex];
-                    Set(topic.Bytes, blockBloom);
+                    Set(topic.Span, blockBloom);
                 }
             }
         }
@@ -168,7 +168,7 @@ namespace Nethermind.Core
 
         public bool Matches(Address address) => Matches(address.Bytes);
 
-        public bool Matches(Keccak topic) => Matches(topic.Bytes.Span);
+        public bool Matches(Keccak topic) => Matches(topic.ValueKeccak.Span);
 
         public bool Matches(ValueKeccak topic) => Matches(topic.Span);
 
@@ -178,7 +178,7 @@ namespace Nethermind.Core
 
         public static BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
 
-        public static BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes.Span);
+        public static BloomExtract GetExtract(Keccak topic) => GetExtract(topic.ValueKeccak.Span);
 
         public static BloomExtract GetExtract(ValueKeccak topic) => GetExtract(topic.Span);
 
@@ -310,7 +310,7 @@ namespace Nethermind.Core
                 for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
                 {
                     Keccak topic = logEntry.Topics[topicIndex];
-                    Set(topic.Bytes, blockBloom);
+                    Set(topic.Span, blockBloom);
                 }
             }
         }
@@ -354,7 +354,7 @@ namespace Nethermind.Core
 
         public bool Matches(Address address) => Matches(address.Bytes);
 
-        public bool Matches(Keccak topic) => Matches(topic.Bytes.Span);
+        public bool Matches(Keccak topic) => Matches(topic.ValueKeccak.Span);
 
         public bool Matches(ValueKeccak topic) => Matches(topic.Span);
 
@@ -364,7 +364,7 @@ namespace Nethermind.Core
 
         public static Bloom.BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
 
-        public static Bloom.BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
+        public static Bloom.BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Span);
 
         private static Bloom.BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {

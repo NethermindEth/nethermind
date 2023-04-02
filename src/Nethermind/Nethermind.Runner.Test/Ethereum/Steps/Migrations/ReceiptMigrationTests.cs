@@ -69,7 +69,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             context.DbProvider.ReceiptsDb.Returns(receiptColumenDb);
             receiptColumenDb.RemoveFunc = (key) =>
             {
-                if (key.Equals(lastTransaction.Bytes)) guard.Set();
+                if (key.Equals(lastTransaction.ValueKeccak)) guard.Set();
             };
 
             ReceiptMigration migration = new(context);

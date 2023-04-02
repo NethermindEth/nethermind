@@ -61,11 +61,11 @@ namespace Nethermind.State.Witnesses
                 for (var index = 0; index < collected.Length; index++)
                 {
                     Keccak keccak = collected[index];
-                    keccak.Bytes.Span.CopyTo(witnessSpan.Slice(i * Keccak.Size, Keccak.Size));
+                    keccak.ValueKeccak.Span.CopyTo(witnessSpan.Slice(i * Keccak.Size, Keccak.Size));
                     i++;
                 }
 
-                _keyValueStore[blockHash.Bytes.Span] = witness;
+                _keyValueStore[blockHash.ValueKeccak.Span] = witness;
                 _witnessCache.Set(blockHash, collected);
             }
             else

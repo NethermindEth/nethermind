@@ -971,12 +971,12 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 Span<byte> keccakSpan = Read(32);
-                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Span))
                 {
                     return Keccak.OfAnEmptyString;
                 }
 
-                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Span))
                 {
                     return Keccak.EmptyTreeHash;
                 }

@@ -25,6 +25,6 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
 
     public byte[]? LoadRlp(Keccak hash)
     {
-        return _baseResolver.Get(hash.Bytes, _flags);
+        return _baseResolver.Get(hash.Span, _flags);
     }
 }

@@ -43,10 +43,10 @@ namespace Nethermind.Synchronization.Test.FastSync
         public async Task Big_test((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
             DbContext dbContext = new(_logger, _logManager);
-            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code0).Bytes] = TrieScenarios.Code0;
-            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code1).Bytes] = TrieScenarios.Code1;
-            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code2).Bytes] = TrieScenarios.Code2;
-            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code3).Bytes] = TrieScenarios.Code3;
+            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code0).ValueKeccak] = TrieScenarios.Code0;
+            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code1).ValueKeccak] = TrieScenarios.Code1;
+            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code2).ValueKeccak] = TrieScenarios.Code2;
+            dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code3).ValueKeccak] = TrieScenarios.Code3;
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
 
             dbContext.CompareTrees("BEFORE FIRST SYNC", true);

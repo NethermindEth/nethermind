@@ -300,7 +300,7 @@ namespace Nethermind.Consensus.Ethash
             byte[] cmix = new byte[MixBytes / WordBytes];
             Buffer.BlockCopy(cmixInts, 0, cmix, 0, cmix.Length);
 
-            if (expectedMixHash is not null && !Bytes.AreEqual(cmix, expectedMixHash.Bytes))
+            if (expectedMixHash is not null && !Bytes.AreEqual(cmix, expectedMixHash.Span))
             {
                 return (null, null, false);
             }

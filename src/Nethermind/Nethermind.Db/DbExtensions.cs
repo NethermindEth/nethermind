@@ -57,11 +57,11 @@ namespace Nethermind.Db
         {
             if (db is IDbWithSpan dbWithSpan)
             {
-                dbWithSpan.PutSpan(key.Bytes, value);
+                dbWithSpan.PutSpan(key.Span, value);
             }
             else
             {
-                db[key.Bytes] = value.ToArray();
+                db[key.Span] = value.ToArray();
             }
         }
 

@@ -603,7 +603,7 @@ namespace Nethermind.Synchronization.Test
             trieStore.FinishBlockCommit(TrieType.State, 1, node);
 
             stateDb.KeyExists(nodeKey).Should().BeFalse();
-            ctx.SyncServer.GetNodeData(new[] { nodeKey }, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.Bytes });
+            ctx.SyncServer.GetNodeData(new[] { nodeKey }, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.ValueKeccak });
         }
 
         private class Context

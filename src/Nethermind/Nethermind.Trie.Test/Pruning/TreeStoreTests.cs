@@ -260,7 +260,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 3, a);
             trieStore.FinishBlockCommit(TrieType.State, 4, a);
 
-            memDb[a.Keccak!.Bytes].Should().NotBeNull();
+            memDb[a.Keccak!.Span].Should().NotBeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
@@ -281,7 +281,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 3, a);
             //  <- do not persist in this test
 
-            memDb[a.Keccak!.Bytes].Should().BeNull();
+            memDb[a.Keccak!.Span].Should().BeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
@@ -289,7 +289,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void Can_load_from_rlp()
         {
             MemDb memDb = new();
-            memDb[Keccak.Zero.Bytes] = new byte[] { 1, 2, 3 };
+            memDb[Keccak.Zero.Span] = new byte[] { 1, 2, 3 };
 
             using TrieStore trieStore = new(memDb, _logManager);
             trieStore.LoadRlp(Keccak.Zero).Should().NotBeNull();
@@ -316,7 +316,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 7, a);
             trieStore.FinishBlockCommit(TrieType.State, 8, a);
 
-            memDb[a.Keccak!.Bytes].Should().NotBeNull();
+            memDb[a.Keccak!.Span].Should().NotBeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
@@ -345,7 +345,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 7, b);
             trieStore.FinishBlockCommit(TrieType.State, 8, b);
 
-            memDb[a.Keccak!.Bytes].Should().NotBeNull();
+            memDb[a.Keccak!.Span].Should().NotBeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
@@ -374,7 +374,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 7, b); // should be 'a' to test properly
             trieStore.FinishBlockCommit(TrieType.State, 8, b); // should be 'a' to test properly
 
-            memDb[a.Keccak!.Bytes].Should().BeNull();
+            memDb[a.Keccak!.Span].Should().BeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
@@ -449,8 +449,8 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 7, a);
             trieStore.FinishBlockCommit(TrieType.State, 8, a);
 
-            memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            memDb[storage1.Keccak!.Bytes].Should().NotBeNull();
+            memDb[a.Keccak!.Span].Should().NotBeNull();
+            memDb[storage1.Keccak!.Span].Should().NotBeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
             // trieStore.IsInMemory(storage1.Keccak).Should().BeFalse();
         }
@@ -488,8 +488,8 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 7, b); // should be 'a' to test properly
             trieStore.FinishBlockCommit(TrieType.State, 8, b); // should be 'a' to test properly
 
-            memDb[a.Keccak!.Bytes].Should().BeNull();
-            memDb[storage1.Keccak!.Bytes].Should().BeNull();
+            memDb[a.Keccak!.Span].Should().BeNull();
+            memDb[storage1.Keccak!.Span].Should().BeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
             trieStore.IsNodeCached(storage1.Keccak).Should().BeTrue();
         }
@@ -541,8 +541,8 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 7, branch);
             trieStore.FinishBlockCommit(TrieType.State, 8, branch);
 
-            memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            memDb[storage1.Keccak!.Bytes].Should().NotBeNull();
+            memDb[a.Keccak!.Span].Should().NotBeNull();
+            memDb[storage1.Keccak!.Span].Should().NotBeNull();
             trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
             trieStore.IsNodeCached(storage1.Keccak).Should().BeTrue();
         }

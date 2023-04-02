@@ -67,13 +67,13 @@ namespace Nethermind.Synchronization.Test
             {
                 ("empty", (tree, stateDb, codeDb) =>
                 {
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
                     tree.Commit(0);
                 }),
                 ("set_3_via_address", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
                     tree.Set(TestItem.AddressA, Account0);
                     tree.Set(TestItem.AddressB, Account0);
                     tree.Set(TestItem.AddressC, Account0);
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.Test
                     remoteStorageTree.Set((UInt256) 1, new byte[] {1});
                     remoteStorageTree.Commit(0);
                     remoteStorageTree.UpdateRootHash();
-                    codeDb[codeHash.Bytes] = code;
+                    codeDb[codeHash.ValueKeccak] = code;
                     tree.Set(new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
                     tree.Commit(0);
                 }),
@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.Test
                     remoteStorageTree.Set((UInt256) 1, new byte[] {1});
                     remoteStorageTree.Commit(0);
                     remoteStorageTree.UpdateRootHash();
-                    codeDb[codeHash.Bytes] = code;
+                    codeDb[codeHash.ValueKeccak] = code;
                     tree.Set(new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
                     tree.Set(new Keccak("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
                     tree.Commit(0);
@@ -112,14 +112,14 @@ namespace Nethermind.Synchronization.Test
                     remoteStorageTree.Set((UInt256) 1, new byte[] {1});
                     remoteStorageTree.Commit(0);
                     remoteStorageTree.UpdateRootHash();
-                    codeDb[codeHash.Bytes] = code;
+                    codeDb[codeHash.ValueKeccak] = code;
                     tree.Set(new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0.WithChangedCodeHash(codeHash));
                     tree.Set(new Keccak("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
                     tree.Commit(0);
                 }),
                 ("branch_with_same_accounts_at_different_addresses", (tree, stateDb, codeDb) =>
                 {
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
                     tree.Set(new Keccak("1baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
                     tree.Set(new Keccak("2baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
                     tree.Commit(0);
@@ -127,7 +127,7 @@ namespace Nethermind.Synchronization.Test
                 ("set_3_delete_1", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.Test
                 ("set_3_delete_2", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
@@ -159,8 +159,8 @@ namespace Nethermind.Synchronization.Test
                 ("extension_read_full_match", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
+                    codeDb[Keccak.Compute(Code1).ValueKeccak] = Code1;
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
                     Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
@@ -171,8 +171,8 @@ namespace Nethermind.Synchronization.Test
                 ("extension_read_missing", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
+                    codeDb[Keccak.Compute(Code1).ValueKeccak] = Code1;
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
                     Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
@@ -183,9 +183,9 @@ namespace Nethermind.Synchronization.Test
                 ("extension_new_branch", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                    codeDb[Keccak.Compute(Code2).Bytes] = Code2;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
+                    codeDb[Keccak.Compute(Code1).ValueKeccak] = Code1;
+                    codeDb[Keccak.Compute(Code2).ValueKeccak] = Code2;
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"), Account2);
@@ -205,8 +205,8 @@ namespace Nethermind.Synchronization.Test
                 ("extension_delete_missing", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
+                    codeDb[Keccak.Compute(Code1).ValueKeccak] = Code1;
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddd"), null);
@@ -217,10 +217,10 @@ namespace Nethermind.Synchronization.Test
                 ("extenson_create_new_extension", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                    codeDb[Keccak.Compute(Code2).Bytes] = Code2;
-                    codeDb[Keccak.Compute(Code3).Bytes] = Code3;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
+                    codeDb[Keccak.Compute(Code1).ValueKeccak] = Code1;
+                    codeDb[Keccak.Compute(Code2).ValueKeccak] = Code2;
+                    codeDb[Keccak.Compute(Code3).ValueKeccak] = Code3;
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab00000000"), Account2);
@@ -232,7 +232,7 @@ namespace Nethermind.Synchronization.Test
                 ("leaf_new_value", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    codeDb[Keccak.Compute(Code1).ValueKeccak] = Code1;
                     tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account1);
                     tree.UpdateRootHash();
@@ -242,7 +242,7 @@ namespace Nethermind.Synchronization.Test
                 ("leaf_no_change", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
                     tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     tree.UpdateRootHash();
@@ -261,7 +261,7 @@ namespace Nethermind.Synchronization.Test
                 ("leaf_delete_missing", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
                     tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     tree.Set(new Keccak("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd"), null);
                     tree.UpdateRootHash();
@@ -271,8 +271,8 @@ namespace Nethermind.Synchronization.Test
                 ("leaf_update_extension", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
+                    codeDb[Keccak.Compute(Code1).ValueKeccak] = Code1;
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000"), Account1);
                     tree.UpdateRootHash();
@@ -282,7 +282,7 @@ namespace Nethermind.Synchronization.Test
                 ("leaf_read", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
                     tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     Account account = tree.Get(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"));
                     tree.UpdateRootHash();
@@ -292,7 +292,7 @@ namespace Nethermind.Synchronization.Test
                 ("leaf_update_missing", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
                     tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     Account account = tree.Get(new Keccak("111111111111111111111111111111111111111111111111111111111ddddddd"));
                     tree.UpdateRootHash();
@@ -302,9 +302,9 @@ namespace Nethermind.Synchronization.Test
                 ("branch_update_missing", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                    codeDb[Keccak.Compute(Code2).Bytes] = Code2;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
+                    codeDb[Keccak.Compute(Code1).ValueKeccak] = Code1;
+                    codeDb[Keccak.Compute(Code2).ValueKeccak] = Code2;
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), Account2);
@@ -315,8 +315,8 @@ namespace Nethermind.Synchronization.Test
                 ("branch_read_missing", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
+                    codeDb[Keccak.Compute(Code1).ValueKeccak] = Code1;
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
                     Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
@@ -327,8 +327,8 @@ namespace Nethermind.Synchronization.Test
                 ("branch_delete_missing", (tree, stateDb, codeDb) =>
                 {
                     SetStorage(stateDb);
-                    codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    codeDb[Keccak.Compute(Code1).Bytes] = Code1;
+                    codeDb[Keccak.Compute(Code0).ValueKeccak] = Code0;
+                    codeDb[Keccak.Compute(Code1).ValueKeccak] = Code1;
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), null);

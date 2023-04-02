@@ -516,7 +516,7 @@ namespace Nethermind.AccountAbstraction.Test
             Keccak hashedRequestId = Keccak.Compute(
                 Bytes.Concat(
                     Encoding.UTF8.GetBytes("\x19"),
-                    Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + op.RequestId!.Bytes.Length),
+                    Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + op.RequestId!.ValueKeccak.Length),
                     op.RequestId!.ToByteArray())
             );
             Signature signature = signer.Sign(hashedRequestId);

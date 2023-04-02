@@ -40,10 +40,10 @@ namespace Nethermind.Evm
         private Span<byte> _bytes;
 
         private ITxTracer _tracer;
-        
+
         public void PushBytes(scoped Span<byte> value)
         {
-            PushBytes((ReadOnlySpan<byte>) value);
+            PushBytes((ReadOnlySpan<byte>)value);
         }
 
         public void PushBytes(scoped ReadOnlySpan<byte> value)

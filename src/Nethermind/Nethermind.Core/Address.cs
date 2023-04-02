@@ -24,7 +24,7 @@ namespace Nethermind.Core
 
         public byte[] Bytes { get; }
 
-        public Address(Keccak keccak) : this(keccak.Bytes) { }
+        public Address(Keccak keccak) : this(keccak.ValueKeccak) { }
 
         public Address(in ValueKeccak keccak) : this(keccak.Span.Slice(12, ByteLength).ToArray()) { }
 

@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.X86;
 
 using Nethermind.Core.Extensions;
 
@@ -50,11 +49,7 @@ namespace Nethermind.Core.Crypto
 
         public static implicit operator ValueKeccak(Keccak? keccak)
         {
-            return keccak?.Bytes ?? default;
-        }
-        public static implicit operator ReadOnlySpan<byte>(ValueKeccak keccak)
-        {
-            return keccak.Span;
+            return keccak?.ValueKeccak ?? default;
         }
 
         public ValueKeccak(byte[]? bytes)
@@ -121,23 +116,7 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(ValueKeccak other) => _bytes.Equals(other._bytes);
 
-        public bool Equals(Keccak? other) => _bytes.Equals(other?.Bytes._bytes ?? default);
-
-        public bool IsZero
-        {
-            get
-            {
-                if (Avx.IsSupported)
-                {
-                    var v = _bytes; //Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.AsRef(in Bytes));
-                    return Avx.TestZ(v, v);
-                }
-                else
-                {
-                    return _bytes.Equals(default);
-                }
-            }
-        }
+        public bool Equals(Keccak? other) => _bytes.Equals(other?.ValueKeccak._bytes ?? default);
 
         public override int GetHashCode()
         {
@@ -225,9 +204,9 @@ namespace Nethermind.Core.Crypto
         /// </summary>
         public static Keccak MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
-        public ValueKeccak Bytes => _keccak;
+        public ValueKeccak ValueKeccak => _keccak;
 
-        public ReadOnlySpan<byte> Span =>  MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _keccak), 1));
+        public ReadOnlySpan<byte> Span => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _keccak), 1));
 
         public Keccak(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString)) { }

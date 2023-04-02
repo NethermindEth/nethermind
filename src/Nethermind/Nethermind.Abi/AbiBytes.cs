@@ -63,7 +63,7 @@ namespace Nethermind.Abi
             {
                 return Encode(hash.ToByteArray(), packed);
             }
-            
+
             if (arg is ValueKeccak keccak && Length == 32)
             {
                 return Encode(keccak.ToByteArray(), packed);

@@ -223,7 +223,7 @@ namespace Nethermind.Synchronization.FastSync
 
                         /* node sent data that is not consistent with its hash - it happens surprisingly often */
                         if (!ValueKeccak.Compute(currentResponseItem).Span
-                                .SequenceEqual(currentStateSyncItem.Hash.Bytes))
+                                .SequenceEqual(currentStateSyncItem.Hash.Span))
                         {
                             AddNodeToPending(currentStateSyncItem, null, "missing", true);
                             if (_logger.IsTrace)
@@ -748,7 +748,7 @@ namespace Nethermind.Synchronization.FastSync
                 _codeDbLock.EnterWriteLock();
                 try
                 {
-                    _codeDb[_fastSyncProgressKey.Bytes] = serializedData;
+                    _codeDb[_fastSyncProgressKey.Span] = serializedData;
                 }
                 finally
                 {

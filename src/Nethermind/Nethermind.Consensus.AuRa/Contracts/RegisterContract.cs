@@ -57,6 +57,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public Address GetAddress(BlockHeader header, string key) =>
             // 2 arguments: name and key (category)
             Constant.Call<Address>(
-                new CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsAddressRecord) { MissingContractResult = MissingGetAddressResult });
+                new CallInfo(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).ValueKeccak, DnsAddressRecord) { MissingContractResult = MissingGetAddressResult });
     }
 }

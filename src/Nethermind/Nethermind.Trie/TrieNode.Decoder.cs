@@ -234,7 +234,7 @@ namespace Nethermind.Trie
                             }
                             else
                             {
-                                position = Rlp.Encode(destination, position, childNode.Keccak.Bytes);
+                                position = Rlp.Encode(destination, position, childNode.Keccak.Span);
                             }
                         }
                     }

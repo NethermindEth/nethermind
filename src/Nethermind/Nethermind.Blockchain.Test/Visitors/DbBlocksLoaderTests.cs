@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
+                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.ValueKeccak);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new(
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
+                blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.ValueKeccak);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
                 BlockTree blockTree = new(

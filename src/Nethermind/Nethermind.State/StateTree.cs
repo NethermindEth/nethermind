@@ -47,7 +47,7 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
         {
-            byte[]? bytes = Get(keccak.Bytes);
+            byte[]? bytes = Get(keccak.Span);
             if (bytes is null)
             {
                 return null;
@@ -67,7 +67,7 @@ namespace Nethermind.State
         {
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 
-            Set(keccak.Bytes, rlp);
+            Set(keccak.Span, rlp);
             return rlp;
         }
     }

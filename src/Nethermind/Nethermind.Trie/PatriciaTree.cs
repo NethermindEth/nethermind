@@ -301,7 +301,7 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
-            return Get((ReadOnlySpan<byte>) rawKey, rootHash);
+            return Get((ReadOnlySpan<byte>)rawKey, rootHash);
         }
 
         [DebuggerStepThrough]

@@ -17,7 +17,7 @@ namespace Nethermind.Core.Test
         public void Test()
         {
             Bloom bloom = new();
-            bloom.Set(Keccak.OfAnEmptyString.Bytes);
+            bloom.Set(Keccak.OfAnEmptyString.Span);
             byte[] bytes = bloom.Bytes.ToArray();
             Bloom bloom2 = new(bytes);
             Assert.AreEqual(bloom.ToString(), bloom2.ToString());

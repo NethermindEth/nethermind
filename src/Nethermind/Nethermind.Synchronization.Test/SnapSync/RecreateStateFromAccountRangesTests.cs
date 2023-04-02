@@ -344,12 +344,12 @@ namespace Nethermind.Synchronization.Test.SnapSync
             HasMoreChildren(TestItem.Tree.AccountsWithPaths[3].Path).Should().BeTrue();
             HasMoreChildren(TestItem.Tree.AccountsWithPaths[4].Path).Should().BeTrue();
 
-            UInt256 between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[1].Path.Bytes, true);
+            UInt256 between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[1].Path.ValueKeccak, true);
             between2and3 += 5;
 
             HasMoreChildren(new Keccak(between2and3.ToBigEndian())).Should().BeFalse();
 
-            between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[2].Path.Bytes, true);
+            between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[2].Path.ValueKeccak, true);
             between2and3 -= 1;
 
             HasMoreChildren(new Keccak(between2and3.ToBigEndian())).Should().BeFalse();
@@ -396,7 +396,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             HasMoreChildren(ac1.Path).Should().BeFalse();
             HasMoreChildren(ac2.Path).Should().BeFalse();
 
-            UInt256 between2and3 = new UInt256(ac2.Path.Bytes, true);
+            UInt256 between2and3 = new UInt256(ac2.Path.ValueKeccak, true);
             between2and3 += 5;
 
             HasMoreChildren(new Keccak(between2and3.ToBigEndian())).Should().BeFalse();

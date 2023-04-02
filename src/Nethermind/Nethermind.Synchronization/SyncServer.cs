@@ -402,12 +402,12 @@ namespace Nethermind.Synchronization
                 values[i] = null;
                 if ((includedTypes & NodeDataType.State) == NodeDataType.State)
                 {
-                    values[i] = _stateDb[keys[i].Bytes];
+                    values[i] = _stateDb[keys[i].Span];
                 }
 
                 if (values[i] is null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
                 {
-                    values[i] = _codeDb[keys[i].Bytes];
+                    values[i] = _codeDb[keys[i].Span];
                 }
             }
 

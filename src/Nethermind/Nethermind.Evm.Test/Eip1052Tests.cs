@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput result = Execute(code);
             AssertGas(result, 21000 + GasCostOf.VeryLow * 2 + GasCostOf.SSet + GasCostOf.ExtCodeHash);
-            AssertStorage(UInt256.Zero, Keccak.OfAnEmptyString.Bytes);
+            AssertStorage(UInt256.Zero, Keccak.OfAnEmptyString.Span);
         }
 
         [Test]
@@ -87,7 +87,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            AssertStorage(UInt256.Zero, Keccak.OfAnEmptyString.Bytes);
+            AssertStorage(UInt256.Zero, Keccak.OfAnEmptyString.Span);
         }
 
         [Test]
@@ -126,8 +126,8 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            AssertStorage(0, codehash.Bytes);
-            AssertStorage(1, codehash.Bytes);
+            AssertStorage(0, codehash.Span);
+            AssertStorage(1, codehash.Span);
         }
 
         [Test]

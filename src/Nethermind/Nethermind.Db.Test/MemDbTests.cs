@@ -88,7 +88,7 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
-            memDb.Remove(TestItem.KeccakA.Bytes);
+            memDb.Remove(TestItem.KeccakA.Span);
             memDb.KeyExists(TestItem.KeccakA).Should().BeFalse();
         }
 

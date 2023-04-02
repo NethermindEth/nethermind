@@ -129,7 +129,7 @@ namespace Nethermind.Store.Test.Witnesses
             WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
             witnessCollector.Persist(Keccak.Zero);
 
-            var witness = keyValueStore[Keccak.Zero.Bytes];
+            var witness = keyValueStore[Keccak.Zero.Span];
             witness.Should().BeNull();
         }
 
@@ -144,7 +144,7 @@ namespace Nethermind.Store.Test.Witnesses
             witnessCollector.Add(TestItem.KeccakB);
             witnessCollector.Persist(Keccak.Zero);
 
-            var witness = keyValueStore[Keccak.Zero.Bytes];
+            var witness = keyValueStore[Keccak.Zero.Span];
             witness.Length.Should().Be(64);
         }
 

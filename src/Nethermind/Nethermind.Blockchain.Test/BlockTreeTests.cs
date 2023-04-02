@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(block2);
             tree.SuggestBlock(block3);
 
-            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
+            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.ValueKeccak);
             BlockTree tree2 = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
             Assert.AreEqual(0L, tree2.BestKnownNumber, "best known");
@@ -271,7 +271,7 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(block2B);
             tree.SuggestBlock(block3B);
 
-            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
+            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.ValueKeccak);
             BlockTree tree2 = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
 
             Assert.AreEqual(3L, tree2.BestKnownNumber, "best known");
@@ -297,7 +297,7 @@ namespace Nethermind.Blockchain.Test
             Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
             blocksInfosDb.ReadFunc = (key) =>
             {
-                if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.Bytes))
+                if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.ValueKeccak))
                 {
                     return chainLevel.Bytes;
                 }
@@ -768,7 +768,7 @@ namespace Nethermind.Blockchain.Test
             headersDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
             MemDb blockInfosDb = new();
-            blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash.Bytes);
+            blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash.ValueKeccak);
             ChainLevelInfo level = new(true, new BlockInfo(headBlock.Hash, headBlock.Difficulty));
             level.BlockInfos[0].WasProcessed = true;
 
