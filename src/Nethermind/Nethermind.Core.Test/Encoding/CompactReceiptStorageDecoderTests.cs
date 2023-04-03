@@ -99,6 +99,40 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
+        public void Can_do_roundtrip_storage_ref_struct()
+        {
+            TxReceipt txReceipt = Build.A.Receipt.TestObject;
+            txReceipt.BlockNumber = 1;
+            txReceipt.BlockHash = TestItem.KeccakA;
+            txReceipt.Bloom = new Bloom(txReceipt.Logs);
+            txReceipt.ContractAddress = TestItem.AddressA;
+            txReceipt.Sender = TestItem.AddressB;
+            txReceipt.Recipient = TestItem.AddressC;
+            txReceipt.GasUsed = 100;
+            txReceipt.GasUsedTotal = 1000;
+            txReceipt.Index = 2;
+            txReceipt.PostTransactionState = TestItem.KeccakH;
+
+            CompactReceiptStorageDecoder decoder = new();
+
+            byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
+            Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
+            decoder.DecodeStructRef(ref ctx, RlpBehaviors.Storage, out var deserialized);
+
+            Assert.AreEqual(txReceipt.TxType, deserialized.TxType, "tx type");
+            deserialized.BlockHash.Bytes.Length.Should().Be(0);
+            Assert.AreEqual(0, deserialized.BlockNumber, "block number");
+            Assert.AreEqual(0, deserialized.Index, "index");
+            deserialized.ContractAddress.Bytes.Length.Should().Be(0);
+            Assert.AreEqual(txReceipt.Sender.ToString(), deserialized.Sender.ToString(), "sender");
+            Assert.AreEqual(0, deserialized.GasUsed, "gas used");
+            Assert.AreEqual(txReceipt.GasUsedTotal, deserialized.GasUsedTotal, "gas used total");
+            Assert.AreEqual(txReceipt.Bloom.ToString(), deserialized.Bloom.ToString(), "bloom");
+            deserialized.Recipient.Bytes.Length.Should().Be(0);
+            Assert.AreEqual(txReceipt.StatusCode, deserialized.StatusCode, "status");
+        }
+
+        [Test]
         public void Can_do_roundtrip_storage_rlp_stream()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;

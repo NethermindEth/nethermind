@@ -136,18 +136,16 @@ namespace Nethermind.Serialization.Rlp
             item.Sender = (decoderContext.DecodeAddress() ?? Address.Zero).ToStructRef();
             item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
 
+            // Need to regenerate bloom. Can't lazily load log.
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            (int PrefixLength, int ContentLength) peekPrefixAndContentLength =
-                decoderContext.PeekPrefixAndContentLength();
-            int logsBytes = peekPrefixAndContentLength.ContentLength + peekPrefixAndContentLength.PrefixLength;
-            item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
-            decoderContext.SkipItem();
-
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (!allowExtraBytes)
+            List<LogEntry> logEntries = new();
+            while (decoderContext.Position < lastCheck)
             {
-                decoderContext.Check(lastCheck);
+                logEntries.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes));
             }
+            item.Logs = logEntries.ToArray();
+
+            item.Bloom = new Bloom(item.Logs).ToStructRef();
         }
 
         public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
