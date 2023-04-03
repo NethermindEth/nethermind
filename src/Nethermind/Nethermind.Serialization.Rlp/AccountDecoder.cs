@@ -217,6 +217,6 @@ namespace Nethermind.Serialization.Rlp
             return rlpStream.DecodeKeccak()!;
         }
 
-        private Keccak DecodeStorageRoot(ref Rlp.ValueDecoderContext rlpStream)  => DecodeKeccakWithFallback(ref rlpStream, Keccak.EmptyTreeHash);
+        private Keccak DecodeStorageRoot(ref Rlp.ValueDecoderContext rlpStream) => DecodeKeccakWithFallback(ref rlpStream, Keccak.EmptyTreeHash);
     }
 }

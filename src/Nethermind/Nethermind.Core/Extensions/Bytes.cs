@@ -120,7 +120,7 @@ namespace Nethermind.Core.Extensions
 
         public static readonly byte[] Empty = Array.Empty<byte>();
 
-        public static readonly byte[] ZeroByte = new byte[] {0};
+        public static readonly byte[] ZeroByte = new byte[] { 0 };
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this byte b, int bitNumber)
