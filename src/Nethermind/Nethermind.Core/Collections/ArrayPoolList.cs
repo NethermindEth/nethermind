@@ -59,7 +59,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IReadOnlyList<T>, IDispo
         _array[_count++] = item;
     }
 
-    public int Add(object? value)
+    int IList.Add(object? value)
     {
         ThrowHelper.IfNullAndNullsAreIllegalThenThrow<T>(value, nameof(value));
 
