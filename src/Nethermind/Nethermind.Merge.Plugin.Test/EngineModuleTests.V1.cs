@@ -38,8 +38,11 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    [Test]
-    public virtual async Task processing_block_should_serialize_valid_responses()
+    [TestCase(
+        "0xb1b3b07ef3832bd409a04fdea9bf2bfa83d7af0f537ff25f4a3d2eb632ebfb0f",
+        "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133",
+        "0x6454408c425ddd96")]
+    public virtual async Task processing_block_should_serialize_valid_responses(string blockHash, string latestValidHash, string payloadId)
     {
         using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
         {
@@ -69,14 +72,14 @@ public partial class EngineModuleTests
         };
         // prepare a payload
         string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
-        byte[] expectedPayloadId = Bytes.FromHexString("0x6454408c425ddd96");
-        result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
+        byte[] expectedPayloadId = Bytes.FromHexString(payloadId);
+        result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"{latestValidHash}\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
-        Keccak blockHash = new("0xb1b3b07ef3832bd409a04fdea9bf2bfa83d7af0f537ff25f4a3d2eb632ebfb0f");
+        Keccak expectedBlockHash = new(blockHash);
         string? expectedPayload = chain.JsonSerializer.Serialize(new ExecutionPayload
         {
             BaseFeePerGas = 0,
-            BlockHash = blockHash,
+            BlockHash = expectedBlockHash,
             BlockNumber = 1,
             ExtraData = Bytes.FromHexString("0x4e65746865726d696e64"), // Nethermind
             FeeRecipient = feeRecipient,
@@ -95,19 +98,19 @@ public partial class EngineModuleTests
         result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedPayload},\"id\":67}}");
         // execute the payload
         result = RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV1", expectedPayload);
-        result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{blockHash}\",\"validationError\":null}},\"id\":67}}");
+        result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{expectedBlockHash}\",\"validationError\":null}},\"id\":67}}");
 
         forkChoiceUpdatedParams = new
         {
-            headBlockHash = blockHash.ToString(true),
-            safeBlockHash = blockHash.ToString(true),
+            headBlockHash = expectedBlockHash.ToString(true),
+            safeBlockHash = expectedBlockHash.ToString(true),
             finalizedBlockHash = startingHead.ToString(true),
         };
         parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams), null };
         // update the fork choice
         result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters!);
         result.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"VALID\",\"latestValidHash\":\"" +
-                           blockHash +
+                           expectedBlockHash +
                            "\",\"validationError\":null},\"payloadId\":null},\"id\":67}");
     }
 
