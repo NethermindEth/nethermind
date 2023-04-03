@@ -383,30 +383,37 @@ namespace Nethermind.Trie.Pruning
                 {
                     try
                     {
-                        while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
-                        {
-                            lock (_dirtyNodes)
-                            {
-                                using (_dirtyNodes.AllNodes.AcquireLock())
-                                {
-                                    if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
-                                    PruneCache();
-
-                                    if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
-                                    {
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (_logger.IsDebug) _logger.Debug($"Pruning finished. Unlocked {nameof(TrieStore)}.");
+                        if (_logger.IsDebug) _logger.Debug($"Starting {nameof(TrieStore)} pruning loop.");
+                        RunPruningLoop();
+                        if (_logger.IsDebug) _logger.Debug($"Pruning finished.");
                     }
                     catch (Exception e)
                     {
                         if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
                     }
                 });
+            }
+        }
+
+        private void RunPruningLoop()
+        {
+            while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+            {
+                lock (_dirtyNodes)
+                {
+                    using (_dirtyNodes.AllNodes.AcquireLock())
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning spin.");
+                        PruneCache();
+
+                        if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
+                        {
+                            break;
+                        }
+                    }
+
+                    if (_logger.IsDebug) _logger.Debug($"Unlocked {nameof(TrieStore)} after pruning spin.");
+                }
             }
         }
 
