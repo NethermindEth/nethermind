@@ -321,7 +321,7 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public void Set(Span<byte> rawKey, Rlp? value)
         {
-            Set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
+            Set(rawKey, value?.Bytes ?? Array.Empty<byte>());
         }
 
         private unsafe byte[]? Run(
