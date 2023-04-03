@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -48,8 +35,8 @@ namespace Nethermind.Runner.Ethereum.Api
             _jsonSerializer = new EthereumJsonSerializer();
         }
 
-        public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) => 
-            Create((IEnumerable<IConsensusPlugin>) consensusPlugins);
+        public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) =>
+            Create((IEnumerable<IConsensusPlugin>)consensusPlugins);
 
         public INethermindApi Create(IEnumerable<IConsensusPlugin> consensusPlugins)
         {
@@ -59,16 +46,16 @@ namespace Nethermind.Runner.Ethereum.Api
             {
                 throw new NotSupportedException("Creation of multiple APIs not supported.");
             }
-            
+
             string engine = chainSpec.SealEngineType;
             IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
-            
+
             INethermindApi nethermindApi = enginePlugin?.CreateApi() ?? new NethermindApi();
             nethermindApi.ConfigProvider = _configProvider;
             nethermindApi.EthereumJsonSerializer = _jsonSerializer;
             nethermindApi.LogManager = _logManager;
             nethermindApi.SealEngineType = engine;
-            nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec);
+            nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);
             nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
             nethermindApi.ChainSpec = chainSpec;
 
@@ -95,7 +82,7 @@ namespace Nethermind.Runner.Ethereum.Api
             ThisNodeInfo.AddInfo("Chainspec    :", $"{chainSpecFile}");
 
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-            return loader.LoadFromFile(chainSpecFile);
+            return loader.LoadEmbeddedOrFromFile(chainSpecFile, _logger);
         }
 
         private void SetLoggerVariables(ChainSpec chainSpec)

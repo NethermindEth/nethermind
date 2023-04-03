@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -49,7 +35,7 @@ namespace Nethermind.Blockchain.FullPruning
         private DateTime _lastPruning = DateTime.MinValue;
 
         public FullPruner(
-            IFullPruningDb fullPruningDb, 
+            IFullPruningDb fullPruningDb,
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
@@ -91,28 +77,30 @@ namespace Nethermind.Blockchain.FullPruning
                 if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 1, 0) == 0)
                 {
                     // we don't want to start pruning in the middle of block processing, lets wait for new head.
-                    _blockTree.NewHeadBlock += OnNewHead;
+                    _blockTree.OnUpdateMainChain += OnUpdateMainChain;
                     e.Status = PruningStatus.Starting;
                 }
             }
         }
 
-        private void OnNewHead(object? sender, BlockEventArgs e)
+        private void OnUpdateMainChain(object? sender, OnUpdateMainChainArgs e)
         {
+            if (!e.WereProcessed) return;
             if (CanStartNewPruning())
             {
                 if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 0, 1) == 1)
                 {
-                    if (e.Block is not null)
+                    if (e.Blocks is not null && e.Blocks.Count > 0)
                     {
                         if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext pruningContext))
                         {
                             SetCurrentPruning(pruningContext);
                             if (Interlocked.CompareExchange(ref _waitingForStateReady, 1, 0) == 0)
                             {
-                                _blockToWaitFor = e.Block.Number;
+                                Block lastBlock = e.Blocks[^1];
+                                _blockToWaitFor = lastBlock.Number;
                                 _stateToCopy = long.MaxValue;
-                                if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: waiting for state {e.Block.Number} to be ready.");
+                                if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: waiting for state {lastBlock.Number} to be ready.");
                             }
                         }
                     }
@@ -135,7 +123,7 @@ namespace Nethermind.Blockchain.FullPruning
                         {
                             if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {_stateToCopy} with root {header.StateRoot}.");
                             Task.Run(() => RunPruning(_currentPruning, header.StateRoot!));
-                            _blockTree.NewHeadBlock -= OnNewHead;
+                            _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
                         }
                     }
                     else
@@ -145,15 +133,15 @@ namespace Nethermind.Blockchain.FullPruning
                 }
                 else
                 {
-                    if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved finalized state {_blockTree.BestPersistedState}, waiting for state {_blockToWaitFor} in order to not loose any cached state.");
+                    if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved finalized state {_blockTree.BestPersistedState}, waiting for state {_blockToWaitFor} in order to not lose any cached state.");
                 }
             }
             else
             {
-                _blockTree.NewHeadBlock -= OnNewHead;
+                _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
             }
         }
-        
+
         private void SetCurrentPruning(IPruningContext pruningContext)
         {
             IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
@@ -188,9 +176,10 @@ namespace Nethermind.Blockchain.FullPruning
 
                 if (!pruning.CancellationTokenSource.IsCancellationRequested)
                 {
-                    void CommitOnNewBLock(object o, BlockEventArgs e)
+                    void CommitOnNewBLock(object o, OnUpdateMainChainArgs e)
                     {
-                        _blockTree.NewHeadBlock -= CommitOnNewBLock;
+                        if (!e.WereProcessed) return;
+                        _blockTree.OnUpdateMainChain -= CommitOnNewBLock;
                         // ReSharper disable AccessToDisposedClosure
                         pruning.Commit();
                         _lastPruning = DateTime.Now;
@@ -198,7 +187,7 @@ namespace Nethermind.Blockchain.FullPruning
                         // ReSharper restore AccessToDisposedClosure
                     }
 
-                    _blockTree.NewHeadBlock += CommitOnNewBLock;
+                    _blockTree.OnUpdateMainChain += CommitOnNewBLock;
                     copyTreeVisitor.Finish();
                 }
                 else
@@ -215,7 +204,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         public void Dispose()
         {
-            _blockTree.NewHeadBlock -= OnNewHead;
+            _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
             _pruningTrigger.Prune -= OnPrune;
             _currentPruning?.Dispose();
             _fullPruningDb.PruningFinished -= HandlePruningFinished;

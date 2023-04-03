@@ -1,53 +1,35 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 {
-    public class HelperTrieProofsMessageSerializer: IZeroMessageSerializer<HelperTrieProofsMessage>
+    public class HelperTrieProofsMessageSerializer : IZeroMessageSerializer<HelperTrieProofsMessage>
     {
-        [Todo(Improve.Refactor, "Rlp.Encode<T>(T[]...) could recurse to handle arbitrary array nesting. Would clean this up a lot.")]
         public void Serialize(IByteBuffer byteBuffer, HelperTrieProofsMessage message)
         {
-            Rlp[] proofNodesRlp = new Rlp[message.ProofNodes.Length];
+            Keccak[] proofNodesKeccak = new Keccak[message.ProofNodes.Length];
+            int proofNodesContentLength = 0;
             for (int i = 0; i < message.ProofNodes.Length; i++)
             {
-                proofNodesRlp[i] = Rlp.Encode(new Keccak(message.ProofNodes[i]));
+                proofNodesKeccak[i] = new Keccak(message.ProofNodes[i]);
+                proofNodesContentLength += Rlp.LengthOf(proofNodesKeccak[i]);
             }
-            
-            Rlp proofsRlp = Rlp.Encode(proofNodesRlp);
 
-            Rlp[] tempAuxRlp = new Rlp[message.AuxiliaryData.Length];
+            int tempAuxContentLength = 0;
             for (int i = 0; i < message.AuxiliaryData.Length; i++)
             {
-                tempAuxRlp[i] = Rlp.Encode(message.AuxiliaryData[i]);
+                tempAuxContentLength += Rlp.LengthOf(message.AuxiliaryData[i]);
             }
-            Rlp auxRlp = Rlp.Encode(tempAuxRlp);
 
-            int innerContentLength = proofsRlp.Length + auxRlp.Length;
-
+            int innerContentLength = Rlp.LengthOfSequence(proofNodesContentLength) + Rlp.LengthOfSequence(tempAuxContentLength);
             int contentLength =
                 Rlp.LengthOf(message.RequestId) +
                 Rlp.LengthOf(message.BufferValue) +
                 Rlp.LengthOfSequence(innerContentLength);
-
             int totalLength = Rlp.LengthOfSequence(contentLength);
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
@@ -57,8 +39,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             rlpStream.Encode(message.RequestId);
             rlpStream.Encode(message.BufferValue);
             rlpStream.StartSequence(innerContentLength);
-            rlpStream.Encode(proofsRlp);
-            rlpStream.Encode(auxRlp);
+            rlpStream.StartSequence(proofNodesContentLength);
+            for (int i = 0; i < message.ProofNodes.Length; i++)
+            {
+                rlpStream.Encode(proofNodesKeccak[i]);
+            }
+            rlpStream.StartSequence(tempAuxContentLength);
+            for (int i = 0; i < message.AuxiliaryData.Length; i++)
+            {
+                rlpStream.Encode(message.AuxiliaryData[i]);
+            }
         }
 
         public HelperTrieProofsMessage Deserialize(IByteBuffer byteBuffer)

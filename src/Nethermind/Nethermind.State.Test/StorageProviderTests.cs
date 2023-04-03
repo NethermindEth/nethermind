@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
@@ -189,7 +176,7 @@ namespace Nethermind.Store.Test
 
             Assert.True(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero());
         }
-        
+
         [Test]
         public void Commit_trees_clear_caches_get_previous_root()
         {
@@ -208,17 +195,17 @@ namespace Nethermind.Store.Test
             storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
             storageProvider.Commit();
             ctx.StateProvider.Commit(Frontier.Instance);
-            
+
             // revert
             ctx.StateProvider.Reset();
             storageProvider.Reset();
             ctx.StateProvider.StateRoot = stateRoot;
-            
+
             byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1));
-            
+
             Assert.AreEqual(_values[1], valueAfter);
         }
-        
+
         [Test]
         public void Can_commit_when_exactly_at_capacity_regression()
         {
@@ -229,10 +216,10 @@ namespace Nethermind.Store.Test
             {
                 storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[i % 2]);
             }
-            
+
             storageProvider.Commit();
             ctx.StateProvider.Commit(Frontier.Instance);
-            
+
             byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1));
             Assert.AreEqual(_values[(Resettable.StartCapacity + 1) % 2], valueAfter);
         }
@@ -430,7 +417,7 @@ namespace Nethermind.Store.Test
 
             public readonly Address Address1 = new(Keccak.Compute("1"));
             public readonly Address Address2 = new(Keccak.Compute("2"));
-            
+
             public Context()
             {
                 StateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager);

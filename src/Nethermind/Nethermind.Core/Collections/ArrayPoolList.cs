@@ -1,32 +1,17 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Collections
 {
-    public class ArrayPoolList<T> : IList<T>, IReadOnlyList<T>, IDisposable
+    public sealed class ArrayPoolList<T> : IList<T>, IReadOnlyList<T>, IDisposable
     {
         private readonly ArrayPool<T> _arrayPool;
         private T[] _array;
@@ -36,14 +21,14 @@ namespace Nethermind.Core.Collections
 
         public ArrayPoolList(int capacity) : this(ArrayPool<T>.Shared, capacity)
         {
-            
+
         }
-        
+
         public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity)
         {
             this.AddRange(enumerable);
         }
-        
+
         public ArrayPoolList(ArrayPool<T> arrayPool, int capacity)
         {
             _arrayPool = arrayPool;
@@ -60,7 +45,16 @@ namespace Nethermind.Core.Collections
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void GuardDispose()
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
+            if (_disposed)
+            {
+                ThrowObjectDisposed();
+            }
+
+            [DoesNotReturn]
+            static void ThrowObjectDisposed()
+            {
+                throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
+            }
         }
 
         IEnumerator IEnumerable.GetEnumerator()
@@ -72,6 +66,13 @@ namespace Nethermind.Core.Collections
         {
             GuardResize();
             _array[_count++] = item;
+        }
+
+        public void AddRange(Span<T> items)
+        {
+            GuardResize(items.Length);
+            items.CopyTo(_array.AsSpan(_count, items.Length));
+            _count += items.Length;
         }
 
         public void Clear()
@@ -114,12 +115,17 @@ namespace Nethermind.Core.Collections
             _count++;
         }
 
-        private void GuardResize()
+        private void GuardResize(int itemsToAdd = 1)
         {
             GuardDispose();
-            if (_count == _capacity)
+            int newCount = _count + itemsToAdd;
+            if (newCount > _capacity)
             {
                 int newCapacity = _capacity * 2;
+                while (newCount > newCapacity)
+                {
+                    newCapacity *= 2;
+                }
                 T[] newArray = _arrayPool.Rent(newCapacity);
                 _array.CopyTo(newArray, 0);
                 T[] oldArray = Interlocked.Exchange(ref _array, newArray);
@@ -164,22 +170,25 @@ namespace Nethermind.Core.Collections
         private bool GuardIndex(int index, bool shouldThrow = true, bool allowEqualToCount = false)
         {
             GuardDispose();
-            if (index < 0)
+            int count = _count;
+            if ((uint)index > (uint)count || (!allowEqualToCount && index == count))
             {
-                return shouldThrow
-                    ? throw new ArgumentOutOfRangeException($"Index {index} is below 0.")
-                    : false;
-            }
-            else if (index >= _count && (!allowEqualToCount || index > _count))
-            {
-                return shouldThrow
-                    ? throw new ArgumentOutOfRangeException($"Index {index} is above count {_count}.")
-                    : false;
+                if (shouldThrow)
+                {
+                    ThrowArgumentOutOfRangeException();
+                }
+                return false;
             }
 
             return true;
+
+            [DoesNotReturn]
+            static void ThrowArgumentOutOfRangeException()
+            {
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
         }
-        
+
         private struct ArrayPoolListEnumerator : IEnumerator<T>
         {
             private readonly T[] _array;
@@ -212,5 +221,7 @@ namespace Nethermind.Core.Collections
                 _disposed = true;
             }
         }
+
+        public Span<T> AsSpan() => _array.AsSpan(0, _count);
     }
 }

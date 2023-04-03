@@ -1,29 +1,24 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
 
-        <IsPackable>false</IsPackable>
-    </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
 
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-      <WarningsAsErrors />
-    </PropertyGroup>
-
-    <ItemGroup>
-        <PackageReference Include="FluentAssertions" Version="6.7.0" />
-        <PackageReference Include="NUnit" Version="3.13.3" />
-        <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.2.0" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-      <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
-      <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
-      <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
-      <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+    <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
+    <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
+    <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
+  </ItemGroup>
 
 </Project>

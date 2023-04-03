@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -35,25 +22,28 @@ namespace Nethermind.Network
     {
         private Timer _peerPersistenceTimer;
         private Task? _storageCommitTask;
-        
+
         private readonly INodeSource _nodeSource;
         private readonly INodeStatsManager _stats;
         private readonly INetworkStorage _peerStorage;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
-        
+
         public ConcurrentDictionary<PublicKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKey, Peer> Peers { get; } = new();
         private readonly ConcurrentDictionary<PublicKey, Peer> _staticPeers = new();
-        
-        public List<Peer> NonStaticPeers => Peers.Values.Where(p => !p.Node.IsStatic).ToList();
-        public List<Peer> StaticPeers => _staticPeers.Values.ToList();
-        
+
+        public IEnumerable<Peer> NonStaticPeers => Peers.Values.Where(p => !p.Node.IsStatic);
+        public IEnumerable<Peer> StaticPeers => _staticPeers.Values;
+
         public int PeerCount => Peers.Count;
         public int ActivePeerCount => ActivePeers.Count;
         public int StaticPeerCount => _staticPeers.Count;
-        
+
         private readonly CancellationTokenSource _cancellationTokenSource = new();
+
+        Func<PublicKey, (Node Node, ConcurrentDictionary<PublicKey, Peer> Statics), Peer> _createNewNodePeer;
+        Func<PublicKey, (NetworkNode Node, ConcurrentDictionary<PublicKey, Peer> Statics), Peer> _createNewNetworkNodePeer;
 
         public PeerPool(
             INodeSource nodeSource,
@@ -68,7 +58,11 @@ namespace Nethermind.Network
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
+
+            // Early explicit closure
+            _createNewNodePeer = CreateNew;
+            _createNewNetworkNodePeer = CreateNew;
+
             _nodeSource.NodeAdded += NodeSourceOnNodeAdded;
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
         }
@@ -86,9 +80,14 @@ namespace Nethermind.Network
 
         public Peer GetOrAdd(Node node)
         {
-            return Peers.GetOrAdd(node.Id, CreateNew, (node, _staticPeers));
+            return Peers.GetOrAdd(node.Id, valueFactory: _createNewNodePeer, (node, _staticPeers));
         }
-        
+
+        public Peer GetOrAdd(NetworkNode node)
+        {
+            return Peers.GetOrAdd(node.NodeId, valueFactory: _createNewNetworkNodePeer, (node, _staticPeers));
+        }
+
         private Peer CreateNew(PublicKey key, (Node Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
         {
             if (arg.Node.IsBootnode || arg.Node.IsStatic)
@@ -96,12 +95,19 @@ namespace Nethermind.Network
                 if (_logger.IsDebug) _logger.Debug(
                     $"Adding a {(arg.Node.IsBootnode ? "bootnode" : "stored")} candidate peer {arg.Node:s}");
             }
-            
             Peer peer = new(arg.Node);
             if (arg.Node.IsStatic)
             {
                 arg.Statics.TryAdd(arg.Node.Id, peer);
             }
+
+            PeerAdded?.Invoke(this, new PeerEventArgs(peer));
+            return peer;
+        }
+
+        private Peer CreateNew(PublicKey key, (NetworkNode Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
+        {
+            Peer peer = new(new(arg.Node));
 
             PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             return peer;
@@ -130,7 +136,7 @@ namespace Nethermind.Network
 
         public Peer Replace(ISession session)
         {
-            if (Peers.TryGetValue(session.ObsoleteRemoteNodeId, out Peer previousPeer))
+            if (Peers.TryRemove(session.ObsoleteRemoteNodeId, out Peer previousPeer))
             {
                 // this should happen
                 if (previousPeer.InSession == session || previousPeer.OutSession == session)
@@ -143,11 +149,11 @@ namespace Nethermind.Network
                     // (what with the other session?)
 
                     _staticPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
-                    Peers.TryRemove(session.ObsoleteRemoteNodeId, out Peer oldPeer);
-                    if (oldPeer != null)
+
+                    if (previousPeer is not null)
                     {
-                        oldPeer.InSession = null;
-                        oldPeer.OutSession = null;
+                        previousPeer.InSession = null;
+                        previousPeer.OutSession = null;
                     }
                 }
                 else
@@ -173,7 +179,7 @@ namespace Nethermind.Network
             {
                 AutoReset = false
             };
-            
+
             _peerPersistenceTimer.Elapsed += (sender, e) =>
             {
                 try
@@ -193,7 +199,7 @@ namespace Nethermind.Network
 
             _peerPersistenceTimer.Start();
         }
-        
+
         private void RunPeerCommit()
         {
             try
@@ -228,7 +234,7 @@ namespace Nethermind.Network
                 _logger.Error($"Error during peer storage commit: {ex}");
             }
         }
-        
+
         private void UpdateReputationAndMaxPeersCount()
         {
             NetworkNode[] storedNodes = _peerStorage.GetPersistedNodes();
@@ -239,8 +245,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                Node node = new (networkNode);
-                Peer peer = GetOrAdd(node);
+                Peer peer = GetOrAdd(networkNode);
                 long newRep = _stats.GetNewPersistedReputation(peer.Node);
                 if (newRep != networkNode.Reputation)
                 {
@@ -256,7 +261,7 @@ namespace Nethermind.Network
                 CleanupPersistedPeers(activePeers, storedNodes);
             }
         }
-        
+
         private void CleanupPersistedPeers(ICollection<Peer> activePeers, NetworkNode[] storedNodes)
         {
             HashSet<PublicKey> activeNodeIds = new(activePeers.Select(x => x.Node.Id));
@@ -274,7 +279,7 @@ namespace Nethermind.Network
 
             if (_logger.IsDebug) _logger.Debug($"Removing persisted peers: {removedNodes}, prevPersistedCount: {storedNodes.Length}, newPersistedCount: {_peerStorage.PersistedNodesCount}, PersistedPeerCountCleanupThreshold: {_networkConfig.PersistedPeerCountCleanupThreshold}, MaxPersistedPeerCount: {_networkConfig.MaxPersistedPeerCount}");
         }
-        
+
         private void StopTimers()
         {
             try
@@ -296,7 +301,7 @@ namespace Nethermind.Network
             {
                 GetOrAdd(initialNode);
             }
-            
+
             StartPeerPersistenceTimer();
         }
 

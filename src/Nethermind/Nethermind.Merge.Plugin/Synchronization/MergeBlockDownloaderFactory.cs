@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
@@ -47,13 +33,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
-        private readonly IInvalidChainTracker _invalidChainTracker;
+        private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IChainLevelHelper _chainLevelHelper;
 
         public MergeBlockDownloaderFactory(IPoSSwitcher poSSwitcher,
             IBeaconPivot beaconPivot,
             ISpecProvider specProvider,
             IBlockTree blockTree,
+            IBlockCacheService blockCacheService,
             IReceiptStorage receiptStorage,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
@@ -61,7 +48,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISyncConfig syncConfig,
             IBetterPeerStrategy betterPeerStrategy,
             ISyncReport syncReport,
-            IInvalidChainTracker invalidChainTracker,
+            ISyncProgressResolver syncProgressResolver,
             ILogManager logManager)
         {
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
@@ -75,15 +62,15 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-            _chainLevelHelper = new ChainLevelHelper(_blockTree, syncConfig, _logManager);
-            _invalidChainTracker = invalidChainTracker;
+            _chainLevelHelper = new ChainLevelHelper(_blockTree, _beaconPivot, syncConfig, _logManager);
+            _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver)); ;
         }
 
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new MergeBlockDownloader(_poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
-                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper, _invalidChainTracker,
-                _logManager);
+                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper,
+                _syncProgressResolver, _logManager);
         }
     }
 }

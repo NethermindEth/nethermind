@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -43,7 +29,7 @@ namespace Nethermind.JsonRpc.Test
 
                 CheckModules(verifier, modules);
             }
-            
+
             // needed because otherwise wrong types are resolved
             CheckModules(verifier, typeof(IRpcModule).Assembly.GetExportedTypes().Where(FilterTypes).ToArray());
         }
@@ -57,13 +43,11 @@ namespace Nethermind.JsonRpc.Test
         {
             foreach (Type jsonRpcType in modules)
             {
-                TestContext.WriteLine($"  Verifying JSON RPC type {jsonRpcType.Name}");
                 MethodInfo[] methodInfos = jsonRpcType.GetMethods(BindingFlags.Instance | BindingFlags.Public);
                 foreach (MethodInfo methodInfo in methodInfos)
                 {
                     try
                     {
-                        TestContext.WriteLine($"    Verifying JSON RPC property {methodInfo.Name}");
                         verifier(methodInfo);
                     }
                     catch (Exception e)
@@ -76,12 +60,11 @@ namespace Nethermind.JsonRpc.Test
 
         private static void CheckDescribed(MethodInfo method)
         {
-            JsonRpcMethodAttribute attribute = method.GetCustomAttribute<JsonRpcMethodAttribute>();
+            JsonRpcMethodAttribute? attribute = method.GetCustomAttribute<JsonRpcMethodAttribute>();
             // this should really check if the string is not empty
             if (attribute?.Description is null)
             {
-                throw new AssertionException(
-                    $"JSON RPC method {method.DeclaringType}.{method.Name} has no description.");
+                throw new AssertionException($"JSON RPC method {method.DeclaringType}.{method.Name} has no description.");
             }
         }
     }

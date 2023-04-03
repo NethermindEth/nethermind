@@ -1,40 +1,28 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net7.0</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <Deterministic>true</Deterministic>
-    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
     <Nullable>annotations</Nullable>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj">
-      <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>
-      <Name>Nethermind.Blockchain</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
-    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">
-      <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
-      <Name>Nethermind.Core</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Contract\Nethermind.Network.Contract.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Stats\Nethermind.Network.Stats.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Crc32.NET" Version="1.2.0" />
-    <PackageReference Include="DotNetty.Handlers" Version="0.7.2" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="6.0.0" />
-    <PackageReference Include="Portable.BouncyCastle" Version="1.9.0" />
-    <PackageReference Include="Snappy.Standard" Version="0.2.0" />
-    <!-- Snappy.Standard dependency, safe version -->
-    <PackageReference Include="System.Net.Http" Version="4.3.4" />
-    <!-- Snappy.Standard dependency, safe version -->
-    <PackageReference Include="System.IO.Compression.ZipFile" Version="4.3.0" />
+    <PackageReference Include="Crc32.NET" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+    <PackageReference Include="Nethermind.DotNetty.Handlers" />
+    <PackageReference Include="Portable.BouncyCastle" />
+    <PackageReference Include="Snappy.Standard" />
+    <PackageReference Include="System.Net.Http" />
+    <PackageReference Include="System.IO.Compression.ZipFile" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Swarm\**" />

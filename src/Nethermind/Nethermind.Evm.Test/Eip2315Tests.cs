@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
 using Nethermind.Core.Extensions;
@@ -42,7 +29,7 @@ namespace Nethermind.Evm.Test
             // AssertGas(result, GasCostOf.Transaction + 18);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
-        
+
         [Test]
         public void Two_levels_of_subroutines()
         {
@@ -57,7 +44,7 @@ namespace Nethermind.Evm.Test
             // AssertGas(result, GasCostOf.Transaction + 36);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
-        
+
         [Test]
         public void Invalid_jump()
         {
@@ -71,7 +58,7 @@ namespace Nethermind.Evm.Test
             result.StatusCode.Should().Be(0);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
-        
+
         [Test]
         public void Shallow_return_stack()
         {
@@ -85,7 +72,7 @@ namespace Nethermind.Evm.Test
             result.StatusCode.Should().Be(0);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
-        
+
         [Test]
         public void Subroutine_at_end_of_code()
         {
@@ -100,7 +87,7 @@ namespace Nethermind.Evm.Test
             // AssertGas(result, GasCostOf.Transaction + 30);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
-        
+
         [Test]
         public void Error_on_walk_into_the_subroutine()
         {

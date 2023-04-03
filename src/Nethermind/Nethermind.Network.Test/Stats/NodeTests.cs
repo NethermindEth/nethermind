@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
@@ -32,7 +19,7 @@ namespace Nethermind.Network.Test.Stats
             Assert.AreEqual(65535, node.Port);
             Assert.AreEqual("73.224.122.50", node.Address.Address.MapToIPv4().ToString());
         }
-        
+
         [Test]
         public void Not_equal_to_another_type()
         {
@@ -40,7 +27,7 @@ namespace Nethermind.Network.Test.Stats
             // ReSharper disable once SuspiciousTypeConversion.Global
             node.Equals(1).Should().BeFalse();
         }
-        
+
         [TestCase("s", "      127.0.0.1:30303")]
         [TestCase("c", "[Node|      127.0.0.1:30303|Details|ClientId]")]
         [TestCase("f", "enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@      127.0.0.1:30303|ClientId")]
@@ -49,12 +36,12 @@ namespace Nethermind.Network.Test.Stats
         [TestCase("zzz", "enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@      127.0.0.1:30303")]
         public void To_string_formats(string format, string expectedFormat)
         {
-            Node GetNode(string host) => 
-                new(TestItem.PublicKeyA, host, 30303) {ClientId = "ClientId", EthDetails = "Details"};
+            Node GetNode(string host) =>
+                new(TestItem.PublicKeyA, host, 30303) { ClientId = "ClientId", EthDetails = "Details" };
 
             Node node = GetNode("127.0.0.1");
             node.ToString(format).Should().Be(expectedFormat);
-            
+
             node = GetNode("::ffff:127.0.0.1");
             node.ToString(format).Should().Be(expectedFormat);
         }

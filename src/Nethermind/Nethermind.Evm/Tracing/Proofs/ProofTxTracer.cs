@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -30,7 +17,7 @@ namespace Nethermind.Evm.Tracing.Proofs
         {
             _treatSystemAccountDifferently = treatSystemAccountDifferently;
         }
-        
+
         public HashSet<Address> Accounts { get; } = new();
 
         public HashSet<StorageCell> Storages { get; } = new();
@@ -51,6 +38,7 @@ namespace Nethermind.Evm.Tracing.Proofs
         public bool IsTracingStack => false;
         public bool IsTracingState => true;
         public bool IsTracingStorage => true;
+        public bool IsTracingFees => false;
 
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
@@ -89,42 +77,42 @@ namespace Nethermind.Evm.Tracing.Proofs
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
-            if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == UInt256.Zero)
+            if (_treatSystemAccountDifferently && Address.SystemUser == address && before is null && after == UInt256.Zero)
             {
                 return;
             }
-            
+
             Accounts.Add(address);
         }
 
         public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
         {
-            if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == Array.Empty<byte>())
+            if (_treatSystemAccountDifferently && Address.SystemUser == address && before is null && after == Array.Empty<byte>())
             {
                 return;
             }
-            
+
             Accounts.Add(address);
         }
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == UInt256.Zero)
+            if (_treatSystemAccountDifferently && Address.SystemUser == address && before is null && after == UInt256.Zero)
             {
                 return;
             }
-            
+
             Accounts.Add(address);
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
             // implicit knowledge here that if we read storage then for sure we have at least asked for the account's balance
             // and so we do not need to add account to Accounts
             Storages.Add(storageCell);
         }
-        
-        public void ReportStorageRead(StorageCell storageCell)
+
+        public void ReportStorageRead(in StorageCell storageCell)
         {
             // implicit knowledge here that if we read storage then for sure we have at least asked for the account's balance
             // and so we do not need to add account to Accounts
@@ -132,7 +120,7 @@ namespace Nethermind.Evm.Tracing.Proofs
         }
 
         private bool _wasSystemAccountAccessedOnceAlready;
-        
+
         public void ReportAccountRead(Address address)
         {
             if (_treatSystemAccountDifferently && !_wasSystemAccountAccessedOnceAlready && address == Address.SystemUser)
@@ -229,6 +217,11 @@ namespace Nethermind.Evm.Tracing.Proofs
         public void ReportActionError(EvmExceptionType evmExceptionType)
         {
             throw new NotSupportedException();
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
         }
     }
 }

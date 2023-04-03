@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -31,7 +18,7 @@ namespace Nethermind.Evm.Test
     public class Eip1052Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
-        
+
         protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
 
         [Test]
@@ -238,8 +225,8 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Create_and_revert_returns_zero()
         {
-            byte[] deployedCode = {1, 2, 3};
-            
+            byte[] deployedCode = { 1, 2, 3 };
+
             byte[] initCode = Prepare.EvmCode
                 .PushData(deployedCode.PadRight(32))
                 .PushData(0)
@@ -248,7 +235,7 @@ namespace Nethermind.Evm.Test
                 .PushData(0)
                 .Op(Instruction.RETURN)
                 .Done;
-            
+
             byte[] createCode = Prepare.EvmCode
                 .Create(initCode, 0)
                 .Op(Instruction.REVERT).Done;
@@ -256,7 +243,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
             TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
-            
+
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
                 .PushData(ContractAddress.From(TestItem.AddressC, 0))
@@ -268,16 +255,16 @@ namespace Nethermind.Evm.Test
             Execute(code);
             AssertStorage(0, Keccak.Zero);
         }
-        
+
         [Test]
         public void Create_returns_code_hash()
         {
-            byte[] deployedCode = {1, 2, 3};
+            byte[] deployedCode = { 1, 2, 3 };
             Keccak deployedCodeHash = Keccak.Compute(deployedCode);
-            
+
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;
-            
+
             byte[] createCode = Prepare.EvmCode
                 .Create(initCode, 0).Done;
 

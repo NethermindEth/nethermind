@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -29,7 +16,12 @@ namespace Nethermind.Blockchain
     public interface IBlockTree : IBlockFinder
     {
         /// <summary>
-        /// Chain ID that identifies the chain among the public and private chains (different IDs for mainnet, ETH classic, etc.)
+        /// Network ID that identifies the chain among the public and private chains (different IDs for mainnet, ETH classic, etc.)
+        /// </summary>
+        ulong NetworkId { get; }
+
+        /// <summary>
+        /// Additional identifier of the chain to mitigate risks described in 155
         /// </summary>
         ulong ChainId { get; }
 
@@ -46,8 +38,8 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Best block that has been suggested for processing
         /// </summary>
-        Block BestSuggestedBody { get; }
-        
+        Block? BestSuggestedBody { get; }
+
         BlockHeader? BestSuggestedBeaconHeader { get; }
 
         /// <summary>
@@ -59,9 +51,9 @@ namespace Nethermind.Blockchain
         /// Lowest body added in reverse fast sync insert
         /// </summary>
         long? LowestInsertedBodyNumber { get; set; }
-        
+
         /// <summary>
-        /// Lowest header number added in reverse beacon sync insert
+        /// Lowest header number added in reverse beacon sync insert. Used to determine if BeaconHeaderSync is completed.
         /// </summary>
         BlockHeader? LowestInsertedBeaconHeader { get; set; }
 
@@ -69,24 +61,24 @@ namespace Nethermind.Blockchain
         /// Best downloaded block number (highest number of chain level on the chain)
         /// </summary>
         long BestKnownNumber { get; }
-        
-        
+
         long BestKnownBeaconNumber { get; }
 
         /// <summary>
         /// Inserts a disconnected block header (without body)
         /// </summary>
         /// <param name="header">Header to add</param>
-        /// <param name="options"></param>
+        /// <param name="headerOptions"></param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(BlockHeader header, BlockTreeInsertOptions options = BlockTreeInsertOptions.None);
+        AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
 
         /// <summary>
         /// Inserts a disconnected block body (not for processing).
         /// </summary>
         /// <param name="block">Block to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(Block block, bool saveHeader = false, BlockTreeInsertOptions options = BlockTreeInsertOptions.None);
+        AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None);
 
         void Insert(IEnumerable<Block> blocks);
 
@@ -99,7 +91,7 @@ namespace Nethermind.Blockchain
         /// <param name="options">Options for suggesting block, whether a block should be processed or just added to the store.</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess);
-        
+
         /// <summary>
         /// Suggests block for inclusion in the block tree. Wait for DB unlock if needed.
         /// </summary>
@@ -122,7 +114,7 @@ namespace Nethermind.Blockchain
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
         bool IsKnownBlock(long number, Keccak blockHash);
-        
+
         /// <summary>
         /// Checks if beacon block was inserted and the block RLP is in the DB
         /// </summary>
@@ -146,16 +138,14 @@ namespace Nethermind.Blockchain
         /// <param name="wereProcessed"></param>
         /// <param name="forceHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> block regardless of <see cref="Block.TotalDifficulty"/></param>
         void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false);
-        
+
         void MarkChainAsProcessed(IReadOnlyList<Block> blocks);
 
         bool CanAcceptNewBlocks { get; }
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
-        UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize, UInt256? startingTotalDifficulty = null);
-
-        (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Keccak blockHash);
+        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Keccak blockHash);
 
         ChainLevelInfo? FindLevel(long number);
 
@@ -175,11 +165,27 @@ namespace Nethermind.Blockchain
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
+
+        /// <summary>
+        /// A block is marked as canon
+        /// </summary>
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
+
+        /// <summary>
+        /// A block is now set as head
+        /// </summary>
         event EventHandler<BlockEventArgs> NewHeadBlock;
+
+        /// <summary>
+        /// A branch is now set as canon. This is different from `BlockAddedToMain` as it is fired only once for the
+        /// the whole branch.
+        /// </summary>
+        event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
 
         int DeleteChainSlice(in long startNumber, long? endNumber = null);
 
         bool IsBetterThanHead(BlockHeader? header);
+
+        void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
     }
 }

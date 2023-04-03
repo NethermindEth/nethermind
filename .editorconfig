@@ -20,6 +20,8 @@ indent_style = space
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+file_header_template = SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited\nSPDX-License-Identifier: LGPL-3.0-only
+
 ###############################
 # Other file type settings    #
 ###############################
@@ -170,7 +172,7 @@ dotnet_style_prefer_inferred_anonymous_type_member_names = true:suggestion
 ###############################
 # Style Definitions
 dotnet_naming_style.pascal_case_style.capitalization             = pascal_case
-# Use PascalCase for constant fields  
+# Use PascalCase for constant fields
 dotnet_naming_rule.constant_fields_should_be_pascal_case.severity = suggestion
 dotnet_naming_rule.constant_fields_should_be_pascal_case.symbols  = constant_fields
 dotnet_naming_rule.constant_fields_should_be_pascal_case.style    = pascal_case_style
@@ -206,6 +208,7 @@ csharp_style_deconstructed_variable_declaration = true:suggestion
 csharp_prefer_simple_default_expression = true:suggestion
 csharp_style_pattern_local_over_anonymous_function = true:suggestion
 csharp_style_inlined_variable_declaration = true:suggestion
+csharp_style_namespace_declarations = file_scoped:suggestion
 ###############################
 # C# Formatting Rules         #
 ###############################

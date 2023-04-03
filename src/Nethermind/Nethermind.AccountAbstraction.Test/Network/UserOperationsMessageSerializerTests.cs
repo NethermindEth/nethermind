@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
 using FluentAssertions;
@@ -36,29 +22,29 @@ namespace Nethermind.AccountAbstraction.Test.Network
         {
             Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly);
         }
-        
+
         [Test]
         public void Roundtrip()
         {
             UserOperationsMessageSerializer serializer = new();
-            
+
             UserOperation userOperation = new(new UserOperationRpc
             {
                 Sender = new Address(1.ToString("x40")),
                 Nonce = 1000,
-                CallData = new byte[] {1, 2},
-                InitCode = new byte[] {3, 4},
+                CallData = new byte[] { 1, 2 },
+                InitCode = new byte[] { 3, 4 },
                 CallGas = 5,
                 VerificationGas = 6,
                 PreVerificationGas = 7,
                 MaxFeePerGas = 8,
                 MaxPriorityFeePerGas = 1,
                 Paymaster = new Address(2.ToString("x40")),
-                PaymasterData = new byte[] {5, 6},
-                Signature = new byte[] {1, 2, 3}
+                PaymasterData = new byte[] { 5, 6 },
+                Signature = new byte[] { 1, 2, 3 }
             });
 
-            UserOperationsMessage message = new(new[] {new UserOperationWithEntryPoint(userOperation, new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b"))});
+            UserOperationsMessage message = new(new[] { new UserOperationWithEntryPoint(userOperation, new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b")) });
             TestZero(serializer, message, "f856f8549400000000000000000000000000000000000000018203e88203048201020506070801940000000000000000000000000000000000000002820506830102039490f3e1105e63c877bf9587de5388c23cdb702c6b");
 
             // Meaning of RLP above:
@@ -86,9 +72,9 @@ namespace Nethermind.AccountAbstraction.Test.Network
             // 83 = 131 = 128 + 3 (length of Signature)
             // 010203 (Signature)
 
-            message = new(new[] {new UserOperationWithEntryPoint(userOperation, new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b")), new UserOperationWithEntryPoint(userOperation, new Address("0xdb8b5f6080a8e466b64a8d7458326cb650b3353f"))});
+            message = new(new[] { new UserOperationWithEntryPoint(userOperation, new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b")), new UserOperationWithEntryPoint(userOperation, new Address("0xdb8b5f6080a8e466b64a8d7458326cb650b3353f")) });
             TestZero(serializer, message, "f8acf8549400000000000000000000000000000000000000018203e88203048201020506070801940000000000000000000000000000000000000002820506830102039490f3e1105e63c877bf9587de5388c23cdb702c6bf8549400000000000000000000000000000000000000018203e882030482010205060708019400000000000000000000000000000000000000028205068301020394db8b5f6080a8e466b64a8d7458326cb650b3353f");
-            
+
             // Meaning of RLP above:
             // f8
             // 82 = 130 (length of UserOperationMessage)
@@ -99,7 +85,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
             // 3f = 63 (length of second UserOperation)
             // all data again
         }
-        
+
         [Test]
         public void Can_handle_empty()
         {
@@ -108,7 +94,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
 
             SerializerTester.TestZero(serializer, message);
         }
-        
+
         [Test]
         public void To_string_empty()
         {

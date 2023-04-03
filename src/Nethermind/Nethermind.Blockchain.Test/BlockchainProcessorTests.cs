@@ -1,30 +1,19 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -33,8 +22,8 @@ using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
+using Nethermind.Trie;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -47,21 +36,30 @@ namespace Nethermind.Blockchain.Test
         {
             private ILogManager _logManager = LimboLogs.Instance;
 
-//            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
-            
             private class BlockProcessorMock : IBlockProcessor
             {
                 private ILogger _logger;
-                
+
                 private HashSet<Keccak> _allowed = new();
 
                 private HashSet<Keccak> _allowedToFail = new();
 
-                public BlockProcessorMock(ILogManager logManager)
+                private HashSet<Keccak> _rootProcessed = new();
+
+                public BlockProcessorMock(ILogManager logManager, IStateReader stateReader)
                 {
                     _logger = logManager.GetClassLogger();
+                    stateReader.When(it =>
+                            it.RunTreeVisitor(Arg.Any<ITreeVisitor>(), Arg.Any<Keccak>(), Arg.Any<VisitingOptions>()))
+                        .Do((info =>
+                        {
+                            // Simulate state root check
+                            ITreeVisitor visitor = (ITreeVisitor)info[0];
+                            Keccak stateRoot = (Keccak)info[1];
+                            if (!_rootProcessed.Contains(stateRoot)) visitor.VisitMissingNode(stateRoot, new TrieVisitContext());
+                        }));
                 }
-                
+
                 public void Allow(Keccak hash)
                 {
                     _logger.Info($"Allowing {hash} to process");
@@ -79,9 +77,9 @@ namespace Nethermind.Blockchain.Test
                     if (blockTracer != NullBlockTracer.Instance)
                     {
                         // this is for block reruns on failure for diag tracing
-                        throw new InvalidBlockException(Keccak.Zero);
+                        throw new InvalidBlockException(suggestedBlocks[0]);
                     }
-                    
+
                     _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                     while (true)
                     {
@@ -89,14 +87,15 @@ namespace Nethermind.Blockchain.Test
                         for (int i = 0; i < suggestedBlocks.Count; i++)
                         {
                             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
-                            Keccak hash = suggestedBlocks[i].Hash;
+                            Block suggestedBlock = suggestedBlocks[i];
+                            Keccak hash = suggestedBlock.Hash!;
                             if (!_allowed.Contains(hash))
                             {
                                 if (_allowedToFail.Contains(hash))
                                 {
                                     _allowedToFail.Remove(hash);
                                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
-                                    throw new InvalidBlockException(hash);
+                                    throw new InvalidBlockException(suggestedBlock);
                                 }
 
                                 notYet = true;
@@ -110,6 +109,7 @@ namespace Nethermind.Blockchain.Test
                         }
                         else
                         {
+                            _rootProcessed.Add(suggestedBlocks.Last().StateRoot);
                             BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
                             return suggestedBlocks.ToArray();
                         }
@@ -130,7 +130,7 @@ namespace Nethermind.Blockchain.Test
             private class RecoveryStepMock : IBlockPreprocessorStep
             {
                 private ILogger _logger;
-                
+
                 private ConcurrentDictionary<Keccak, object> _allowed = new();
 
                 private ConcurrentDictionary<Keccak, object> _allowedToFail = new();
@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger = logManager.GetClassLogger();
                 }
-                
+
                 public void Allow(Keccak hash)
                 {
                     _logger.Info($"Allowing {hash} to recover");
@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain.Test
                 public void RecoverData(Block block)
                 {
                     _logger.Info($"Recovering data for {block.ToString(Block.Format.Short)}");
-                    if (block.Author != null)
+                    if (block.Author is not null)
                     {
                         _logger.Info($"Data was already there for {block.ToString(Block.Format.Short)}");
                         return;
@@ -199,18 +199,16 @@ namespace Nethermind.Blockchain.Test
                 MemDb blockDb = new();
                 MemDb blockInfoDb = new();
                 MemDb headersDb = new();
-                
-                MemDb stateDb = new();
-                Block genesis = Build.A.Block.Genesis.TestObject;
-                
+
+                IStateReader stateReader = Substitute.For<IStateReader>();
 
                 _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-                _blockProcessor = new BlockProcessorMock(_logManager);
+                _blockProcessor = new BlockProcessorMock(_logManager, stateReader);
                 _recoveryStep = new RecoveryStepMock(_logManager);
-                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, new StateReader(new TrieStore(stateDb, LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
+                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
                 _resetEvent = new AutoResetEvent(false);
                 _queueEmptyResetEvent = new AutoResetEvent(false);
-                
+
                 _processor.ProcessingQueueEmpty += (_, _) =>
                 {
                     _processingQueueEmptyFired++;
@@ -305,6 +303,21 @@ namespace Nethermind.Blockchain.Test
                 return this;
             }
 
+            public ProcessingTestContext SuggestedWithoutProcessingAndMoveToMain(Block block)
+            {
+                AddBlockResult result = _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None);
+                if (result != AddBlockResult.Added)
+                {
+                    Assert.Fail($"Block {block} was expected to be added");
+                }
+
+                _blockTree.UpdateMainChain(new[] { block }, false);
+                _blockProcessor.Allow(block.Hash);
+                _recoveryStep.Allow(block.Hash);
+
+                return this;
+            }
+
             public ProcessingTestContext StartProcessor()
             {
                 _processor.Start();
@@ -329,7 +342,7 @@ namespace Nethermind.Blockchain.Test
                 _recoveryStep.Allow(block.Hash);
                 return this;
             }
-            
+
             public ProcessingTestContext CountIs(int expectedCount)
             {
                 var count = ((IBlockProcessingQueue)_processor).Count;
@@ -398,7 +411,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to become the new head block");
                     _processingTestContext._resetEvent.WaitOne(ProcessingWait);
-                    Assert.AreEqual(_block.Header.Hash, _processingTestContext._blockTree.Head.Hash, "head");
+                    Assert.That(() => _processingTestContext._blockTree.Head.Hash, Is.EqualTo(_block.Header.Hash).After(1000, 100));
                     return _processingTestContext;
                 }
 
@@ -448,7 +461,7 @@ namespace Nethermind.Blockchain.Test
         private static Block _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
         private static Block _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_ignore_lower_difficulty()
         {
             When.ProcessingBlocks
@@ -460,7 +473,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessedSkipped(_block3D6).IsKeptOnBranch();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_ignore_same_difficulty()
         {
             When.ProcessingBlocks
@@ -470,7 +483,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessedSkipped(_blockB2D4).IsKeptOnBranch();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_process_sequence()
         {
             When.ProcessingBlocks
@@ -480,20 +493,21 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block3D6).BecomesNewHead()
                 .FullyProcessed(_block4D8).BecomesNewHead();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         [Explicit("Does not work on CI")]
         public void Will_update_metrics_on_processing()
         {
             long metricsBefore = Metrics.LastBlockProcessingTimeInMs;
+
             When.ProcessingBlocks
                 .FullyProcessed(_block0).BecomesGenesis();
-            
+
             long metricsAfter = Metrics.LastBlockProcessingTimeInMs;
             metricsAfter.Should().NotBe(metricsBefore);
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_process_fast_sync_transition()
         {
             When.ProcessingBlocks
@@ -504,7 +518,22 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block4D8).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public async Task Can_process_fast_sync()
+        {
+            BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+            await testBlockchain.BuildSomeBlocks(5);
+
+            When.ProcessingBlocks
+                .FullyProcessed(testBlockchain.BlockTree.FindBlock(0)).BecomesGenesis()
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(1))
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(2))
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(3))
+                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(4))
+                .FullyProcessed(testBlockchain.BlockTree.FindBlock(5)).BecomesNewHead();
+        }
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_reorganize_just_head_block_twice()
         {
             When.ProcessingBlocks
@@ -516,7 +545,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockE2D300).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_reorganize_there_and_back()
         {
             When.ProcessingBlocks
@@ -530,7 +559,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block5D10).BecomesNewHead();
         }
 
-        [Test, Retry(3)]
+        [Test, Timeout(Timeout.MaxTestTime), Retry(3)]
         public void Can_reorganize_to_longer_path()
         {
             When.ProcessingBlocks
@@ -544,7 +573,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block5D10).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_reorganize_to_same_length()
         {
             When.ProcessingBlocks
@@ -556,7 +585,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockB3D8).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_reorganize_to_shorter_path()
         {
             When.ProcessingBlocks
@@ -567,7 +596,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockC2D100).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         [Retry(3)] // some flakiness
         public void Can_change_branch_on_invalid_block()
         {
@@ -583,7 +612,7 @@ namespace Nethermind.Blockchain.Test
                             "BRANCH A | BLOCK 2 | INVALID |  DISCARD" +
                             "BRANCH A | BLOCK 3 |   VALID |  DISCARD" +
                             "BRANCH A | BLOCK 4 |   VALID |  DISCARD" +
-                            "BRANCH B | BLOCK 2 |   VALID | NEW HEAD")]
+                            "BRANCH B | BLOCK 2 |   VALID | NEW HEAD"), Timeout(Timeout.MaxTestTime)]
         public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue()
         {
             When.ProcessingBlocks
@@ -603,7 +632,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockB2D4).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue_and_recovery_queue_max_has_been_reached()
         {
             When.ProcessingBlocks
@@ -624,7 +653,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockB2D4).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         [Ignore("Not implemented yet - scenario when from suggested blocks we can see that previously suggested will not be winning")]
         [Todo(Improve.Performance, "We can skip processing losing branches by implementing code to pass this test")]
         public void Never_process_branches_that_are_known_to_lose_in_the_future()
@@ -645,12 +674,12 @@ namespace Nethermind.Blockchain.Test
                 .Processed(_block1D2).BecomesNewHead()
                 .ProcessedSkipped(_block2D4).IsKeptOnBranch();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void IsProcessingBlocks_returns_true_when_processing_blocks()
         {
             When.ProcessingBlocks
-                .IsProcessingBlocks(true,1)
+                .IsProcessingBlocks(true, 1)
                 .FullyProcessed(_block0).BecomesGenesis()
                 .FullyProcessed(_block1D2).BecomesNewHead()
                 .IsProcessingBlocks(true, 1)
@@ -659,8 +688,8 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block3D6).BecomesNewHead()
                 .IsProcessingBlocks(true, 1);
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void IsProcessingBlocks_returns_false_when_max_interval_elapsed()
         {
             When.ProcessingBlocks
@@ -670,12 +699,12 @@ namespace Nethermind.Blockchain.Test
                 .IsProcessingBlocks(true, 1)
                 .FullyProcessed(_block2D4).BecomesNewHead()
                 .Sleep(2000)
-                .IsProcessingBlocks(false,1)
+                .IsProcessingBlocks(false, 1)
                 .FullyProcessed(_block3D6).BecomesNewHead()
                 .IsProcessingBlocks(true, 1);
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void ProcessorIsNotStarted_returns_false()
         {
             When.ProcessorIsNotStarted
@@ -683,8 +712,8 @@ namespace Nethermind.Blockchain.Test
                 .Sleep(1000)
                 .IsProcessingBlocks(false, 10);
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void QueueCount_returns_correctly()
         {
             When.ProcessingBlocks
@@ -692,8 +721,8 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block0)
                 .BecomesGenesis()
                 .QueueIsEmpty(2)
-                
-                
+
+
                 .Suggested(_block1D2)
                 .Recovered(_block1D2)
                 .CountIs(1)

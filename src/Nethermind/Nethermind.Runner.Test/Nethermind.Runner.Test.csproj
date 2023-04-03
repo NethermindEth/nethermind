@@ -1,88 +1,74 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
 
-        <IsPackable>false</IsPackable>
-    </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="coverlet.msbuild">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Analytics\Nethermind.Analytics.csproj" />
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.Config.Test\Nethermind.Config.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Monitoring.Test\Nethermind.Monitoring.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
+    <Content Include="..\Chains\AuRaTest.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\AuRaTest.json</Link>
+    </Content>
+    <Content Include="..\Chains\foundation.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\foundation.json</Link>
+    </Content>
+    <Content Include="..\Chains\genesis.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\genesis.json</Link>
+    </Content>
+    <Content Include="..\Chains\goerli.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\goerli.json</Link>
+    </Content>
+    <Content Include="..\Chains\hive.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\hive.json</Link>
+    </Content>
+    <Content Include="..\Chains\poacore.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\poacore.json</Link>
+    </Content>
+    <Content Include="..\Chains\rinkeby.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\rinkeby.json</Link>
+    </Content>
+    <Content Include="..\Chains\ropsten.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\ropsten.json</Link>
+    </Content>
+    <Content Include="..\Chains\spaceneth.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\spaceneth.json</Link>
+    </Content>
+    <Content Include="..\Chains\volta.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\volta.json</Link>
+    </Content>
+    <Content Include="..\Chains\gnosis.json" CopyToOutputDirectory="PreserveNewest">
+      <Link>Chains\gnosis.json</Link>
+    </Content>
 
-    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    </PropertyGroup>
+    <Content Include="..\Nethermind.Runner\configs\*.cfg" Link="configs\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
 
-    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    </PropertyGroup>
-
-    <ItemGroup>
-        <PackageReference Include="coverlet.msbuild" Version="3.1.2">
-            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-            <PrivateAssets>all</PrivateAssets>
-        </PackageReference>
-        <PackageReference Include="FluentAssertions" Version="6.7.0" />
-        <PackageReference Include="NSubstitute" Version="4.3.0" />
-        <PackageReference Include="NUnit" Version="3.13.3" />
-        <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.2.0" />
-    </ItemGroup>
-    <ItemGroup>
-        <ProjectReference Include="..\Nethermind.Analytics\Nethermind.Analytics.csproj" />
-        <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />        
-        <ProjectReference Include="..\Nethermind.Config.Test\Nethermind.Config.Test.csproj" />
-        <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
-        <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
-        <ProjectReference Include="..\Nethermind.Monitoring.Test\Nethermind.Monitoring.Test.csproj" />
-        <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
-        <Content Include="..\Chains\AuRaTest.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\AuRaTest.json</Link>
-        </Content>
-        <Content Include="..\Chains\foundation.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\foundation.json</Link>
-        </Content>
-        <Content Include="..\Chains\genesis.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\genesis.json</Link>
-        </Content>
-        <Content Include="..\Chains\goerli.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\goerli.json</Link>
-        </Content>
-        <Content Include="..\Chains\hive.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\hive.json</Link>
-        </Content>
-        <Content Include="..\Chains\ndmlocal.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\ndmlocal.json</Link>
-        </Content>
-        <Content Include="..\Chains\poacore.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\poacore.json</Link>
-        </Content>
-        <Content Include="..\Chains\rinkeby.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\rinkeby.json</Link>
-        </Content>
-        <Content Include="..\Chains\ropsten.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\ropsten.json</Link>
-        </Content>
-        <Content Include="..\Chains\sokol.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\sokol.json</Link>
-        </Content>
-        <Content Include="..\Chains\spaceneth.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\spaceneth.json</Link>
-        </Content>
-        <Content Include="..\Chains\volta.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\volta.json</Link>
-        </Content>
-        <Content Include="..\Chains\xdai.json" CopyToOutputDirectory="PreserveNewest">
-            <Link>Chains\xdai.json</Link>
-        </Content>
-
-        <Content Include="..\Nethermind.Runner\configs\*.cfg" Link="configs\%(RecursiveDir)%(Filename)%(Extension)">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
-
-        <Content Include="testspec.json">
-          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
-    </ItemGroup>
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
-    </ItemGroup>
+    <Content Include="testspec.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
+  </ItemGroup>
 
 </Project>

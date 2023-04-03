@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using FluentAssertions;
@@ -30,7 +16,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             return new PendingSyncItems();
         }
-        
+
         [Test]
         public void At_start_count_is_zero()
         {
@@ -78,7 +64,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Can_peek_root()
         {
             IPendingSyncItems items = Init();
-            StateSyncItem stateSyncItem = new (Keccak.Zero, null, null, NodeDataType.State, 0, 0);
+            StateSyncItem stateSyncItem = new(Keccak.Zero, null, null, NodeDataType.State);
             items.PushToSelectedStream(stateSyncItem, 0);
             items.PeekState().Should().Be(stateSyncItem);
         }
@@ -87,7 +73,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Can_recalculate_and_clear_with_root_only()
         {
             IPendingSyncItems items = Init();
-            StateSyncItem stateSyncItem = new (Keccak.Zero, null, null, NodeDataType.State, 0, 0);
+            StateSyncItem stateSyncItem = new(Keccak.Zero, null, null, NodeDataType.State);
             items.PushToSelectedStream(stateSyncItem, 0);
             items.RecalculatePriorities();
             items.Clear();
@@ -124,12 +110,15 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             items.RecalculatePriorities();
             List<StateSyncItem> batch = items.TakeBatch(256);
-            items.Count.Should().Be(0);
+            items.Count.Should().Be(2);
             batch[0].NodeDataType.Should().Be(NodeDataType.Code);
-            batch[1].NodeDataType.Should().Be(NodeDataType.Storage);
-            batch[2].NodeDataType.Should().Be(NodeDataType.State);
+
+            batch = items.TakeBatch(256);
+            items.Count.Should().Be(0);
+            batch[0].NodeDataType.Should().Be(NodeDataType.Storage);
+            batch[1].NodeDataType.Should().Be(NodeDataType.State);
         }
-        
+
         [Test]
         public void Prefers_left()
         {
@@ -146,7 +135,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             batch[1].Rightness.Should().Be(15);
             batch[2].Rightness.Should().Be(10000);
         }
-        
+
         [Test]
         public void Prefers_left_single_branch()
         {
@@ -181,7 +170,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private static StateSyncItem PushItem(IPendingSyncItems items, NodeDataType nodeDataType, int level, uint rightness, int progress = 0)
         {
-            StateSyncItem stateSyncItem1 = new (Keccak.Zero, null, null, nodeDataType, level, rightness);
+            StateSyncItem stateSyncItem1 = new(Keccak.Zero, null, null, nodeDataType, level, rightness);
             items.PushToSelectedStream(stateSyncItem1, progress);
             return stateSyncItem1;
         }

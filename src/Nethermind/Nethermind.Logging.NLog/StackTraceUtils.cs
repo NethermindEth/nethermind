@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics;
@@ -21,10 +8,10 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Logging
 {
-// Decompiled with JetBrains decompiler
-// Type: NLog.Internal.StackTraceUsageUtils
-// Assembly: NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c
-// MVID: A2EA6CB6-1E12-422B-8404-0D46451CF9D2
+    // Decompiled with JetBrains decompiler
+    // Type: NLog.Internal.StackTraceUsageUtils
+    // Assembly: NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c
+    // MVID: A2EA6CB6-1E12-422B-8404-0D46451CF9D2
     /// <summary>
     /// Utilities for dealing with <see cref="T:NLog.Config.StackTraceUsage" /> values.
     /// Copied from NLog internals to skip one more class
@@ -37,16 +24,16 @@ namespace Nethermind.Logging
 
         private static string GetStackFrameMethodClassName(MethodBase method, bool includeNameSpace, bool cleanAsyncMoveNext, bool cleanAnonymousDelegates)
         {
-            if (method == null)
+            if (method is null)
             {
                 return null;
             }
 
             Type declaringType = method.DeclaringType;
-            if (cleanAsyncMoveNext && method.Name == "MoveNext" && ((object)declaringType != null ? declaringType.DeclaringType : null) != null && declaringType.Name.StartsWith("<") && declaringType.Name.IndexOf('>', 1) > 1)
+            if (cleanAsyncMoveNext && method.Name == "MoveNext" && ((object)declaringType is not null ? declaringType.DeclaringType : null) is not null && declaringType.Name.StartsWith("<") && declaringType.Name.IndexOf('>', 1) > 1)
                 declaringType = declaringType.DeclaringType;
-            string str = includeNameSpace ? ((object)declaringType != null ? declaringType.FullName : (string)null) : ((object)declaringType != null ? declaringType.Name : (string)null);
-            if (cleanAnonymousDelegates && str != null)
+            string str = includeNameSpace ? ((object)declaringType is not null ? declaringType.FullName : (string)null) : ((object)declaringType is not null ? declaringType.Name : (string)null);
+            if (cleanAnonymousDelegates && str is not null)
             {
                 int length = str.IndexOf("+<>", StringComparison.Ordinal);
                 if (length >= 0)
@@ -101,14 +88,14 @@ namespace Nethermind.Logging
         private static Assembly LookupAssemblyFromStackFrame(StackFrame stackFrame)
         {
             MethodBase method = stackFrame.GetMethod();
-            if (method == null)
+            if (method is null)
                 return null;
             Type declaringType = method.DeclaringType;
-            Assembly assembly1 = (object)declaringType != null ? declaringType.Assembly : null;
-            if ((object)assembly1 == null)
+            Assembly assembly1 = (object)declaringType is not null ? declaringType.Assembly : null;
+            if ((object)assembly1 is null)
             {
                 Module module = method.Module;
-                assembly1 = (object)module != null ? module.Assembly : null;
+                assembly1 = (object)module is not null ? module.Assembly : null;
             }
 
             Assembly assembly2 = assembly1;
@@ -138,7 +125,7 @@ namespace Nethermind.Logging
         private static string LookupClassNameFromStackFrame(StackFrame stackFrame)
         {
             MethodBase method = stackFrame.GetMethod();
-            if (method != null && LookupAssemblyFromStackFrame(stackFrame) != null)
+            if (method is not null && LookupAssemblyFromStackFrame(stackFrame) is not null)
             {
                 string str = GetStackFrameMethodClassName(method, true, true, true) ?? method.Name;
                 if (!string.IsNullOrEmpty(str) && !str.StartsWith("System.", StringComparison.Ordinal))

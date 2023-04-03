@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
@@ -64,7 +51,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _controller.IsAllowed().Should().BeTrue();
             }
         }
-        
+
         [Test]
         public void Is_allowed_will_be_false_when_misbehaving()
         {
@@ -72,16 +59,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 _controller.Report(false);
             }
-            
+
             int allowedCount = 0;
             for (int i = 0; i < 10000; i++)
             {
                 if (_controller.IsAllowed()) allowedCount++;
             }
-            
+
             allowedCount.Should().BeInRange(500, 1500);
         }
-        
+
         [Test]
         public void Will_only_get_disconnected_when_really_flooding()
         {
@@ -89,25 +76,25 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 _controller.Report(false);
             }
-            
+
             // for easier debugging
             _controller.Report(false);
-            
+
             _session.DidNotReceiveWithAnyArgs()
-                .InitiateDisconnect(DisconnectReason.UselessPeer, null);
-            
+                .InitiateDisconnect(InitiateDisconnectReason.TxFlooding, null);
+
             for (int i = 0; i < 6000 - 601; i++)
             {
                 _controller.Report(false);
             }
-            
+
             // for easier debugging
             _controller.Report(false);
-            
+
             _session.Received()
-                .InitiateDisconnect(DisconnectReason.UselessPeer, Arg.Any<string>());
+                .InitiateDisconnect(InitiateDisconnectReason.TxFlooding, Arg.Any<string>());
         }
-        
+
         [Test]
         public void Will_downgrade_at_first()
         {
@@ -118,13 +105,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             _controller.IsDowngraded.Should().BeTrue();
         }
-        
+
         [Test]
         public void Enabled_by_default()
         {
             _controller.IsEnabled.Should().BeTrue();
         }
-        
+
         [Test]
         public void Can_be_disabled_and_enabled()
         {
@@ -137,7 +124,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _controller.IsEnabled = true;
             _controller.IsEnabled.Should().BeTrue();
         }
-        
+
         [Test]
         public void Misbehaving_expires()
         {

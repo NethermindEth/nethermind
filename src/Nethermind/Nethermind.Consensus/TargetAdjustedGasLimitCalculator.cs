@@ -1,21 +1,8 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -24,23 +11,23 @@ namespace Nethermind.Consensus
     public class TargetAdjustedGasLimitCalculator : IGasLimitCalculator
     {
         private readonly ISpecProvider _specProvider;
-        private readonly IMiningConfig _miningConfig;
+        private readonly IBlocksConfig _blocksConfig;
 
-        public TargetAdjustedGasLimitCalculator(ISpecProvider? specProvider, IMiningConfig? miningConfig)
+        public TargetAdjustedGasLimitCalculator(ISpecProvider? specProvider, IBlocksConfig? miningConfig)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
+            _blocksConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
         }
-        
+
         public long GetGasLimit(BlockHeader parentHeader)
         {
             long parentGasLimit = parentHeader.GasLimit;
             long gasLimit = parentGasLimit;
-            
-            long? targetGasLimit = _miningConfig.TargetBlockGasLimit;
+
+            long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
             long newBlockNumber = parentHeader.Number + 1;
-            IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber);
-            if (targetGasLimit != null)
+            IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp); // taking the parent timestamp is a temprory solution
+            if (targetGasLimit is not null)
             {
                 long maxGasLimitDifference = Math.Max(0, parentGasLimit / spec.GasLimitBoundDivisor - 1);
                 gasLimit = targetGasLimit.Value > parentGasLimit

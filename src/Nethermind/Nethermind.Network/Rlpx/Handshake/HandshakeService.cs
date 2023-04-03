@@ -1,26 +1,16 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
-using Org.BouncyCastle.Crypto.Digests;
+using Nethermind.Serialization.Rlp;
+
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
@@ -30,6 +20,7 @@ namespace Nethermind.Network.Rlpx.Handshake
     public class HandshakeService : IHandshakeService
     {
         private static int MacBitsSize = 256;
+        private static int MacBytesSize = MacBitsSize / 8;
 
         private readonly IPrivateKeyGenerator _ephemeralGenerator;
         private readonly ICryptoRandom _cryptoRandom;
@@ -67,33 +58,51 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             if (preEip8Format)
             {
-                AuthMessage authMessage = new();
-                authMessage.Nonce = handshake.InitiatorNonce;
-                authMessage.PublicKey = _privateKey.PublicKey;
-                authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
-                authMessage.IsTokenUsed = false;
-                authMessage.EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes);
-                
-                byte[] authData = _messageSerializationService.Serialize(authMessage);
-                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData, Array.Empty<byte>());
+                AuthMessage authMessage = new()
+                {
+                    Nonce = handshake.InitiatorNonce,
+                    PublicKey = _privateKey.PublicKey,
+                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning)),
+                    IsTokenUsed = false,
+                    EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes)
+                };
 
-                handshake.AuthPacket = new Packet(packetData);
-                return handshake.AuthPacket;
+                IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
+                try
+                {
+                    byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytesAsArray(), Array.Empty<byte>());
+                    handshake.AuthPacket = new Packet(packetData);
+                    return handshake.AuthPacket;
+                }
+                finally
+                {
+                    authData.SafeRelease();
+                }
+
             }
             else
             {
-                AuthEip8Message authMessage = new();
-                authMessage.Nonce = handshake.InitiatorNonce;
-                authMessage.PublicKey = _privateKey.PublicKey;
-                authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
+                AuthEip8Message authMessage = new()
+                {
+                    Nonce = handshake.InitiatorNonce,
+                    PublicKey = _privateKey.PublicKey,
+                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning))
+                };
 
-                byte[] authData = _messageSerializationService.Serialize(authMessage);
-                int size = authData.Length + 32 + 16 + 65; // data + MAC + IV + pub
-                byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData,sizeBytes);
+                IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
+                try
+                {
+                    int size = authData.ReadableBytes + 32 + 16 + 65; // data + MAC + IV + pub
+                    byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+                    byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytesAsArray(), sizeBytes);
+                    handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
+                    return handshake.AuthPacket;
+                }
+                finally
+                {
+                    authData.SafeRelease();
+                }
 
-                handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
-                return handshake.AuthPacket;
             }
         }
 
@@ -143,26 +152,43 @@ namespace Nethermind.Network.Rlpx.Handshake
             if (preEip8Format)
             {
                 if (_logger.IsTrace) _logger.Trace($"Building an {nameof(AckMessage)}");
-                AckMessage ackMessage = new();
-                ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
-                ackMessage.Nonce = handshake.RecipientNonce;
-                byte[] ackData = _messageSerializationService.Serialize(ackMessage);
-                
-                data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, Array.Empty<byte>());
+                AckMessage ackMessage = new()
+                {
+                    EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey,
+                    Nonce = handshake.RecipientNonce
+                };
+
+                IByteBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
+                try
+                {
+                    data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytesAsArray(), Array.Empty<byte>());
+                }
+                finally
+                {
+                    ackData.SafeRelease();
+                }
             }
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"Building an {nameof(AckEip8Message)}");
-                AckEip8Message ackMessage = new();
-                ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
-                ackMessage.Nonce = handshake.RecipientNonce;
-                byte[] ackData = _messageSerializationService.Serialize(ackMessage);
-                
-                int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
-                byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-                data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, sizeBytes));
+                AckEip8Message ackMessage = new()
+                {
+                    EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey,
+                    Nonce = handshake.RecipientNonce
+                };
+                IByteBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
+                try
+                {
+                    int size = ackData.ReadableBytes + 32 + 16 + 65; // data + MAC + IV + pub
+                    byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+                    data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytesAsArray(), sizeBytes));
+                }
+                finally
+                {
+                    ackData.SafeRelease();
+                }
             }
-            
+
             handshake.AckPacket = new Packet(data);
             SetSecrets(handshake, HandshakeRole.Recipient);
             return handshake.AckPacket;
@@ -228,27 +254,27 @@ namespace Nethermind.Network.Rlpx.Handshake
             ephemeralSharedSecret.CopyTo(tempConcat.Slice(0, 32));
             nonceHash.CopyTo(tempConcat.Slice(32, 32));
             Span<byte> sharedSecret = ValueKeccak.Compute(tempConcat).BytesAsSpan;
-//            byte[] token = Keccak.Compute(sharedSecret).Bytes;
+            //            byte[] token = Keccak.Compute(sharedSecret).Bytes;
             sharedSecret.CopyTo(tempConcat.Slice(32, 32));
             byte[] aesSecret = Keccak.Compute(tempConcat).Bytes;
-            
+
             sharedSecret.Clear();
             aesSecret.CopyTo(tempConcat.Slice(32, 32));
             byte[] macSecret = Keccak.Compute(tempConcat).Bytes;
-            
+
             ephemeralSharedSecret.Clear();
             handshake.Secrets = new EncryptionSecrets();
-//            handshake.Secrets.Token = token;
+            //            handshake.Secrets.Token = token;
             handshake.Secrets.AesSecret = aesSecret;
             handshake.Secrets.MacSecret = macSecret;
 
-            KeccakDigest mac1 = new(MacBitsSize);
-            mac1.BlockUpdate(macSecret.Xor(handshake.RecipientNonce), 0, macSecret.Length);
-            mac1.BlockUpdate(handshake.AuthPacket.Data, 0, handshake.AuthPacket.Data.Length);
+            KeccakHash mac1 = KeccakHash.Create(MacBytesSize);
+            mac1.Update(macSecret.Xor(handshake.RecipientNonce));
+            mac1.Update(handshake.AuthPacket.Data);
 
-            KeccakDigest mac2 = new(MacBitsSize);
-            mac2.BlockUpdate(macSecret.Xor(handshake.InitiatorNonce), 0, macSecret.Length);
-            mac2.BlockUpdate(handshake.AckPacket.Data, 0, handshake.AckPacket.Data.Length);
+            KeccakHash mac2 = KeccakHash.Create(MacBytesSize);
+            mac2.Update(macSecret.Xor(handshake.InitiatorNonce));
+            mac2.Update(handshake.AckPacket.Data);
 
             if (handshakeRole == HandshakeRole.Initiator)
             {

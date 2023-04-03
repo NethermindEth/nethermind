@@ -1,23 +1,9 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -29,9 +15,9 @@ namespace Nethermind.Core.Test.Caching
     {
         private static ICache<Address, Account> Create()
         {
-            return (ICache<Address, Account>) Activator.CreateInstance(typeof(TCache), Capacity, "test")!;
+            return (ICache<Address, Account>)Activator.CreateInstance(typeof(TCache), Capacity, "test")!;
         }
-        
+
         private const int Capacity = 16;
 
         private readonly Account[] _accounts = new Account[Capacity * 2];
@@ -59,7 +45,7 @@ namespace Nethermind.Core.Test.Caching
             Account? account = cache.Get(_addresses[Capacity - 1]);
             Assert.AreEqual(_accounts[Capacity - 1], account);
         }
-        
+
         [Test]
         public void Can_reset()
         {
@@ -68,14 +54,14 @@ namespace Nethermind.Core.Test.Caching
             cache.Set(_addresses[0], _accounts[1]);
             cache.Get(_addresses[0]).Should().Be(_accounts[1]);
         }
-        
+
         [Test]
         public void Can_ask_before_first_set()
         {
             ICache<Address, Account> cache = Create();
             cache.Get(_addresses[0]).Should().BeNull();
         }
-        
+
         [Test]
         public void Can_clear()
         {
@@ -86,7 +72,7 @@ namespace Nethermind.Core.Test.Caching
             cache.Set(_addresses[0], _accounts[1]);
             cache.Get(_addresses[0]).Should().Be(_accounts[1]);
         }
-        
+
         [Test]
         public void Beyond_capacity()
         {
@@ -99,23 +85,25 @@ namespace Nethermind.Core.Test.Caching
             Account? account = cache.Get(_addresses[Capacity]);
             account.Should().Be(_accounts[Capacity]);
         }
-        
+
         [Test]
         public void Can_set_and_then_set_null()
         {
             ICache<Address, Account> cache = Create();
-            cache.Set(_addresses[0], _accounts[0]);
-            cache.Set(_addresses[0], null);
+            cache.Set(_addresses[0], _accounts[0]).Should().BeTrue();
+            cache.Set(_addresses[0], _accounts[0]).Should().BeFalse();
+            cache.Set(_addresses[0], null!).Should().BeTrue();
             cache.Get(_addresses[0]).Should().Be(null);
         }
-        
+
         [Test]
         public void Can_delete()
         {
             ICache<Address, Account> cache = Create();
             cache.Set(_addresses[0], _accounts[0]);
-            cache.Delete(_addresses[0]);
+            cache.Delete(_addresses[0]).Should().BeTrue();
             cache.Get(_addresses[0]).Should().Be(null);
+            cache.Delete(_addresses[0]).Should().BeFalse();
         }
 
         [Test]
@@ -129,7 +117,7 @@ namespace Nethermind.Core.Test.Caching
 
             cache.Clear();
 
-            static int MapForRefill (int index) => (index + 1) % Capacity;
+            static int MapForRefill(int index) => (index + 1) % Capacity;
 
             // fill again
             for (int i = 0; i < Capacity; i++)
@@ -143,14 +131,14 @@ namespace Nethermind.Core.Test.Caching
                 cache.Get(_addresses[i]).Should().Be(_accounts[MapForRefill(i)]);
             }
         }
-        
+
         [Test]
         public void Delete_keeps_internal_structure()
         {
             int maxCapacity = 32;
             int itemsToKeep = 10;
             int iterations = 40;
-                
+
             LruCache<int, int> cache = new(maxCapacity, "test");
 
             for (int i = 0; i < iterations; i++)
@@ -160,7 +148,7 @@ namespace Nethermind.Core.Test.Caching
             }
 
             int count = 0;
-            
+
             for (int i = 0; i < iterations; i++)
             {
                 if (cache.TryGet(i, out int val))
@@ -178,9 +166,9 @@ namespace Nethermind.Core.Test.Caching
         {
             int maxCapacity = 0;
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => 
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
                 {
-                    LruCache<int, int> cache = new(maxCapacity, "test");
+                    LruCache<int, int> unused = new(maxCapacity, "test");
                 });
 
         }

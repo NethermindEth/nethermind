@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -51,8 +38,8 @@ namespace Nethermind.Crypto
             {
                 return (false, null);
             }
-            
-            Span<byte> ephemBytes = cipherText.AsSpan().Slice(0, ephemBytesLength);
+
+            Span<byte> ephemBytes = cipherText.AsSpan(0, ephemBytesLength);
             byte[] iv = cipherText.Slice(ephemBytesLength, KeySize / 8);
             byte[] cipherBody = cipherText.Slice(ephemBytesLength + KeySize / 8);
 
@@ -66,14 +53,23 @@ namespace Nethermind.Crypto
             PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();
             IIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
             byte[] cipher = iesEngine.ProcessBlock(plainText, 0, plainText.Length, macData);
-            
-            using MemoryStream memoryStream = new();
-            memoryStream.Write(ephemeralPrivateKey.PublicKey.PrefixedBytes, 0, ephemeralPrivateKey.PublicKey.PrefixedBytes.Length);
-            memoryStream.Write(iv, 0, iv.Length);
-            memoryStream.Write(cipher, 0, cipher.Length);
-            return memoryStream.ToArray();
+
+            byte[] prefixedBytes = ephemeralPrivateKey.PublicKey.PrefixedBytes;
+
+            byte[] outputArray = new byte[prefixedBytes.Length + iv.Length + cipher.Length];
+            Span<byte> outputSpan = outputArray;
+
+            prefixedBytes.AsSpan().CopyTo(outputSpan);
+            outputSpan = outputSpan[prefixedBytes.Length..];
+
+            iv.AsSpan().CopyTo(outputSpan);
+            outputSpan = outputSpan[iv.Length..];
+
+            cipher.AsSpan().CopyTo(outputSpan);
+
+            return outputArray;
         }
-        
+
         private OptimizedKdf _optimizedKdf = new();
 
         private byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
@@ -83,10 +79,10 @@ namespace Nethermind.Crypto
         }
 
         private static IesParameters _iesParameters = new IesWithCipherParameters(new byte[] { }, new byte[] { }, KeySize, KeySize);
-        
+
         private IIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
         {
-            AesEngine aesFastEngine = new();
+            IBlockCipher aesFastEngine = AesEngineX86Intrinsic.IsSupported ? new AesEngineX86Intrinsic() : new AesEngine();
 
             EthereumIesEngine iesEngine = new(
                 new HMac(new Sha256Digest()),

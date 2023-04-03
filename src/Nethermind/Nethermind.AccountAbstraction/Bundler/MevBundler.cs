@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Linq;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Mev.Data;
@@ -52,7 +55,6 @@ namespace Nethermind.AccountAbstraction.Bundler
                     SenderAddress = tx.SenderAddress,
                     Signature = tx.Signature,
                     Hash = tx.Hash,
-                    DeliveredBy = tx.DeliveredBy,
                     Timestamp = tx.Timestamp,
                     AccessList = tx.AccessList,
                 })

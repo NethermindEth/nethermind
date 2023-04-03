@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -12,14 +15,14 @@ namespace Ethereum.Test.Base
             IEnumerable<string> testDirs;
             if (!Path.IsPathRooted(testsDirectoryName))
             {
-                string testsDirectory  = GetGeneralStateTestsDirectory();
+                string testsDirectory = GetGeneralStateTestsDirectory();
 
 
                 testDirs = Directory.EnumerateDirectories(testsDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true });
             }
             else
             {
-                testDirs = new[] {testsDirectoryName};
+                testDirs = new[] { testsDirectoryName };
             }
 
             List<GeneralStateTest> testJsons = new();
@@ -35,7 +38,7 @@ namespace Ethereum.Test.Base
         {
             char pathSeparator = Path.AltDirectorySeparatorChar;
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
-            
+
             return currentDirectory.Remove(currentDirectory.LastIndexOf("src")) + $"src{pathSeparator}tests{pathSeparator}GeneralStateTests";
         }
 
@@ -59,11 +62,11 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception e)
                 {
-                    testsByName.Add(new GeneralStateTest {Name = testFile, LoadFailure = $"Failed to load: {e}"});
+                    testsByName.Add(new GeneralStateTest { Name = testFile, LoadFailure = $"Failed to load: {e}" });
                 }
             }
 
             return testsByName;
-        }        
+        }
     }
 }

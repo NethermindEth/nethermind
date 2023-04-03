@@ -1,24 +1,10 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers.Binary;
-using System.Threading;
-using Nethermind.HashLib;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto
 {
@@ -76,8 +62,6 @@ namespace Nethermind.Crypto
             return InternalCompute(input);
         }
 
-        [ThreadStatic] private static HashLib.Crypto.SHA3.Keccak512? _hash;
-        
         public static uint[] ComputeToUInts(byte[] input)
         {
             if (input is null || input.Length == 0)
@@ -85,12 +69,7 @@ namespace Nethermind.Crypto
                 throw new NotSupportedException();
             }
 
-            if (_hash is null) // avoid allocating Init func
-            {
-                LazyInitializer.EnsureInitialized(ref _hash, Init);
-            }
-
-            return _hash.ComputeBytesToUint(input);
+            return KeccakHash.ComputeBytesToUint(input, Size);
         }
 
         public static uint[] ComputeUIntsToUInts(Span<uint> input)
@@ -100,14 +79,9 @@ namespace Nethermind.Crypto
                 throw new NotSupportedException();
             }
 
-            if (_hash is null)
-            {
-                LazyInitializer.EnsureInitialized(ref _hash, Init);
-            }
-
-            return _hash.ComputeUIntsToUint(input);
+            return KeccakHash.ComputeUIntsToUint(input, Size);
         }
-        
+
         public static void ComputeUIntsToUInts(Span<uint> input, Span<uint> output)
         {
             if (input.Length == 0)
@@ -115,27 +89,12 @@ namespace Nethermind.Crypto
                 throw new NotSupportedException();
             }
 
-            if (_hash is null)
-            {
-                LazyInitializer.EnsureInitialized(ref _hash, Init);
-            }
-
-            _hash.ComputeUIntsToUint(input, output);
+            KeccakHash.ComputeUIntsToUint(input, output);
         }
 
-        private static HashLib.Crypto.SHA3.Keccak512 Init()
-        {
-            return HashFactory.Crypto.SHA3.CreateKeccak512();
-        }
-        
         private static Keccak512 InternalCompute(byte[] input)
         {
-            if (_hash is null)
-            {
-                LazyInitializer.EnsureInitialized(ref _hash, Init);
-            }
-
-            return new Keccak512(_hash.ComputeBytes(input).GetBytes());
+            return new Keccak512(KeccakHash.ComputeHashBytes(input, Size));
         }
 
         public static Keccak512 Compute(string? input)

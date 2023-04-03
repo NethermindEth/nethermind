@@ -1,37 +1,20 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
-using Nethermind.Specs;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Wallet.Test
@@ -50,35 +33,38 @@ namespace Nethermind.Wallet.Test
                 switch (walletType)
                 {
                     case WalletType.KeyStore:
-                    {
-                        IKeyStoreConfig config = new KeyStoreConfig();
-                        config.KeyStoreDirectory = _keyStorePath.Path;
-                        ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
-                        Wallet = new DevKeyStoreWallet(
-                            new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
-                            LimboLogs.Instance);
-                        break;
-                    }
+                        {
+                            IKeyStoreConfig config = new KeyStoreConfig();
+                            config.KeyStoreDirectory = _keyStorePath.Path;
+                            ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
+                            Wallet = new DevKeyStoreWallet(
+                                new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(),
+                                    LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
+                                LimboLogs.Instance);
+                            break;
+                        }
                     case WalletType.Memory:
-                    {
-                        Wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
-                        break;
-                    }
+                        {
+                            Wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
+                            break;
+                        }
                     case WalletType.ProtectedKeyStore:
-                    {
-                        IKeyStoreConfig config = new KeyStoreConfig();
-                        config.KeyStoreDirectory = _keyStorePath.Path;
-                        ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
-                        ProtectedKeyStoreWallet wallet = new ProtectedKeyStoreWallet(
-                            new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
-                            new ProtectedPrivateKeyFactory(new CryptoRandom(), Timestamper.Default),
-                            Timestamper.Default,
-                            LimboLogs.Instance);
-                        wallet.SetupTestAccounts(3);
+                        {
+                            IKeyStoreConfig config = new KeyStoreConfig();
+                            config.KeyStoreDirectory = _keyStorePath.Path;
+                            ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
+                            ProtectedKeyStoreWallet wallet = new ProtectedKeyStoreWallet(
+                                new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(),
+                                    LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
+                                new ProtectedPrivateKeyFactory(new CryptoRandom(),
+                                    Timestamper.Default, config.KeyStoreDirectory),
+                                Timestamper.Default,
+                                LimboLogs.Instance);
+                            wallet.SetupTestAccounts(3);
 
-                        Wallet = wallet;
-                        break;
-                    }
+                            Wallet = wallet;
+                            break;
+                        }
                     default:
                         throw new ArgumentOutOfRangeException(nameof(walletType), walletType, null);
                 }
@@ -138,7 +124,7 @@ namespace Nethermind.Wallet.Test
             for (int i = 1; i <= count; i++)
             {
                 byte[] keyBytes = new byte[32];
-                keyBytes[31] = (byte) i;
+                keyBytes[31] = (byte)i;
                 PrivateKey key = new PrivateKey(keyBytes);
                 TestContext.Write(key.Address.Bytes.ToHexString() + Environment.NewLine);
                 Assert.True(ctx.Wallet.GetAccounts().Any(a => a == key.Address), $"{i}");

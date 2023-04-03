@@ -1,24 +1,11 @@
-//  Copyright (c) 2022 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -61,7 +48,57 @@ public class TxBroadcasterTests
         _txPoolConfig = new TxPoolConfig();
         _headInfo = Substitute.For<IChainHeadInfoProvider>();
     }
-    
+
+    [Test]
+    public async Task should_not_broadcast_persisted_tx_to_peer_too_quickly()
+    {
+        _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = 100 };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _headInfo.CurrentBaseFee.Returns(0.GWei());
+
+        int addedTxsCount = TestItem.PrivateKeys.Length;
+        Transaction[] transactions = new Transaction[addedTxsCount];
+
+        for (int i = 0; i < addedTxsCount; i++)
+        {
+            transactions[i] = Build.A.Transaction
+                .WithGasPrice(i.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
+                .TestObject;
+
+            _broadcaster.Broadcast(transactions[i], true);
+        }
+
+        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+
+        ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+        peer.Id.Returns(TestItem.PublicKeyA);
+
+        _broadcaster.AddPeer(peer);
+
+        peer.Received(0).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+
+        _broadcaster.BroadcastPersistentTxs();
+        _broadcaster.BroadcastPersistentTxs();
+        _broadcaster.BroadcastPersistentTxs();
+        _broadcaster.BroadcastPersistentTxs();
+        _broadcaster.BroadcastPersistentTxs();
+
+        peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+
+        await Task.Delay(TimeSpan.FromMilliseconds(1001));
+
+        peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+
+        _broadcaster.BroadcastPersistentTxs();
+        _broadcaster.BroadcastPersistentTxs();
+        _broadcaster.BroadcastPersistentTxs();
+        _broadcaster.BroadcastPersistentTxs();
+        _broadcaster.BroadcastPersistentTxs();
+
+        peer.Received(2).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+    }
+
     [TestCase(1)]
     [TestCase(2)]
     [TestCase(99)]
@@ -83,17 +120,17 @@ public class TxBroadcasterTests
                 .WithGasPrice(i.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
-                
+
             _broadcaster.Broadcast(transactions[i], true);
         }
-        
+
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
 
         int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
         pickedTxs.Count.Should().Be(expectedCount);
-        
+
         List<Transaction> expectedTxs = new();
 
         for (int i = 1; i <= expectedCount; i++)
@@ -103,7 +140,7 @@ public class TxBroadcasterTests
 
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
-    
+
     [TestCase(1)]
     [TestCase(2)]
     [TestCase(99)]
@@ -132,10 +169,10 @@ public class TxBroadcasterTests
                 .WithGasPrice(i.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
-                
+
             _broadcaster.Broadcast(transactions[i], true);
         }
-        
+
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
@@ -152,7 +189,7 @@ public class TxBroadcasterTests
 
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
-    
+
     [TestCase(1)]
     [TestCase(2)]
     [TestCase(99)]
@@ -182,10 +219,10 @@ public class TxBroadcasterTests
                 .WithMaxFeePerGas(i.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
-                
+
             _broadcaster.Broadcast(transactions[i], true);
         }
-        
+
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
@@ -220,14 +257,14 @@ public class TxBroadcasterTests
                 .WithGasPrice(i.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
-                
+
             _broadcaster.Broadcast(transactions[i], true);
         }
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
         pickedTxs.Count.Should().Be(1);
-        
+
         List<Transaction> expectedTxs = new() { transactions[0] };
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }

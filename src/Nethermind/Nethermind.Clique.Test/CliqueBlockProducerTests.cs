@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -30,6 +17,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -50,6 +38,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Config;
 
 namespace Nethermind.Clique.Test
 {
@@ -60,11 +49,11 @@ namespace Nethermind.Clique.Test
         private class On
         {
             private ILogManager _logManager = LimboLogs.Instance;
-//            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            //            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
             private ILogger _logger;
             private static ITimestamper _timestamper = Timestamper.Default;
             private CliqueConfig _cliqueConfig;
-            private EthereumEcdsa _ethereumEcdsa = new(ChainId.Goerli, LimboLogs.Instance);
+            private EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
             private Dictionary<PrivateKey, ILogManager> _logManagers = new();
             private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
             private Dictionary<PrivateKey, BlockTree> _blockTrees = new();
@@ -91,16 +80,16 @@ namespace Nethermind.Clique.Test
             {
                 if (_logger.IsInfo) _logger.Info($"CREATING NODE {privateKey.Address}");
                 _logManagers[privateKey] = LimboLogs.Instance;
-//                _logManagers[privateKey] = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, $"{privateKey.Address} "));
-                ILogManager nodeLogManager = _logManagers[privateKey]; 
-                
+                //                _logManagers[privateKey] = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, $"{privateKey.Address} "));
+                ILogManager nodeLogManager = _logManagers[privateKey];
+
                 AutoResetEvent newHeadBlockEvent = new(false);
                 _blockEvents.Add(privateKey, newHeadBlockEvent);
 
                 MemDb blocksDb = new();
                 MemDb headersDb = new();
                 MemDb blockInfoDb = new();
-                
+
                 MemDb stateDb = new();
                 MemDb codeDb = new();
 
@@ -114,26 +103,26 @@ namespace Nethermind.Clique.Test
                 stateProvider.Commit(goerliSpecProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
 
-                BlockTree blockTree = new(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), goerliSpecProvider, NullBloomStorage.Instance,  nodeLogManager);
-                
+                BlockTree blockTree = new(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), goerliSpecProvider, NullBloomStorage.Instance, nodeLogManager);
+
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
                 ITransactionComparerProvider transactionComparerProvider =
                     new TransactionComparerProvider(specProvider, blockTree);
 
-                 TxPool.TxPool txPool = new(_ethereumEcdsa, new ChainHeadInfoProvider(new FixedBlockChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider), new TxPoolConfig(), new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+                TxPool.TxPool txPool = new(_ethereumEcdsa, new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider), new TxPoolConfig(), new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
                 _pools[privateKey] = txPool;
 
                 BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
                 _blockTrees.Add(privateKey, blockTree);
-                
+
                 SnapshotManager snapshotManager = new(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
                 _snapshotManager[privateKey] = snapshotManager;
-                CliqueSealer cliqueSealer = new(new Signer(ChainId.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
+                CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
                 _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
-                
+
                 StorageProvider storageProvider = new(trieStore, stateProvider, nodeLogManager);
                 TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
                 BlockProcessor blockProcessor = new(
@@ -151,12 +140,12 @@ namespace Nethermind.Clique.Test
                 processor.Start();
 
                 IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
-              
+
                 StateProvider minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
-                
+
                 BlockProcessor minerBlockProcessor = new(
                     goerliSpecProvider,
                     Always.Valid,
@@ -174,8 +163,11 @@ namespace Nethermind.Clique.Test
                 {
                     ProcessGenesis(privateKey);
                 }
-                
-                ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider);
+                BlocksConfig blocksConfig = new()
+                {
+                    MinGasPrice = 0
+                };
+                ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider, blocksConfig);
                 TxPoolTxSource txPoolTxSource = new(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
                 CliqueBlockProducer blockProducer = new(
                     txPoolTxSource,
@@ -186,12 +178,12 @@ namespace Nethermind.Clique.Test
                     new CryptoRandom(),
                     snapshotManager,
                     cliqueSealer,
-                    new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new MiningConfig()),
-                    MainnetSpecProvider.Instance, 
+                    new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new BlocksConfig()),
+                    MainnetSpecProvider.Instance,
                     _cliqueConfig,
                     nodeLogManager);
                 blockProducer.Start();
-                
+
                 ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, blockProducer);
 
                 _producers.Add(privateKey, blockProducer);
@@ -215,7 +207,7 @@ namespace Nethermind.Clique.Test
                 UInt256 difficulty = new(1);
                 long number = 0L;
                 int gasLimit = 4700000;
-                UInt256 timestamp = _timestamper.UnixTime.Seconds - _cliqueConfig.BlockPeriod;
+                ulong timestamp = _timestamper.UnixTime.Seconds - _cliqueConfig.BlockPeriod;
                 string extraDataHex = "0x2249276d20646f6e652077616974696e672e2e2e20666f7220626c6f636b2066";
                 extraDataHex += TestItem.PrivateKeyA.Address.ToString(false).Replace("0x", string.Empty);
                 extraDataHex += TestItem.PrivateKeyB.Address.ToString(false).Replace("0x", string.Empty);
@@ -251,7 +243,7 @@ namespace Nethermind.Clique.Test
                 _producers[nodeId].UncastVote(address);
                 return this;
             }
-            
+
             public On IsProducingBlocks(PrivateKey nodeId, bool expected, ulong? maxInterval)
             {
                 if (_logger.IsInfo) _logger.Info($"IsProducingBlocks");
@@ -349,7 +341,7 @@ namespace Nethermind.Clique.Test
                 Assert.AreEqual(number, _blockTrees[nodeKey].Head.Number, nodeKey.Address + " head number");
                 return this;
             }
-            
+
             public On AssertTransactionCount(PrivateKey nodeKey, long number, int transactionCount)
             {
                 WaitForNumber(nodeKey, number);
@@ -428,7 +420,7 @@ namespace Nethermind.Clique.Test
             public Block GetBlock(PrivateKey privateKey, long number)
             {
                 Block block = _blockTrees[privateKey].FindBlock(number, BlockTreeLookupOptions.None);
-                if (block == null)
+                if (block is null)
                 {
                     throw new InvalidOperationException($"Cannot find block {number}");
                 }
@@ -513,11 +505,11 @@ namespace Nethermind.Clique.Test
 
                 return this;
             }
-            
+
             public On AddTransactionWithGasLimitToHigh(PrivateKey nodeKey)
             {
                 Transaction transaction = new();
-            
+
                 // gas limit too high
                 transaction = new Transaction();
                 transaction.Value = 1;
@@ -530,7 +522,7 @@ namespace Nethermind.Clique.Test
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
                 _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
-            
+
                 return this;
             }
 
@@ -570,7 +562,7 @@ namespace Nethermind.Clique.Test
                 .AssertHeadBlockIs(TestItem.PrivateKeyA, 1L)
                 .StopNode(TestItem.PrivateKeyA);
         }
-        
+
         [Test]
         public async Task IsProducingBlocks_returns_expected_results()
         {
@@ -579,7 +571,7 @@ namespace Nethermind.Clique.Test
                 .ProcessGenesis()
                 .IsProducingBlocks(TestItem.PrivateKeyA, true, null)
                 .StopNode(TestItem.PrivateKeyA);
-                
+
             result
                 .IsProducingBlocks(TestItem.PrivateKeyA, false, null);
         }
@@ -598,7 +590,7 @@ namespace Nethermind.Clique.Test
                 .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
                 .StopNode(TestItem.PrivateKeyA);
         }
-        
+
         [Test]
         public async Task Transaction_with_gas_limit_higher_than_block_gas_limit_should_not_be_send()
         {
@@ -624,7 +616,7 @@ namespace Nethermind.Clique.Test
                 .StopNode(TestItem.PrivateKeyA)
                 .ContinueWith(t => t.Result.StopNode(TestItem.PrivateKeyB));
         }
-        
+
         [Test]
         public void Single_validator_can_produce_first_block_in_turn()
         {
@@ -701,7 +693,7 @@ namespace Nethermind.Clique.Test
                 .Process(TestItem.PrivateKeyC, goerli.GetBlock(TestItem.PrivateKeyA, 2))
                 .Wait(1000)
                 .AssertSignersCount(TestItem.PrivateKeyC, 2, 4);
-            
+
             await goerli.StopNode(TestItem.PrivateKeyA);
             await goerli.StopNode(TestItem.PrivateKeyB);
             await goerli.StopNode(TestItem.PrivateKeyC);
@@ -805,7 +797,7 @@ namespace Nethermind.Clique.Test
                 .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
                 .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyA, 1))
                 .AssertHeadBlockIs(TestItem.PrivateKeyB, 2);
-            
+
             await goerli.StopNode(TestItem.PrivateKeyA);
             await goerli.StopNode(TestItem.PrivateKeyB);
         }
@@ -827,7 +819,7 @@ namespace Nethermind.Clique.Test
             goerli
                 .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyA, 1))
                 .AssertHeadBlockIs(TestItem.PrivateKeyB, 1);
-            
+
             await goerli.StopNode(TestItem.PrivateKeyA);
             await goerli.StopNode(TestItem.PrivateKeyB);
         }
@@ -885,7 +877,7 @@ namespace Nethermind.Clique.Test
         [Test, Retry(3)]
         public async Task Many_validators_can_process_blocks()
         {
-            PrivateKey[] keys = new[] {TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC}.OrderBy(pk => pk.Address, AddressComparer.Instance).ToArray();
+            PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(pk => pk.Address, AddressComparer.Instance).ToArray();
 
             On goerli = On.FastGoerli;
             for (int i = 0; i < keys.Length; i++)

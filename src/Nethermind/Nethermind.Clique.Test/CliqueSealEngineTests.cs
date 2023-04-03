@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -72,31 +59,31 @@ namespace Nethermind.Clique.Test
             _blockTree = Build.A.BlockTree().TestObject;
             Block genesisBlock = GetRinkebyGenesis();
             MineBlock(_blockTree, genesisBlock);
-            
+
             Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
             block1.Header.ParentHash = genesisBlock.Hash;
             BuildSealer(1, db).SealBlock(block1, CancellationToken.None).Wait();
             block1.Header.Hash = block1.CalculateHash();
             MineBlock(_blockTree, block1);
-            
+
             Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
             block2.Header.ParentHash = block1.Hash;
             BuildSealer(2, db).SealBlock(block2, CancellationToken.None).Wait();
             block2.Header.Hash = block2.CalculateHash();
             MineBlock(_blockTree, block2);
-            
+
             Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
             block3.Header.ParentHash = block2.Hash;
             BuildSealer(3, db).SealBlock(block3, CancellationToken.None).Wait();
             block3.Header.Hash = block3.CalculateHash();
             MineBlock(_blockTree, block3);
-            
+
             Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
             block4.Header.ParentHash = block3.Hash;
             BuildSealer(4, db).SealBlock(block4, CancellationToken.None).Wait();
             block4.Header.Hash = block4.CalculateHash();
             MineBlock(_blockTree, block4);
-            
+
             Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
             block5.Header.ParentHash = block4.Hash;
             BuildSealer(5, db).SealBlock(block5, CancellationToken.None).Wait();
@@ -104,23 +91,23 @@ namespace Nethermind.Clique.Test
             MineBlock(_blockTree, block5);
             _lastBlock = block5;
             // Init snapshot db
-            
-            
+
+
             // Select in-turn signer
             int currentBlock = 6;
-            
+
             BuildSealer(currentBlock, db);
         }
 
         private CliqueSealer BuildSealer(int currentBlock, IDb db)
         {
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(BlockchainIds.Rinkeby, LimboLogs.Instance);
             CliqueConfig config = new();
             int currentSignerIndex = (currentBlock % _signers.Count);
             _currentSigner = _signers[currentSignerIndex];
             _snapshotManager = new SnapshotManager(config, db, _blockTree, ecdsa, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
-            _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, _currentSigner, LimboLogs.Instance), config,
+            _clique = new CliqueSealer(new Signer(BlockchainIds.Rinkeby, _currentSigner, LimboLogs.Instance), config,
                 _snapshotManager, LimboLogs.Instance);
             return _clique;
         }
@@ -144,17 +131,17 @@ namespace Nethermind.Clique.Test
             UInt256 difficulty = new(1);
             long number = 0L;
             int gasLimit = 4700000;
-            UInt256 timestamp = new(1492009146);
+            ulong timestamp = 1492009146UL;
             byte[] extraData = Bytes.FromHexString(GetGenesisExtraData());
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.Bloom = Bloom.Empty;
-            Block genesis = new(header);            
+            Block genesis = new(header);
             genesis.Header.Bloom = Bloom.Empty;
             genesis.Header.Hash = genesis.CalculateHash();
 
             // this would need to be loaded from rinkeby chainspec to include allocations
-//            Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
-            
+            //            Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
+
             genesis.Header.Hash = genesis.Header.CalculateHash();
             return genesis;
         }
@@ -167,7 +154,7 @@ namespace Nethermind.Clique.Test
             {
                 extraDataString.Append(_signers[i].Address.ToString(false, false));
             }
-            
+
             extraDataString.Append("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
             return extraDataString.ToString();
         }
@@ -185,7 +172,7 @@ namespace Nethermind.Clique.Test
             UInt256 difficulty = (UInt256)blockDifficulty;
             long number = blockNumber;
             int gasLimit = 4700000;
-            UInt256 timestamp = (UInt256)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            ulong timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             byte[] extraData = Bytes.FromHexString("d883010812846765746888676f312e31312e31856c696e75780000000000000028eb026ab5355b45499053382886754f1db544618d45edc979de1864d83a626b77513bd34d7f21059e79e303c3ab210e1424e71bcb8347835cbd378a785a06f800");
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.MixHash = Keccak.Zero;

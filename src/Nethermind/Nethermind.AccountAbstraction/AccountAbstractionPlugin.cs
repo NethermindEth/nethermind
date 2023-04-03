@@ -1,4 +1,7 @@
-﻿using System;
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -29,7 +32,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Network.Config;
 using Nethermind.Consensus.Producers;
-
+using Nethermind.Config;
+using Nethermind.Network.Contract.P2P;
 
 namespace Nethermind.AccountAbstraction
 {
@@ -64,7 +68,7 @@ namespace Nethermind.AccountAbstraction
             }
 
             var (getFromApi, _) = _nethermindApi!.ForProducer;
-            
+
             _userOperationTxBuilders[entryPoint] = new UserOperationTxBuilder(
                 _entryPointContractAbi,
                 getFromApi.EngineSigner!,
@@ -73,7 +77,7 @@ namespace Nethermind.AccountAbstraction
 
             return _userOperationTxBuilders[entryPoint];
         }
-        
+
         private IUserOperationPool UserOperationPool(Address entryPoint)
         {
             if (_userOperationPools.TryGetValue(entryPoint, out IUserOperationPool? userOperationPool))
@@ -108,9 +112,9 @@ namespace Nethermind.AccountAbstraction
             return _userOperationPools[entryPoint];
         }
 
-        private UserOperationSimulator UserOperationSimulator (Address entryPoint)
+        private UserOperationSimulator UserOperationSimulator(Address entryPoint)
         {
-            if(_userOperationSimulators.TryGetValue(entryPoint, out UserOperationSimulator? userOperationSimulator))
+            if (_userOperationSimulators.TryGetValue(entryPoint, out UserOperationSimulator? userOperationSimulator))
             {
                 return userOperationSimulator;
             }
@@ -118,12 +122,12 @@ namespace Nethermind.AccountAbstraction
             var (getFromApi, _) = _nethermindApi!.ForProducer;
 
             ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
-                getFromApi.DbProvider, 
-                getFromApi.ReadOnlyTrieStore, 
-                getFromApi.BlockTree, 
-                getFromApi.SpecProvider, 
+                getFromApi.DbProvider,
+                getFromApi.ReadOnlyTrieStore,
+                getFromApi.BlockTree,
+                getFromApi.SpecProvider,
                 getFromApi.LogManager);
-            
+
             _userOperationSimulators[entryPoint] = new UserOperationSimulator(
                 UserOperationTxBuilder(entryPoint),
                 getFromApi.ChainHeadStateProvider!,
@@ -133,7 +137,8 @@ namespace Nethermind.AccountAbstraction
                 _whitelistedPaymasters.ToArray(),
                 getFromApi.SpecProvider!,
                 getFromApi.Timestamper,
-                getFromApi.LogManager);
+                getFromApi.LogManager,
+                getFromApi.Config<IBlocksConfig>());
 
             return _userOperationSimulators[entryPoint];
         }
@@ -191,7 +196,8 @@ namespace Nethermind.AccountAbstraction
                 // Be careful if there is another plugin with priority peers - they won't be distinguished in SyncPeerPool.
                 _nethermindApi.Config<INetworkConfig>().PriorityPeersMaxCount += _accountAbstractionConfig.AaPriorityPeersMaxCount;
                 IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
-                foreach (string addressString in entryPointContractAddressesString){
+                foreach (string addressString in entryPointContractAddressesString)
+                {
                     bool parsed = Address.TryParse(
                         addressString,
                         out Address? entryPointContractAddress);
@@ -205,7 +211,7 @@ namespace Nethermind.AccountAbstraction
                         _entryPointContractAddresses.Add(entryPointContractAddress!);
                     }
                 }
-                
+
                 IList<string> whitelistedPaymastersString = _accountAbstractionConfig.GetWhitelistedPaymasters().ToList();
                 foreach (string addressString in whitelistedPaymastersString)
                 {
@@ -243,15 +249,15 @@ namespace Nethermind.AccountAbstraction
             if (_accountAbstractionConfig.Enabled)
             {
                 if (_nethermindApi is null) throw new ArgumentNullException(nameof(_nethermindApi));
-                
+
                 // init all relevant objects if not already initialized
-                foreach(Address entryPoint in _entryPointContractAddresses)
+                foreach (Address entryPoint in _entryPointContractAddresses)
                 {
                     UserOperationPool(entryPoint);
                     UserOperationSimulator(entryPoint);
                     UserOperationTxBuilder(entryPoint);
                 }
-                
+
                 if (_userOperationPools.Count == 0) throw new ArgumentNullException(nameof(UserOperationPool));
 
                 IProtocolsManager protocolsManager = _nethermindApi.ProtocolsManager ??
@@ -287,9 +293,9 @@ namespace Nethermind.AccountAbstraction
             if (_accountAbstractionConfig.Enabled)
             {
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
-                
+
                 // init all relevant objects if not already initialized
-                foreach(Address entryPoint in _entryPointContractAddresses)
+                foreach (Address entryPoint in _entryPointContractAddresses)
                 {
                     UserOperationPool(entryPoint);
                     UserOperationSimulator(entryPoint);
@@ -298,12 +304,12 @@ namespace Nethermind.AccountAbstraction
 
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 rpcConfig.EnableModules(ModuleType.AccountAbstraction);
-                
+
                 AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(_userOperationPools, _entryPointContractAddresses.ToArray());
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
-                
+
                 ISubscriptionFactory subscriptionFactory = _nethermindApi.SubscriptionFactory;
                 //Register custom UserOperation websocket subscription types in the SubscriptionFactory.
                 subscriptionFactory.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
@@ -322,7 +328,7 @@ namespace Nethermind.AccountAbstraction
                         logManager,
                         param)
                 );
-                
+
                 if (BundleMiningEnabled && MevPluginEnabled)
                 {
                     if (_logger!.IsInfo) _logger.Info("Both AA and MEV Plugins enabled, sending user operations to mev bundle pool instead");
@@ -354,30 +360,30 @@ namespace Nethermind.AccountAbstraction
             if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
 
             // init all relevant objects if not already initted
-            foreach(Address entryPoint in _entryPointContractAddresses)
+            foreach (Address entryPoint in _entryPointContractAddresses)
             {
                 UserOperationPool(entryPoint);
                 UserOperationSimulator(entryPoint);
                 UserOperationTxBuilder(entryPoint);
             }
-            
+
             _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory =
                 new AABlockProducerTransactionsExecutorFactory(
-                    _nethermindApi.SpecProvider!, 
+                    _nethermindApi.SpecProvider!,
                     _nethermindApi.LogManager!,
-                    _nethermindApi.EngineSigner!, 
+                    _nethermindApi.EngineSigner!,
                     _entryPointContractAddresses.ToArray());
 
             UInt256 minerBalance = _nethermindApi.ChainHeadStateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
             if (minerBalance < 1.Ether())
                 if (_logger.IsWarn) _logger.Warn(
                     $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {minerBalance / 1.Ether()} Ether < 1 Ether. Increasing balance is recommended");
-            else
-            {
-                if (_logger.IsInfo)
-                    _logger.Info(
-                        $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance / 1.Ether()} Ether");
-            }
+                else
+                {
+                    if (_logger.IsInfo)
+                        _logger.Info(
+                            $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance / 1.Ether()} Ether");
+                }
 
             IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
 

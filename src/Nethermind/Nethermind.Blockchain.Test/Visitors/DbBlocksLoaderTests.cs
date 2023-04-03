@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,7 +25,7 @@ namespace Nethermind.Blockchain.Test.Visitors
     {
         private int _dbLoadTimeout = 5000;
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_blocks_from_db()
         {
             for (int chainLength = 2; chainLength <= 32; chainLength++)
@@ -69,7 +55,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
                 blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
-                
+
                 BlockTree blockTree = new(
                     blocksDb,
                     headersDb,
@@ -86,7 +72,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_blocks_from_db_odd()
         {
             for (int chainLength = 2; chainLength <= 32; chainLength++)
@@ -109,7 +95,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                     {
                         new(ithBlock.Hash, ithBlock.TotalDifficulty.Value)
                     });
-                    
+
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
@@ -124,7 +110,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                     OlympicSpecProvider.Instance,
                     NullBloomStorage.Instance,
                     LimboLogs.Instance);
-                
+
                 DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
                 await blockTree.Accept(loader, CancellationToken.None);
 
@@ -132,7 +118,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_from_DB_when_there_is_an_invalid_block_in_DB_and_a_valid_branch()
         {
             MemDb blocksDb = new();
@@ -167,7 +153,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree1.SuggestBlock(block3B); // expected to be head
 
             tree1.UpdateMainChain(block0);
-            
+
             BlockTree tree2 = new(
                 blocksDb,
                 headersDb,
@@ -210,7 +196,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             Assert.NotNull(blockInfosDb.Get(3), "level 3");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_from_DB_when_there_is_only_an_invalid_chain_in_DB()
         {
             MemDb blocksDb = new();

@@ -1,20 +1,8 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -31,7 +19,7 @@ namespace Nethermind.Stats.Model
         private string _paddedPort;
 
         /// <summary>
-        /// Node public key - same as in enode. 
+        /// Node public key - same as in enode.
         /// </summary>
         public PublicKey Id { get; }
 
@@ -73,7 +61,7 @@ namespace Nethermind.Stats.Model
                 if (_clientId is null)
                 {
                     _clientId = value;
-                    RecognizeClientType();
+                    ClientType = RecognizeClientType(_clientId);
                 }
             }
         }
@@ -173,39 +161,39 @@ namespace Nethermind.Stats.Model
             return !(a == b);
         }
 
-        private void RecognizeClientType()
+        public static NodeClientType RecognizeClientType(string clientId)
         {
-            if (_clientId is null)
+            if (clientId is null)
             {
-                ClientType = NodeClientType.Unknown;
+                return NodeClientType.Unknown;
             }
-            else if (_clientId.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase))
             {
-                ClientType = NodeClientType.BeSu;
+                return NodeClientType.BeSu;
             }
-            else if (_clientId.Contains("Geth", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains("Geth", StringComparison.InvariantCultureIgnoreCase))
             {
-                ClientType = NodeClientType.Geth;
+                return NodeClientType.Geth;
             }
-            else if (_clientId.Contains("Nethermind", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains("Nethermind", StringComparison.InvariantCultureIgnoreCase))
             {
-                ClientType = NodeClientType.Nethermind;
+                return NodeClientType.Nethermind;
             }
-            else if (_clientId.Contains("Parity", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains("Parity", StringComparison.InvariantCultureIgnoreCase))
             {
-                ClientType = NodeClientType.Parity;
+                return NodeClientType.Parity;
             }
-            else if (_clientId.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase))
             {
-                ClientType = NodeClientType.OpenEthereum;
+                return NodeClientType.OpenEthereum;
             }
-            else if (_clientId.Contains("Trinity", StringComparison.InvariantCultureIgnoreCase))
+            else if (clientId.Contains("Trinity", StringComparison.InvariantCultureIgnoreCase))
             {
-                ClientType = NodeClientType.Trinity;
+                return NodeClientType.Trinity;
             }
             else
             {
-                ClientType = NodeClientType.Unknown;
+                return NodeClientType.Unknown;
             }
         }
     }

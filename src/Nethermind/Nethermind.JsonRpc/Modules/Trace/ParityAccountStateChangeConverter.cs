@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -33,13 +20,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private void WriteChange(JsonWriter writer, ParityStateChange<byte[]> change, JsonSerializer serializer)
         {
-            if (change == null)
+            if (change is null)
             {
                 writer.WriteValue("=");
             }
             else
             {
-                if (change.Before == null)
+                if (change.Before is null)
                 {
                     writer.WriteStartObject();
                     writer.WritePropertyName("+");
@@ -63,13 +50,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private void WriteChange(JsonWriter writer, ParityStateChange<UInt256?> change, JsonSerializer serializer)
         {
-            if (change == null)
+            if (change is null)
             {
                 writer.WriteValue("=");
             }
             else
             {
-                if (change.Before == null)
+                if (change.Before is null)
                 {
                     writer.WriteStartObject();
                     writer.WritePropertyName("+");
@@ -93,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private void WriteStorageChange(JsonWriter writer, ParityStateChange<byte[]> change, bool isNew, JsonSerializer serializer)
         {
-            if (change == null)
+            if (change is null)
             {
                 writer.WriteValue("=");
             }
@@ -125,7 +112,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             writer.WriteStartObject();
             writer.WritePropertyName("balance");
-            if (value.Balance == null)
+            if (value.Balance is null)
             {
                 writer.WriteValue("=");
             }
@@ -135,7 +122,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             writer.WritePropertyName("code");
-            if (value.Code == null)
+            if (value.Code is null)
             {
                 writer.WriteValue("=");
             }
@@ -145,7 +132,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             writer.WritePropertyName("nonce");
-            if (value.Nonce == null)
+            if (value.Nonce is null)
             {
                 writer.WriteValue("=");
             }
@@ -157,15 +144,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("storage");
 
             writer.WriteStartObject();
-            if (value.Storage != null)
+            if (value.Storage is not null)
             {
                 foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> pair in value.Storage.OrderBy(s => s.Key))
                 {
                     string trimmedKey = pair.Key.ToString("x64");
                     trimmedKey = trimmedKey.Substring(trimmedKey.Length - 64, 64);
-                    
+
                     writer.WritePropertyName(string.Concat("0x", trimmedKey));
-                    WriteStorageChange(writer, pair.Value, value.Balance?.Before == null && value.Balance?.After != null, serializer);
+                    WriteStorageChange(writer, pair.Value, value.Balance?.Before is null && value.Balance?.After is not null, serializer);
                 }
             }
 

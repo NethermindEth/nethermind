@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
 using System;
@@ -31,7 +17,8 @@ namespace Nethermind.Synchronization.Test
     [Parallelizable(ParallelScope.All)]
     public class PeerInfoAllocationTests
     {
-        [TestCase("Nethermind/v1.10.71-0-13221de89-20211103/X64-Linux/5.0.5", AllocationContexts.All, ExpectedResult = true)]
+        [TestCase("Nethermind/v1.10.71-0-13221de89-20211103/X64-Linux/5.0.5", AllocationContexts.All & ~AllocationContexts.Snap, ExpectedResult = true)]
+
         [TestCase("OpenEthereum/v3.3.0-rc.1-stable/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = false)]
         [TestCase("OpenEthereum/v3.3.0-rc.2-stable/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = false)]
         [TestCase("OpenEthereum/v3.3.0-rc.3-stable/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = false)]
@@ -50,6 +37,9 @@ namespace Nethermind.Synchronization.Test
         [TestCase("OpenEthereum/v3.0.0-stable-32d8b54-20210505/x86_64-linux-gnu/rustc1.51.0", AllocationContexts.State, ExpectedResult = true)]
         [TestCase("OpenEthereum/v3.3.3/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = true)]
         [TestCase("OpenEthereum/v3.3.4/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = true)]
+
+        [TestCase("Nethermind/v1.10.71-0-13221de89-20211103/X64-Linux/5.0.5", AllocationContexts.Snap, ExpectedResult = false)]
+        [TestCase("Geth/v1.10.23-stable-d901d853/linux-amd64/go1.18.5", AllocationContexts.Snap, ExpectedResult = true)]
         public bool SupportsAllocation(string versionString, AllocationContexts contexts)
         {
             PeerInfo peerInfo = new(SetupSyncPeer(versionString));
@@ -68,7 +58,7 @@ namespace Nethermind.Synchronization.Test
                 yield return new TestCaseData("OpenEthereum/pocket-foundation-1/v3.3.0-rc.7-stable/x86_64-linux-musl/rustc1.47.0", new Version(3, 3, 0), 7);
             }
         }
-        
+
         [TestCaseSource(nameof(OpenEthereumVersionTests))]
         public void GetOpenEthereumVersion(string versionString, Version? expectedVersion = null, int expectedReleaseCandidate = 0)
         {
@@ -83,10 +73,7 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncPeer peer = Substitute.For<ISyncPeer>();
             peer.ClientId.Returns(versionString);
-            peer.ClientType.Returns(
-                versionString.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase)
-                    ? NodeClientType.OpenEthereum
-                    : NodeClientType.Nethermind);
+            peer.ClientType.Returns(Node.RecognizeClientType(versionString));
             return peer;
         }
     }

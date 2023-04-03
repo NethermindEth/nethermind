@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -57,7 +44,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(block.Number, trace.BlockNumber, "number");
             Assert.AreEqual(0, trace.TransactionPosition, "tx index");
             Assert.AreEqual(tx.Hash, trace.TransactionHash, "tx hash");
-            Assert.AreEqual((long) tx.GasLimit - 21000, trace.Action.Gas, "gas");
+            Assert.AreEqual((long)tx.GasLimit - 21000, trace.Action.Gas, "gas");
             Assert.AreEqual(tx.Value, trace.Action.Value, "value");
             Assert.AreEqual(tx.Data, trace.Action.Input, "input");
             Assert.AreEqual(Array.Empty<int>(), trace.Action.TraceAddress, "trace address");
@@ -258,15 +245,15 @@ namespace Nethermind.Evm.Test.Tracing
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
                 3, 3, 3, 3, 3, 3, // CREATE
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 
             Assert.AreEqual(1, trace.Action.Subtraces.Count, "root subtraces");
             Assert.AreEqual(1, trace.Action.Subtraces[0].Subtraces.Count, "[0] subtraces");
-            Assert.AreEqual(new[] {0}, trace.Action.Subtraces[0].TraceAddress, "[0] address");
+            Assert.AreEqual(new[] { 0 }, trace.Action.Subtraces[0].TraceAddress, "[0] address");
             Assert.AreEqual(0, trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, "[0, 0] subtraces");
-            Assert.AreEqual(new[] {0, 0}, trace.Action.Subtraces[0].Subtraces[0].TraceAddress, "[0, 0] address");
+            Assert.AreEqual(new[] { 0, 0 }, trace.Action.Subtraces[0].Subtraces[0].TraceAddress, "[0, 0] address");
         }
 
         [Test]
@@ -298,7 +285,7 @@ namespace Nethermind.Evm.Test.Tracing
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                 2, 2, 2, 2, 2, 2, 2, 2, 2, // DELEGATE CALL
                 3, 3, 3, 3, 3, 3, // CREATE
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 
@@ -335,13 +322,13 @@ namespace Nethermind.Evm.Test.Tracing
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL CODE
                 3, 3, 3, 3, 3, 3, // CREATE
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 
             Assert.AreEqual("callcode", trace.Action.Subtraces[0].CallType, "[0] type");
         }
-        
+
         [Test]
         public void Can_trace_call_code_calls_with_large_data_offset()
         {
@@ -578,7 +565,7 @@ namespace Nethermind.Evm.Test.Tracing
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL CODE
                 3, 3, 3, 3, 3, 3, // CREATE
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 
@@ -598,12 +585,57 @@ namespace Nethermind.Evm.Test.Tracing
             {
                 1, 1, 1, 1, 1, 1, 1, 1, // STACK FOR CALL
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 
             Assert.AreEqual("call", trace.Action.Subtraces[0].CallType, "[0] type");
             Assert.AreEqual(IdentityPrecompile.Instance.Address, trace.Action.Subtraces[0].To, "[0] to");
+        }
+
+        [Test]
+        public void Can_ignore_precompile_calls_in_contract()
+        {
+            byte[] deployedCode = Prepare.EvmCode
+                .Call(IdentityPrecompile.Instance.Address, 50000)
+                .CallWithValue(IdentityPrecompile.Instance.Address, 50000, 1.Ether())
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            Keccak createCodeHash = TestState.UpdateCode(deployedCode);
+            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .Call(IdentityPrecompile.Instance.Address, 50000)
+                .Call(TestItem.AddressC, 40000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
+
+            // One call to precompile and the other call to AddressC
+            Assert.AreEqual(2, trace.Action.Subtraces.Count, "[] subtraces");
+            Assert.AreEqual("call", trace.Action.CallType, "[] type");
+
+            // Precompile call
+            Assert.AreEqual(0, trace.Action.Subtraces[0].Subtraces.Count, "[0] subtraces");
+            Assert.AreEqual("call", trace.Action.Subtraces[0].CallType, "[0] type");
+            Assert.AreEqual(IdentityPrecompile.Instance.Address, trace.Action.Subtraces[0].To, "[0] to");
+
+            // AddressC call - only one call
+            Assert.AreEqual(2, trace.Action.Subtraces[1].Subtraces.Count, "[1] subtraces");
+            Assert.AreEqual("call", trace.Action.Subtraces[1].CallType, "[1] type");
+
+            // Check the 1st subtrace - a precompile call
+            Assert.AreEqual(0, trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, "[1, 0] subtraces");
+            Assert.AreEqual("call", trace.Action.Subtraces[1].Subtraces[0].CallType, "[1, 0] type");
+            Assert.AreEqual(false, trace.Action.Subtraces[1].Subtraces[0].IncludeInTrace, "[1, 0] type");
+
+            // Check the 2nd subtrace - a precompile call with value - must be included
+            Assert.AreEqual(0, trace.Action.Subtraces[1].Subtraces[1].Subtraces.Count, "[1, 1] subtraces");
+            Assert.AreEqual("call", trace.Action.Subtraces[1].Subtraces[1].CallType, "[1, 1] type");
+            Assert.AreEqual(true, trace.Action.Subtraces[1].Subtraces[1].IncludeInTrace, "[1, 1] type");
         }
 
         [Test]
@@ -638,7 +670,7 @@ namespace Nethermind.Evm.Test.Tracing
                 3, 3, 3, 3, 3, 3, // CREATE
                 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // CALL
                 3, 3, 3, 3, 3, 3, // CREATE
-                2, // STOP 
+                2, // STOP
                 1, // STOP
             };
 
@@ -646,18 +678,18 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual("call", trace.Action.CallType, "[] type");
 
             Assert.AreEqual(1, trace.Action.Subtraces[0].Subtraces.Count, "[0] subtraces");
-            Assert.AreEqual(new[] {0}, trace.Action.Subtraces[0].TraceAddress, "[0] address");
+            Assert.AreEqual(new[] { 0 }, trace.Action.Subtraces[0].TraceAddress, "[0] address");
             Assert.AreEqual("call", trace.Action.Subtraces[0].CallType, "[0] type");
 
             Assert.AreEqual(1, trace.Action.Subtraces[1].Subtraces.Count, "[1] subtraces");
-            Assert.AreEqual(new[] {1}, trace.Action.Subtraces[1].TraceAddress, "[1] address");
+            Assert.AreEqual(new[] { 1 }, trace.Action.Subtraces[1].TraceAddress, "[1] address");
             Assert.AreEqual("call", trace.Action.Subtraces[1].CallType, "[1] type");
 
-            Assert.AreEqual(new[] {0, 0}, trace.Action.Subtraces[0].Subtraces[0].TraceAddress, "[0, 0] address");
+            Assert.AreEqual(new[] { 0, 0 }, trace.Action.Subtraces[0].Subtraces[0].TraceAddress, "[0, 0] address");
             Assert.AreEqual(0, trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, "[0, 0] subtraces");
             Assert.AreEqual("create", trace.Action.Subtraces[1].Subtraces[0].CallType, "[0, 0] type");
 
-            Assert.AreEqual(new[] {1, 0}, trace.Action.Subtraces[1].Subtraces[0].TraceAddress, "[1, 0] address");
+            Assert.AreEqual(new[] { 1, 0 }, trace.Action.Subtraces[1].Subtraces[0].TraceAddress, "[1, 0] address");
             Assert.AreEqual(0, trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, "[1, 0] subtraces");
             Assert.AreEqual("create", trace.Action.Subtraces[1].Subtraces[0].CallType, "[1, 0] type");
         }
@@ -695,9 +727,9 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
             Assert.True(trace.StateChanges.ContainsKey(TestItem.AddressC), "address c");
             Assert.AreEqual(2, trace.StateChanges[Recipient].Storage.Count, "recipient storage count");
-            Assert.AreEqual(new byte[] {0}, trace.StateChanges[Recipient].Storage[2].Before, "recipient storage[2]");
+            Assert.AreEqual(new byte[] { 0 }, trace.StateChanges[Recipient].Storage[2].Before, "recipient storage[2]");
             Assert.AreEqual(Bytes.FromHexString(SampleHexData1), trace.StateChanges[Recipient].Storage[2].After, "recipient storage[2] after");
-            Assert.AreEqual(new byte[] {0}, trace.StateChanges[Recipient].Storage[3].Before, "recipient storage[3]");
+            Assert.AreEqual(new byte[] { 0 }, trace.StateChanges[Recipient].Storage[3].Before, "recipient storage[3]");
             Assert.AreEqual(Bytes.FromHexString(SampleHexData2), trace.StateChanges[Recipient].Storage[3].After, "recipient storage[3] after");
         }
 
@@ -756,7 +788,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(100.Ether(), trace.StateChanges[Recipient].Balance.Before, "recipient before");
             Assert.AreEqual(100.Ether() + 1, trace.StateChanges[Recipient].Balance.After, "recipient after");
             Assert.AreEqual(null, trace.StateChanges[Miner].Balance.Before, "miner before");
-            Assert.AreEqual((UInt256) 21000, trace.StateChanges[Miner].Balance.After, "miner after");
+            Assert.AreEqual((UInt256)21000, trace.StateChanges[Miner].Balance.After, "miner after");
         }
 
         [Test]

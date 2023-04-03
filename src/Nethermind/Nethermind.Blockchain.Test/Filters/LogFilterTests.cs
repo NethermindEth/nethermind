@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
@@ -27,8 +14,8 @@ namespace Nethermind.Blockchain.Test.Filters
     public class LogFilterTests
     {
         private int _filterCounter;
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void any_address_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -37,8 +24,8 @@ namespace Nethermind.Blockchain.Test.Filters
 
             filter.Matches(Core.Bloom.Empty).Should().BeTrue();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void address_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -46,11 +33,11 @@ namespace Nethermind.Blockchain.Test.Filters
                 .Build();
 
             var bloom = GetBloom(GetLogEntry(TestItem.AddressA));
-                
+
             filter.Matches(bloom).Should().BeTrue();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void addresses_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -61,8 +48,8 @@ namespace Nethermind.Blockchain.Test.Filters
 
             filter.Matches(bloom).Should().BeTrue();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void any_topics_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -71,69 +58,69 @@ namespace Nethermind.Blockchain.Test.Filters
 
             filter.Matches(Core.Bloom.Empty).Should().BeTrue();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void specific_topics_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
                 .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA))
                 .Build();
-            
+
             var bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakA, TestItem.KeccakB));
 
             filter.Matches(bloom).Should().BeTrue();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void multiple_specific_topics_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
                 .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakB))
                 .Build();
-            
+
             var bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakA, TestItem.KeccakB));
 
             filter.Matches(bloom).Should().BeTrue();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void or_topics_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
                 .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
                 .Build();
-            
+
             var bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakB));
 
             filter.Matches(bloom).Should().BeTrue();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void complex_topics_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
                 .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
                 .Build();
-            
+
             var bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakA));
 
             filter.Matches(bloom).Should().BeTrue();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void complex_filter_matches_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
                 .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakC)))
                 .WithAddress(TestItem.AddressD)
                 .Build();
-            
+
             var bloom = GetBloom(GetLogEntry(TestItem.AddressD, TestItem.KeccakA, TestItem.KeccakC));
 
             filter.Matches(bloom).Should().BeTrue();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void address_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -141,11 +128,11 @@ namespace Nethermind.Blockchain.Test.Filters
                 .Build();
 
             var bloom = GetBloom(GetLogEntry(TestItem.AddressD), GetLogEntry(TestItem.AddressC));
-                
+
             filter.Matches(bloom).Should().BeFalse();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void addresses_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
@@ -156,63 +143,63 @@ namespace Nethermind.Blockchain.Test.Filters
 
             filter.Matches(bloom).Should().BeFalse();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void specific_topics_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
                 .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakC))
                 .Build();
-            
+
             var bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakA, TestItem.KeccakB));
 
             filter.Matches(bloom).Should().BeFalse();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void multiple_specific_topics_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
                 .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakB))
                 .Build();
-            
+
             var bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakC));
 
             filter.Matches(bloom).Should().BeFalse();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void or_topics_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
                 .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
                 .Build();
-            
+
             var bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakC));
 
             filter.Matches(bloom).Should().BeFalse();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void complex_topics_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
                 .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
                 .Build();
-            
+
             var bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakC));
 
             filter.Matches(bloom).Should().BeFalse();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void complex_filter_doesnt_match_bloom()
         {
             var filter = FilterBuilder.New(ref _filterCounter)
                 .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakC)))
                 .WithAddress(TestItem.AddressD)
                 .Build();
-            
+
             var bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakA, TestItem.KeccakD));
 
             filter.Matches(bloom).Should().BeFalse();

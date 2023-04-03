@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -43,7 +30,7 @@ namespace Nethermind.Store.Test
         [Test]
         public async Task Can_ask_about_balance_in_parallel()
         {
-            IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.ConstantinopleFixBlockNumber);
+            IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
             MemDb stateDb = new();
             StateProvider provider =
                 new(new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
@@ -113,32 +100,32 @@ namespace Nethermind.Store.Test
             CommitEverything();
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {1});
+            UpdateStorageValue(new byte[] { 1 });
             CommitEverything();
             Keccak stateRoot0 = provider.StateRoot;
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {2});
+            UpdateStorageValue(new byte[] { 2 });
             CommitEverything();
             Keccak stateRoot1 = provider.StateRoot;
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {3});
+            UpdateStorageValue(new byte[] { 3 });
             CommitEverything();
             Keccak stateRoot2 = provider.StateRoot;
 
             AddOneToBalance();
-            UpdateStorageValue(new byte[] {4});
+            UpdateStorageValue(new byte[] { 4 });
             CommitEverything();
             Keccak stateRoot3 = provider.StateRoot;
 
             StateReader reader =
                 new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
 
-            Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] {1});
-            Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] {2});
-            Task c = StartStorageTask(reader, stateRoot2, storageCell, new byte[] {3});
-            Task d = StartStorageTask(reader, stateRoot3, storageCell, new byte[] {4});
+            Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] { 1 });
+            Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] { 2 });
+            Task c = StartStorageTask(reader, stateRoot2, storageCell, new byte[] { 3 });
+            Task d = StartStorageTask(reader, stateRoot3, storageCell, new byte[] { 4 });
 
             await Task.WhenAll(a, b, c, d);
         }
@@ -163,15 +150,15 @@ namespace Nethermind.Store.Test
             }
 
             provider.CreateAccount(_address1, 1);
-            storageProvider.Set(storageCell, new byte[] {1});
+            storageProvider.Set(storageCell, new byte[] { 1 });
             CommitEverything();
             Keccak stateRoot0 = provider.StateRoot;
-            
+
             StateReader reader =
                 new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
             Keccak storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
-            reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
-            reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
+            reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
+            reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
         }
 
         private Task StartTask(StateReader reader, Keccak stateRoot, UInt256 value)
@@ -220,7 +207,7 @@ namespace Nethermind.Store.Test
 
             /* at this stage we have an account with empty storage at the address that we want to test */
 
-            byte[] initialValue = new byte[] {1, 2, 3};
+            byte[] initialValue = new byte[] { 1, 2, 3 };
             storage.Set(storageCell, initialValue);
             storage.Commit();
             storage.CommitTrees(2);
@@ -240,7 +227,7 @@ namespace Nethermind.Store.Test
                To do that we create some different storage / state access stack that represents the processor.
                It is a different stack of objects than the one that is used by the blockchain bridge. */
 
-            byte[] newValue = new byte[] {1, 2, 3, 4, 5};
+            byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 
             StateProvider processorStateProvider =
                 new(trieStore, new MemDb(), LimboLogs.Instance);

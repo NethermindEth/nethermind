@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -246,7 +233,7 @@ namespace Nethermind.Evm.Test
 
             Address deployingContractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
             Address deploymentAddress = ContractAddress.From(deployingContractAddress, new byte[32], baseInitCode);
-            
+
             byte[] deploy = Prepare.EvmCode
                 .CallWithValue(deployingContractAddress, 100000)
                 .Op(Instruction.STOP).Done;
@@ -309,8 +296,8 @@ namespace Nethermind.Evm.Test
             AssertStorage(new StorageCell(deploymentAddress, 2), 0);
             AssertStorage(new StorageCell(deploymentAddress, 3), 2);
         }
-        
-         [Test]
+
+        [Test]
         public void Destroy_restore_store_different_cells_previously_existing()
         {
             byte[] baseInitCodeStore = Prepare.EvmCode
@@ -335,7 +322,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SELFDESTRUCT)
                 .Op(Instruction.JUMPDEST)
                 .Done;
-            
+
             byte[] baseInitCodeAfterStore = Prepare.EvmCode
                 .ForInitOf(contractCode)
                 .Done;
@@ -352,7 +339,7 @@ namespace Nethermind.Evm.Test
 
             Address deployingContractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
             Address deploymentAddress = ContractAddress.From(deployingContractAddress, new byte[32], baseInitCode);
-            
+
             byte[] deploy = Prepare.EvmCode
                 .CallWithValue(deployingContractAddress, 100000)
                 .Op(Instruction.STOP).Done;
@@ -368,17 +355,17 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             //TestState.Commit(SpecProvider.GenesisSpec);
             //TestState.CommitTree(0);
-            
+
             TestState.CreateAccount(deploymentAddress, UInt256.One);
             Keccak codeHash = TestState.UpdateCode(contractCode);
             TestState.UpdateCodeHash(deploymentAddress, codeHash, MuirGlacier.Instance);
-            
-            Storage.Set(new StorageCell(deploymentAddress, 7), new byte[] {7});
+
+            Storage.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
             Storage.Commit();
             Storage.CommitTrees(0);
             TestState.Commit(MuirGlacier.Instance);
             TestState.CommitTree(0);
-            
+
             long gasLimit = 1000000;
 
             EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);

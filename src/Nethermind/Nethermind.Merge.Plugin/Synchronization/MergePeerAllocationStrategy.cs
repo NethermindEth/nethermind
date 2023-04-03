@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Linq;
@@ -34,9 +20,9 @@ public class MergePeerAllocationStrategy : IPeerAllocationStrategy
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly ILogger _logger;
     public bool CanBeReplaced => true;
-    
+
     public MergePeerAllocationStrategy(
-        IPeerAllocationStrategy preMergeAllocationStrategy, 
+        IPeerAllocationStrategy preMergeAllocationStrategy,
         IPeerAllocationStrategy postMergeAllocationStrategy,
         IPoSSwitcher poSSwitcher,
         ILogManager logManager)
@@ -50,16 +36,20 @@ public class MergePeerAllocationStrategy : IPeerAllocationStrategy
     public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
     {
         UInt256? terminalTotalDifficulty = _poSSwitcher.TerminalTotalDifficulty;
-        bool isPostMerge = _poSSwitcher.HasEverReachedTerminalBlock() || _poSSwitcher.TransitionFinished;
-        bool anyPostMergePeers = peers.Any(p => p.TotalDifficulty >= terminalTotalDifficulty);
-        PeerInfo? peerInfo = currentPeer; 
-        if (_logger.IsTrace) _logger.Trace($"MergePeerAllocationStrategy: IsPostMerge: {isPostMerge} AnyPostMergePeers: {anyPostMergePeers}, CurrentPeer: {currentPeer} Peers: {string.Join(",", peers?.Select(peer => peer.ToString()))}");
-        if (isPostMerge || anyPostMergePeers)
-            peerInfo = _postMergeAllocationStrategy.Allocate(currentPeer, peers.Where(p => p.TotalDifficulty >= terminalTotalDifficulty), nodeStatsManager, blockTree);
-        else
-            peerInfo = _preMergeAllocationStrategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
+        bool isPostMerge = IsPostMerge;
+        IEnumerable<PeerInfo> peerInfos = peers as PeerInfo[] ?? peers.ToArray();
+        IEnumerable<PeerInfo> postTTDPeers = peerInfos.Where(p => p.TotalDifficulty >= terminalTotalDifficulty);
+        bool anyPostMergePeers = postTTDPeers.Any();
+        if (_logger.IsTrace) _logger.Trace($"{nameof(MergePeerAllocationStrategy)}: IsPostMerge: {isPostMerge} AnyPostMergePeers: {anyPostMergePeers}, CurrentPeer: {currentPeer} Peers: {string.Join(",", peerInfos)}");
+        PeerInfo? peerInfo = isPostMerge || anyPostMergePeers
+            ? _postMergeAllocationStrategy.Allocate(currentPeer, peerInfos, nodeStatsManager, blockTree) // A hive test requires syncing to peer with TD < TTD, so we still need all peers.
+            : _preMergeAllocationStrategy.Allocate(currentPeer, peerInfos, nodeStatsManager, blockTree);
 
         if (_logger.IsTrace) _logger.Trace($"MergePeerAllocationStrategy: Result of peer allocation {peerInfo}");
         return peerInfo;
     }
+
+    private bool IsPostMerge => _poSSwitcher.HasEverReachedTerminalBlock() || _poSSwitcher.TransitionFinished;
+
+    public override string ToString() => $"{nameof(MergePeerAllocationStrategy)} ({(IsPostMerge ? _postMergeAllocationStrategy.ToString() : _preMergeAllocationStrategy.ToString())})";
 }

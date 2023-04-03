@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
@@ -34,15 +20,15 @@ namespace Nethermind.Merge.Plugin
     /*
       The class is responsible for all logic required to switch to PoS consensus.
       More details: https://eips.ethereum.org/EIPS/eip-3675
-      
+
       We divided our transition process into three steps:
       1) We reached TTD with PoWs blocks
       2) We received the first forkchoiceUpdated
       3) We finalized the first PoS block
-      
-      The important parameters for the transition process: 
+
+      The important parameters for the transition process:
       TERMINAL_TOTAL_DIFFICULTY, FORK_NEXT_VALUE, TERMINAL_BLOCK_HASH, TERMINAL_BLOCK_NUMBER.
-      
+
       We have different sources of these parameters. The above list starts from the highest priority:
       1) MergeConfig - we should be able to override every parameter with CLI arguments
       2) ChainSpec - we can specify our parameters during the release. Moreover, it allows us to migrate to geth chainspec in future
@@ -90,10 +76,10 @@ namespace Nethermind.Merge.Plugin
             _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
             LoadFinalTotalDifficulty();
 
-            if (_terminalBlockNumber != null || _finalTotalDifficulty != null)
+            if (_terminalBlockNumber is not null || _finalTotalDifficulty is not null)
                 _hasEverReachedTerminalDifficulty = true;
 
-            if (_terminalBlockNumber == null)
+            if (_terminalBlockNumber is null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
 
             if (_logger.IsInfo)
@@ -105,7 +91,7 @@ namespace Nethermind.Merge.Plugin
             _finalTotalDifficulty = _mergeConfig.FinalTotalDifficultyParsed;
 
             // pivot post TTD, so we know FinalTotalDifficulty
-            if (_syncConfig.PivotTotalDifficultyParsed != 0 && TerminalTotalDifficulty != null && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
+            if (_syncConfig.PivotTotalDifficultyParsed != 0 && TerminalTotalDifficulty is not null && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
             {
                 _finalTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
             }
@@ -168,8 +154,8 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero;
-        
+        public bool TransitionFinished => FinalTotalDifficulty is not null || _finalizedBlockHash != Keccak.Zero;
+
         public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
         {
             if (_logger.IsTrace)
@@ -177,29 +163,30 @@ namespace Nethermind.Merge.Plugin
                     $"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
 
             bool isTerminal = false, isPostMerge;
-            if (header.IsPostMerge) // block from Engine API, there is no need to check more cases
+            if (_specProvider.TerminalTotalDifficulty is null) // TTD = null, so everything is preMerge
+            {
+                isTerminal = false;
+                isPostMerge = false;
+            }
+            else if (header.TotalDifficulty is not null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
+            {
+                // In a hive test, a block is requested from EL with total difficulty < TTD. so IsPostMerge does not work.
+                isTerminal = false;
+                isPostMerge = false;
+            }
+            else if (header.IsPostMerge) // block from Engine API, there is no need to check more cases
             {
                 isTerminal = false;
                 isPostMerge = true;
             }
-            else if (_specProvider.TerminalTotalDifficulty == null) // TTD = null, so everything is preMerge
-            {
-                isTerminal = false;
-                isPostMerge = false;
-            }
-            else if (header.TotalDifficulty == null || (header.TotalDifficulty == 0 && header.IsGenesis == false)) // we don't know header TD, so we consider header.Difficulty
+            else if (header.TotalDifficulty is null || (header.TotalDifficulty == 0 && header.IsGenesis == false)) // we don't know header TD, so we consider header.Difficulty
             {
                 isPostMerge = header.Difficulty == 0;
                 isTerminal = false; // we can't say if block isTerminal if we don't have TD
             }
-            else if (header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
-            {
-                isTerminal = false;
-                isPostMerge = false;
-            }
             else
             {
-                bool theMergeEnabled = header.Number >= _specProvider.MergeBlockNumber;
+                bool theMergeEnabled = (ForkActivation)header.Number >= _specProvider.MergeBlockNumber;
                 if (TransitionFinished && theMergeEnabled || _terminalBlockExplicitSpecified && theMergeEnabled) // if transition finished or we know terminalBlock from config we can decide by blockNumber
                 {
                     isPostMerge = true;
@@ -236,16 +223,16 @@ namespace Nethermind.Merge.Plugin
         private void LoadTerminalBlock()
         {
             _terminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
-                                   _specProvider.MergeBlockNumber - 1;
+                                   _specProvider.MergeBlockNumber?.BlockNumber - 1;
 
-            _terminalBlockExplicitSpecified = _terminalBlockNumber != null;
+            _terminalBlockExplicitSpecified = _terminalBlockNumber is not null;
             _terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
 
             _terminalBlockHash = _mergeConfig.TerminalBlockHashParsed != Keccak.Zero
                 ? _mergeConfig.TerminalBlockHashParsed
                 : LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
 
-            if (_terminalBlockNumber != null)
+            if (_terminalBlockNumber is not null)
                 _firstPoSBlockNumber = _terminalBlockNumber + 1;
         }
 

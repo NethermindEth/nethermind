@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -43,12 +29,13 @@ namespace Nethermind.Merge.Plugin.Test
             long? currentBlockNumber = null;
             Keccak? currentHash = null;
             JsonRpcClient? client = new($"http://127.0.0.1:8545");
-            do {
-                string? requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);
+            do
+            {
+                string? requestedBlockNumber = currentBlockNumber is null ? "latest" : currentBlockNumber.Value.ToHexString(false);
                 JsonRpcResponse<JObject>? requestResponse =
-                    await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] {requestedBlockNumber!, false});
+                    await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] { requestedBlockNumber!, false });
                 BlockForRpcForTest? block = jsonSerializer.Deserialize<BlockForRpcForTest>(requestResponse.Result.ToString());
-                if (currentHash != null)
+                if (currentHash is not null)
                 {
                     Assert.AreEqual(currentHash, block.Hash, $"incorrect block hash found {block}");
                 }
@@ -57,7 +44,7 @@ namespace Nethermind.Merge.Plugin.Test
                 currentBlockNumber = block.Number!.Value - 1;
             } while (currentBlockNumber != destinationBlockNumber);
         }
-        
+
         [Test]
         [Ignore("You need specify rpc for this test")]
         public async Task ParentTimestampIsAlwaysLowerThanChildTimestamp()
@@ -69,11 +56,11 @@ namespace Nethermind.Merge.Plugin.Test
             JsonRpcClient? client = new($"http://127.0.0.1:8545");
             do
             {
-                string? requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);
+                string? requestedBlockNumber = currentBlockNumber is null ? "latest" : currentBlockNumber.Value.ToHexString(false);
                 JsonRpcResponse<JObject>? requestResponse =
-                    await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] {requestedBlockNumber!, false});
+                    await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] { requestedBlockNumber!, false });
                 BlockForRpcForTest? block = jsonSerializer.Deserialize<BlockForRpcForTest>(requestResponse.Result.ToString());
-                if (childTimestamp != null)
+                if (childTimestamp is not null)
                 {
                     Assert.True(childTimestamp > block.Timestamp, $"incorrect timestamp for block {block}");
                 }

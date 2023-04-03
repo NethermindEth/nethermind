@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -21,6 +8,7 @@ using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx
@@ -38,7 +26,7 @@ namespace Nethermind.Network.Rlpx
         {
             MaxFrameSize = int.MaxValue;
         }
-        
+
         public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
 
         private int _contextId;
@@ -68,16 +56,16 @@ namespace Nethermind.Network.Rlpx
 
                 // here we encode payload size as an RLP encoded long value without leading zeros
                 /*0*/
-                output.WriteByte((byte) (framePayloadSize >> 16));
+                output.WriteByte((byte)(framePayloadSize >> 16));
                 /*1*/
-                output.WriteByte((byte) (framePayloadSize >> 8));
+                output.WriteByte((byte)(framePayloadSize >> 8));
                 /*2*/
-                output.WriteByte((byte) framePayloadSize);
+                output.WriteByte((byte)framePayloadSize);
 
                 if (framesCount == 1)
                 {
                     // // commented out after Trinity reported #2052
-                    // // not 100% sure they are right but they may be 
+                    // // not 100% sure they are right but they may be
                     // // 193|128 is an RLP encoded array with one element that is zero
                     // /*3*/
                     // output.WriteByte(193);
@@ -85,7 +73,7 @@ namespace Nethermind.Network.Rlpx
                     // output.WriteByte(128);
                     // /*5-16*/
                     // output.WriteZero(11);
-                    
+
                     // 194|128 is an RLP encoded array with two elements that are zero
                     /*3*/
                     output.WriteByte(194);
@@ -98,22 +86,21 @@ namespace Nethermind.Network.Rlpx
                 }
                 else
                 {
-                    Rlp[] headerDataItems;
+                    NettyRlpStream stream = new(output);
+                    int contentLength = Rlp.LengthOf(_contextId) + Rlp.LengthOf(0);
                     if (i == 0)
                     {
-                        headerDataItems = new Rlp[3];
-                        headerDataItems[2] = Rlp.Encode(totalPayloadSize);
+                        contentLength += Rlp.LengthOf(totalPayloadSize);
                     }
-                    else
+                    output.EnsureWritable(Rlp.LengthOfSequence(contentLength));
+                    stream.StartSequence(contentLength);
+                    stream.Encode(0);
+                    stream.Encode(_contextId);
+                    if (i == 0)
                     {
-                        headerDataItems = new Rlp[2];
+                        stream.Encode(totalPayloadSize);
                     }
-
-                    headerDataItems[1] = Rlp.Encode(_contextId);
-                    headerDataItems[0] = Rlp.Encode(0);
-                    byte[] headerDataBytes = Rlp.Encode(headerDataItems).Bytes;
-                    output.WriteBytes(headerDataBytes);
-                    output.WriteZero(Frame.HeaderSize - headerDataBytes.Length - 3);
+                    output.WriteZero(Frame.HeaderSize - Rlp.LengthOfSequence(contentLength) - 3);
                 }
 
                 int framePacketTypeSize = 0;

@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -25,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -40,6 +27,7 @@ public class MergeSynchronizer : Synchronizer
 {
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IMergeConfig _mergeConfig;
+    private readonly IInvalidChainTracker _invalidChainTracker;
 
     public MergeSynchronizer(
         IDbProvider dbProvider,
@@ -55,14 +43,15 @@ public class MergeSynchronizer : Synchronizer
         IPivot pivot,
         IPoSSwitcher poSSwitcher,
         IMergeConfig mergeConfig,
+        IInvalidChainTracker invalidChainTracker,
         ILogManager logManager,
-        ISyncReport syncReport) 
+        ISyncReport syncReport)
         : base(
-            dbProvider, 
-            specProvider, 
-            blockTree, 
-            receiptStorage, 
-            peerPool, 
+            dbProvider,
+            specProvider,
+            blockTree,
+            receiptStorage,
+            peerPool,
             nodeStatsManager,
             syncModeSelector,
             syncConfig,
@@ -72,6 +61,7 @@ public class MergeSynchronizer : Synchronizer
             syncReport,
             logManager)
     {
+        _invalidChainTracker = invalidChainTracker;
         _poSSwitcher = poSSwitcher;
         _mergeConfig = mergeConfig;
     }
@@ -82,7 +72,7 @@ public class MergeSynchronizer : Synchronizer
         {
             return;
         }
-        
+
         base.Start();
         StartBeaconHeadersComponents();
     }
@@ -91,10 +81,10 @@ public class MergeSynchronizer : Synchronizer
     {
         FastBlocksPeerAllocationStrategyFactory fastFactory = new();
         BeaconHeadersSyncFeed beaconHeadersFeed =
-            new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _logManager);
+            new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
         BeaconHeadersSyncDispatcher beaconHeadersDispatcher =
             new(beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
-        beaconHeadersDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+        beaconHeadersDispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
         {
             if (t.IsFaulted)
             {

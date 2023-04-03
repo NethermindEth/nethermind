@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
 using System.Threading;
@@ -24,7 +10,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -49,20 +34,20 @@ namespace Nethermind.Init.Steps
             IBloomConfig bloomConfig = _get.Config<IBloomConfig>();
 
             IFileStoreFactory fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
-                ? (IFileStoreFactory) new InMemoryDictionaryFileStoreFactory()
+                ? new InMemoryDictionaryFileStoreFactory()
                 : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength);
 
-            IBloomStorage? bloomStorage =
+            IBloomStorage bloomStorage =
                 _set.BloomStorage = bloomConfig.Index
                     ? new BloomStorage(bloomConfig, _get.DbProvider!.BloomDb, fileStoreFactory)
-                    : (IBloomStorage) NullBloomStorage.Instance;
+                    : NullBloomStorage.Instance;
 
             _get.DisposeStack.Push(bloomStorage);
 
-            IChainLevelInfoRepository? chainLevelInfoRepository =
+            IChainLevelInfoRepository chainLevelInfoRepository =
                 _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb);
 
-            IBlockTree? blockTree = _set.BlockTree = new BlockTree(
+            IBlockTree blockTree = _set.BlockTree = new BlockTree(
                 _get.DbProvider,
                 chainLevelInfoRepository,
                 _get.SpecProvider,
@@ -74,7 +59,7 @@ namespace Nethermind.Init.Steps
             ISignerStore signerStore = NullSigner.Instance;
             if (_get.Config<IMiningConfig>().Enabled)
             {
-                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey, _get.LogManager);
+                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, _get.LogManager);
                 signer = signerAndStore;
                 signerStore = signerAndStore;
             }
@@ -83,17 +68,19 @@ namespace Nethermind.Init.Steps
             _set.EngineSignerStore = signerStore;
 
             ReceiptsRecovery receiptsRecovery = new(_get.EthereumEcdsa, _get.SpecProvider);
-            IReceiptStorage? receiptStorage = _set.ReceiptStorage
-                = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
-            IReceiptFinder? receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
-            
+            IReceiptStorage receiptStorage = _set.ReceiptStorage = initConfig.StoreReceipts
+                ? new PersistentReceiptStorage(_get.DbProvider.ReceiptsDb, _get.SpecProvider!, receiptsRecovery)
+                : NullReceiptStorage.Instance;
+
+            IReceiptFinder receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
+
             LogFinder logFinder = new(
                 blockTree,
                 receiptFinder,
                 receiptStorage,
                 bloomStorage,
                 _get.LogManager,
-                new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider), 
+                new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider),
                 1024);
 
             _set.LogFinder = logFinder;

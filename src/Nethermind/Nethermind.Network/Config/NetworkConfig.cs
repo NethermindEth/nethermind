@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 
@@ -23,9 +10,11 @@ namespace Nethermind.Network.Config
         public string? ExternalIp { get; set; }
         public string? LocalIp { get; set; }
         public string? StaticPeers { get; set; }
+        public string? DiscoveryDns { get; set; }
+
         public bool OnlyStaticPeers { get; set; }
         public bool IsPeersPersistenceOn { get; set; } = true;
-        
+
         [Obsolete]
         public int ActivePeersMaxCount { get => MaxActivePeers; set => MaxActivePeers = value; }
         public int MaxActivePeers { get; set; } = 50;
@@ -39,8 +28,11 @@ namespace Nethermind.Network.Config
         public int CandidatePeerCountCleanupThreshold { get; set; } = 11000;
         public bool DiagTracerEnabled { get; set; } = false;
         public int NettyArenaOrder { get; set; } = INetworkConfig.DefaultNettyArenaOrder;
+        public uint MaxNettyArenaCount { get; set; } = INetworkConfig.DefaultMaxNettyArenaCount;
         public string Bootnodes { get; set; } = string.Empty;
+        public bool EnableUPnP { get; set; } = false;
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
+        public long SimulateSendLatencyMs { get; set; } = 0;
     }
 }

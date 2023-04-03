@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -40,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private IAuRaValidator _currentValidator;
         private AuRaParameters.Validator _currentValidatorPrototype;
         private long _lastProcessedBlock = 0;
-        
+
         public MultiValidator(
             AuRaParameters.Validator validator,
             IAuRaValidatorFactory validatorFactory,
@@ -51,21 +38,21 @@ namespace Nethermind.Consensus.AuRa.Validators
             ILogManager logManager,
             bool forSealing = false)
         {
-            if (validator == null) throw new ArgumentNullException(nameof(validator));
+            if (validator is null) throw new ArgumentNullException(nameof(validator));
             if (validator.ValidatorType != AuRaParameters.ValidatorType.Multi) throw new ArgumentException("Wrong validator type.", nameof(validator));
             _validatorFactory = validatorFactory ?? throw new ArgumentNullException(nameof(validatorFactory));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _forSealing = forSealing;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
+
             _validators = validator.Validators?.Count > 0
                 ? validator.Validators
                 : throw new ArgumentException("Multi validator cannot be empty.", nameof(validator.Validators));
-            
+
             SetFinalizationManager(finalizationManager, parentHeader);
         }
-        
+
         public Address[] Validators => _currentValidator?.Validators;
 
         private void InitCurrentValidator(long blockNumber, BlockHeader parentHeader)
@@ -74,17 +61,17 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 SetCurrentValidator(validatorInfo, parentHeader);
             }
-            
+
             _lastProcessedBlock = blockNumber;
         }
 
         private bool TryGetLastValidator(long blockNum, out KeyValuePair<long, AuRaParameters.Validator> validator)
         {
             var headNumber = _blockTree.Head?.Number ?? 0;
-            
+
             validator = default;
             bool found = false;
-            
+
             foreach (var kvp in _validators)
             {
                 if (kvp.Key <= blockNum || kvp.Key <= headNumber && kvp.Value.ValidatorType.CanChangeImmediately())
@@ -93,7 +80,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     found = true;
                 }
             }
-            
+
             return found;
         }
 
@@ -112,7 +99,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
             }
         }
-        
+
         public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
             if (!block.IsGenesis)
@@ -140,7 +127,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                             {
                                 SetCurrentValidator(previousValidatorInfo, parentHeader);
                                 finalizedAtBlockNumber = _blockFinalizationManager.GetFinalizationLevel(validatorInfo.Key);
-                                canSetValidatorAsCurrent = finalizedAtBlockNumber != null;
+                                canSetValidatorAsCurrent = finalizedAtBlockNumber is not null;
                             }
 
                             if (canSetValidatorAsCurrent)
@@ -156,7 +143,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         }
 
         private bool TryGetValidator(long blockNumber, out AuRaParameters.Validator validator) => _validators.TryGetValue(blockNumber, out validator);
-        
+
         public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
             _currentValidator?.OnBlockProcessingEnd(block, receipts, options);
@@ -195,7 +182,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             SetCurrentValidator(validatorInfo.Key, validatorInfo.Value, parentHeader);
         }
-        
+
         private void SetCurrentValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader)
         {
             if (validatorPrototype != _currentValidatorPrototype)
@@ -203,14 +190,14 @@ namespace Nethermind.Consensus.AuRa.Validators
                 (_currentValidator as IDisposable)?.Dispose();
                 _currentValidator = CreateValidator(finalizedAtBlockNumber, validatorPrototype, parentHeader);
                 _currentValidatorPrototype = validatorPrototype;
-                
+
                 if (!_forSealing)
                 {
-                    if (_currentValidator.Validators != null)
+                    if (_currentValidator.Validators is not null)
                     {
                         _validatorStore.SetValidators(finalizedAtBlockNumber, _currentValidator.Validators);
                     }
-                    else if (_blockTree.Head != null)
+                    else if (_blockTree.Head is not null)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Validators not found in validator initialized at block {finalizedAtBlockNumber}, even after genesis block loaded.");
                     }
@@ -218,7 +205,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private IAuRaValidator CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader) => 
+        private IAuRaValidator CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader) =>
             _validatorFactory.CreateValidatorProcessor(validatorPrototype, parentHeader, finalizedAtBlockNumber + 1);
 
         public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
@@ -237,7 +224,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => _currentValidator is ITxSource txSource ? txSource.GetTransactions(parent, gasLimit) : Enumerable.Empty<Transaction>();
-        
+
         public override string ToString() => $"{nameof(MultiValidator)} [ {(_currentValidator is ITxSource txSource ? txSource.ToString() : string.Empty)} ]";
 
     }

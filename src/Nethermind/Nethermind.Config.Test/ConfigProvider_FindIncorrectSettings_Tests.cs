@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -24,7 +11,7 @@ namespace Nethermind.Config.Test
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
     public class ConfigProvider_FindIncorrectSettings_Tests
-    { 
+    {
         [Test]
         public void CorrectSettingNames_CaseInsensitive()
         {
@@ -34,8 +21,8 @@ namespace Nethermind.Config.Test
             env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() { { "NETHERMIND_NETWORKCONFIG_MAXCANDIDATEPEERCOUNT", "500" } });
             EnvConfigSource? envSource = new(env);
 
-            ArgsConfigSource? argsSource = new(new Dictionary<string, string>() { 
-                { "DiscoveryConfig.BucketSize", "10" }, 
+            ArgsConfigSource? argsSource = new(new Dictionary<string, string>() {
+                { "DiscoveryConfig.BucketSize", "10" },
                 { "NetworkConfig.DiscoveryPort", "30301" } });
 
             ConfigProvider? configProvider = new();
@@ -55,7 +42,7 @@ namespace Nethermind.Config.Test
         public void NoCategorySettings()
         {
             IEnvironment? env = Substitute.For<IEnvironment>();
-            env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() { 
+            env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() {
                 { "NETHERMIND_CLI_SWITCH_LOCAL", "http://localhost:80" },
                 { "NETHERMIND_MONITORING_JOB", "nethermindJob" },
                 { "NETHERMIND_MONITORING_GROUP", "nethermindGroup" },
@@ -66,7 +53,7 @@ namespace Nethermind.Config.Test
                 { "NETHERMIND_CONFIG", "test2.cfg" },
                 { "NETHERMIND_XYZ", "xyz" },    // not existing, should get error
                 { "QWER", "qwerty" }    // not Nethermind setting, no error
-            }); 
+            });
             EnvConfigSource? envSource = new(env);
 
             ArgsConfigSource? argsSource = new(new Dictionary<string, string>() {
@@ -101,13 +88,13 @@ namespace Nethermind.Config.Test
             JsonConfigSource? jsonSource = new("SampleJson/ConfigWithTypos.cfg");
 
             IEnvironment? env = Substitute.For<IEnvironment>();
-            env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() { 
+            env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() {
                 { "NETHERMIND_NETWORKCONFIG_MAXCANDIDATEPERCOUNT", "500" }  // incorrect, should be NETHERMIND_NETWORKCONFIG_MAXCANDIDATEPEERCOUNT
             });
             EnvConfigSource? envSource = new(env);
 
-            ArgsConfigSource? argsSource = new(new Dictionary<string, string>() { 
-                { "DiscoveryConfig.BucketSize", "10" }, 
+            ArgsConfigSource? argsSource = new(new Dictionary<string, string>() {
+                { "DiscoveryConfig.BucketSize", "10" },
                 { "NetworkConfig.DiscoverPort", "30301" }, // incorrect, should be NetworkConfig.DiscoveryPort
                 { "Network.P2PPort", "30301" } });
 
@@ -132,13 +119,13 @@ namespace Nethermind.Config.Test
         public void IncorrectFormat()
         {
             IEnvironment? env = Substitute.For<IEnvironment>();
-            env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() { 
+            env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() {
                 { "NETHERMIND_NETWORKCONFIGMAXCANDIDATEPEERCOUNT", "500" }  // incorrect, should be NETHERMIND_NETWORKCONFIG_MAXCANDIDATEPEERCOUNT
             });
             EnvConfigSource? envSource = new(env);
 
-            ArgsConfigSource? argsSource = new(new Dictionary<string, string>() { 
-                { "DiscoveryConfig.BucketSize", "10" }, 
+            ArgsConfigSource? argsSource = new(new Dictionary<string, string>() {
+                { "DiscoveryConfig.BucketSize", "10" },
                 { "NetworkConfigP2PPort", "30301" } }); // incorrect, should be Network.P2PPort
 
             ConfigProvider? configProvider = new();

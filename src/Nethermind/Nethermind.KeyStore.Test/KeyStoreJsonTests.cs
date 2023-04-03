@@ -1,23 +1,12 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Linq;
 using System.Security;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -43,7 +32,7 @@ namespace Nethermind.KeyStore.Test
         {
             _config = new KeyStoreConfig();
             _config.KeyStoreDirectory = TestContext.CurrentContext.WorkDirectory;
-            
+
             _keyStoreDir = _config.KeyStoreDirectory;
             if (!Directory.Exists(_keyStoreDir))
             {
@@ -68,7 +57,7 @@ namespace Nethermind.KeyStore.Test
 
         [Test]
         public void Test2Test()
-        {           
+        {
             var testModel = _testsModel.Test2;
             RunTest(testModel);
         }
@@ -86,7 +75,7 @@ namespace Nethermind.KeyStore.Test
             var testModel = _testsModel.EvilNonce;
             RunTest(testModel);
         }
-        
+
         [Test]
         public void MyCryptoTest()
         {
@@ -103,13 +92,21 @@ namespace Nethermind.KeyStore.Test
             try
             {
                 var securedPass = new SecureString();
-                testModel.Password.ToCharArray().ToList().ForEach(x => securedPass.AppendChar(x));
+                testModel.Password.ToCharArray().ForEach(x => securedPass.AppendChar(x));
                 securedPass.MakeReadOnly();
                 (PrivateKey key, Result result) = _store.GetKey(address, securedPass);
 
                 Assert.AreEqual(ResultType.Success, result.ResultType, result.Error);
                 Assert.AreEqual(testModel.KeyData.Address, key.Address.ToString(false, false));
 
+            }
+            catch (Exception e)
+            {
+                Assert.Fail(
+                    "Exception during test execution." + "\n" +
+                    "Message: " + e.Message + "\n" +
+                    "Source: " + e.Source + "\n" +
+                    "InnerException: " + e.InnerException);
             }
             finally
             {
@@ -124,7 +121,7 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreTestModel Python_generated_test_with_odd_iv { get; set; }
             public KeyStoreTestModel EvilNonce { get; set; }
             public KeyStoreTestModel MyCrypto { get; set; }
-            
+
             public KeyStoreTestModel Sealer0 { get; set; }
         }
 
@@ -134,8 +131,8 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreItem KeyData { get; set; }
             public string Password { get; set; }
             public string Priv { get; set; }
-            
+
             public string Address { get; set; }
         }
-    } 
+    }
 }

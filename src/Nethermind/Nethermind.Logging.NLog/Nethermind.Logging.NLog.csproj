@@ -1,20 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
 
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-      <WarningsAsErrors />
-    </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <PackageReference Include="NLog" Version="5.0.0" />
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NLog" />
+  </ItemGroup>
 
 </Project>

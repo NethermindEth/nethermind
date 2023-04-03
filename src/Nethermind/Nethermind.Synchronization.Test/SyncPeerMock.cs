@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -32,29 +19,29 @@ namespace Nethermind.Synchronization.Test
     public class SyncPeerMock : ISyncPeer
     {
         private readonly IBlockTree _remoteTree;
-        private readonly PublicKey _localPublicKey;
-        private readonly ISyncServer _remoteSyncServer;
+        private readonly ISyncServer? _remoteSyncServer;
+        private readonly TaskCompletionSource _closeTaskCompletionSource = new();
 
-        public SyncPeerMock(IBlockTree remoteTree, PublicKey localPublicKey = null, string localClientId = "", ISyncServer remoteSyncServer = null, PublicKey remotePublicKey = null, string remoteClientId = "")
+        public SyncPeerMock(IBlockTree remoteTree, PublicKey? localPublicKey = null, string localClientId = "", ISyncServer? remoteSyncServer = null, PublicKey? remotePublicKey = null, string remoteClientId = "")
         {
             string localHost = "127.0.0.1";
             if (int.TryParse(localClientId.Replace("PEER", string.Empty), out int localIndex))
             {
-                localHost = $"127.0.0.{localIndex}";    
+                localHost = $"127.0.0.{localIndex}";
             }
-            
+
             string remoteHost = "127.0.0.1";
             if (int.TryParse(remoteClientId.Replace("PEER", string.Empty), out int remoteIndex))
             {
-                remoteHost = $"127.0.0.{remoteIndex}";    
+                remoteHost = $"127.0.0.{remoteIndex}";
             }
-            
+
             _remoteTree = remoteTree;
-            HeadNumber = _remoteTree.Head.Number;
-            HeadHash = _remoteTree.Head.Hash;
-            TotalDifficulty = _remoteTree.Head.TotalDifficulty ?? 0;
-            
-            _localPublicKey = localPublicKey;
+            Block remoteTreeHead = _remoteTree.Head!;
+            HeadNumber = remoteTreeHead.Number;
+            HeadHash = remoteTreeHead.Hash!;
+            TotalDifficulty = remoteTreeHead.TotalDifficulty ?? 0;
+
             _remoteSyncServer = remoteSyncServer;
             Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, remoteHost, 1234);
             LocalNode = new Node(localPublicKey ?? TestItem.PublicKeyB, localHost, 1235);
@@ -70,10 +57,12 @@ namespace Nethermind.Synchronization.Test
             {
                 action();
             }
+
+            _closeTaskCompletionSource.SetResult();
         }
 
         public Node Node { get; }
-        
+
         public Node LocalNode { get; }
         public string ClientId => Node.ClientId;
         public Keccak HeadHash { get; set; }
@@ -81,8 +70,10 @@ namespace Nethermind.Synchronization.Test
         public UInt256 TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
+        public byte ProtocolVersion { get; }
+        public string ProtocolCode { get; }
 
-        public void Disconnect(DisconnectReason reason, string details)
+        public void Disconnect(InitiateDisconnectReason reason, string details)
         {
         }
 
@@ -91,10 +82,10 @@ namespace Nethermind.Synchronization.Test
             BlockBody[] result = new BlockBody[blockHashes.Count];
             for (int i = 0; i < blockHashes.Count; i++)
             {
-                Block block = _remoteTree.FindBlock(blockHashes[i], BlockTreeLookupOptions.RequireCanonical);
-                result[i] = new BlockBody(block.Transactions, block.Uncles);
+                Block? block = _remoteTree.FindBlock(blockHashes[i], BlockTreeLookupOptions.RequireCanonical);
+                result[i] = new BlockBody(block?.Transactions, block?.Uncles);
             }
-            
+
             return Task.FromResult(result);
         }
 
@@ -105,16 +96,16 @@ namespace Nethermind.Synchronization.Test
             if (!firstNumber.HasValue)
             {
                 return Task.FromResult(result);
-            }  
-            
+            }
+
             for (int i = 0; i < maxBlocks; i++)
             {
-                result[i] = _remoteTree.FindHeader(firstNumber.Value + i + skip, BlockTreeLookupOptions.RequireCanonical);
+                result[i] = _remoteTree.FindHeader(firstNumber.Value + i + skip, BlockTreeLookupOptions.RequireCanonical)!;
             }
-            
+
             return Task.FromResult(result);
         }
-        
+
         public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
             BlockHeader[] result = new BlockHeader[maxBlocks];
@@ -122,51 +113,55 @@ namespace Nethermind.Synchronization.Test
             if (!firstNumber.HasValue)
             {
                 return Task.FromResult(result);
-            }  
-            
+            }
+
             for (int i = 0; i < maxBlocks; i++)
             {
                 long blockNumber = firstNumber.Value + i + skip;
                 if (blockNumber > (_remoteTree.Head?.Number ?? 0))
                 {
-                    result[i] = null;
+                    result[i] = null!;
                 }
                 else
                 {
-                    result[i] = _remoteTree.FindBlock(blockNumber, BlockTreeLookupOptions.None).Header;
+                    result[i] = _remoteTree.FindBlock(blockNumber, BlockTreeLookupOptions.None)!.Header;
                 }
             }
-            
+
             return Task.FromResult(result);
         }
 
-        public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
+        public Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
         {
             return Task.FromResult(_remoteTree.Head?.Header);
         }
 
-        private BlockingCollection<Action> _sendQueue = new();
-        
-        public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+        private readonly BlockingCollection<Action> _sendQueue = new();
+
+        public void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {
-            if (priority == SendBlockPriority.High)
+            if (mode == SendBlockMode.FullBlock)
+            {
                 SendNewBlock(block);
+            }
             else
-                HintNewBlock(block.Hash, block.Number);
+            {
+                HintNewBlock(block.Hash!, block.Number);
+            }
         }
 
-        public void SendNewBlock(Block block)
+        private void SendNewBlock(Block block)
         {
             _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, this));
         }
 
-        public void HintNewBlock(Keccak blockHash, long number)
+        private void HintNewBlock(Keccak blockHash, long number)
         {
             _sendQueue.Add(() => _remoteSyncServer?.HintBlock(blockHash, number, this));
         }
 
         public PublicKey Id => Node.Id;
-        
+
         public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
         public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
@@ -174,16 +169,13 @@ namespace Nethermind.Synchronization.Test
             TxReceipt[][] result = new TxReceipt[blockHash.Count][];
             for (int i = 0; i < blockHash.Count; i++)
             {
-                result[i] = _remoteSyncServer.GetReceipts(blockHash[i]);
+                result[i] = _remoteSyncServer?.GetReceipts(blockHash[i])!;
             }
-            
+
             return Task.FromResult(result);
         }
 
-        public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
-        {
-            return Task.FromResult(_remoteSyncServer.GetNodeData(hashes));
-        }
+        public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token) => Task.FromResult(_remoteSyncServer?.GetNodeData(hashes))!;
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
         {
@@ -193,6 +185,12 @@ namespace Nethermind.Synchronization.Test
         public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
         {
             throw new NotImplementedException();
+        }
+
+        public Task Close()
+        {
+            _sendQueue.CompleteAdding();
+            return _closeTaskCompletionSource.Task;
         }
     }
 }

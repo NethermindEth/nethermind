@@ -1,20 +1,5 @@
-﻿/*
- * Copyright (c) 2021 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -35,12 +20,12 @@ namespace Ethereum.KeyAddress.Test
     public class KeyAddressTests
     {
         private IEthereumEcdsa _ecdsa;
-        
+
         [OneTimeSetUp]
         public void SetUp()
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            _ecdsa = new EthereumEcdsa(ChainId.Olympic, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
         }
 
         private static IEnumerable<KeyAddressTest> LoadTests()
@@ -61,7 +46,7 @@ namespace Ethereum.KeyAddress.Test
                 byte.Parse(testJson.Signature.V));
         }
 
-        [TestCase("0x135a7de83802408321b74c322f8558db1679ac20", "xyz",    "0x30755ed65396facf86c53e6217c52b4daebe72aa4941d89635409de4c9c7f9466d4e9aaec7977f05e923889b33c0d0dd27d7226b6e6f56ce737465c5cfd04be41b")]
+        [TestCase("0x135a7de83802408321b74c322f8558db1679ac20", "xyz", "0x30755ed65396facf86c53e6217c52b4daebe72aa4941d89635409de4c9c7f9466d4e9aaec7977f05e923889b33c0d0dd27d7226b6e6f56ce737465c5cfd04be41b")]
         [TestCase("0x36d85Dc3683156e63Bf880A9fAb7788CF8143a27", "Christopher Pearce", "0x34ff4b97a0ec8f735f781f250dcd3070a72ddb640072dd39553407d0320db79939e3b080ecaa2e9f248214c6f0811fb4b4ba05b7bcff254c053e47d8513e82091b")]
         public void Recovered_address_as_expected(string addressHex, string message, string sigHex)
         {
@@ -80,7 +65,7 @@ namespace Ethereum.KeyAddress.Test
         {
             // what is the format of the JSON input file?
             // what is the sig_of_emptystring in JSON file? is it Keccak.OfAnEmptyString as assumed?
-            
+
             PrivateKey privateKey = new PrivateKey(test.Key);
             Address actualAddress = privateKey.Address;
             Signature actualSig = _ecdsa.Sign(privateKey, Keccak.OfAnEmptyString);

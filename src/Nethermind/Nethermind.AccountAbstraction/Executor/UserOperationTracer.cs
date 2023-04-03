@@ -1,26 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-using Nethermind.Abi;
-using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -47,11 +31,11 @@ namespace Nethermind.AccountAbstraction.Executor
 
         private readonly bool _paymasterWhitelisted;
         private readonly bool _hasInitCode;
-        
+
         private bool _paymasterValidationMode;
         private int _numberOfCreate2Calls;
         private bool _nextOpcodeMustBeCall; // GAS is allowed only if it followed immediately by a CALL, DELEGATECALL, STATICCALL, or CALLCODE
-        
+
         public UserOperationTxTracer(
             Transaction? transaction,
             bool paymasterWhitelisted,
@@ -91,6 +75,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => true;
+        public bool IsTracingFees => false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
             Keccak? stateRoot = null)
@@ -122,12 +107,12 @@ namespace Nethermind.AccountAbstraction.Executor
         {
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
             throw new NotImplementedException();
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
             throw new NotImplementedException();
         }
@@ -147,12 +132,12 @@ namespace Nethermind.AccountAbstraction.Executor
                     Error ??= $"simulation error: GAS opcode was called at depth {depth} pc {pc} but was not immediately followed by CALL, DELEGATECALL, STATICCALL, or CALLCODE";
                 }
             }
-            
+
             if (depth > 1 && opcode == Instruction.GAS)
             {
                 _nextOpcodeMustBeCall = true;
             }
-            
+
             // spec: These opcodes are forbidden because their outputs may differ between simulation and execution,
             // so simulation of calls using these opcodes does not reliably tell what would happen if these calls are later done on-chain.
             if (depth > 1 && _bannedOpcodes.Contains(opcode))
@@ -161,7 +146,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 {
                     return;
                 }
-                
+
                 _logger.Info($"AA: Encountered banned opcode {opcode} during simulation at depth {depth} pc {pc}");
                 Success = false;
                 Error ??= $"simulation failed: encountered banned opcode {opcode} at depth {depth} pc {pc}";
@@ -169,7 +154,7 @@ namespace Nethermind.AccountAbstraction.Executor
             // in the simulateWallet function of the entryPoint, NUMBER is called once
             // signalling that validation is switching from the wallet to the paymaster
             else if (depth == 1 && opcode == Instruction.NUMBER)
-            { 
+            {
                 _paymasterValidationMode = true;
             }
             else if (opcode == Instruction.CREATE2)
@@ -180,7 +165,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 {
                     return;
                 }
-                
+
                 if (_hasInitCode)
                 {
                     if (_numberOfCreate2Calls > 1)
@@ -249,7 +234,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private void HandleStorageAccess(Address address, UInt256 storageIndex)
         {
             AddToAccessedStorage(address, storageIndex);
-            
+
             if (address == _entryPointAddress) return;
             // spec: The call does not access mutable state of any contract except the wallet/paymaster itself
             if (!_paymasterValidationMode)
@@ -282,7 +267,7 @@ namespace Nethermind.AccountAbstraction.Executor
             if (value == 0) return;
 
             if (from == _sender && to == _entryPointAddress) return;
-            
+
             Success = false;
             Error ??= $"simulation failed: balance write allowed only from sender to entrypoint, instead found from: {from} to: {_entryPointAddress} with value {value}";
         }
@@ -333,7 +318,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             AccessedAddresses = accessedAddresses;
         }
-        
+
         private void AddToAccessedStorage(Address address, UInt256 index)
         {
             if (AccessedStorage.TryGetValue(address, out HashSet<UInt256>? values))
@@ -342,7 +327,12 @@ namespace Nethermind.AccountAbstraction.Executor
                 return;
             }
 
-            AccessedStorage.Add(address, new HashSet<UInt256> {index});
+            AccessedStorage.Add(address, new HashSet<UInt256> { index });
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
         }
     }
 }

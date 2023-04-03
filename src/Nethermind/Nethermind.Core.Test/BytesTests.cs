@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -39,8 +26,8 @@ namespace Nethermind.Core.Test
         public void Compares_bytes_properly(string? hexString1, string? hexString2, int expectedResult)
         {
             IComparer<byte[]> comparer = Bytes.Comparer;
-            byte[]? x = hexString1 == null ? null : Bytes.FromHexString(hexString1);
-            byte[]? y = hexString2 == null ? null : Bytes.FromHexString(hexString2);
+            byte[]? x = hexString1 is null ? null : Bytes.FromHexString(hexString1);
+            byte[]? y = hexString2 is null ? null : Bytes.FromHexString(hexString2);
             Assert.AreEqual(expectedResult, comparer.Compare(x, y));
         }
 
@@ -52,49 +39,86 @@ namespace Nethermind.Core.Test
         [TestCase("0x0123", 1)]
         [TestCase("123", 1)]
         [TestCase("0123", 1)]
+        [TestCase("", 0)]
         public void FromHexString(string hexString, byte expectedResult)
         {
-            byte[] bytesOld = Bytes.FromHexStringOld(hexString);
-            Assert.AreEqual(bytesOld[0], expectedResult, "old");
-
             byte[] bytes = Bytes.FromHexString(hexString);
-            Assert.AreEqual(bytes[0], expectedResult, "new");
+            if (hexString == "")
+                Assert.AreEqual(bytes.Length, expectedResult, "Bytes array should be empty but is not");
+            else
+                Assert.AreEqual(bytes[0], expectedResult, "new");
+        }
+
+        [TestCase(null)]
+        public void FromHexStringThrows(string hexString)
+        {
+            Assert.That(() => Bytes.FromHexString(hexString), Throws.TypeOf<ArgumentNullException>());
         }
 
         [TestCase("0x07", "0x7", true, true)]
         [TestCase("0x07", "7", false, true)]
         [TestCase("0x07", "0x07", true, false)]
         [TestCase("0x07", "07", false, false)]
+        [TestCase("0x77", "0x77", true, true)]
+        [TestCase("0x77", "77", false, true)]
+        [TestCase("0x77", "0x77", true, false)]
+        [TestCase("0x77", "77", false, false)]
         [TestCase("0x0007", "0x7", true, true)]
         [TestCase("0x0007", "7", false, true)]
         [TestCase("0x0007", "0x0007", true, false)]
         [TestCase("0x0007", "0007", false, false)]
+        [TestCase("0x0077", "0x77", true, true)]
+        [TestCase("0x0077", "77", false, true)]
+        [TestCase("0x0077", "0x0077", true, false)]
+        [TestCase("0x0077", "0077", false, false)]
+        [TestCase("0x0f", "0xF", true, true)]
+        [TestCase("0x0F", "F", false, true)]
+        [TestCase("0xFf", "0xFf", true, true)]
+        [TestCase("0xff", "Ff", false, true)]
+        [TestCase("0xfff", "0xFFF", true, true)]
+        [TestCase("0xFFF", "FFF", false, true)]
+        [TestCase("0xf7f", "0xf7F", true, true)]
+        [TestCase("0xf7F", "f7F", false, true)]
+        [TestCase("0xffffffaf9f", "0xfFFffFaF9F", true, true)]
+        [TestCase("0xfFFffFaF9F", "fFFffFaF9F", false, true)]
+        [TestCase("0xcfffffaff9f", "0xcFfFFFafF9F", true, true)]
+        [TestCase("0xcFfFFFafF9F", "cFfFFFafF9F", false, true)]
         public void ToHexString(string input, string expectedResult, bool with0x, bool noLeadingZeros)
         {
             byte[] bytes = Bytes.FromHexString(input);
-            Assert.AreEqual(expectedResult, bytes.ToHexString(with0x, noLeadingZeros));
+            if (!noLeadingZeros)
+            {
+                Assert.AreEqual(expectedResult.ToLower(), Bytes.ByteArrayToHexViaLookup32Safe(bytes, with0x));
+            }
+            Assert.AreEqual(expectedResult.ToLower(), bytes.ToHexString(with0x, noLeadingZeros));
+            Assert.AreEqual(expectedResult.ToLower(), bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: false));
+            Assert.AreEqual(expectedResult.ToLower(), new ReadOnlySpan<byte>(bytes).ToHexString(with0x, noLeadingZeros));
+
+            Assert.AreEqual(expectedResult, bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true));
+            Assert.AreEqual(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true),
+                bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: true));
         }
 
         [TestCase("0x", "0x", true)]
         [TestCase(null, null, true)]
-//        [TestCase(null, "0x", false)]
-//        [TestCase("0x", null, false)]
+        //        [TestCase(null, "0x", false)]
+        //        [TestCase("0x", null, false)]
         [TestCase("0x01", "0x01", true)]
         [TestCase("0x01", "0x0102", false)]
         [TestCase("0x0102", "0x01", false)]
         public void Compares_bytes_equality_properly(string? hexString1, string? hexString2, bool expectedResult)
         {
-            // interestingly, sequence equals that we have been using for some time returns 0x == null, null == 0x
+            // interestingly, sequence equals that we have been using for some time returns 0x is null, null == 0x
             IEqualityComparer<byte[]> comparer = Bytes.EqualityComparer;
-            byte[]? x = hexString1 == null ? null : Bytes.FromHexString(hexString1);
-            byte[]? y = hexString2 == null ? null : Bytes.FromHexString(hexString2);
+            byte[]? x = hexString1 is null ? null : Bytes.FromHexString(hexString1);
+            byte[]? y = hexString2 is null ? null : Bytes.FromHexString(hexString2);
             Assert.AreEqual(expectedResult, comparer.Equals(x, y));
         }
 
         [Test]
         public void Stream_hex_works()
         {
-            byte[] bytes = new byte[] {15, 16, 255};
+            byte[] bytes = new byte[] { 15, 16, 255 };
             StreamWriter? sw = null;
             StreamReader? sr = null;
 
@@ -252,6 +276,13 @@ namespace Nethermind.Core.Test
 
         [TestCase("0x", 0)]
         [TestCase("0x1000", 1)]
+        [TestCase("0x100000", 2)]
+        [TestCase("0x10000000", 3)]
+        [TestCase("0x1000000000", 4)]
+        [TestCase("0x100000000000", 5)]
+        [TestCase("0x10000000000000", 6)]
+        [TestCase("0x1000000000000000", 7)]
+        [TestCase("0x100000000000000000", 8)]
         [TestCase("0x0000", 2)]
         [TestCase("0x000100", 1)]
         public void Trailing_zeros_count_works(string hex, int expectedResult)
@@ -268,7 +299,7 @@ namespace Nethermind.Core.Test
         {
             Assert.AreEqual(BigInteger.Parse(expectedResult), Bytes.FromHexString(hex).ToSignedBigInteger(length));
         }
-        
+
         [TestCase("0x0123456789abcdef0123456789abcdef", "0xefcdab8967452301efcdab8967452301")]
         [TestCase(
             "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -279,13 +310,13 @@ namespace Nethermind.Core.Test
             Bytes.ChangeEndianness8(bytes);
             bytes.ToHexString(true).Should().Be(expectedResult);
         }
-        
+
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031")]
         public void Can_create_bit_array_from_bytes(string hex)
         {
             BitArray result = Bytes.FromHexString(hex).AsSpan().ToBigEndianBitArray256();
         }
-        
+
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031", "0x3130292827262524232221201918171615141312111009080706050403020100")]
         public void Can_create_bit_array_from_bytes(string hex, string expectedResult)
         {
@@ -309,10 +340,10 @@ namespace Nethermind.Core.Test
                 {
                     var thisArray = GenerateRandom(length);
                     var valueArray = GenerateRandom(length);
-                    var resultArray = thisArray.Zip(valueArray, (b1, b2) => b1 | b2).Select(b => (byte) b).ToArray();
+                    var resultArray = thisArray.Zip(valueArray, (b1, b2) => b1 | b2).Select(b => (byte)b).ToArray();
                     return new TestCaseData(thisArray, valueArray, resultArray);
                 }
-                
+
                 yield return GenerateTest(1);
                 yield return GenerateTest(10);
                 yield return GenerateTest(32);
@@ -322,7 +353,7 @@ namespace Nethermind.Core.Test
                 yield return GenerateTest(200);
             }
         }
-        
+
         [TestCaseSource(nameof(OrTests))]
         public void Or(byte[] first, byte[] second, byte[] expected)
         {

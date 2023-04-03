@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
@@ -24,13 +10,13 @@ namespace Nethermind.AccountAbstraction.Source
     public class CompareReplacedUserOperationByFee : IComparer<UserOperation?>
     {
         public static readonly CompareReplacedUserOperationByFee Instance = new();
-        
+
         // To replace old user operation, new user operation needs to have fee higher by at least 10% (1/10) of current fee.
         // It is required to avoid acceptance and propagation of user operation with almost the same fee as replaced one.
         private const int PartOfFeeRequiredToIncrease = 10;
-        
+
         private CompareReplacedUserOperationByFee() { }
-        
+
         public int Compare(UserOperation? x, UserOperation? y)
         {
             if (ReferenceEquals(x, y)) return 0;

@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers.Binary;
@@ -62,7 +49,7 @@ namespace Nethermind.Consensus.Ethash
 
         public static uint GetEpoch(long blockNumber)
         {
-            return (uint) (blockNumber / EpochLength);
+            return (uint)(blockNumber / EpochLength);
         }
 
         /// Improvement from @AndreaLanfranchi
@@ -70,7 +57,7 @@ namespace Nethermind.Consensus.Ethash
         {
             uint upperBound = (DataSetBytesInit / MixBytes) + (DataSetBytesGrowth / MixBytes) * epoch;
             uint dataItems = FindLargestPrime(upperBound);
-            return dataItems * (ulong) MixBytes;
+            return dataItems * (ulong)MixBytes;
         }
 
         /// Improvement from @AndreaLanfranchi
@@ -123,7 +110,7 @@ namespace Nethermind.Consensus.Ethash
                To avoid computing sqrt, compare d*d <= number with 64-bit
                precision. Use only odd divisors as even ones are yet divisible
                by 2 */
-            for (uint d = 3; d * (ulong) d <= number; d += 2)
+            for (uint d = 3; d * (ulong)d <= number; d += 2)
             {
                 if (number % d == 0)
                     return false;
@@ -213,7 +200,7 @@ namespace Nethermind.Consensus.Ethash
 
         private static uint GetUInt(byte[] bytes, uint offset)
         {
-            return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int) offset * 4);
+            return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
         }
 
         public void HintRange(Guid guid, long start, long end)
@@ -246,7 +233,7 @@ namespace Nethermind.Consensus.Ethash
             {
                 return false;
             }
-            
+
             return IsLessOrEqualThanTarget(result, header.Difficulty);
         }
 
@@ -275,7 +262,7 @@ namespace Nethermind.Consensus.Ethash
 
         public (byte[], byte[], bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
         {
-            uint hashesInFull = (uint) (fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
+            uint hashesInFull = (uint)(fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;
             const uint hashesInMix = MixBytes / HashBytes;
 
@@ -298,7 +285,7 @@ namespace Nethermind.Consensus.Ethash
                 for (uint j = 0; j < hashesInMix; j++)
                 {
                     uint[] item = dataSet.CalcDataSetItem(p + j);
-                    Buffer.BlockCopy(item, 0, newData, (int) (j * item.Length * 4), item.Length * 4);
+                    Buffer.BlockCopy(item, 0, newData, (int)(j * item.Length * 4), item.Length * 4);
                 }
 
                 Fnv(mixInts, newData);
@@ -313,7 +300,7 @@ namespace Nethermind.Consensus.Ethash
             byte[] cmix = new byte[MixBytes / WordBytes];
             Buffer.BlockCopy(cmixInts, 0, cmix, 0, cmix.Length);
 
-            if (expectedMixHash != null && !Bytes.AreEqual(cmix, expectedMixHash.Bytes))
+            if (expectedMixHash is not null && !Bytes.AreEqual(cmix, expectedMixHash.Bytes))
             {
                 return (null, null, false);
             }

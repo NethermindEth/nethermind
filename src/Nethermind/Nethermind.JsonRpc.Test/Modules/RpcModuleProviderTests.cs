@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
 using FluentAssertions;
@@ -70,9 +57,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             JsonRpcConfig config = new();
             _fileSystem.File.Exists(Arg.Any<string>()).Returns(true);
-            _fileSystem.File.ReadLines(Arg.Any<string>()).Returns(new[] {regex});
+            _fileSystem.File.ReadLines(Arg.Any<string>()).Returns(new[] { regex });
             _moduleProvider = new RpcModuleProvider(_fileSystem, config, LimboLogs.Instance);
-            
+
             SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
 
@@ -96,7 +83,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(Substitute.For<INetRpcModule>(), true));
             _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), true));
 
-            JsonRpcUrl url = new JsonRpcUrl("http", "127.0.0.1", 8888, RpcEndpoint.Http,  false, new[] { "net" });
+            JsonRpcUrl url = new JsonRpcUrl("http", "127.0.0.1", 8888, RpcEndpoint.Http, false, new[] { "net" });
 
             ModuleResolution inScopeResolution = _moduleProvider.Check("net_version", JsonRpcContext.Http(url));
             Assert.AreEqual(ModuleResolution.Enabled, inScopeResolution);
@@ -106,6 +93,26 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ModuleResolution fallbackResolution = _moduleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http));
             Assert.AreEqual(ModuleResolution.Enabled, fallbackResolution);
+        }
+
+        [Test]
+        public void Allows_to_get_modules()
+        {
+            SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
+            _moduleProvider.Register(pool);
+            _moduleProvider.GetPool(ModuleType.Net).Should().Be(pool);
+        }
+
+        [Test]
+        public void Allows_to_replace_modules()
+        {
+            SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
+            _moduleProvider.Register(pool);
+
+            SingletonModulePool<INetRpcModule> pool2 = new(Substitute.For<INetRpcModule>());
+            _moduleProvider.Register(pool2);
+
+            _moduleProvider.GetPool(ModuleType.Net).Should().Be(pool2);
         }
     }
 }

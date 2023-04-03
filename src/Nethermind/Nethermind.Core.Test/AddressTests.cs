@@ -1,22 +1,11 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -100,9 +89,11 @@ namespace Nethermind.Core.Test
             Assert.True(addressA == addressA);
 #pragma warning restore CS1718
             Assert.False(addressA == addressB);
-            Assert.False(addressA == null);
+            Assert.False(addressA is null);
             Assert.False(null == addressA);
-            Assert.True((Address?)null == null);
+#pragma warning disable CS8520
+            Assert.True((Address?)null is null);
+#pragma warning restore CS8520
         }
 
         [Test]
@@ -117,9 +108,11 @@ namespace Nethermind.Core.Test
             Assert.False(addressA != addressA);
 #pragma warning restore CS1718
             Assert.True(addressA != addressB);
-            Assert.True(addressA != null);
+            Assert.True(addressA is not null);
             Assert.True(null != addressA);
-            Assert.False((Address?)null != null);
+#pragma warning disable CS8519
+            Assert.False((Address?)null is not null);
+#pragma warning restore CS8519
         }
 
         [Test]
@@ -130,7 +123,7 @@ namespace Nethermind.Core.Test
             Address address = new(addressBytes);
             Assert.True(address.IsPrecompile(Frontier.Instance));
         }
-        
+
         [Test]
         public void Is_precompiled_4_regression()
         {
@@ -139,7 +132,7 @@ namespace Nethermind.Core.Test
             Address address = new(addressBytes);
             Assert.True(address.IsPrecompile(Frontier.Instance));
         }
-        
+
         [Test]
         public void Is_precompiled_5_frontier()
         {
@@ -148,7 +141,7 @@ namespace Nethermind.Core.Test
             Address address = new(addressBytes);
             Assert.False(address.IsPrecompile(Frontier.Instance));
         }
-        
+
         [Test]
         public void Is_precompiled_5_byzantium()
         {
@@ -157,7 +150,7 @@ namespace Nethermind.Core.Test
             Address address = new(addressBytes);
             Assert.True(address.IsPrecompile(Byzantium.Instance));
         }
-        
+
         [Test]
         public void Is_precompiled_9_byzantium()
         {
@@ -166,7 +159,7 @@ namespace Nethermind.Core.Test
             Address address = new(addressBytes);
             Assert.False(address.IsPrecompile(Byzantium.Instance));
         }
-        
+
         [TestCase(0, false)]
         [TestCase(1, true)]
         [TestCase(1000, false)]
@@ -175,7 +168,7 @@ namespace Nethermind.Core.Test
             Address address = Address.FromNumber((UInt256)number);
             Assert.AreEqual(isPrecompile, address.IsPrecompile(Byzantium.Instance));
         }
-        
+
         [TestCase(0, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
         [TestCase(1, "0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8")]
         public void Of_contract(long nonce, string expectedAddress)
@@ -183,7 +176,20 @@ namespace Nethermind.Core.Test
             Address address = ContractAddress.From(TestItem.AddressA, (UInt256)nonce);
             Assert.AreEqual(address, new Address(expectedAddress));
         }
-        
+
+        [TestCaseSource(nameof(PointEvaluationPrecompileTestCases))]
+        public bool Is_PointEvaluationPrecompile_properly_activated(IReleaseSpec spec) =>
+            Address.FromNumber(0x14).IsPrecompile(spec);
+
+        public static IEnumerable PointEvaluationPrecompileTestCases
+        {
+            get
+            {
+                yield return new TestCaseData(Shanghai.Instance) { ExpectedResult = false, TestName = nameof(Shanghai) };
+                yield return new TestCaseData(Cancun.Instance) { ExpectedResult = true, TestName = nameof(Cancun) };
+            }
+        }
+
         [Test]
         public void There_are_no_duplicates_in_known_addresses()
         {

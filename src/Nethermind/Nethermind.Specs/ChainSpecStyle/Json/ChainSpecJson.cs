@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -36,7 +23,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ChainSpecGenesisJson Genesis { get; set; }
         public string[] Nodes { get; set; }
         public Dictionary<string, AllocationJson> Accounts { get; set; }
-        
+
         internal class EthashEngineJson
         {
             public long? HomesteadTransition => Params?.HomesteadTransition;
@@ -52,7 +39,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public IDictionary<string, long> DifficultyBombDelays => Params?.DifficultyBombDelays;
             public EthashEngineParamsJson Params { get; set; }
         }
-        
+
         internal class EthashEngineParamsJson
         {
             public UInt256? MinimumDifficulty { get; set; }
@@ -67,7 +54,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public BlockRewardJson BlockReward { get; set; }
             public Dictionary<string, long> DifficultyBombDelays { get; set; }
         }
-    
+
         internal class CliqueEngineJson
         {
             public ulong Period => Params.Period;
@@ -75,14 +62,14 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public UInt256? BlockReward => Params.BlockReward;
             public CliqueEngineParamsJson Params { get; set; }
         }
-        
+
         internal class CliqueEngineParamsJson
         {
             public ulong Period { get; set; }
             public ulong Epoch { get; set; }
             public UInt256? BlockReward { get; set; }
         }
-        
+
         internal class AuraEngineParamsJson
         {
             public StepDurationJson StepDuration { get; set; }
@@ -103,7 +90,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
             public class StepDurationJson : SortedDictionary<long, long> { }
         }
-        
+
         public class BlockRewardJson : SortedDictionary<long, UInt256> { }
 
         internal class AuRaValidatorJson
@@ -115,19 +102,19 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
             public AuRaParameters.ValidatorType GetValidatorType()
             {
-                if (List != null)
+                if (List is not null)
                 {
                     return AuRaParameters.ValidatorType.List;
                 }
-                else if (Contract != null)
+                else if (Contract is not null)
                 {
-                    return AuRaParameters.ValidatorType.ReportingContract;   
+                    return AuRaParameters.ValidatorType.ReportingContract;
                 }
-                else if (SafeContract != null)
+                else if (SafeContract is not null)
                 {
                     return AuRaParameters.ValidatorType.Contract;
                 }
-                else if (Multi != null)
+                else if (Multi is not null)
                 {
                     return AuRaParameters.ValidatorType.Multi;
                 }
@@ -142,16 +129,16 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         {
             public IDictionary<long, long> StepDuration => Params.StepDuration;
 
-            public IDictionary<long, UInt256> BlockReward  => Params.BlockReward;
+            public IDictionary<long, UInt256> BlockReward => Params.BlockReward;
 
             public long MaximumUncleCountTransition => Params.MaximumUncleCountTransition;
 
             public long? MaximumUncleCount => Params.MaximumUncleCount;
-            
+
             public Address BlockRewardContractAddress => Params.BlockRewardContractAddress;
-            
+
             public long? BlockRewardContractTransition => Params.BlockRewardContractTransition;
-            
+
             public IDictionary<long, Address> BlockRewardContractTransitions => Params.BlockRewardContractTransitions;
 
             public long ValidateScoreTransition => Params.ValidateScoreTransition;
@@ -163,27 +150,27 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long? TwoThirdsMajorityTransition => Params.TwoThirdsMajorityTransition;
 
             public AuRaValidatorJson Validator => Params.Validators;
-            
+
             public IDictionary<long, Address> RandomnessContractAddress => Params.RandomnessContractAddress;
 
             public IDictionary<long, Address> BlockGasLimitContractTransitions => Params.BlockGasLimitContractTransitions;
-            
+
             public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode => Params.RewriteBytecode;
-            
+
             public AuraEngineParamsJson Params { get; set; }
         }
-        
+
         internal class NethDevJson
         {
         }
-    
+
         internal class EngineJson
         {
             public EthashEngineJson Ethash { get; set; }
             public CliqueEngineJson Clique { get; set; }
             public AuraEngineJson AuthorityRound { get; set; }
             public NethDevJson NethDev { get; set; }
-            
+
             [JsonExtensionData]
             public IDictionary<string, JToken> CustomEngineData { get; set; }
         }

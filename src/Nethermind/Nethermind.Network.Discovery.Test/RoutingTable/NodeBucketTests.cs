@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -32,7 +18,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
         private Node _node = new(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000);
         private Node _node2 = new(TestItem.PublicKeyB, IPAddress.Broadcast.ToString(), 3000);
         private Node _node3 = new(TestItem.PublicKeyC, IPAddress.Broadcast.ToString(), 3000);
-        
+
         [Test]
         public void Bonded_count_is_tracked()
         {
@@ -42,7 +28,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             nodeBucket.AddNode(_node3);
             nodeBucket.BondedItemsCount.Should().Be(3);
         }
-        
+
         [Test]
         public void Newly_added_can_be_retrieved_as_bonded()
         {
@@ -52,30 +38,30 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             nodeBucket.AddNode(_node3);
             nodeBucket.BondedItems.Should().HaveCount(3);
         }
-        
+
         [Test]
         public void Distance_is_set_properly()
         {
             NodeBucket nodeBucket = new(1, 16);
             nodeBucket.Distance.Should().Be(1);
         }
-        
+
         [Test]
         public void Limits_the_bucket_size()
         {
             NodeBucket nodeBucket = new(1, 16);
             AddNodes(nodeBucket, 32);
-            
+
             nodeBucket.BondedItemsCount.Should().Be(16);
             nodeBucket.BondedItems.Should().HaveCount(16);
         }
-        
+
         [Test]
         public void Can_replace_existing_when_full()
         {
             NodeBucket nodeBucket = new(1, 16);
             AddNodes(nodeBucket, 32);
-            
+
             Node node = new(
                 TestItem.PublicKeyA,
                 IPAddress.Broadcast.ToString(),
@@ -88,7 +74,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             nodeBucket.BondedItems.Should().Contain(bi => bi.Node == node);
             nodeBucket.BondedItems.Should().NotContain(bi => bi.Node == existing);
         }
-        
+
         [TestCase(2)]
         [TestCase(5)]
         [TestCase(32)]
@@ -102,7 +88,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
 
             nodeBucket.BondedItems.Should().HaveCount(Math.Min(nodeBucket.BucketSize, nodesInTheBucket));
         }
-        
+
         [TestCase(0)]
         [TestCase(5)]
         [TestCase(32)]
@@ -110,17 +96,17 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
         {
             NodeBucket nodeBucket = new(1, 16);
             AddNodes(nodeBucket, nodesInTheBucket);
-            
+
             Node node = new(
                 TestItem.PublicKeyA,
                 IPAddress.Broadcast.ToString(),
                 30001);
-            
+
             Node nonExisting = new(
                 TestItem.PublicKeyA,
                 IPAddress.Broadcast.ToString(),
                 30002);
-            
+
             Assert.Throws<InvalidOperationException>(() => nodeBucket.ReplaceNode(nonExisting, node));
         }
 

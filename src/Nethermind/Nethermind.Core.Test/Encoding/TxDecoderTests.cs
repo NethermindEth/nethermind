@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -40,27 +26,27 @@ namespace Nethermind.Core.Test.Encoding
             yield return (Build.A.Transaction.SignedAndResolved().TestObject, "basic");
             yield return (Build.A.Transaction.SignedAndResolved().WithNonce(0).TestObject, "basic");
             yield return (Build.A.Transaction
-                .WithData(new byte[] {1, 2, 3})
+                .WithData(new byte[] { 1, 2, 3 })
                 .WithType(TxType.AccessList)
-                .WithChainId(1)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
                     new AccessList(
                         new Dictionary<Address, IReadOnlySet<UInt256>>
                         {
                             {Address.Zero, new HashSet<UInt256> {(UInt256)1}}
-                        }, new Queue<object>(new List<object> {Address.Zero, (UInt256)1})))
+                        }, new Queue<object>(new List<object> { Address.Zero, (UInt256)1 })))
                 .SignedAndResolved().TestObject, "access list");
             yield return (Build.A.Transaction
-                .WithData(new byte[] {1, 2, 3})
+                .WithData(new byte[] { 1, 2, 3 })
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(30)
-                .WithChainId(1)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
                     new AccessList(
                         new Dictionary<Address, IReadOnlySet<UInt256>>
                         {
                             {Address.Zero, new HashSet<UInt256> {(UInt256)1}}
-                        }, new Queue<object>(new List<object> {Address.Zero, (UInt256)1})))
+                        }, new Queue<object>(new List<object> { Address.Zero, (UInt256)1 })))
                 .SignedAndResolved().TestObject, "EIP1559 - access list");
             yield return (Build.A.Transaction
                 .WithType(TxType.EIP1559)
@@ -79,26 +65,26 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((Transaction Tx, string Description) testCase)
         {
-            RlpStream rlpStream = new(10000);
+            RlpStream rlpStream = new RlpStream(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
             _txDecoder.Encode(rlpStream, testCase.Tx);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(rlpStream);
-            decoded!.SenderAddress = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance).RecoverAddress(decoded);
+            decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
         }
-        
+
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip_ValueDecoderContext((Transaction Tx, string Description) testCase)
         {
             RlpStream rlpStream = new(10000);
             _txDecoder.Encode(rlpStream, testCase.Tx);
-            
+
             Span<byte> spanIncomingTxRlp = rlpStream.Data.AsSpan();
             Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
-            decoded!.SenderAddress = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance).RecoverAddress(decoded);
+            decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
         }
@@ -108,17 +94,17 @@ namespace Nethermind.Core.Test.Encoding
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
-        
+
             Transaction decoded = _txDecoder.Decode(incomingTxRlp);
             decoded.CalculateHash().Should().Be(testCase.Hash);
-        
+
             RlpStream ourRlpOutput = new(incomingTxRlp.Length * 2);
             _txDecoder.Encode(ourRlpOutput, decoded);
-        
+
             string ourRlpHex = ourRlpOutput.Data.AsSpan(0, incomingTxRlp.Length).ToHexString();
             ourRlpHex.Should().BeEquivalentTo(testCase.IncomingRlpHex);
         }
-        
+
         [TestCaseSource(nameof(YoloV3TestCases))]
         public void CalculateHash_and_tx_hash_after_decoding_return_the_same_value((string IncomingRlpHex, Keccak Hash) testCase)
         {
@@ -126,11 +112,11 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
             Transaction decoded = _txDecoder.Decode(incomingTxRlp);
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
-            
+
             decoded.CalculateHash().Should().Be(decoded.Hash);
             decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
-        
+
         [TestCaseSource(nameof(YoloV3TestCases))]
         public void Hash_calculation_do_not_change_after_roundtrip((string IncomingRlpHex, Keccak Hash) testCase)
         {
@@ -140,7 +126,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
             decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
-        
+
         [TestCaseSource(nameof(YoloV3TestCases))]
         public void Hash_calculation_do_not_change_after_roundtrip2((string IncomingRlpHex, Keccak Hash) testCase)
         {
@@ -150,13 +136,13 @@ namespace Nethermind.Core.Test.Encoding
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
             decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
-        
+
         [TestCaseSource(nameof(YoloV3TestCases))]
         public void ValueDecoderContext_return_the_same_transaction_as_rlp_stream_with_wrapping((string IncomingRlpHex, Keccak Hash) testCase)
         {
             ValueDecoderContext_return_the_same_transaction_as_rlp_stream(testCase, false);
         }
-        
+
         [TestCaseSource(nameof(SkipTypedWrappingTestCases))]
         public void ValueDecoderContext_return_the_same_transaction_as_rlp_stream_without_additional_wrapping((string IncomingRlpHex, Keccak Hash) testCase)
         {
@@ -179,7 +165,6 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(encoded.Bytes, encodedWithDecodedByValueDecoderContext.Bytes);
         }
 
-        
         [TestCaseSource(nameof(TestCaseSource))]
         public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding((Transaction Tx, string Description) testCase)
         {
@@ -187,7 +172,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlpResult = Rlp.Encode(testCase.Tx, false, true, testCase.Tx.ChainId ?? 0);
             Assert.AreEqual(rlpResult.Bytes, rlpStreamResult.Bytes);
         }
-        
+
         public static IEnumerable<(string, Keccak)> SkipTypedWrappingTestCases()
         {
             yield return
@@ -242,7 +227,7 @@ namespace Nethermind.Core.Test.Encoding
                 new Keccak("0x64450bbd000900379235ca8cad7c6f04288b9a9044967e1e1d63c0bc352624e0")
             );
         }
-        
+
         public static IEnumerable<(string, Keccak)> YoloV3TestCases()
         {
             yield return
@@ -291,7 +276,7 @@ namespace Nethermind.Core.Test.Encoding
                 "b8cb01f8c887796f6c6f76337803843b9aca00826a40948a8eafb1cf62bfbeb1741769dae1a9dd479961928080f85bf859940000000000000000000000000000000000001337f842a00000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000013370000000000000000000000080a094f3a6bbf5039b1a794e5be7628809bdf757c4ff59e5399dec74c61137074f80a049baf92bb5fb2d6c6bf8287fcd75eaea80ad38d1b8d29ce242c4ac51e1067d52",
                 new Keccak("0x0a956694228afe4577bd94fcf8a3aa8544bbadcecfe0d66ccad8ec7ae56c025f")
             );
-            
+
         }
     }
 }

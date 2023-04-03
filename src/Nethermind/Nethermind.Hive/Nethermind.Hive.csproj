@@ -1,24 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
-        <Nullable>enable</Nullable>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
 
-    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-      <OutputPath>bin\Debug\</OutputPath>
-    </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.IO.Abstractions" />
+  </ItemGroup>
 
-    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-      <OutputPath>bin\Release\</OutputPath>
-    </PropertyGroup>
-  
-    <ItemGroup>
-      <PackageReference Include="System.IO.Abstractions" Version="17.0.15" />
-    </ItemGroup>
-  
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+  </ItemGroup>
 
 </Project>

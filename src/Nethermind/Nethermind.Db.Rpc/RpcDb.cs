@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -51,7 +38,7 @@ namespace Nethermind.Db.Rpc
 
         public string Name { get; } = "RpcDb";
 
-        public byte[] this[byte[] key]
+        public byte[] this[ReadOnlySpan<byte> key]
         {
             get => GetThroughRpc(key);
             set => throw new InvalidOperationException("RPC DB does not support writes");
@@ -59,14 +46,14 @@ namespace Nethermind.Db.Rpc
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();
 
-        public void Remove(byte[] key)
+        public void Remove(ReadOnlySpan<byte> key)
         {
             throw new InvalidOperationException("RPC DB does not support writes");
         }
 
-        public bool KeyExists(byte[] key)
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
-            return GetThroughRpc(key) != null;
+            return GetThroughRpc(key) is not null;
         }
 
         public IDb Innermost => this; // record db is just a helper DB here
@@ -82,16 +69,16 @@ namespace Nethermind.Db.Rpc
             throw new InvalidOperationException("RPC DB does not support writes");
         }
 
-        private byte[] GetThroughRpc(byte[] key)
+        private byte[] GetThroughRpc(ReadOnlySpan<byte> key)
         {
             string responseJson = _rpcClient.Post("debug_getFromDb", _dbName, key.ToHexString()).Result;
             JsonRpcSuccessResponse response = _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(responseJson);
 
             byte[] value = null;
-            if (response.Result != null)
+            if (response.Result is not null)
             {
                 value = Bytes.FromHexString((string)response.Result);
-                if (_recordDb != null)
+                if (_recordDb is not null)
                 {
                     _recordDb[key] = value;
                 }

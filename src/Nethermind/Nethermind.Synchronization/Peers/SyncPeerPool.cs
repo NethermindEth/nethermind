@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -34,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Timer = System.Timers.Timer;
 
@@ -57,7 +45,7 @@ namespace Nethermind.Synchronization.Peers
 
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
         private readonly ConcurrentDictionary<SyncPeerAllocation, object?> _replaceableAllocations = new();
-        
+
         private readonly INodeStatsManager _stats;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly int _allocationsUpgradeIntervalInMs;
@@ -77,29 +65,10 @@ namespace Nethermind.Synchronization.Peers
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             IBetterPeerStrategy betterPeerStrategy,
-            int peersMaxCount,
-            ILogManager logManager)
-            : this(blockTree, nodeStatsManager, betterPeerStrategy, peersMaxCount, DefaultUpgradeIntervalInMs, logManager)
-        {
-        }
-        
-        public SyncPeerPool(IBlockTree blockTree,
-            INodeStatsManager nodeStatsManager,
-            IBetterPeerStrategy betterPeerStrategy,
-            int peersMaxCount,
-            int allocationsUpgradeIntervalInMs,
-            ILogManager logManager)
-            : this(blockTree, nodeStatsManager, betterPeerStrategy, peersMaxCount, 0, allocationsUpgradeIntervalInMs, logManager)
-        {
-        }
-
-        public SyncPeerPool(IBlockTree blockTree,
-            INodeStatsManager nodeStatsManager,
-            IBetterPeerStrategy betterPeerStrategy,
-            int peersMaxCount,
-            int priorityPeerMaxCount,
-            int allocationsUpgradeIntervalInMsInMs,
-            ILogManager logManager)
+            ILogManager logManager,
+            int peersMaxCount = 100,
+            int priorityPeerMaxCount = 0,
+            int allocationsUpgradeIntervalInMsInMs = DefaultUpgradeIntervalInMs)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -108,7 +77,7 @@ namespace Nethermind.Synchronization.Peers
             PriorityPeerMaxCount = priorityPeerMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
+
             if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}");
         }
 
@@ -117,22 +86,22 @@ namespace Nethermind.Synchronization.Peers
             ReportWeakPeer(peerInfo, allocationContexts);
         }
 
-        public void ReportBreachOfProtocol(PeerInfo? peerInfo, string details)
+        public void ReportBreachOfProtocol(PeerInfo? peerInfo, InitiateDisconnectReason initiateDisconnectReason, string details)
         {
             /* since the allocations can have the peers dynamically changed
              * it may be hard for the external classes to ensure that the peerInfo is not null at the time when they report
              * so we decide to check for null here and not consider the scenario to be exceptional
              */
-            if (peerInfo != null)
+            if (peerInfo is not null)
             {
                 _stats.ReportSyncEvent(peerInfo.SyncPeer.Node, NodeStatsEventType.SyncFailed);
-                peerInfo.SyncPeer.Disconnect(DisconnectReason.BreachOfProtocol, details);
+                peerInfo.SyncPeer.Disconnect(initiateDisconnectReason, details);
             }
         }
 
         public void ReportWeakPeer(PeerInfo? weakPeer, AllocationContexts allocationContexts)
         {
-            if (weakPeer == null)
+            if (weakPeer is null)
             {
                 /* it may have just got disconnected and in such case the allocation would be nullified
                  * in such case there is no need to talk about whether the peer is good or bad
@@ -179,7 +148,7 @@ namespace Nethermind.Synchronization.Peers
             _isStarted = false;
             _refreshLoopCancellation.Cancel();
             await (_refreshLoopTask ?? Task.CompletedTask);
-            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.ClientQuitting, "App Close"); });
+            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(InitiateDisconnectReason.AppClosing, "App Close"); });
         }
 
         public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
@@ -201,7 +170,7 @@ namespace Nethermind.Synchronization.Peers
                 foreach ((_, PeerInfo peerInfo) in _peers) yield return peerInfo;
             }
         }
-        
+
         public IEnumerable<PeerInfo> NonStaticPeers
         {
             get
@@ -266,18 +235,18 @@ namespace Nethermind.Synchronization.Peers
                 if (_logger.IsDebug) _logger.Debug($"Sync peer {syncPeer.Node:c} already in peers collection.");
                 return;
             }
-            
+
             PeerInfo peerInfo = new(syncPeer);
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             Metrics.SyncPeers = _peers.Count;
-            
+
             if (syncPeer.IsPriority)
             {
                 Interlocked.Increment(ref PriorityPeerCount);
                 Metrics.PriorityPeers = PriorityPeerCount;
             }
             if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
-            
+
             BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is not null)
             {
@@ -303,7 +272,7 @@ namespace Nethermind.Synchronization.Peers
             }
 
             PublicKey id = syncPeer.Node.Id;
-            if (id == null)
+            if (id is null)
             {
                 if (_logger.IsDebug) _logger.Debug("Peer ID was null when removing peer");
                 return;
@@ -316,14 +285,14 @@ namespace Nethermind.Synchronization.Peers
             }
 
             Metrics.SyncPeers = _peers.Count;
-            
+
             if (syncPeer.IsPriority)
             {
                 Interlocked.Decrement(ref PriorityPeerCount);
                 Metrics.PriorityPeers = PriorityPeerCount;
             }
             if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
-            
+
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
             {
                 if (allocation.Current?.SyncPeer.Node.Id == id)
@@ -375,7 +344,7 @@ namespace Nethermind.Synchronization.Peers
                 if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
 
                 int waitTime = 10 * tryCount++;
-                
+
                 if (!_signals.SafeWaitHandle.IsClosed)
                 {
                     await _signals.WaitOneAsync(waitTime, _refreshLoopCancellation.Token);
@@ -419,7 +388,7 @@ namespace Nethermind.Synchronization.Peers
                     _refreshCancelTokens.TryRemove(syncPeer.Node.Id, out _);
                     if (t.IsFaulted)
                     {
-                        if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
+                        if (t.Exception is not null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                         {
                             if (_logger.IsTrace) _logger.Trace($"Refreshing info for {syncPeer} failed due to timeout: {t.Exception.Message}");
                         }
@@ -439,7 +408,7 @@ namespace Nethermind.Synchronization.Peers
                         if (syncPeer.TotalDifficulty == _blockTree.BestSuggestedHeader?.TotalDifficulty && syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
                         {
                             Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash!, BlockTreeLookupOptions.None);
-                            if (block != null) // can be null if fast syncing headers only
+                            if (block is not null) // can be null if fast syncing headers only
                             {
                                 if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {syncPeer}");
                                 NotifyPeerBlock?.Invoke(this, new PeerBlockNotificationEventArgs(syncPeer, block));
@@ -482,19 +451,9 @@ namespace Nethermind.Synchronization.Peers
             upgradeTimer.Start();
         }
 
-        private bool CanBeUsefulForFastBlocks(long blockNumber)
-        {
-            long lowestInsertedBody = _blockTree.LowestInsertedBodyNumber ?? long.MaxValue;
-            long lowestInsertedHeader = _blockTree.LowestInsertedHeader?.Number ?? long.MaxValue;
-            return lowestInsertedBody > 1 && lowestInsertedBody < blockNumber ||
-                   lowestInsertedHeader > 1 && lowestInsertedHeader < blockNumber;
-        }
-
         internal void DropUselessPeers(bool force = false)
         {
             if (!force && DateTime.UtcNow - _lastUselessPeersDropTime < TimeSpan.FromSeconds(30))
-                // give some time to monitoring nodes
-                // (monitoring nodes are nodes that are investigating the network but are not synced themselves)
                 return;
 
             if (_logger.IsTrace) _logger.Trace($"Reviewing {PeerCount} peer usefulness");
@@ -502,69 +461,61 @@ namespace Nethermind.Synchronization.Peers
             int peersDropped = 0;
             _lastUselessPeersDropTime = DateTime.UtcNow;
 
-            long ourNumber = _blockTree.BestSuggestedHeader?.Number ?? 0L;
-            UInt256 ourDifficulty = _blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
-            foreach (PeerInfo peerInfo in NonStaticPeers)
-            {
-                if (peerInfo.HeadNumber == 0
-                    && peerInfo.IsInitialized
-                    && ourNumber != 0
-                    && peerInfo.PeerClientType != NodeClientType.Nethermind
-                    && peerInfo.PeerClientType != NodeClientType.Trinity)
-                    // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
-                {
-                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
-                    {
-                        peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
-                    }
-                }
-                else if (peerInfo.HeadNumber == 1920000 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
-                {
-                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
-                    {
-                        peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 1920000");
-                    }
-                }
-                else if (peerInfo.HeadNumber == 7280022 && _blockTree.ChainId == ChainId.Mainnet) // mainnet, stuck Geth nodes
-                {
-                    if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))
-                    {
-                        peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / 7280022");
-                    }
-                }
-                else if (peerInfo.HeadNumber > ourNumber + 1024L && _betterPeerStrategy.IsLowerThanTerminalTotalDifficulty(peerInfo.TotalDifficulty) && peerInfo.TotalDifficulty < ourDifficulty)
-                {
-                    if (!CanBeUsefulForFastBlocks(MainnetSpecProvider.Instance.DaoBlockNumber ?? 0))
-                    {
-                        // probably Ethereum Classic nodes tht remain connected after we went pass the DAO
-                        // worth to find a better way to discard them at the right time
-                        peersDropped++;
-                        peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
-                    }
-                }
-            }
-
             if (PeerCount == PeerMaxCount)
             {
-                long lowestBlockNumber = long.MaxValue;
-                PeerInfo? worstPeer = null;
-                foreach (PeerInfo peerInfo in NonStaticPeers)
-                {
-                    if (peerInfo.HeadNumber < lowestBlockNumber && (!peerInfo.SyncPeer.IsPriority || PriorityPeerCount >= PriorityPeerMaxCount))
-                    {
-                        lowestBlockNumber = peerInfo.HeadNumber;
-                        worstPeer = peerInfo;
-                    }
-                }
-
-                peersDropped++;
-                worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LOWEST NUMBER");
+                peersDropped += DropWorstPeer();
             }
 
             if (_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
+        }
+
+        private int DropWorstPeer()
+        {
+            string? IsPeerWorstWithReason(PeerInfo currentPeer, PeerInfo toCompare)
+            {
+                if (toCompare.HeadNumber < currentPeer.HeadNumber)
+                {
+                    return "LOWEST NUMBER";
+                }
+
+                if (toCompare.TotalDifficulty < currentPeer.TotalDifficulty)
+                {
+                    return "LOWEST DIFFICULTY";
+                }
+
+                if ((_stats.GetOrAdd(toCompare.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue) >
+                    (_stats.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue))
+                {
+                    return "HIGHEST PING";
+                }
+
+                return null;
+            }
+
+            bool canDropPriorityPeer = PriorityPeerCount >= PriorityPeerMaxCount;
+
+            PeerInfo? worstPeer = null;
+            string? worstReason = "DEFAULT";
+
+            foreach (PeerInfo peerInfo in NonStaticPeers)
+            {
+                if (peerInfo.SyncPeer.IsPriority && !canDropPriorityPeer)
+                {
+                    continue;
+                }
+
+                worstPeer ??= peerInfo;
+
+                string? peerWorstReason = IsPeerWorstWithReason(worstPeer, peerInfo);
+                if (peerWorstReason is not null)
+                {
+                    worstPeer = peerInfo;
+                    worstReason = peerWorstReason;
+                }
+            }
+
+            worstPeer?.SyncPeer.Disconnect(InitiateDisconnectReason.DropWorstPeer, $"PEER REVIEW / {worstReason}");
+            return 1;
         }
 
         public void SignalPeersChanged()
@@ -592,7 +543,7 @@ namespace Nethermind.Synchronization.Peers
                     {
                         if (firstToComplete == delayTask)
                         {
-                            ReportRefreshFailed(syncPeer, "timeout");
+                            ReportRefreshFailed(syncPeer, "timeout", new TimeoutException());
                         }
                         else if (firstToComplete.IsFaulted)
                         {
@@ -607,7 +558,7 @@ namespace Nethermind.Synchronization.Peers
                         {
                             delaySource.Cancel();
                             BlockHeader? header = getHeadHeaderTask.Result;
-                            if (header == null)
+                            if (header is null)
                             {
                                 ReportRefreshFailed(syncPeer, "null response");
                                 return;
@@ -654,7 +605,7 @@ namespace Nethermind.Synchronization.Peers
                 INodeStatsManager stats = _stats;
                 lock (_isAllocatedChecks)
                 {
-                    var unallocatedPeers = InitializedPeers.Where(p => p.CanBeAllocated(allocation.Contexts));
+                    IEnumerable<PeerInfo> unallocatedPeers = InitializedPeers.Where(p => p.CanBeAllocated(allocation.Contexts));
                     allocation.AllocateBestPeer(unallocatedPeers, stats, _blockTree);
                 }
             }
@@ -672,11 +623,11 @@ namespace Nethermind.Synchronization.Peers
         {
             if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number}");
             BlockHeader? parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
-            if (parent != null && parent.TotalDifficulty != 0)
+            if (parent is not null && (parent.TotalDifficulty ?? 0) != 0)
             {
                 UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
                 bool newValueIsNotWorseThanPeer = _betterPeerStrategy.Compare((newTotalDifficulty, header.Number), syncPeer) >= 0;
-                if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number} based on totalDifficulty, newValueIsNotWorseThanPeer {newValueIsNotWorseThanPeer}");
+                if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number} based on totalDifficulty, newValueIsNotWorseThanPeer {newValueIsNotWorseThanPeer}, newTotalDifficulty: {newTotalDifficulty}, header.Difficulty: {header.Difficulty}, Parent total difficulty: {parent.TotalDifficulty}");
                 if (newValueIsNotWorseThanPeer)
                 {
                     syncPeer.TotalDifficulty = newTotalDifficulty;
@@ -698,7 +649,17 @@ namespace Nethermind.Synchronization.Peers
         {
             if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node:c}, {reason}, {exception}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
-            syncPeer.Disconnect(DisconnectReason.DisconnectRequested, $"refresh peer info fault - {reason}");
+
+            if (exception is OperationCanceledException || exception is TimeoutException)
+            {
+                // We don't want to disconnect on timeout. It could be that we are downloading from the peer,
+                // or we have some connection issue
+                ReportWeakPeer(new PeerInfo(syncPeer), AllocationContexts.All);
+            }
+            else
+            {
+                syncPeer.Disconnect(InitiateDisconnectReason.PeerRefreshFailed, $"refresh peer info fault - {reason}");
+            }
         }
 
         public void Dispose()

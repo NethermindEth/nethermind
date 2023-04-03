@@ -1,26 +1,16 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake
@@ -57,7 +47,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "f0fce91676fd64c7773bac6a003f481fddd0bae0a1f31aa27504e2a533af4cef3b623f4791b2cca6" +
                       "d490");
 
-            Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
+            Span<byte> sizeBytes = allBytes.AsSpan(0, 2);
             int size = sizeBytes.ReadEthInt32();
 
             (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray());
@@ -91,9 +81,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.IsTokenUsed, false);
             Assert.NotNull(authMessage.Signature);
 
-            byte[] data = _messageSerializationService.Serialize(authMessage);
-            Array.Resize(ref data, deciphered.Length);
-            Assert.AreEqual(deciphered, data, "serialization");
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
+            Assert.AreEqual(deciphered, data.ReadAllBytesAsArray(), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -111,7 +101,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "2aa067241aaa433f0bb053c7b31a838504b148f570c0ad62837129e547678c5190341e4f1693956c" +
                       "3bf7678318e2d5b5340c9e488eefea198576344afbdf66db5f51204a6961a63ce072c8926c");
 
-            Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
+            Span<byte> sizeBytes = allBytes.AsSpan(0, 2);
             int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
@@ -124,10 +114,10 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.Version, 4);
             Assert.NotNull(authMessage.Signature);
 
-            byte[] data = _messageSerializationService.Serialize(authMessage);
-            Array.Resize(ref data, deciphered.Length);
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
 
-            Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169), "serialization");
+            Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169).ReadAllBytesAsArray(), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -147,9 +137,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
             Assert.AreEqual(ackMessage.IsTokenUsed, false);
 
-            byte[] data = _messageSerializationService.Serialize(ackMessage);
-            Array.Resize(ref data, deciphered.Length);
-            Assert.AreEqual(deciphered, data, "serialization");
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
+            Assert.AreEqual(deciphered, data.ReadAllBytesAsArray(), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -169,7 +159,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "1778d809bdf60232ae21ce8a437eca8223f45ac37f6487452ce626f549b3b5fdee26afd2072e4bc7" +
                       "5833c2464c805246155289f4");
 
-            Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
+            Span<byte> sizeBytes = allBytes.AsSpan(0, 2);
             int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
@@ -181,11 +171,11 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
             Assert.AreEqual(ackMessage.Version, 4);
 
-            byte[] data = _messageSerializationService.Serialize(ackMessage);
-            Array.Resize(ref data, deciphered.Length);
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
 
             // TODO: check 102
-            Assert.AreEqual(deciphered.Slice(0, 102), data.Slice(0, 102), "serialization");
+            Assert.AreEqual(deciphered.Slice(0, 102), data.ReadAllBytesAsArray().Slice(0, 102), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -205,7 +195,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "39a2336a61ef9fda549180d4ccde21514d117b6c6fd07a9102b5efe710a32af4eeacae2cb3b1dec0" +
                       "35b9593b48b9d3ca4c13d245d5f04169b0b1");
 
-            Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
+            Span<byte> sizeBytes = allBytes.AsSpan(0, 2);
             int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
@@ -223,7 +213,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             PrivateKey privateKey = NetTestVectors.StaticKeyA;
 
-            byte[] plainText = {1, 2, 3, 4, 5};
+            byte[] plainText = { 1, 2, 3, 4, 5 };
             _cryptoRandom.EnqueueRandomBytes(Bytes.FromHexString("0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"));
             _cryptoRandom.EnqueueRandomBytes(NetTestVectors.EphemeralKeyA.KeyBytes);
             byte[] cipherText = _eciesCipher.Encrypt(privateKey.PublicKey, plainText, null); // public(65) | IV(16) | cipher(...)

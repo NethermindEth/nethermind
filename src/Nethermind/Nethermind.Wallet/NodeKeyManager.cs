@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -40,9 +27,9 @@ namespace Nethermind.Wallet
         private readonly IFileSystem _fileSystem;
 
         public NodeKeyManager(
-            ICryptoRandom cryptoRandom, 
-            IKeyStore keyStore, 
-            IKeyStoreConfig config, 
+            ICryptoRandom cryptoRandom,
+            IKeyStore keyStore,
+            IKeyStoreConfig config,
             ILogManager logManager,
             IPasswordProvider passwordProvider,
             IFileSystem fileSystem)
@@ -75,7 +62,7 @@ namespace Nethermind.Wallet
             secureString.MakeReadOnly();
             return secureString;
         }
-        
+
         [DoNotUseInSecuredContext("This stored the node key in plaintext - it is just one step further to the full node key protection")]
         public ProtectedPrivateKey LoadNodeKey()
         {
@@ -85,7 +72,7 @@ namespace Nethermind.Wallet
                 string newPath = (_config.EnodeKeyFile ?? UnsecuredNodeKeyFilePath).GetApplicationResourcePath(_config.KeyStoreDirectory);
                 GenerateKeyIfNeeded(newPath, oldPath);
                 using var privateKey = new PrivateKey(_fileSystem.File.ReadAllBytes(newPath));
-                return new ProtectedPrivateKey(privateKey, _cryptoRandom);
+                return new ProtectedPrivateKey(privateKey, _config.KeyStoreDirectory, _cryptoRandom);
             }
 
             void GenerateKeyIfNeeded(string newFile, string oldFile)
@@ -104,7 +91,9 @@ namespace Nethermind.Wallet
                 }
             }
 
-            if (_config.TestNodeKey != null) return new ProtectedPrivateKey(new PrivateKey(_config.TestNodeKey), _cryptoRandom);
+            if (_config.TestNodeKey is not null)
+                return new ProtectedPrivateKey(new PrivateKey(_config.TestNodeKey), _config.KeyStoreDirectory, _cryptoRandom);
+
             var key = LoadKeyForAccount(_config.EnodeAccount);
             return key ?? LoadKeyFromFile();
         }

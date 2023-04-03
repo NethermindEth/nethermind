@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -28,6 +15,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -54,6 +42,7 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Config;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -63,9 +52,9 @@ namespace Nethermind.Synchronization.Test
     public class SyncThreadsTests
     {
         private readonly SynchronizerType _synchronizerType;
-        private List<SyncTestContext> _peers;
-        private SyncTestContext _originPeer;
-        private static Block _genesis;
+        private List<SyncTestContext> _peers = new();
+        private SyncTestContext _originPeer = null!;
+        private static Block _genesis = null!;
 
         public SyncThreadsTests(SynchronizerType synchronizerType)
         {
@@ -118,7 +107,7 @@ namespace Nethermind.Synchronization.Test
                     }
 
                     SyncTestContext remotePeer = _peers[remoteIndex];
-                    localPeer.PeerPool.AddPeer(new SyncPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex],
+                    localPeer.PeerPool!.AddPeer(new SyncPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex],
                         $"PEER{localIndex}", remotePeer.SyncServer, TestItem.PublicKeys[remoteIndex],
                         $"PEER{remoteIndex}"));
                 }
@@ -150,9 +139,10 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
+                Address headBlockBeneficiary = headBlock.Beneficiary!;
                 Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
-                Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary),
-                    _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
+                Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlockBeneficiary),
+                    _peers[i].StateProvider.GetBalance(headBlockBeneficiary), i + " balance");
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB),
                     _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
@@ -221,9 +211,10 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
+                Address headBlockBeneficiary = headBlock.Beneficiary!;
                 Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
-                Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary),
-                    _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
+                Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlockBeneficiary),
+                    _peers[i].StateProvider.GetBalance(headBlockBeneficiary), i + " balance");
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB),
                     _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
@@ -231,17 +222,17 @@ namespace Nethermind.Synchronization.Test
 
         private class SyncTestContext
         {
-            public IEthereumEcdsa Ecdsa { get; set; }
-            public ITxPool TxPool { get; set; }
-            public ISyncServer SyncServer { get; set; }
-            public ISyncPeerPool PeerPool { get; set; }
-            public IBlockchainProcessor BlockchainProcessor { get; set; }
-            public ISynchronizer Synchronizer { get; set; }
-            public IBlockTree Tree { get; set; }
-            public IStateProvider StateProvider { get; set; }
+            public IEthereumEcdsa Ecdsa { get; set; } = null!;
+            public ITxPool TxPool { get; set; } = null!;
+            public ISyncServer SyncServer { get; set; } = null!;
+            public ISyncPeerPool? PeerPool { get; set; }
+            public IBlockchainProcessor? BlockchainProcessor { get; set; }
+            public ISynchronizer? Synchronizer { get; set; }
+            public IBlockTree Tree { get; set; } = null!;
+            public IStateProvider StateProvider { get; set; } = null!;
 
-            public DevBlockProducer BlockProducer { get; set; }
-            public ConsoleAsyncLogger Logger { get; set; }
+            public DevBlockProducer? BlockProducer { get; set; }
+            public ConsoleAsyncLogger? Logger { get; set; }
 
             public async Task StopAsync()
             {
@@ -257,9 +248,9 @@ namespace Nethermind.Synchronization.Test
         {
             NoErrorLimboLogs logManager = NoErrorLimboLogs.Instance;
             ConsoleAsyncLogger logger = new(LogLevel.Debug, "PEER " + index + " ");
-//            var logManager = new OneLoggerLogManager(logger);
+            //            var logManager = new OneLoggerLogManager(logger);
             SingleReleaseSpecProvider specProvider =
-                new(ConstantinopleFix.Instance, MainnetSpecProvider.Instance.ChainId);
+                new(ConstantinopleFix.Instance, MainnetSpecProvider.Instance.NetworkId, MainnetSpecProvider.Instance.ChainId);
 
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IDb blockDb = dbProvider.BlocksDb;
@@ -285,7 +276,7 @@ namespace Nethermind.Synchronization.Test
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, tree);
 
-            TxPool.TxPool txPool = new(ecdsa, new ChainHeadInfoProvider(specProvider, tree, stateReader), 
+            TxPool.TxPool txPool = new(ecdsa, new ChainHeadInfoProvider(specProvider, tree, stateReader),
                 new TxPoolConfig(), new TxValidator(specProvider.ChainId), logManager, transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, logManager);
@@ -322,7 +313,7 @@ namespace Nethermind.Synchronization.Test
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
-            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance), 25, logManager);
+            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
             StateProvider devState = new(trieStore, codeDb, logManager);
             StorageProvider devStorage = new(trieStore, devState, logManager);
@@ -342,17 +333,21 @@ namespace Nethermind.Synchronization.Test
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,
                 BlockchainProcessor.Options.NoReceipts);
-            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider);
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 0
+            };
+            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider, blocksConfig);
             TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,
-                stateProvider, 
+                stateProvider,
                 tree,
                 new BuildBlocksRegularly(TimeSpan.FromMilliseconds(50)).IfPoolIsNotEmpty(txPool),
                 Timestamper.Default,
                 specProvider,
-                new MiningConfig(),
+                new BlocksConfig(),
                 logManager);
 
             ProgressTracker progressTracker = new(tree, dbProvider.StateDb, LimboLogs.Instance);
@@ -360,7 +355,7 @@ namespace Nethermind.Synchronization.Test
 
             SyncProgressResolver resolver = new(
                 tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, logManager);
-            TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(resolver, LimboLogs.Instance);
+            TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, logManager);
             Pivot pivot = new(syncConfig);
             SyncReport syncReport = new(syncPeerPool, nodeStatsManager, selector, syncConfig, pivot, LimboLogs.Instance);
@@ -370,7 +365,7 @@ namespace Nethermind.Synchronization.Test
                 blockValidator,
                 sealValidator,
                 syncPeerPool,
-                new TotalDifficultyBasedBetterPeerStrategy(resolver, LimboLogs.Instance),
+                new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
                 syncReport,
                 logManager);
             Synchronizer synchronizer = new(
@@ -388,7 +383,7 @@ namespace Nethermind.Synchronization.Test
                 syncReport,
                 logManager);
             SyncServer syncServer = new(
-                stateDb,
+                trieStore,
                 codeDb,
                 tree,
                 receiptStorage,

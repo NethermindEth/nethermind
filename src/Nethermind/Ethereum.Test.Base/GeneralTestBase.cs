@@ -1,20 +1,5 @@
-﻿/*
- * Copyright (c) 2021 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -70,9 +55,9 @@ namespace Ethereum.Test.Base
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
 
-            ISpecProvider specProvider = new CustomSpecProvider(1,
-                (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                (1, test.Fork));
+            ISpecProvider specProvider = new CustomSpecProvider(
+                ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                ((ForkActivation)1, test.Fork));
 
             if (specProvider.GenesisSpec != Frontier.Instance)
             {
@@ -80,7 +65,7 @@ namespace Ethereum.Test.Base
             }
 
             TrieStore trieStore = new(stateDb, _logManager);
-            StateProvider stateProvider = new (trieStore, codeDb, _logManager);
+            StateProvider stateProvider = new(trieStore, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
@@ -107,7 +92,7 @@ namespace Ethereum.Test.Base
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             var txValidator = new TxValidator((MainnetSpecProvider.Instance.ChainId));
-            var spec = specProvider.GetSpec(test.CurrentNumber);
+            var spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
             if (test.Transaction.ChainId == null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
             bool isValid = txValidator.IsWellFormed(test.Transaction, spec);
@@ -123,6 +108,7 @@ namespace Ethereum.Test.Base
             {
                 stateProvider.CreateAccount(test.CurrentCoinbase, 0);
             }
+            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
 
             stateProvider.RecalculateStateRoot();
 
@@ -131,7 +117,7 @@ namespace Ethereum.Test.Base
             testResult.TimeInMs = (int)stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
 
-//            Assert.Zero(differences.Count, "differences");
+            //            Assert.Zero(differences.Count, "differences");
             return testResult;
         }
 

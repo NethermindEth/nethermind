@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -33,12 +19,12 @@ namespace Nethermind.Consensus.AuRa.Validators
         /// The maximum number of reports to keep queued
         /// </summary>
         internal const int MaxQueuedReports = 10;
-        
+
         /// <summary>
         /// The maximum number of malice reports to include when creating a new block.
         /// </summary>
         internal const int MaxReportsPerBlock = 10;
-        
+
         /// <summary>
         /// Don't re-send malice reports every block. Skip this many before retrying.
         /// </summary>
@@ -46,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private readonly LinkedList<PersistentReport> _persistentReports;
         private long _sentReportsInBlock = 0;
-        
+
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             foreach (var transaction in _contractValidator.GetTransactions(parent, gasLimit))
@@ -55,7 +41,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
 
             long currentBlockNumber = parent.Number + 1;
-            
+
             if (_contractValidator.ForSealing && IsPosdao(currentBlockNumber))
             {
                 FilterReports(parent);
@@ -112,11 +98,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         private void FilterReports(BlockHeader parent)
         {
             var node = _persistentReports.First;
-            while (node != null)
+            while (node is not null)
             {
                 var next = node.Next;
                 var persistentReport = node.Value;
-                
+
                 if (_logger.IsTrace) _logger.Trace($"Checking if report of malicious validator {persistentReport.MaliciousValidator} at block {persistentReport.BlockNumber} should be removed from cache.");
 
                 try
@@ -143,7 +129,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (toRemove > 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Removing {toRemove} reports from report cache, even though it has not been finalized.");
-                
+
                 for (int i = 0; i < toRemove; i++)
                 {
                     _persistentReports.RemoveFirst();
@@ -177,7 +163,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 if (ReferenceEquals(null, obj)) return false;
                 if (ReferenceEquals(this, obj)) return true;
                 if (obj.GetType() != this.GetType()) return false;
-                return Equals((PersistentReport) obj);
+                return Equals((PersistentReport)obj);
             }
 
             public override int GetHashCode() => HashCode.Combine(MaliciousValidator, BlockNumber);

@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using DotNetty.Buffers;
@@ -38,7 +25,7 @@ namespace Nethermind.Network.Test.Rlpx
         private byte[] _frame;
         private byte[] _shortFrame;
         private IFrameCipher _frameCipher;
-        private IFrameMacProcessor _macProcessor;
+        private FrameMacProcessor _macProcessor;
 
         [SetUp]
         public void Setup()
@@ -72,7 +59,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Test(BigNewBlockSingleFrame, DeliverAllAtOnce, BigNewBlockSingleFrameDecrypted);
         }
-        
+
         [Test]
         public void Check_and_decrypt_big_frame_delivered_all_at_once_and_followed_by_a_corrupted_header()
         {
@@ -123,7 +110,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 input.WriteByte(frame[i]);
                 result = zeroFrameDecoderTestWrapper.Decode(input);
-                if (result != null)
+                if (result is not null)
                 {
                     break;
                 }
@@ -139,7 +126,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 input.WriteBytes(frame.Slice(i, 16));
                 result = zeroFrameDecoderTestWrapper.Decode(input);
-                if (result != null)
+                if (result is not null)
                 {
                     break;
                 }

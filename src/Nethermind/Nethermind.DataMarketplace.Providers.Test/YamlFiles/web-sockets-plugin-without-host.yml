@@ -1,5 +1,0 @@
-name: web_sockets_test
-scheme: ws
-port: 8545
-type: websockets
-resource: test

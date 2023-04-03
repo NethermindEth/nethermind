@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core.Crypto;
@@ -30,7 +17,7 @@ namespace Nethermind.Core
         BeaconBody = 8,
         BeaconMainChain = 16
     }
-    
+
     public class BlockInfo
     {
         public BlockInfo(Keccak blockHash, in UInt256 totalDifficulty, BlockMetadata metadata = BlockMetadata.None)
@@ -39,9 +26,9 @@ namespace Nethermind.Core
             TotalDifficulty = totalDifficulty;
             Metadata = metadata;
         }
-        
+
         public UInt256 TotalDifficulty { get; set; }
-        
+
         public bool WasProcessed { get; set; }
 
         public Keccak BlockHash { get; }
@@ -61,7 +48,23 @@ namespace Nethermind.Core
                 }
             }
         }
-        
+
+
+        public bool IsBeaconHeader
+        {
+            get => (Metadata & BlockMetadata.BeaconHeader) != 0;
+        }
+
+        public bool IsBeaconBody
+        {
+            get => (Metadata & BlockMetadata.BeaconBody) != 0;
+        }
+
+        public bool IsBeaconMainChain
+        {
+            get => (Metadata & BlockMetadata.BeaconMainChain) != 0;
+        }
+
         public bool IsBeaconInfo
         {
             get => (Metadata & (BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader)) != 0;
@@ -73,5 +76,7 @@ namespace Nethermind.Core
         /// This property is not serialized
         /// </summary>
         public long BlockNumber { get; set; }
+
+        public override string ToString() => BlockHash.ToString();
     }
 }

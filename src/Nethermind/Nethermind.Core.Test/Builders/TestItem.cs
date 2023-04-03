@@ -1,22 +1,12 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Net;
+using System.Text.Json;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -26,7 +16,7 @@ namespace Nethermind.Core.Test.Builders
     public static partial class TestItem
     {
         public static Random Random { get; } = new();
-        private static AccountDecoder _accountDecoder = new();
+        private static readonly AccountDecoder _accountDecoder = new();
 
         static TestItem()
         {
@@ -60,6 +50,7 @@ namespace Nethermind.Core.Test.Builders
         public static byte[] RandomDataA = { 1, 2, 3 };
         public static byte[] RandomDataB = { 4, 5, 6, 7 };
         public static byte[] RandomDataC = { 1, 2, 8, 9, 10 };
+        public static byte[] RandomDataD = { 1, 2, 8, 9, 10, 17 };
 
         public static Keccak KeccakA = Keccak.Compute("A");
         public static Keccak KeccakB = Keccak.Compute("B");
@@ -99,6 +90,13 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressE = PublicKeyE.Address;
         public static Address AddressF = PublicKeyF.Address;
 
+        public static Withdrawal WithdrawalA_1Eth = new() { Address = AddressA, Index = 1, ValidatorIndex = 2001, AmountInGwei = 1_000_000_000 };
+        public static Withdrawal WithdrawalB_2Eth = new() { Address = AddressB, Index = 2, ValidatorIndex = 2002, AmountInGwei = 2_000_000_000 };
+        public static Withdrawal WithdrawalC_3Eth = new() { Address = AddressC, Index = 3, ValidatorIndex = 2003, AmountInGwei = 3_000_000_000 };
+        public static Withdrawal WithdrawalD_4Eth = new() { Address = AddressD, Index = 4, ValidatorIndex = 2004, AmountInGwei = 4_000_000_000 };
+        public static Withdrawal WithdrawalE_5Eth = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, AmountInGwei = 5_000_000_000 };
+        public static Withdrawal WithdrawalF_6Eth = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, AmountInGwei = 6_000_000_000 };
+
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");
         public static IPEndPoint IPEndPointC = IPEndPoint.Parse("10.0.0.3");
@@ -107,6 +105,17 @@ namespace Nethermind.Core.Test.Builders
         public static IPEndPoint IPEndPointF = IPEndPoint.Parse("10.0.0.6");
 
         public static Bloom NonZeroBloom;
+
+        public static T CloneObject<T>(T value)
+        {
+            using var stream = new MemoryStream();
+
+            JsonSerializer.Serialize(stream, value);
+
+            stream.Position = 0;
+
+            return JsonSerializer.Deserialize<T>(stream)!;
+        }
 
         public static Address GetRandomAddress(Random? random = null)
         {
@@ -122,7 +131,7 @@ namespace Nethermind.Core.Test.Builders
             return new Keccak(bytes);
         }
 
-        public static Account GenerateRandomAccount(Random random = null)
+        public static Account GenerateRandomAccount(Random? random = null)
         {
             random ??= Random;
 
@@ -135,7 +144,7 @@ namespace Nethermind.Core.Test.Builders
             return account;
         }
 
-        public static byte[] GenerateRandomAccountRlp(AccountDecoder accountDecoder = null)
+        public static byte[] GenerateRandomAccountRlp(AccountDecoder? accountDecoder = null)
         {
             accountDecoder ??= _accountDecoder;
             Account account = GenerateRandomAccount();
@@ -154,7 +163,7 @@ namespace Nethermind.Core.Test.Builders
             return account;
         }
 
-        public static byte[] GenerateIndexedAccountRlp(int index, AccountDecoder accountDecoder = null)
+        public static byte[] GenerateIndexedAccountRlp(int index, AccountDecoder? accountDecoder = null)
         {
             accountDecoder ??= _accountDecoder;
 

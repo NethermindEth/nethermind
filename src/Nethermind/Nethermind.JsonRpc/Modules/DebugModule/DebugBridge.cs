@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -31,6 +18,8 @@ using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
@@ -42,6 +31,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IReceiptStorage _receiptStorage;
         private readonly IReceiptsMigration _receiptsMigration;
         private readonly ISpecProvider _specProvider;
+        private readonly ISyncModeSelector _syncModeSelector;
         private readonly Dictionary<string, IDb> _dbMappings;
 
         public DebugBridge(
@@ -51,7 +41,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
             IReceiptsMigration receiptsMigration,
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            ISyncModeSelector syncModeSelector)
         {
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -59,6 +50,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -112,13 +104,13 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             }
 
             Block block = searchResult.Object;
-            ReceiptTrie receiptTrie = new(_specProvider.GetSpec(block.Number), txReceipts);
+            ReceiptTrie receiptTrie = new(_specProvider.GetSpec(block.Header), txReceipts);
             receiptTrie.UpdateRootHash();
             if (block.ReceiptsRoot != receiptTrie.RootHash)
             {
                 throw new InvalidDataException("Receipts root mismatch");
             }
-            
+
             _receiptStorage.Insert(block, txReceipts);
         }
 
@@ -127,7 +119,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken,GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
@@ -137,7 +129,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash,CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
@@ -147,17 +139,12 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _tracer.Trace(blockParameter, transaction, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash,CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace[] GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken); 
+            return _tracer.TraceBlock(blockParameter, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(long blockNumber, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
-        {
-            return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken); 
-        }
-
-        public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken,GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
@@ -170,12 +157,20 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public byte[] GetBlockRlp(long number)
         {
             Keccak hash = _blockTree.FindHash(number);
-            return hash == null ? null : _dbMappings[DbNames.Blocks].Get(hash);
+            return hash is null ? null : _dbMappings[DbNames.Blocks].Get(hash);
         }
 
         public object GetConfigValue(string category, string name)
         {
             return _configProvider.GetRawValue(category, name);
+        }
+
+        public SyncReportSymmary GetCurrentSyncStage()
+        {
+            return new SyncReportSymmary
+            {
+                CurrentStage = _syncModeSelector.Current.ToString()
+            };
         }
     }
 }

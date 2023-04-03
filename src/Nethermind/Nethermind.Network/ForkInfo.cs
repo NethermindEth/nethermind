@@ -1,72 +1,130 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using Force.Crc32;
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 
 namespace Nethermind.Network
 {
-    public static class ForkInfo
+    public class ForkInfo
     {
-        private const long ImpossibleBlockNumberWithSpaceForImpossibleForks = long.MaxValue - 100;
-        
-        public static byte[] CalculateForkHash(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
+        private Dictionary<uint, (ForkActivation Activation, ForkId Id)> DictForks { get; }
+        private (ForkActivation Activation, ForkId Id)[] Forks { get; }
+        private readonly bool _hasTimestampFork;
+
+        public ForkInfo(ISpecProvider specProvider, Keccak genesisHash)
         {
-            uint crc = 0;
-            long[] transitionBlocks = specProvider.TransitionBlocks;
+            _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
+            ForkActivation[] transitionActivations = specProvider.TransitionActivations;
+            DictForks = new();
+            Forks = new (ForkActivation Activation, ForkId Id)[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
-            crc = Crc32Algorithm.Append(crc, genesisHash.Bytes);
-            for (int i = 0; i < transitionBlocks.Length; i++)
+            uint crc = Crc32Algorithm.Append(0, genesisHash.Bytes);
+            // genesis fork activation
+            SetFork(0, crc, ((0, null), new ForkId(crc, transitionActivations.Length > 0 ? transitionActivations[0].Activation : 0)));
+            for (int index = 0; index < transitionActivations.Length; index++)
             {
-                if (transitionBlocks[i] > headNumber)
-                {
-                    break;
-                }
-
-                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, (ulong) transitionBlocks[i]);
+                ForkActivation forkActivation = transitionActivations[index];
+                BinaryPrimitives.WriteUInt64BigEndian(blockNumberBytes, forkActivation.Activation);
                 crc = Crc32Algorithm.Append(crc, blockNumberBytes);
+                SetFork(index + 1, crc, (forkActivation, new ForkId(crc, GetNextActivation(index, transitionActivations))));
             }
-
-            byte[] forkHash = new byte[4];
-            BinaryPrimitives.TryWriteUInt32BigEndian(forkHash, crc);
-            return forkHash;
         }
 
-        public static ForkId CalculateForkId(ISpecProvider specProvider, long headNumber, Keccak genesisHash)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetFork(int index, uint crc, (ForkActivation Activation, ForkId Id) fork)
         {
-            byte[] forkHash = CalculateForkHash(specProvider, headNumber, genesisHash);
-            long next = 0;
-            for (int i = 0; i < specProvider.TransitionBlocks.Length; i++)
+            Forks[index] = fork;
+            DictForks.Add(crc, fork);
+        }
+
+        private static ulong GetNextActivation(int index, ForkActivation[] transitionActivations)
+        {
+            static T? GetActivationPrimitive<T>(T? activation, T delta) where T : struct, INumber<T>, IMinMaxValue<T> =>
+                activation is null ? default : activation < T.MaxValue - delta ? activation : T.Zero;
+
+            static ulong GetActivation(ForkActivation forkActivation) =>
+                GetActivationPrimitive(forkActivation.Timestamp, 4UL)
+                ?? (ulong)GetActivationPrimitive(forkActivation.BlockNumber, 4L);
+
+            index += 1;
+            return index < transitionActivations.Length
+                ? GetActivation(transitionActivations[index])
+                : 0;
+        }
+
+        public ForkId GetForkId(long headNumber, ulong headTimestamp)
+        {
+            return Forks.TryGetSearchedItem(
+                new ForkActivation(headNumber, headTimestamp),
+                CompareTransitionOnActivation, out (ForkActivation Activation, ForkId Id) fork)
+                ? fork.Id
+                : throw new InvalidOperationException("Fork not found");
+        }
+
+        private static int CompareTransitionOnActivation(ForkActivation activation, (ForkActivation Activation, ForkId _) transition) =>
+            activation.CompareTo(transition.Activation);
+
+        /// <summary>
+        /// Verify that the forkid from peer matches our forks.
+        /// </summary>
+        /// <param name="peerId"></param>
+        /// <param name="head"></param>
+        /// <returns></returns>
+        public ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head)
+        {
+            // Bit of a hack, if Next value is >= than genesis of oldest supported network it is timestamp.
+            // Potentially we can parametrize it based on Spec provider, but not worth it for now
+            // We support block forks up to 1,4 bln blocks
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            bool IsTimestamp(ulong next) => next >= MainnetSpecProvider.GenesisBlockTimestamp;
+
+            if (head == null) return ValidationResult.Valid;
+            if (!DictForks.TryGetValue(peerId.ForkHash, out (ForkActivation Activation, ForkId Id) found))
             {
-                if (specProvider.TransitionBlocks[i] >= ImpossibleBlockNumberWithSpaceForImpossibleForks)
+                // Remote is on fork that does not exist for local. remote is incompatible or local is stale.
+                return ValidationResult.IncompatibleOrStale;
+            }
+
+            bool forkIsLast = found.Id.Next == 0;
+            bool peerForkIsLast = peerId.Next == 0;
+
+            bool usingTimestamp = _hasTimestampFork
+                                  && (forkIsLast || IsTimestamp(found.Id.Next)) &&
+                                  (peerForkIsLast || IsTimestamp(peerId.Next));
+
+            ulong headActivation = usingTimestamp ? head.Timestamp : (ulong)head.Number;
+
+            if (found.Id.Next != peerId.Next) // if the next fork is different
+            {
+                bool headPastLocalFork = headActivation >= found.Id.Next;
+                if (peerForkIsLast && !forkIsLast && headPastLocalFork)
                 {
-                    continue;
+                    // Remote does not know about a fork that local has already went through. remote is stale.
+                    return ValidationResult.RemoteStale;
                 }
-                
-                long transition = specProvider.TransitionBlocks[i];
-                if (transition > headNumber)
+
+                bool headPastPeerFork = headActivation >= peerId.Next;
+                if (!peerForkIsLast && headPastPeerFork)
                 {
-                    next = transition;
-                    break;
+                    // remote is expecting a fork that we passed but did not go through. remote is incompatible or local is stale.
+                    return ValidationResult.IncompatibleOrStale;
                 }
             }
 
-            return new ForkId(forkHash, next);
+            return ValidationResult.Valid;
         }
     }
 }

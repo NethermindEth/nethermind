@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
 using Nethermind.Blockchain.FullPruning;
@@ -33,8 +20,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
             string enode,
             [JsonRpcParameter(Description = "Adding to static nodes if `true` (optional)", ExampleValue = "true")]
             bool addToStaticNodes = false);
-        
-        
+
+
         [JsonRpcMethod(Description = "Removes given node.",
             EdgeCaseHint = "",
             ResponseDescription = "Removed node",
@@ -45,8 +32,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
             string enode,
             [JsonRpcParameter(Description = "Removing from static nodes if `true` (optional)", ExampleValue = "true")]
             bool removeFromStaticNodes = false);
-        
-        
+
+
         [JsonRpcMethod(Description = "Displays a list of connected peers including information about them (`clientId`, `host`, `port`, `address`, `isBootnode`, `isStatic`, `enode`).",
             EdgeCaseHint = "",
             ResponseDescription = "List of connected peers including information",
@@ -55,25 +42,25 @@ namespace Nethermind.JsonRpc.Modules.Admin
         ResultWrapper<PeerInfo[]> admin_peers(
             [JsonRpcParameter(Description = "If true, including `clientType`, `ethDetails` and `lastSignal` (optional)", ExampleValue = "true")]
             bool includeDetails = false);
-        
-        
+
+
         [JsonRpcMethod(Description = "Displays relevant information about this node.",
             EdgeCaseHint = "",
             ResponseDescription = "Information about this node",
             ExampleResponse = "{\n  \"enode\": \"enode://deed356ddcaa1eb33a859b818a134765fff2a3dd5cd5b3d6cbe08c9424dca53b947bdc1c64e6f1257e29bb2960ac0a4fb56e307f360b7f8d4ddf48024cdb9d68@85.221.141.144:30303\",\n  \"id\": \"b70bb308924de8247d73844f80561e488ae731105a6ef46004e4579edd4f378a\",\n  \"ip\": \"85.221.141.144\",\n  \"listenAddr\": \"85.221.141.144:30303\",\n  \"name\": \"Nethermind/v1.10.37-0-068e5c399-20210315/X64-Windows/5.0.3\",\n  \"ports\": {\n    \"discovery\": 30303,\n    \"listener\": 30303\n  },\n  \"protocols\": {\n    \"eth\": {\n      \"difficulty\": \"0x6372ca\",\n      \"genesis\": \"0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a\",\n      \"head\": \"0xf266b2639ef7e1db6ee769f7b161ef7eb2d74beb0ab8ffcd270036da04b41cd4\",\n      \"network\": \"0x5\"\n    }\n  }\n}",
             IsImplemented = true)]
         ResultWrapper<NodeInfo> admin_nodeInfo();
-        
-        
+
+
         [JsonRpcMethod(Description = "Base data directory path",
             IsImplemented = false)]
         ResultWrapper<string> admin_dataDir();
-        
-        
+
+
         [JsonRpcMethod(Description = "[DEPRECATED]",
             IsImplemented = false)]
         ResultWrapper<bool> admin_setSolc();
-        
+
         [JsonRpcMethod(Description = "Runs full pruning if enabled.",
             EdgeCaseHint = "",
             ExampleResponse = "\"Starting\"",

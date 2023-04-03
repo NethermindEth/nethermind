@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
@@ -30,26 +16,26 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private bool _lastIsSyncing;
-        
+
         public SyncingSubscription(
-            IJsonRpcDuplexClient jsonRpcDuplexClient, 
-            IBlockTree? blockTree, 
-            IEthSyncingInfo ethSyncingInfo, 
-            ILogManager? logManager) 
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            IBlockTree? blockTree,
+            IEthSyncingInfo ethSyncingInfo,
+            ILogManager? logManager)
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
+
             _lastIsSyncing = _ethSyncingInfo.IsSyncing();
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {_lastIsSyncing}");
-            
+            if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {_lastIsSyncing}");
+
             _blockTree.NewBestSuggestedBlock += OnConditionsChange;
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewBestSuggestedBlocks");
-            
+            if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewBestSuggestedBlocks");
+
             _blockTree.NewHeadBlock += OnConditionsChange;
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
+            if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
         private void OnConditionsChange(object? sender, BlockEventArgs e)
@@ -91,9 +77,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _blockTree.NewBestSuggestedBlock -= OnConditionsChange;
             _blockTree.NewHeadBlock -= OnConditionsChange;
             base.Dispose();
-            
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewBestSuggestedBlocks");
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewHeadBlocks");
+
+            if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewBestSuggestedBlocks");
+            if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewHeadBlocks");
         }
     }
 }

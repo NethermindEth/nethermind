@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -235,7 +222,7 @@ namespace Nethermind.PerfTest
         }
 
         private const string DbBasePath = @"C:\perf_db";
-//        private const string DbBasePath = @"C:\chains\blocks_1M";
+        //        private const string DbBasePath = @"C:\chains\blocks_1M";
 
         private static void DeleteDb(string dbPath)
         {
@@ -391,14 +378,14 @@ namespace Nethermind.PerfTest
 
                 maxMemory = Math.Max(maxMemory, GC.GetTotalMemory(false));
                 totalGas += currentHead.GasUsed;
-                if ((BigInteger) args.Block.Number % 10000 == 9999)
+                if ((BigInteger)args.Block.Number % 10000 == 9999)
                 {
                     stopwatch.Stop();
                     long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                     BigInteger number = args.Block.Number + 1;
                     _logger.Warn($"TOTAL after {number} (ms)       : " + ms);
-                    _logger.Warn($"TOTAL after {number} blocks/s   : {(decimal) currentHead.Number / (ms / 1000m),5}");
-                    _logger.Warn($"TOTAL after {number} Mgas/s     : {((decimal) totalGas / 1000000) / (ms / 1000m),5}");
+                    _logger.Warn($"TOTAL after {number} blocks/s   : {(decimal)currentHead.Number / (ms / 1000m),5}");
+                    _logger.Warn($"TOTAL after {number} Mgas/s     : {((decimal)totalGas / 1000000) / (ms / 1000m),5}");
                     _logger.Warn($"TOTAL after {number} max mem    : {maxMemory}");
                     _logger.Warn($"TOTAL after {number} GC (0/1/2) : {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
                     _logger.Warn($"Is server GC {number}           : {System.Runtime.GCSettings.IsServerGC}");

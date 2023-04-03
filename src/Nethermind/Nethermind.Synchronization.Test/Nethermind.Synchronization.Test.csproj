@@ -1,28 +1,28 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
 
-        <IsPackable>false</IsPackable>
-    </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="coverlet.msbuild">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
 
-    <ItemGroup>
-        <PackageReference Include="coverlet.msbuild" Version="3.1.2">
-          <PrivateAssets>all</PrivateAssets>
-          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-        </PackageReference>
-        <PackageReference Include="NUnit" Version="3.13.3" />
-        <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.2.0" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Blockchain.Test\Nethermind.Blockchain.Test.csproj" />
-      <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
-      <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
-      <ProjectReference Include="..\Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj" />
-      <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
-      <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Blockchain.Test\Nethermind.Blockchain.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+    <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
+  </ItemGroup>
 
 </Project>

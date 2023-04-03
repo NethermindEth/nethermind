@@ -1,28 +1,12 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
-
+using Nethermind.Synchronization.Reporting;
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
     [RpcModule(ModuleType.Debug)]
@@ -41,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         [JsonRpcMethod(Description = "This method will attempt to run the transaction in the exact same manner as it was executed on the network. It will replay any transaction that may have been executed prior to this one before it will finally attempt to execute the transaction that corresponds to the given hash.", IsImplemented = true, IsSharable = true)]
         ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null);
-        
+
         [JsonRpcMethod(Description = "This method lets you run an eth_call within the context of the given block execution using the final state of parent block as the base. The block can be specified either by hash or by number. It takes the same input object as a eth_call. It returns the same output as debug_traceTransaction.", IsImplemented = true, IsSharable = true)]
         ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
@@ -51,13 +35,13 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         [JsonRpcMethod(Description = "", IsSharable = true)]
         ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockHash, int txIndex, GethTraceOptions options = null);
 
-        [JsonRpcMethod(Description = "Returns a full stack trace of all invoked opcodes of all transaction that were included included in this block. The parent of this block must be present or it will fail.", IsImplemented = true, IsSharable = true)]
+        [JsonRpcMethod(Description = "Returns the full stack trace of all invoked opcodes of all transactions that were included in the block specified. The parent of the block must be present or it will fail.", IsImplemented = true, IsSharable = true)]
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null);
 
-        [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = true)]
-        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(UInt256 number, GethTraceOptions options = null);
+        [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block number as well as \"latest\" or \"finalized\" and replays the block that is already present in the database.", IsImplemented = true, IsSharable = true)]
+        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BlockParameter blockParameter, GethTraceOptions options = null);
 
-        [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = true)]
+        [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block hash and replays the block that is already present in the database.", IsImplemented = true, IsSharable = true)]
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash, GethTraceOptions options = null);
 
         [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
@@ -101,5 +85,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         [JsonRpcMethod(Description = "Insert receipts for the block after verifying receipts root correctness.")]
         Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
+
+        [JsonRpcMethod(Description = "Retrives Nethermind Sync Stage, With extra Metadata")]
+        Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage();
     }
 }

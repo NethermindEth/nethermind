@@ -1,16 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net7.0</TargetFramework>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <LangVersion>latest</LangVersion>
-    <Deterministic>true</Deterministic>
-    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
     <Nullable>annotations</Nullable>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <WarningsAsErrors />
   </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
@@ -22,8 +18,8 @@
     <ProjectReference Include="..\Nethermind.TxPool\Nethermind.TxPool.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FastEnum" Version="1.7.0" />
-    <PackageReference Include="Polly" Version="7.2.3" />
-    <PackageReference Include="System.IO.Abstractions" Version="17.0.15" />
+    <PackageReference Include="FastEnum" />
+    <PackageReference Include="Polly" />
+    <PackageReference Include="System.IO.Abstractions" />
   </ItemGroup>
 </Project>

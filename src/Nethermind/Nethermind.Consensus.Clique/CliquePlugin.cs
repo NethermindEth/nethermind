@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
@@ -21,11 +7,13 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
@@ -64,15 +52,15 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.BlockTree!,
                 getFromApi.EthereumEcdsa!,
                 getFromApi.LogManager);
-            
+
             setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager, getFromApi.ChainSpec);
 
-            setInApi.SealValidator = new CliqueSealValidator( 
+            setInApi.SealValidator = new CliqueSealValidator(
                 _cliqueConfig,
                 _snapshotManager,
                 getFromApi.LogManager);
-            
-            // both Clique and the merge provide no block rewards 
+
+            // both Clique and the merge provide no block rewards
             setInApi.RewardCalculatorSource = NoBlockRewards.Instance;
             setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
 
@@ -87,9 +75,11 @@ namespace Nethermind.Consensus.Clique
             }
 
             (IApiWithBlockchain getFromApi, IApiWithBlockchain setInApi) = _nethermindApi!.ForProducer;
-            
-            _miningConfig = getFromApi.Config<IMiningConfig>();
-            if (!_miningConfig.Enabled)
+
+            _blocksConfig = getFromApi.Config<IBlocksConfig>();
+            IMiningConfig miningConfig = getFromApi.Config<IMiningConfig>();
+
+            if (!miningConfig.Enabled)
             {
                 throw new InvalidOperationException("Request to start block producer while mining disabled.");
             }
@@ -99,19 +89,19 @@ namespace Nethermind.Consensus.Clique
                 _cliqueConfig!,
                 _snapshotManager!,
                 getFromApi.LogManager);
-            
+
             ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider!.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree!.AsReadOnly();
             ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
 
-            ReadOnlyTxProcessingEnv producerEnv = new (
+            ReadOnlyTxProcessingEnv producerEnv = new(
                 readOnlyDbProvider,
                 getFromApi.ReadOnlyTrieStore,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
-                
-            BlockProcessor producerProcessor = new (
+
+            BlockProcessor producerProcessor = new(
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
@@ -120,7 +110,8 @@ namespace Nethermind.Consensus.Clique
                 producerEnv.StorageProvider, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                getFromApi.LogManager);
+                getFromApi.LogManager,
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)));
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
                 readOnlyBlockTree,
@@ -130,7 +121,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.LogManager,
                 BlockchainProcessor.Options.NoReceipts);
 
-            OneTimeChainProcessor chainProcessor = new (
+            OneTimeChainProcessor chainProcessor = new(
                 readOnlyDbProvider,
                 producerChainProcessor);
 
@@ -138,7 +129,7 @@ namespace Nethermind.Consensus.Clique
                 TxFilterPipelineBuilder.CreateStandardFilteringPipeline(
                     _nethermindApi.LogManager,
                     getFromApi.SpecProvider,
-                    _miningConfig);
+                    _blocksConfig);
 
             TxPoolTxSource txPoolTxSource = new(
                 getFromApi.TxPool,
@@ -147,8 +138,8 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.LogManager,
                 txFilterPipeline);
 
-            IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _miningConfig);
-            
+            IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
+
             IBlockProducer blockProducer = new CliqueBlockProducer(
                 additionalTxSource.Then(txPoolTxSource),
                 chainProcessor,
@@ -179,19 +170,19 @@ namespace Nethermind.Consensus.Clique
             }
 
             (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
-            CliqueRpcModule cliqueRpcModule = new (
+            CliqueRpcModule cliqueRpcModule = new(
                 getFromApi!.BlockProducer as ICliqueBlockProducer,
                 _snapshotManager!,
                 getFromApi.BlockTree!);
 
-            SingletonModulePool<ICliqueRpcModule> modulePool = new (cliqueRpcModule);
+            SingletonModulePool<ICliqueRpcModule> modulePool = new(cliqueRpcModule);
             getFromApi.RpcModuleProvider!.Register(modulePool);
 
             return Task.CompletedTask;
         }
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
-        
+
         [Todo("Redo clique producer to support triggers and MEV")]
         public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi!.ManualBlockProductionTrigger;
 
@@ -203,6 +194,6 @@ namespace Nethermind.Consensus.Clique
 
         private ICliqueConfig? _cliqueConfig;
 
-        private IMiningConfig? _miningConfig;
+        private IBlocksConfig? _blocksConfig;
     }
 }

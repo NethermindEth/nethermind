@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -64,7 +51,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         void EnsureSystemAccount();
     }
-    
+
     public sealed partial class ValidatorContract : CallableContract, IValidatorContract
     {
         private readonly IStateProvider _stateProvider;
@@ -73,12 +60,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private IConstantContract Constant { get; }
 
         public ValidatorContract(
-            ITransactionProcessor transactionProcessor, 
-            IAbiEncoder abiEncoder, 
-            Address contractAddress, 
+            ITransactionProcessor transactionProcessor,
+            IAbiEncoder abiEncoder,
+            Address contractAddress,
             IStateProvider stateProvider,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISigner signer) 
+            ISigner signer)
             : base(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -105,7 +92,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public Address[] GetValidators(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetValidators), Address.Zero);
 
         internal const string InitiateChange = nameof(InitiateChange);
-        
+
         /// <summary>
         /// Issue this log event to signal a desired change in validator set.
         /// This will not lead to a change in active validator set until
@@ -122,11 +109,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {
             var logEntry = GetSearchLogEntry(InitiateChange, blockHeader.ParentHash);
-            if (blockHeader.TryFindLog(receipts, logEntry, out var foundEntry, 
-                logsFindOrder:FindOrder.Ascending /* tracing forwards, parity inconsistency issue */))
+            if (blockHeader.TryFindLog(receipts, logEntry, out var foundEntry,
+                logsFindOrder: FindOrder.Ascending /* tracing forwards, parity inconsistency issue */))
             {
                 addresses = DecodeAddresses(foundEntry.Data);
-                return true;                
+                return true;
             }
 
             addresses = null;
@@ -136,9 +123,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private Address[] DecodeAddresses(byte[] data)
         {
             var objects = DecodeReturnData(nameof(GetValidators), data);
-            return (Address[]) objects[0];
+            return (Address[])objects[0];
         }
-        
+
         public void EnsureSystemAccount()
         {
             EnsureSystemAccount(_stateProvider);

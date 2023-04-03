@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
@@ -22,24 +9,36 @@ namespace Nethermind.Benchmarks.Core
 {
     public class FromHexBenchmarks
     {
-        private string array = Bytes.FromHexString("0123456789abcdef").ToHexString();
-        
+        private string hex = "0123456789abcdef";
+
+        [Params(true, false)]
+        public bool With0xPrefix;
+
+        [Params(true, false)]
+        public bool OddNumber;
+
         [GlobalSetup]
         public void Setup()
         {
+            //Test Performance of odd number
+            if (OddNumber)
+                hex = "5" + hex;
 
+            //Test performance of hex
+            if (With0xPrefix)
+                hex = "0x" + hex;
         }
 
         [Benchmark(Baseline = true)]
         public byte[] Current()
         {
-            return Bytes.FromHexString(array);
+            return Bytes.FromHexStringOld(hex);
         }
 
         [Benchmark]
         public byte[] Improved()
         {
-            return Bytes.FromHexStringOld(array);
+            return Bytes.FromHexString(hex);
         }
     }
 }

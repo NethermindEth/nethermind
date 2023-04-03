@@ -21,9 +21,9 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Catalyst": {
+    "Eip4844 Local Trace": {
       "commandName": "Project",
-      "commandLineArgs": "-c catalyst -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true --Merge.BlockAuthorAccount 0x1000000000000000000000000000000000000000",
+      "commandLineArgs": "-c eip4844_local -dd %NETHERMIND_DATA_DIR% --log TRACE",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -49,55 +49,9 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Goerli (shadow fork)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c goerli_shadowfork -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Hacknet v2": {
-      "commandName": "Project",
-      "commandLineArgs": "-c hacknet_v2 -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Hacknet v3": {
-      "commandName": "Project",
-      "commandLineArgs": "-c hacknet_v3 -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true"
-    },
     "Hive": {
       "commandName": "Project",
       "commandLineArgs": "-c hive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Kiln": {
-      "commandName": "Project",
-      "commandLineArgs": "-c kiln -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Kiln (devnet)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c kiln_devnet -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Kiln (fast sync)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c kiln_fastsync -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Kiln (pre-TTD)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c kiln_pre_ttd_pivot -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -119,20 +73,6 @@
     "Mainnet (archive)": {
       "commandName": "Project",
       "commandLineArgs": "-c mainnet_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Mainnet (shadow fork)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c mainnet_shadowfork -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Pithos": {
-      "commandName": "Project",
-      "commandLineArgs": "-c pithos -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -179,65 +119,9 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Sokol": {
-      "commandName": "Project",
-      "commandLineArgs": "-c sokol -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Spaceneth": {
       "commandName": "Project",
       "commandLineArgs": "-c spaceneth -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (devnet)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_devnet -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (devnet M3)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_devnet_m3 -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (devnet M4)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_devnet_m4 --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (hive tests)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_hivetests -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (Kiln M2)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_kiln_m2 -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 100",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (Kiln MEV)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_kiln_mev -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "The Merge (Kiln test vectors)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c themerge_kiln_testvectors -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false --Merge.FeeRecipient 0x0000000000000000000000000000000000000000",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -249,37 +133,65 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "xDai": {
+    "Gnosis": {
       "commandName": "Project",
-      "commandLineArgs": "-c xdai -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c gnosis -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "xDai (archive)": {
+    "Gnosis (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "-c xdai_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "xDai (testnet)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c xdai_testnet -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "xDai (The Merge)": {
-      "commandName": "Project",
-      "commandLineArgs": "-c xdai_themerge -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "commandLineArgs": "-c gnosis_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Docker": {
       "commandName": "Docker",
-      "commandLineArgs": "-c goerli -dd /data --JsonRpc.Enabled true --JsonRpc.Host 0.0.0.0"
+      "commandLineArgs": "-c goerli -dd /data --JsonRpc.EngineHost 0.0.0.0 --JsonRpc.EnginePort 8551 --JsonRpc.Host 0.0.0.0"
+    },
+    "Chiado": {
+      "commandName": "Project",
+      "commandLineArgs": "-c chiado -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Chiado (archive)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c chiado_archive -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Withdrawals (Devnet)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c withdrawals_devnet -dd %NETHERMIND_DATA_DIR%  --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Withdrawals (Hive tests)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c withdrawals_hivetests -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Zhejiang": {
+      "commandName": "Project",
+      "commandLineArgs": "-c zhejiang -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.JwtSecretFile %NETHERMIND_DATA_DIR%\\jwtsecret",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Zhejiang (archive)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c zhejiang_archive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.JwtSecretFile %NETHERMIND_DATA_DIR%\\jwtsecret",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   }
 }

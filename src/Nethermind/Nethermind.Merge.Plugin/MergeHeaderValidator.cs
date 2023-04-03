@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -31,10 +17,11 @@ namespace Nethermind.Merge.Plugin
     {
         // https://eips.ethereum.org/EIPS/eip-3675#constants
         private const int MaxExtraDataBytes = 32;
-        
+
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IHeaderValidator _preMergeHeaderValidator;
         private readonly IBlockTree _blockTree;
+        private readonly ISpecProvider _specProvider;
 
         public MergeHeaderValidator(
             IPoSSwitcher poSSwitcher,
@@ -48,20 +35,32 @@ namespace Nethermind.Merge.Plugin
             _poSSwitcher = poSSwitcher;
             _preMergeHeaderValidator = preMergeHeaderValidator;
             _blockTree = blockTree;
+            _specProvider = specProvider;
         }
-        
+
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
             return _poSSwitcher.IsPostMerge(header)
                 ? ValidateTheMergeChecks(header) && base.Validate(header, parent, isUncle)
-                : _preMergeHeaderValidator.Validate(header, parent, isUncle);
+                : ValidatePoWTotalDifficulty(header) && _preMergeHeaderValidator.Validate(header, parent, isUncle);
         }
 
-        public override bool Validate(BlockHeader header, bool isUncle = false) => 
+        public override bool Validate(BlockHeader header, bool isUncle = false) =>
             Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None), isUncle);
 
-        protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header) => 
+        protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header) =>
             _poSSwitcher.IsPostMerge(header) || base.ValidateTotalDifficulty(parent, header);
+
+        private bool ValidatePoWTotalDifficulty(BlockHeader header)
+        {
+            if (header.Difficulty == 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - zero difficulty for PoW block.");
+                return false;
+            }
+
+            return true;
+        }
 
         private bool ValidateTheMergeChecks(BlockHeader header)
         {
@@ -80,20 +79,20 @@ namespace Nethermind.Merge.Plugin
                    && validNonce
                    && validUncles;
         }
-        
+
         protected override bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)
         {
             if (_poSSwitcher.IsPostMerge(header))
             {
                 if (header.ExtraData.Length > MaxExtraDataBytes)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {nameof(header.MixHash)} exceeded max length of {MaxExtraDataBytes}.");
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {nameof(header.ExtraData)} exceeded max length of {MaxExtraDataBytes}.");
                     return false;
                 }
 
                 return true;
             }
-            
+
             return base.ValidateExtraData(header, parent, spec, isUncle);
         }
 
@@ -117,7 +116,7 @@ namespace Nethermind.Merge.Plugin
             {
                 isValid = false;
             }
-            
+
             if (!isValid)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - total difficulty is incorrect because of TTD, TerminalTotalDifficulty: {_poSSwitcher.TerminalTotalDifficulty}, IsPostMerge {header.IsPostMerge} IsTerminalBlock: {isTerminal}");
@@ -130,7 +129,7 @@ namespace Nethermind.Merge.Plugin
         {
             if (!Equals(value, expected))
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {name} is incorrect expected {expected}, got {value} .");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Full)} - the {name} is incorrect expected {expected}, got {value}. TransitionFinished: {_poSSwitcher.TransitionFinished}, TTD: {_specProvider.TerminalTotalDifficulty}, IsTerminal: {header.IsTerminalBlock(_specProvider)}");
                 return false;
             }
 

@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -23,21 +9,23 @@ namespace Nethermind.Crypto
     // based on https://github.com/integrativesoft/CrossProtectedData
     public abstract partial class ProtectedData
     {
+        private readonly IProtector _protector;
+
+        protected ProtectedData(string keyStoreDir)
+        {
+            _protector = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : new AspNetWrapper(keyStoreDir);
+        }
+
         private interface IProtector
         {
             byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope);
             byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope);
         }
-        
-        private static readonly IProtector _protector = CreateProtector();
 
-        private static IProtector CreateProtector()
-        {
-            return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : (IProtector)new AspNetWrapper();
-        }
+        protected byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope) =>
+            _protector.Protect(userData, optionalEntropy, scope);
 
-        protected static byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope) => _protector.Protect(userData, optionalEntropy, scope);
-
-        protected static byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope) => _protector.Unprotect(encryptedData, optionalEntropy, scope);
+        protected byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope) =>
+            _protector.Unprotect(encryptedData, optionalEntropy, scope);
     }
 }

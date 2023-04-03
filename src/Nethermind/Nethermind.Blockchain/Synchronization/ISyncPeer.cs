@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Threading;
@@ -29,7 +16,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token);
     }
-    
+
     public interface ISyncPeer : ITxPoolPeer, IPeerWithSatelliteProtocol
     {
         Node Node { get; }
@@ -41,12 +28,14 @@ namespace Nethermind.Blockchain.Synchronization
         UInt256 TotalDifficulty { get; set; }
         bool IsInitialized { get; set; }
         bool IsPriority { get; set; }
-        void Disconnect(DisconnectReason reason, string details);
+        byte ProtocolVersion { get; }
+        string ProtocolCode { get; }
+        void Disconnect(InitiateDisconnectReason reason, string details);
         Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token);
-        Task<BlockHeader?> GetHeadBlockHeader(Keccak hash, CancellationToken token);
-        void NotifyOfNewBlock(Block block, SendBlockPriority priority);
+        Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token);
+        void NotifyOfNewBlock(Block block, SendBlockMode mode);
         Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token);
         Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token);
     }

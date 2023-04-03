@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -27,11 +14,11 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IDbWithSpan _blocksDb;
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
-        
+
         private readonly TxReceipt[] _receipts;
         private int _position;
 
-        public ReceiptsIterator(in Span<byte> receiptsData, IDbWithSpan blocksDb)
+        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb)
         {
             _decoderContext = receiptsData.AsRlpValueContext();
             _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
@@ -51,7 +38,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool TryGetNext(out TxReceiptStructRef current)
         {
-            if (_receipts == null)
+            if (_receipts is null)
             {
                 if (_decoderContext.Position < _length)
                 {
@@ -67,14 +54,14 @@ namespace Nethermind.Blockchain.Receipts
                     return true;
                 }
             }
-            
+
             current = new TxReceiptStructRef();
             return false;
         }
 
         public void Reset()
         {
-            if (_receipts != null)
+            if (_receipts is not null)
             {
                 _position = 0;
             }
@@ -87,7 +74,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void Dispose()
         {
-            if (_receipts == null && !_decoderContext.Data.IsEmpty)
+            if (_receipts is null && !_decoderContext.Data.IsEmpty)
             {
                 _blocksDb?.DangerousReleaseMemory(_decoderContext.Data);
             }

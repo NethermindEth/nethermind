@@ -1,23 +1,9 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -29,18 +15,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
     public class PooledTxsRequestor : IPooledTxsRequestor
     {
         private readonly ITxPool _txPool;
-        private readonly LruKeyCache<Keccak> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
+        private readonly LruKeyCache<KeccakKey> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
             Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "pending tx hashes");
 
         public PooledTxsRequestor(ITxPool txPool)
         {
             _txPool = txPool;
         }
-        
+
         public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes)
         {
-            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count, GetAndMarkUnknownHashes(hashes));
-            
+            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count);
+            AddMarkUnknownHashes(hashes, discoveredTxHashes);
+
             if (discoveredTxHashes.Count != 0)
             {
                 send(new GetPooledTransactionsMessage(discoveredTxHashes));
@@ -50,24 +37,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         public void RequestTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes)
         {
-            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count, GetAndMarkUnknownHashes(hashes)); 
+            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count);
+            AddMarkUnknownHashes(hashes, discoveredTxHashes);
 
             if (discoveredTxHashes.Count != 0)
             {
                 GetPooledTransactionsMessage msg65 = new(discoveredTxHashes);
-                send(new V66.Messages.GetPooledTransactionsMessage() {EthMessage = msg65});
+                send(new V66.Messages.GetPooledTransactionsMessage() { EthMessage = msg65 });
                 Metrics.Eth66GetPooledTransactionsRequested++;
             }
         }
-        
-        private IEnumerable<Keccak> GetAndMarkUnknownHashes(IReadOnlyList<Keccak> hashes)
+
+        private void AddMarkUnknownHashes(IReadOnlyList<Keccak> hashes, ArrayPoolList<Keccak> discoveredTxHashes)
         {
-            for (int i = 0; i < hashes.Count; i++)
+            int count = hashes.Count;
+            for (int i = 0; i < count; i++)
             {
                 Keccak hash = hashes[i];
                 if (!_txPool.IsKnown(hash) && _pendingHashes.Set(hash))
                 {
-                    yield return hash;
+                    discoveredTxHashes.Add(hash);
                 }
             }
         }

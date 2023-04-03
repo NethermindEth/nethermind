@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
 using System.Security;
@@ -40,7 +26,7 @@ namespace Nethermind.Blockchain.Test.Producers
         {
             public static readonly AbiSignature Divide = new("divide"); // divide
         }
-        
+
         public static partial class BaseFeeTestScenario
         {
             public partial class ScenarioBuilder
@@ -64,14 +50,14 @@ namespace Nethermind.Blockchain.Test.Producers
                 private async Task<ScenarioBuilder> CreateTestBlockchainAsync(long gasLimit)
                 {
                     await ExecuteAntecedentIfNeeded();
-                    SingleReleaseSpecProvider spec = new(
+                    TestSingleReleaseSpecProvider spec = new(
                         new ReleaseSpec()
                         {
-                            IsEip1559Enabled = _eip1559Enabled, 
+                            IsEip1559Enabled = _eip1559Enabled,
                             Eip1559TransitionBlock = _eip1559TransitionBlock,
                             Eip1559FeeCollector = _eip1559FeeCollector,
                             IsEip155Enabled = true
-                        }, 1);
+                        });
                     BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);
                     _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                         .WithGenesisBlockBuilder(blockBuilder)
@@ -107,13 +93,13 @@ namespace Nethermind.Blockchain.Test.Producers
                     await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
                     return this;
                 }
-                
+
                 public ScenarioBuilder SendEip1559Transaction(long gasLimit = 1000000, UInt256? gasPremium = null, UInt256? feeCap = null, bool serviceTransaction = false)
                 {
                     _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), feeCap ?? UInt256.Zero, serviceTransaction);
                     return this;
                 }
-                
+
                 public ScenarioBuilder SendLegacyTransaction(long gasLimit = 1000000, UInt256? gasPremium = null, bool serviceTransaction = false, UInt256? nonce = null)
                 {
                     _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), UInt256.Zero, serviceTransaction, nonce);
@@ -125,14 +111,19 @@ namespace Nethermind.Blockchain.Test.Producers
                     byte[] txData = _abiEncoder.Encode(
                         AbiEncodingStyle.IncludeSignature,
                         BadContract.Divide);
-                    Transaction tx = new() { Value = 0, Data = txData, To = _contractAddress, SenderAddress = _address,
+                    Transaction tx = new()
+                    {
+                        Value = 0,
+                        Data = txData,
+                        To = _contractAddress,
+                        SenderAddress = _address,
                         GasLimit = gasLimit,
                         GasPrice = gasPrice,
                         DecodedMaxFeePerGas = feeCap,
                         Nonce = nonce ?? _currentNonce++,
                         IsServiceTransaction = serviceTransaction
                     };
-                    
+
                     var (_, result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
                     Assert.AreEqual(AcceptTxResult.Accepted, result);
                     return this;
@@ -149,13 +140,13 @@ namespace Nethermind.Blockchain.Test.Producers
                     _antecedent = AssertNewBlockAsync(expectedBaseFee, transactions);
                     return this;
                 }
-                
+
                 public ScenarioBuilder AssertNewBlockWithDecreasedBaseFee()
                 {
                     _antecedent = AssertNewBlockWithDecreasedBaseFeeAsync();
                     return this;
                 }
-                
+
                 public ScenarioBuilder AssertNewBlockWithIncreasedBaseFee()
                 {
                     _antecedent = AssertNewBlockWithIncreasedBaseFeeAsync();
@@ -189,11 +180,11 @@ namespace Nethermind.Blockchain.Test.Producers
 
                     return this;
                 }
-                
+
                 private async Task<ScenarioBuilder> AssertNewBlockWithDecreasedBaseFeeAsync()
                 {
                     await ExecuteAntecedentIfNeeded();
-                    
+
                     IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                     Block startingBlock = blockTree.Head;
                     await _testRpcBlockchain.AddBlock();
@@ -202,11 +193,11 @@ namespace Nethermind.Blockchain.Test.Producers
 
                     return this;
                 }
-                
+
                 private async Task<ScenarioBuilder> AssertNewBlockWithIncreasedBaseFeeAsync()
                 {
                     await ExecuteAntecedentIfNeeded();
-                    
+
                     IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                     Block startingBlock = blockTree.Head;
                     await _testRpcBlockchain.AddBlock();
@@ -218,7 +209,7 @@ namespace Nethermind.Blockchain.Test.Producers
 
                 private async Task ExecuteAntecedentIfNeeded()
                 {
-                    if (_antecedent != null)
+                    if (_antecedent is not null)
                         await _antecedent;
                 }
 
@@ -226,7 +217,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 {
                     await ExecuteAntecedentIfNeeded();
                 }
-                
+
                 private async Task<byte[]> GetContractBytecode(string contract)
                 {
                     string[] contractBytecode = await File.ReadAllLinesAsync($"contracts/{contract}.bin");
@@ -246,7 +237,7 @@ namespace Nethermind.Blockchain.Test.Producers
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BlockProducer_has_blocks_with_zero_base_fee_before_fork()
         {
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
@@ -256,7 +247,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BlockProducer_returns_correct_fork_base_fee()
         {
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
@@ -267,7 +258,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BlockProducer_returns_correctly_decreases_base_fee_on_empty_blocks()
         {
             BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
@@ -282,7 +273,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BaseFee_should_decrease_when_we_send_transactions_below_gas_target()
         {
             long gasLimit = 3000000;
@@ -299,8 +290,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 .AssertNewBlockWithDecreasedBaseFee();
             await scenario.Finish();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BaseFee_should_not_change_when_we_send_transactions_equal_gas_target()
         {
             long gasTarget = 3000000;
@@ -317,8 +308,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 .AssertNewBlockWithDecreasedBaseFee();
             await scenario.Finish();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task BaseFee_should_increase_when_we_send_transactions_above_gas_target()
         {
             long gasTarget = 3000000;
@@ -336,8 +327,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 .AssertNewBlockWithDecreasedBaseFee();
             await scenario.Finish();
         }
-        
-        [Test]
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task When_base_fee_decreases_previously_fee_too_low_transaction_is_included()
         {
             long gasTarget = 3000000;

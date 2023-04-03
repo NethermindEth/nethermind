@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -71,12 +58,12 @@ namespace Nethermind.Evm
                 Interlocked.Increment(ref _dataStackPoolDepth);
                 if (_dataStackPoolDepth > _maxCallStackDepth)
                 {
-                    throw new Exception();
+                    EvmStack.ThrowEvmStackOverflowException();
                 }
 
                 return new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32];
             }
-            
+
             private int[] RentReturnStack()
             {
                 if (_returnStackPool.TryPop(out int[] result))
@@ -87,12 +74,12 @@ namespace Nethermind.Evm
                 Interlocked.Increment(ref _returnStackPoolDepth);
                 if (_returnStackPoolDepth > _maxCallStackDepth)
                 {
-                    throw new Exception();
+                    EvmStack.ThrowEvmStackOverflowException();
                 }
 
                 return new int[EvmStack.ReturnStackSize];
             }
-            
+
             public (byte[], int[]) RentStacks()
             {
                 return (RentDataStack(), RentReturnStack());
@@ -101,7 +88,7 @@ namespace Nethermind.Evm
         private static readonly ThreadLocal<StackPool> _stackPool = new(() => new StackPool());
 
         public byte[]? DataStack;
-       
+
         public int[]? ReturnStack;
 
         /// <summary>
@@ -113,7 +100,7 @@ namespace Nethermind.Evm
         /// EIP-2929 accessed storage keys
         /// </summary>
         public IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
-        
+
         // As we can add here from VM, we need it as ICollection
         public ICollection<Address> DestroyList => _destroyList;
         // As we can add here from VM, we need it as ICollection
@@ -129,27 +116,27 @@ namespace Nethermind.Evm
         private readonly int _logsSnapshot;
 
         public int DataStackHead = 0;
-        
+
         public int ReturnStackHead = 0;
         private bool _canRestore = true;
 
         public EvmState(
-            long gasAvailable, 
-            ExecutionEnvironment env, 
-            ExecutionType executionType, 
-            bool isTopLevel, 
+            long gasAvailable,
+            ExecutionEnvironment env,
+            ExecutionType executionType,
+            bool isTopLevel,
             Snapshot snapshot,
             bool isContinuation)
-            : this(gasAvailable, 
-                env, 
-                executionType, 
-                isTopLevel, 
-                snapshot, 
-                0L, 
-                0L, 
-                false, 
-                null, 
-                isContinuation, 
+            : this(gasAvailable,
+                env,
+                executionType,
+                isTopLevel,
+                snapshot,
+                0L,
+                0L,
+                false,
+                null,
+                isContinuation,
                 false)
         {
             GasAvailable = gasAvailable;
@@ -173,7 +160,7 @@ namespace Nethermind.Evm
             {
                 throw new InvalidOperationException("Top level continuations are not valid");
             }
-            
+
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
             IsTopLevel = isTopLevel;
@@ -233,11 +220,11 @@ namespace Nethermind.Evm
         public long GasAvailable { get; set; }
         public int ProgramCounter { get; set; }
         public long Refund { get; set; }
-        
+
         public Address To => Env.CodeSource;
         internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
-        public ExecutionEnvironment Env { get; }
-        
+        public readonly ExecutionEnvironment Env;
+
         internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
         public bool IsTopLevel { get; } // TODO: move to CallEnv
         internal long OutputDestination { get; } // TODO: move to CallEnv
@@ -250,9 +237,16 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            if (DataStack != null) _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
+            if (DataStack is not null)
+            {
+                // Only Dispose once
+                _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
+                DataStack = null;
+                ReturnStack = null;
+            }
             Restore(); // we are trying to restore when disposing
             Memory?.Dispose();
+            Memory = null;
         }
 
         public void InitStacks()
@@ -265,12 +259,12 @@ namespace Nethermind.Evm
         }
 
         public bool IsCold(Address? address) => !_accessedAddresses.Contains(address);
-        
+
         public bool IsCold(StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
 
         public void WarmUp(AccessList? accessList)
         {
-            if (accessList != null)
+            if (accessList is not null)
             {
                 foreach ((Address address, IReadOnlySet<UInt256> storages) in accessList.Data)
                 {
