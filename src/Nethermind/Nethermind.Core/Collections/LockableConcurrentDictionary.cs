@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Reflection;
+using Nethermind.Logging;
 
 namespace Nethermind.Core.Collections;
 
@@ -66,8 +67,9 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
     /// Acquires the internal lock on all the keys of <see cref="dictionary"/>.
     /// </summary>
     /// <param name="dictionary">Dictionary to lock.</param>
+    /// <param name="logger"></param>
     /// <returns>Lock instance. To release the lock it needs to be <see cref="Lock.Dispose"/>d.</returns>
-    public static Lock Acquire(ConcurrentDictionary<TKey, TValue> dictionary) => new(dictionary);
+    public static Lock Acquire(ConcurrentDictionary<TKey, TValue> dictionary, ILogger logger) => new(dictionary, logger);
 
     /// <summary>
     /// Represents a lock on <see cref="ConcurrentDictionary{TKey,TValue}"/>.
@@ -79,18 +81,22 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
     public readonly ref struct Lock
     {
         private readonly ConcurrentDictionary<TKey, TValue> _dictionary;
+        private readonly ILogger _logger;
         private readonly int _locksAcquired = 0;
 
-        internal Lock(ConcurrentDictionary<TKey, TValue> dictionary)
+        internal Lock(ConcurrentDictionary<TKey, TValue> dictionary, ILogger logger)
         {
             _dictionary = dictionary;
+            _logger = logger;
             _acquireAllLocksMethod(dictionary, ref _locksAcquired);
+            if (_logger.IsInfo) _logger.Info($"Locked {typeof(Lock).FullName}.");
         }
 
         // Duck typing
         public void Dispose()
         {
             _releaseLocksMethod(_dictionary, 0, _locksAcquired);
+            if (_logger.IsInfo) _logger.Info($"Unlocked {typeof(Lock).FullName}.");
         }
     }
 }
@@ -101,10 +107,11 @@ public static class ConcurrentDictionaryExtensions
     /// Acquires the internal lock on all the keys of <see cref="dictionary"/>.
     /// </summary>
     /// <param name="dictionary">Dictionary to lock.</param>
+    /// <param name="logger"></param>
     /// <returns>Lock instance. To release the lock it needs to be <see cref="ConcurrentDictionaryLock{TKey,TValue}.Lock.Dispose"/>d.</returns>
-    public static ConcurrentDictionaryLock<TKey, TValue>.Lock AcquireLock<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dictionary)
+    public static ConcurrentDictionaryLock<TKey, TValue>.Lock AcquireLock<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dictionary, ILogger logger)
         where TKey : notnull =>
-        ConcurrentDictionaryLock<TKey, TValue>.Acquire(dictionary);
+        ConcurrentDictionaryLock<TKey, TValue>.Acquire(dictionary, logger);
 }
 
 
