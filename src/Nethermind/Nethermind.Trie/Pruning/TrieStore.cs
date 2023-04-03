@@ -383,9 +383,9 @@ namespace Nethermind.Trie.Pruning
                 {
                     try
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Starting {nameof(TrieStore)} pruning loop.");
+                        if (_logger.IsInfo) _logger.Info($"Starting {nameof(TrieStore)} pruning loop.");
                         RunPruningLoop();
-                        if (_logger.IsDebug) _logger.Debug($"Pruning finished.");
+                        if (_logger.IsInfo) _logger.Info($"Pruning finished.");
                     }
                     catch (Exception e)
                     {
@@ -403,7 +403,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     using (_dirtyNodes.AllNodes.AcquireLock())
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning spin.");
+                        if (_logger.IsInfo) _logger.Info($"Locked {nameof(TrieStore)} for pruning spin.");
                         PruneCache();
 
                         if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
@@ -412,7 +412,7 @@ namespace Nethermind.Trie.Pruning
                         }
                     }
 
-                    if (_logger.IsDebug) _logger.Debug($"Unlocked {nameof(TrieStore)} after pruning spin.");
+                    if (_logger.IsInfo) _logger.Info($"Unlocked {nameof(TrieStore)} after pruning spin.");
                 }
             }
         }
