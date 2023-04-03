@@ -51,6 +51,11 @@ namespace Nethermind.Core.Extensions
         [DebuggerStepThrough]
         private static string ToHexViaLookup(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
+            if (bytes.Length == 0)
+            {
+                return withZeroX ? "0x" : "";
+            }
+
             if (withEip55Checksum)
             {
                 return ToHexStringWithEip55Checksum(bytes, withZeroX, skipLeadingZeros);
@@ -60,11 +65,9 @@ namespace Nethermind.Core.Extensions
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros;
 
             char[] charArray = ArrayPool<char>.Shared.Rent(length);
-
             ref byte input = ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), leadingZeros / 2);
             Bytes.OutputBytesToCharHex(ref input, bytes.Length, ref charArray[0], withZeroX, leadingZeros);
-
-            string result = new string(charArray.AsSpan(0, length));
+            string result = new(charArray.AsSpan(0, length));
             ArrayPool<char>.Shared.Return(charArray);
 
             return result;
