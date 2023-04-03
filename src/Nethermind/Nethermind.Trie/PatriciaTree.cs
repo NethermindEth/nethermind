@@ -368,7 +368,7 @@ namespace Nethermind.Trie
                     if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
                     TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash);
                     startNode.ResolveNode(TrieStore);
-                    result = TraverseNode(startNode, in traverseContext);
+                    result = TraverseNode(startNode, traverseContext);
                 }
                 else
                 {
@@ -389,7 +389,7 @@ namespace Nethermind.Trie
                     {
                         RootRef.ResolveNode(TrieStore);
                         if (_logger.IsTrace) _logger.Trace($"{traverseContext.ToString()}");
-                        result = TraverseNode(RootRef, in traverseContext);
+                        result = TraverseNode(RootRef, traverseContext);
                     }
                 }
 
@@ -401,15 +401,15 @@ namespace Nethermind.Trie
             }
         }
 
-        private Span<byte> TraverseNode(TrieNode node, in TraverseContext traverseContext)
+        private Span<byte> TraverseNode(TrieNode node, TraverseContext traverseContext)
         {
             if (_logger.IsTrace) _logger.Trace($"Traversing {node} to {(traverseContext.IsRead ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
 
             return node.NodeType switch
             {
-                NodeType.Branch => TraverseBranch(node, in traverseContext),
-                NodeType.Extension => TraverseExtension(node, in traverseContext),
-                NodeType.Leaf => TraverseLeaf(node, in traverseContext),
+                NodeType.Branch => TraverseBranch(node, traverseContext),
+                NodeType.Extension => TraverseExtension(node, traverseContext),
+                NodeType.Leaf => TraverseLeaf(node, traverseContext),
                 NodeType.Unknown => throw new InvalidOperationException(
                     $"Cannot traverse unresolved node {node.Keccak}"),
                 _ => throw new NotSupportedException(
@@ -638,7 +638,7 @@ namespace Nethermind.Trie
             RootRef = nextNode;
         }
 
-        private Span<byte> TraverseBranch(TrieNode node, in TraverseContext traverseContext)
+        private Span<byte> TraverseBranch(TrieNode node, TraverseContext traverseContext)
         {
             if (traverseContext.RemainingUpdatePathLength == 0)
             {
@@ -708,10 +708,10 @@ namespace Nethermind.Trie
             childNode.ResolveNode(TrieStore);
             TrieNode nextNode = childNode;
 
-            return TraverseNext(in traverseContext, 1, nextNode);
+            return TraverseNext(traverseContext, 1, nextNode);
         }
 
-        private Span<byte> TraverseLeaf(TrieNode node, in TraverseContext traverseContext)
+        private Span<byte> TraverseLeaf(TrieNode node, TraverseContext traverseContext)
         {
             if (node.Key is null)
             {
@@ -814,7 +814,7 @@ namespace Nethermind.Trie
             return traverseContext.UpdateValue;
         }
 
-        private Span<byte> TraverseExtension(TrieNode node, in TraverseContext traverseContext)
+        private Span<byte> TraverseExtension(TrieNode node, TraverseContext traverseContext)
         {
             if (node.Key is null)
             {
@@ -840,7 +840,7 @@ namespace Nethermind.Trie
 
                 next.ResolveNode(TrieStore);
 
-                return TraverseNext(in traverseContext, extensionLength, next);
+                return TraverseNext(traverseContext, extensionLength, next);
             }
 
             if (traverseContext.IsRead)
@@ -901,12 +901,12 @@ namespace Nethermind.Trie
             return traverseContext.UpdateValue;
         }
 
-        private Span<byte> TraverseNext(in TraverseContext traverseContext, int extensionLength, TrieNode next)
+        private Span<byte> TraverseNext(TraverseContext traverseContext, int extensionLength, TrieNode next)
         {
             // Move large struct creation out of flow so doesn't force additional stack space
             // in calling method even if not used
             TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
-            return TraverseNode(next, in newContext);
+            return TraverseNode(next, newContext);
         }
 
         private static int FindCommonPrefixLength(ReadOnlySpan<byte> shorterPath, ReadOnlySpan<byte> longerPath)

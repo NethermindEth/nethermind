@@ -66,8 +66,8 @@ namespace Nethermind.State
             Span<byte> key = stackalloc byte[32];
             GetKey(index, key);
 
-            byte[]? value = Get(key, storageRoot);
-            if (value is null)
+            Span<byte> value = Get(key, storageRoot);
+            if (value.Length == 0)
             {
                 return Bytes.ZeroByte;
             }
