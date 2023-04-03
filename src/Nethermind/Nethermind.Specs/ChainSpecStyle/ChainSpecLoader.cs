@@ -368,10 +368,10 @@ public class ChainSpecLoader : IChainSpecLoader
         genesisHeader.AuRaStep = step;
         genesisHeader.AuRaSignature = auRaSignature;
 
-        if (withdrawalsEnabled)
-            chainSpec.Genesis = new GenesisBlock(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
-        else
-            chainSpec.Genesis = new GenesisBlock(genesisHeader);
+        chainSpec.Genesis = withdrawalsEnabled
+            ? new GenesisBlock(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>())
+            : new GenesisBlock(genesisHeader);
+
         chainSpec.Genesis.ConstructorSender = constructorSender;
     }
 
