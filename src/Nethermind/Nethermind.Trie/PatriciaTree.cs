@@ -376,7 +376,7 @@ namespace Nethermind.Trie
                     {
                         if (traverseContext.UpdateValue is not null)
                         {
-                            if (_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue.ToHexString()}");
+                            if (_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue?.ToHexString()}");
                             byte[] key = updatePath.Slice(0, nibblesCount).ToArray();
                             RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue);
                         }
