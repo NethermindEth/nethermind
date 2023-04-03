@@ -324,7 +324,7 @@ namespace Nethermind.Trie
             Set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
         }
 
-        private unsafe Span<byte> Run(
+        private unsafe byte[]? Run(
             Span<byte> rawKey,
             byte[]? updateValue,
             bool isUpdate,
@@ -335,7 +335,6 @@ namespace Nethermind.Trie
             {
                 throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
             }
-
 
             int nibblesCount = 2 * rawKey.Length;
             byte[] array = null;
@@ -362,24 +361,24 @@ namespace Nethermind.Trie
                     _nodeStack.Clear();
                 }
 
-                Span<byte> result;
+                byte[]? result;
                 if (startRootHash is not null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
                     TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash);
                     startNode.ResolveNode(TrieStore);
-                    result = TraverseNode(startNode, traverseContext);
+                    result = TraverseNode(startNode, in traverseContext);
                 }
                 else
                 {
                     bool trieIsEmpty = RootRef is null;
                     if (trieIsEmpty)
                     {
-                        if (traverseContext.UpdateValue.Length != 0)
+                        if (traverseContext.UpdateValue is not null)
                         {
                             if (_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue.ToHexString()}");
                             byte[] key = updatePath.Slice(0, nibblesCount).ToArray();
-                            RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue.ToArray());
+                            RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue);
                         }
 
                         if (_logger.IsTrace) _logger.Trace($"Keeping the root as null in {traverseContext.ToString()}");
@@ -389,7 +388,7 @@ namespace Nethermind.Trie
                     {
                         RootRef.ResolveNode(TrieStore);
                         if (_logger.IsTrace) _logger.Trace($"{traverseContext.ToString()}");
-                        result = TraverseNode(RootRef, traverseContext);
+                        result = TraverseNode(RootRef, in traverseContext);
                     }
                 }
 
@@ -401,15 +400,15 @@ namespace Nethermind.Trie
             }
         }
 
-        private Span<byte> TraverseNode(TrieNode node, TraverseContext traverseContext)
+        private byte[]? TraverseNode(TrieNode node, in TraverseContext traverseContext)
         {
             if (_logger.IsTrace) _logger.Trace($"Traversing {node} to {(traverseContext.IsRead ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
 
             return node.NodeType switch
             {
-                NodeType.Branch => TraverseBranch(node, traverseContext),
-                NodeType.Extension => TraverseExtension(node, traverseContext),
-                NodeType.Leaf => TraverseLeaf(node, traverseContext),
+                NodeType.Branch => TraverseBranch(node, in traverseContext),
+                NodeType.Extension => TraverseExtension(node, in traverseContext),
+                NodeType.Leaf => TraverseLeaf(node, in traverseContext),
                 NodeType.Unknown => throw new InvalidOperationException(
                     $"Cannot traverse unresolved node {node.Keccak}"),
                 _ => throw new NotSupportedException(
@@ -638,7 +637,7 @@ namespace Nethermind.Trie
             RootRef = nextNode;
         }
 
-        private Span<byte> TraverseBranch(TrieNode node, TraverseContext traverseContext)
+        private byte[]? TraverseBranch(TrieNode node, in TraverseContext traverseContext)
         {
             if (traverseContext.RemainingUpdatePathLength == 0)
             {
@@ -665,7 +664,7 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue.ToArray());
+                    TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
                     ConnectNodes(withUpdatedValue);
                 }
 
@@ -699,7 +698,7 @@ namespace Nethermind.Trie
                 byte[] leafPath = traverseContext.UpdatePath.Slice(
                     currentIndex,
                     traverseContext.UpdatePath.Length - currentIndex).ToArray();
-                TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath, traverseContext.UpdateValue.ToArray());
+                TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath, traverseContext.UpdateValue);
                 ConnectNodes(leaf);
 
                 return traverseContext.UpdateValue;
@@ -708,10 +707,10 @@ namespace Nethermind.Trie
             childNode.ResolveNode(TrieStore);
             TrieNode nextNode = childNode;
 
-            return TraverseNext(traverseContext, 1, nextNode);
+            return TraverseNext(in traverseContext, 1, nextNode);
         }
 
-        private Span<byte> TraverseLeaf(TrieNode node, TraverseContext traverseContext)
+        private byte[]? TraverseLeaf(TrieNode node, in TraverseContext traverseContext)
         {
             if (node.Key is null)
             {
@@ -738,11 +737,11 @@ namespace Nethermind.Trie
             if (Bytes.AreEqual(shorterPath, node.Key))
             {
                 shorterPathValue = node.Value;
-                longerPathValue = traverseContext.UpdateValue.ToArray();
+                longerPathValue = traverseContext.UpdateValue;
             }
             else
             {
-                shorterPathValue = traverseContext.UpdateValue.ToArray();
+                shorterPathValue = traverseContext.UpdateValue;
                 longerPathValue = node.Value;
             }
 
@@ -762,7 +761,7 @@ namespace Nethermind.Trie
 
                 if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
                 {
-                    TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue.ToArray());
+                    TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
                     ConnectNodes(withUpdatedValue);
                     return traverseContext.UpdateValue;
                 }
@@ -814,7 +813,7 @@ namespace Nethermind.Trie
             return traverseContext.UpdateValue;
         }
 
-        private Span<byte> TraverseExtension(TrieNode node, TraverseContext traverseContext)
+        private byte[]? TraverseExtension(TrieNode node, in TraverseContext traverseContext)
         {
             if (node.Key is null)
             {
@@ -840,7 +839,7 @@ namespace Nethermind.Trie
 
                 next.ResolveNode(TrieStore);
 
-                return TraverseNext(traverseContext, extensionLength, next);
+                return TraverseNext(in traverseContext, extensionLength, next);
             }
 
             if (traverseContext.IsRead)
@@ -869,12 +868,12 @@ namespace Nethermind.Trie
             TrieNode branch = TrieNodeFactory.CreateBranch();
             if (extensionLength == remaining.Length)
             {
-                branch.Value = traverseContext.UpdateValue.ToArray();
+                branch.Value = traverseContext.UpdateValue;
             }
             else
             {
                 byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1).ToArray();
-                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(path, traverseContext.UpdateValue.ToArray());
+                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(path, traverseContext.UpdateValue);
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
@@ -901,12 +900,12 @@ namespace Nethermind.Trie
             return traverseContext.UpdateValue;
         }
 
-        private Span<byte> TraverseNext(TraverseContext traverseContext, int extensionLength, TrieNode next)
+        private byte[]? TraverseNext(in TraverseContext traverseContext, int extensionLength, TrieNode next)
         {
             // Move large struct creation out of flow so doesn't force additional stack space
             // in calling method even if not used
             TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
-            return TraverseNode(next, newContext);
+            return TraverseNode(next, in newContext);
         }
 
         private static int FindCommonPrefixLength(ReadOnlySpan<byte> shorterPath, ReadOnlySpan<byte> longerPath)
@@ -923,11 +922,11 @@ namespace Nethermind.Trie
 
         private readonly ref struct TraverseContext
         {
-            public Span<byte> UpdateValue { get; }
+            public byte[]? UpdateValue { get; }
             public ReadOnlySpan<byte> UpdatePath { get; }
             public bool IsUpdate { get; }
             public bool IsRead => !IsUpdate;
-            public bool IsDelete => IsUpdate && UpdateValue.Length == 0;
+            public bool IsDelete => IsUpdate && UpdateValue is null;
             public bool IgnoreMissingDelete { get; }
             public int CurrentIndex { get; }
             public int RemainingUpdatePathLength => UpdatePath.Length - CurrentIndex;
@@ -950,12 +949,12 @@ namespace Nethermind.Trie
 
             public TraverseContext(
                 Span<byte> updatePath,
-                Span<byte> updateValue,
+                byte[]? updateValue,
                 bool isUpdate,
                 bool ignoreMissingDelete = true)
             {
                 UpdatePath = updatePath;
-                UpdateValue = updateValue;
+                UpdateValue = updateValue is { Length: 0 } ? null : updateValue;
                 IsUpdate = isUpdate;
                 IgnoreMissingDelete = ignoreMissingDelete;
                 CurrentIndex = 0;
@@ -963,7 +962,7 @@ namespace Nethermind.Trie
 
             public override string ToString()
             {
-                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsRead ? string.Empty : $" -> {UpdateValue.ToHexString()}")}";
+                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsRead ? string.Empty : $" -> {UpdateValue?.ToHexString()}")}";
             }
         }
 
