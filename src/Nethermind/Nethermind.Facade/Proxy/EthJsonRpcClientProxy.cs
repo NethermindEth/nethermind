@@ -7,6 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Facade.Proxy.Models;
+using System.Transactions;
+using Nethermind.Facade.Proxy.Models.MultiCall;
 
 namespace Nethermind.Facade.Proxy
 {
@@ -37,6 +39,13 @@ namespace Nethermind.Facade.Proxy
         public Task<RpcResult<byte[]>> eth_call(CallTransactionModel transaction,
             BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<byte[]>(nameof(eth_call), transaction, MapBlockParameter(blockParameter));
+
+        public Task<RpcResult<MultiCallResultModel[]>> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
+            BlockParameterModel blockParameter = null)
+        {
+            var data = blockCalls;
+            return _proxy.SendAsync<MultiCallResultModel[]>(nameof(eth_multicall), version, blockCalls, MapBlockParameter(blockParameter));
+        }
 
         public Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<byte[]>(nameof(eth_getCode), address, MapBlockParameter(blockParameter));

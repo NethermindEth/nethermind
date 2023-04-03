@@ -12,6 +12,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
+using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
@@ -154,6 +155,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null)
         {
             throw new NotSupportedException();
+        }
+
+        public ResultWrapper<string> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
+            BlockParameter? blockParameter = null)
+        {
+            throw new NotImplementedException();
         }
 
         public ResultWrapper<UInt256?> eth_estimateGas(

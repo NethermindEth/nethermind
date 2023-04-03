@@ -18,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -365,6 +366,14 @@ public partial class EthRpcModule : IEthRpcModule
     public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
+
+    public ResultWrapper<string> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
+        BlockParameter? blockParameter = null)
+    {
+        var data = blockCalls;
+
+        throw new NotImplementedException();
+    }
 
     public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter) =>
         new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)

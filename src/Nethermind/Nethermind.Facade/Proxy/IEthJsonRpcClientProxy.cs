@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Facade.Proxy.Models;
+using Nethermind.Facade.Proxy.Models.MultiCall;
 
 namespace Nethermind.Facade.Proxy
 {
@@ -17,6 +18,9 @@ namespace Nethermind.Facade.Proxy
         Task<RpcResult<UInt256>> eth_getTransactionCount(Address address, BlockParameterModel blockParameter = null);
         Task<RpcResult<ReceiptModel>> eth_getTransactionReceipt(Keccak transactionHash);
         Task<RpcResult<byte[]>> eth_call(CallTransactionModel transaction, BlockParameterModel blockParameter = null);
+
+        //TODO:add tests
+        Task<RpcResult<MultiCallResultModel[]>> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls, BlockParameterModel blockParameter = null);
         Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null);
         Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Keccak transactionHash);
         Task<RpcResult<TransactionModel[]>> eth_pendingTransactions();

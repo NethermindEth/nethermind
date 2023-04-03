@@ -8,6 +8,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Facade.Proxy.Models;
+using Nethermind.Facade.Proxy;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.State.Proofs;
@@ -147,6 +150,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IsSharable = false,
             ExampleResponse = "0x")]
         ResultWrapper<string> eth_call([JsonRpcParameter(ExampleValue = "[{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}]")] TransactionForRpc transactionCall, BlockParameter? blockParameter = null);
+
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Executes a tx call (does not create a transaction)",
+            IsSharable = false,
+            ExampleResponse = "0x")]
+        ResultWrapper<string> eth_multicall(
+            ulong version,
+            [JsonRpcParameter(ExampleValue = "[{\"stateOverrides\":[{\"nonce\":\"0x1\", \"address\": \"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\", \"balance\": \"0xde0b6b3a7640000\", \"state\": {\"0x2292f0db49e1af24fbcac7f32b7537f334244455ad0ed0b46a78202982e7b70d\": \"0xde0b6b3a7640000\", \"0x0x877bd4632ef8c8ddc43b67e5a4511d939eadb612553c8a060670e05ebb1bb83c\": \"0xde0b6b3a7640000\"}}],\"calls\":[{\"from\":\"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"to\":\"0x6b175474e89094c44da98b954eedeac495271d0f\",\"data\":\"0x18160ddd\"}]}]")]
+            MultiCallBlockStateCallsModel[] blockCalls,
+            BlockParameter? blockParameter = null);
+
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Executes a tx call and returns gas used (does not create a transaction)",
