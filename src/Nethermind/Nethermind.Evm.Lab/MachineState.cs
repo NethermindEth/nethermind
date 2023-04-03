@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Lab.Interfaces;
 using Nethermind.Evm.Test;
 using Nethermind.Evm.Tracing.GethStyle;
@@ -16,7 +17,8 @@ namespace MachineState.Actions
     public record FileLoaded(string filePath) : ActionsBase;
     public record TracesLoaded(string filePath) : ActionsBase;
     public record UpdateState(GethLikeTxTrace traces) : ActionsBase;
-    public record SetForkChoice(string forkName) : ActionsBase;
+    public record SetForkChoice(IReleaseSpec forkName) : ActionsBase;
+    public record ThrowError(string error) : ActionsBase;
     public record SetGasMode(bool ignore, long gasValue) : ActionsBase;
     public record RunBytecode : ActionsBase;
 
@@ -32,7 +34,7 @@ namespace Nethermind.Evm.Lab
         public MachineState()
         {
             AvailableGas = VirtualMachineTestsBase.DefaultBlockGasLimit;
-            SelectedFork = nameof(Cancun);
+            SelectedFork = Cancun.Instance;
         }
 
         public MachineState SetState(GethLikeTxTrace trace, bool isInit = false)
@@ -46,7 +48,7 @@ namespace Nethermind.Evm.Lab
             if (isInit)
             {
                 AvailableGas = VirtualMachineTestsBase.DefaultBlockGasLimit;
-                SelectedFork = nameof(Cancun);
+                SelectedFork = Cancun.Instance;
             }
             return this;
         }
@@ -55,7 +57,7 @@ namespace Nethermind.Evm.Lab
         public int Index { get; private set; }
         public int Depth { get; private set; }
         public long AvailableGas { get; set; }
-        public string SelectedFork { get; set; }
+        public IReleaseSpec SelectedFork { get; set; }
 
         public byte[] Bytecode { get; set; }
         public byte[] CallData { get; set; }
@@ -88,7 +90,7 @@ namespace Nethermind.Evm.Lab
             return this;
         }
 
-        public MachineState SetFork(string forkname)
+        public MachineState SetFork(IReleaseSpec forkname)
         {
             SelectedFork = forkname;
             return this;

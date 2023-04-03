@@ -3,6 +3,7 @@
 
 using System.Reflection;
 using MachineState.Actions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Lab.Interfaces;
 using Nethermind.Specs.Forks;
 using Terminal.Gui;
@@ -16,7 +17,7 @@ internal class ConfigsView : IComponent<MachineState>
     private TextField? gasValueInput = null;
     //private CheckBox? ignoreGasCheck = null;
 
-    private List<string> Forks = typeof(Shanghai).Module.GetTypes().Where(type => type.Namespace == typeof(Shanghai).Namespace && type.GetCustomAttribute<System.Runtime.CompilerServices.CompilerGeneratedAttribute>() == null).Select(type => type.Name).ToList();
+    private List<string> Forks = typeof(Shanghai).Module.GetTypes().Where(type => type.Namespace == typeof(Shanghai).Namespace && type.GetCustomAttribute<System.Runtime.CompilerServices.CompilerGeneratedAttribute>() == null).Select(type => type.Name).Append("Custom").ToList();
 
     public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
@@ -40,14 +41,14 @@ internal class ConfigsView : IComponent<MachineState>
             Width = Dim.Fill(),
         };
 
-        var label_forkChosen = new Label(innerState.SelectedFork)
+        var label_forkChosen = new Label(innerState.SelectedFork.Name)
         {
             Width = Dim.Percent(75)
         };
         forksChoice ??= new ComboBox("Fork Selection")
         {
             Y = Pos.Bottom(label_forkChoser),
-            Height = Dim.Percent(50),
+            Height = Dim.Percent(25),
             Width = Dim.Fill(),
             HideDropdownListOnClick = true
         };
@@ -73,7 +74,16 @@ internal class ConfigsView : IComponent<MachineState>
             forksChoice.SelectedItemChanged += (e) =>
             {
                 var forkName = e.Value.ToString();
-                EventsSink.EnqueueEvent(new SetForkChoice(forkName));
+                if (forkName != "Custom")
+                {
+                    var chosenFork = (IReleaseSpec)typeof(Frontier).Module.GetTypes().First(type => type.Name == forkName).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public).GetValue(null);
+                    EventsSink.EnqueueEvent(new SetForkChoice(chosenFork));
+                }
+                else
+                {
+                    var eipSelectionDialog = new EipSelectionView().View(state).Item1;
+                    Application.Run((Dialog)eipSelectionDialog);
+                }
             };
 
             gasValueInput.KeyPress += (e) =>

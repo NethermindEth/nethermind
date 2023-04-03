@@ -1,0 +1,123 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Text.RegularExpressions;
+using MachineState.Actions;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.Lab.Interfaces;
+using Nethermind.Specs;
+using Terminal.Gui;
+
+namespace Nethermind.Evm.Lab.Components.MachineLab;
+internal class EipSelectionView : IComponent<MachineState>
+{
+    bool isCached = false;
+    private Dialog? container = null;
+    private CheckBox[]? EipCheckBoxes = null;
+    private string[] eipNumbers;
+
+    Dictionary<string, bool> _currentSpecMap = new Dictionary<string, bool>();
+    private Dictionary<string /*actually int*/, bool> CurrentSelectedEips(IReleaseSpec spec)
+    {
+        foreach (var eipNumber in eipNumbers)
+        {
+            _currentSpecMap[eipNumber] = (bool)typeof(ReleaseSpec).GetProperty($"IsEip{eipNumber}Enabled").GetValue(spec, null);
+        }
+        return _currentSpecMap;
+    }
+    private ReleaseSpec _releaseSpec
+    {
+        get
+        {
+            var releaseSpec = new ReleaseSpec();
+            foreach (var (eipNumber, isSet) in _currentSpecMap)
+            {
+                typeof(ReleaseSpec).GetProperty($"IsEip{eipNumber}Enabled").SetValue(releaseSpec, isSet);
+            }
+            return releaseSpec;
+        }
+    }
+
+    public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
+    {
+        var innerState = state.GetState();
+
+        var frameBoundaries = new Rectangle(
+                X: rect?.X ?? Pos.Center(),
+                Y: rect?.Y ?? Pos.Center(),
+                Width: rect?.Width ?? Dim.Percent(20),
+                Height: rect?.Height ?? Dim.Percent(75)
+            );
+
+        if (!isCached)
+        {
+            eipNumbers ??= typeof(ReleaseSpec).GetProperties().Where(prop => prop.PropertyType == typeof(bool) && Regex.IsMatch(prop.Name, "IsEip(\\d+)Enabled"))
+                    .Select(prop => prop.Name[5..^7]).ToArray();
+
+            var currentSelectedEips = CurrentSelectedEips(innerState.SelectedFork);
+
+            CheckBox? previousCheckbox = null;
+            int heightAcc = 0;
+            EipCheckBoxes ??= eipNumbers.Select(eipNumber =>
+            {
+                var checkbox = new CheckBox($"Activate Eip {eipNumber}", currentSelectedEips[eipNumber])
+                {
+                    Y = previousCheckbox is not null ? Pos.Bottom(previousCheckbox) : 0,
+                    Width = Dim.Fill(),
+                    Height = 2,
+                    Border = new Border()
+                };
+
+                checkbox.Toggled += (e) =>
+                {
+                    _currentSpecMap[eipNumber] = checkbox.Checked;
+                };
+                previousCheckbox = checkbox;
+                heightAcc += 2;
+                return checkbox;
+            }).ToArray();
+
+            var scrollView = new ScrollView
+            {
+                X = 2,
+                Y = 2,
+                Width = Dim.Fill(),
+                Height = Dim.Fill() - 2,
+                ColorScheme = Colors.TopLevel,
+                ContentSize = new Size(previousCheckbox.Bounds.Width, heightAcc),
+                //ContentOffset = new Point (0, 0),
+                ShowVerticalScrollIndicator = true,
+                ShowHorizontalScrollIndicator = true,
+            };
+            scrollView.Add(EipCheckBoxes);
+
+
+            var submit = new Button("Submit");
+            var cancel = new Button("Cancel");
+            container ??= new Dialog("Error", 60, 7, submit, cancel)
+            {
+                X = frameBoundaries.X,
+                Y = frameBoundaries.Y,
+                Width = frameBoundaries.Width,
+                Height = frameBoundaries.Height,
+                ColorScheme = Colors.TopLevel,
+            };
+
+            container.Add(scrollView);
+
+            submit.Clicked += () =>
+            {
+                EventsSink.EnqueueEvent(new SetForkChoice(_releaseSpec));
+                Application.RequestStop();
+            };
+
+            cancel.Clicked += () =>
+            {
+                Application.RequestStop();
+            };
+        }
+        isCached = true;
+
+        return (container, frameBoundaries);
+    }
+}

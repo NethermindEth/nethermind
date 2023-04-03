@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Reflection;
 using MachineState.Actions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.Lab.Componants;
 using Nethermind.Evm.Lab.Components.GlobalViews;
 using Nethermind.Evm.Lab.Components.MachineLab;
@@ -20,6 +18,7 @@ internal class MainView : IComponent<MachineState>
     private Window MainPanel = new Window("EvmLaboratory");
     public MachineState InitialState;
 
+    public GethLikeTxTrace? defaultValue;
     public bool isCached = false;
     public IComponent<MachineState>[] _components;
     public MainView(string pathOrBytecode)
@@ -32,7 +31,8 @@ internal class MainView : IComponent<MachineState>
             Bytecode = bytecode,
             CallData = Array.Empty<byte>(),
         };
-        EventsSink.EnqueueEvent(new UpdateState(resultTraces.BuildResult()));
+        defaultValue = resultTraces.BuildResult();
+        EventsSink.EnqueueEvent(new UpdateState(defaultValue));
 
         _components = new IComponent<MachineState>[]{
             new HeaderView(),
@@ -50,6 +50,22 @@ internal class MainView : IComponent<MachineState>
     public void Run(MachineState _)
     {
         bool firstRender = true;
+        static void ShowError(string mesg, Action handler)
+        {
+            var cancel = new Button(10, 14, "OK");
+            cancel.Clicked += handler;
+            var dialog = new Dialog("Error", 60, 7, cancel);
+
+            var entry = new Label(mesg)
+            {
+                X = 1,
+                Y = 1,
+                Width = Dim.Fill(),
+                Height = 1
+            };
+            dialog.Add(entry);
+            Application.Run(dialog);
+        }
 
         HookKeyboardEvents();
         Application.Init();
@@ -62,13 +78,23 @@ internal class MainView : IComponent<MachineState>
                     {
                         lock (InitialState)
                         {
-                            InitialState = Update(InitialState, currentEvent).GetState();
-                            if (firstRender)
+                            try
                             {
-                                Application.Top.Add(_components[0].View(InitialState).Item1, View(InitialState).Item1);
-                                firstRender = false;
+                                InitialState = Update(InitialState, currentEvent).GetState();
+                                if (firstRender)
+                                {
+                                    Application.Top.Add(_components[0].View(InitialState).Item1, View(InitialState).Item1);
+                                    firstRender = false;
+                                }
+                                else View(InitialState);
                             }
-                            else View(InitialState);
+                            catch (Exception ex)
+                            {
+                                ShowError(ex.Message, () =>
+                                {
+                                    EventsSink.EnqueueEvent(new UpdateState(defaultValue));
+                                });
+                            }
                         }
                     }
                 }
@@ -137,22 +163,6 @@ internal class MainView : IComponent<MachineState>
 
     public IState<MachineState> Update(IState<MachineState> state, ActionsBase msg)
     {
-        static void ShowError(string mesg)
-        {
-            var cancel = new Button(10, 14, "OK");
-            cancel.Clicked += () => Application.RequestStop();
-            var dialog = new Dialog("Error", 60, 7, cancel);
-
-            var entry = new Label(mesg)
-            {
-                X = 1,
-                Y = 1,
-                Width = Dim.Fill(),
-                Height = 1
-            };
-            dialog.Add(entry);
-        }
-
         switch (msg)
         {
             case MoveNext _:
@@ -164,7 +174,8 @@ internal class MainView : IComponent<MachineState>
                     var file = File.OpenText(flMsg.filePath);
                     if (file == null)
                     {
-                        ShowError("File Not found");
+                        EventsSink.EnqueueEvent(new ThrowError($"File {flMsg.filePath} not found"), true);
+                        break;
                     }
 
                     EventsSink.EnqueueEvent(new BytecodeInserted(file.ReadToEnd()), true);
@@ -173,38 +184,28 @@ internal class MainView : IComponent<MachineState>
                 }
             case BytecodeInserted biMsg:
                 {
-                    try
-                    {
-                        state.GetState().Bytecode = Nethermind.Core.Extensions.Bytes.FromHexString(biMsg.bytecode);
-                        EventsSink.EnqueueEvent(new RunBytecode(), true);
-                    }
-                    catch
-                    {
-                        ShowError("bytecode ill-formated");
-                        state.GetState().Bytecode = Array.Empty<byte>();
-                    }
+                    state.GetState().Bytecode = Nethermind.Core.Extensions.Bytes.FromHexString(biMsg.bytecode);
+                    EventsSink.EnqueueEvent(new RunBytecode(), true);
                     break;
                 }
             case CallDataInserted ciMsg:
                 {
-                    try
-                    {
-                        var calldata = Nethermind.Core.Extensions.Bytes.FromHexString(ciMsg.calldata);
-                        state.GetState().CallData = calldata;
-                    }
-                    catch
-                    {
-                        ShowError("calldata ill-formated");
-                        state.GetState().CallData = Array.Empty<byte>();
-                    }
+                    var calldata = Nethermind.Core.Extensions.Bytes.FromHexString(ciMsg.calldata);
+                    state.GetState().CallData = calldata;
                     break;
                 }
             case UpdateState updState:
-                return state.GetState().SetState(updState.traces);
+                {
+                    if (updState.traces.Failed)
+                    {
+                        EventsSink.EnqueueEvent(new ThrowError($"Transaction Execution Failed"), true);
+                        break;
+                    }
+                    return state.GetState().SetState(updState.traces);
+                }
             case SetForkChoice frkMsg:
                 {
-                    var chosenFork = (IReleaseSpec)typeof(Frontier).Module.GetTypes().First(type => type.Name == frkMsg.forkName).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public).GetValue(null);
-                    context = new(chosenFork);
+                    context = new(frkMsg.forkName);
                     EventsSink.EnqueueEvent(new RunBytecode(), true);
                     return state.GetState().SetFork(frkMsg.forkName);
                 }
@@ -220,6 +221,10 @@ internal class MainView : IComponent<MachineState>
                     context.Execute(localTracer, state.GetState().AvailableGas, state.GetState().Bytecode);
                     EventsSink.EnqueueEvent(new UpdateState(localTracer.BuildResult()), true);
                     break;
+                }
+            case ThrowError errMsg:
+                {
+                    throw new Exception(errMsg.error);
                 }
         }
         return state;
