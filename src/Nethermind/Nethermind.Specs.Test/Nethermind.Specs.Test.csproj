@@ -1,37 +1,37 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net7.0</TargetFramework>
-        <IsPackable>false</IsPackable>
-        <Nullable>enable</Nullable>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
 
-    <ItemGroup>
-        <PackageReference Include="FluentAssertions" Version="6.8.0" />
-        <PackageReference Include="NSubstitute" Version="4.4.0" />
-        <PackageReference Include="NUnit" Version="3.13.3" />
-        <PackageReference Include="NUnit3TestAdapter" Version="4.3.1" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.4.0" />
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
 
-    <ItemGroup>
-            <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <Content Include="Specs\genesis_test.json">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-      <Content Include="Specs\hive.json">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-    </ItemGroup>
+  <ItemGroup>
+    <Content Include="Specs\genesis_test.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Specs\hive.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
-    <ItemGroup>
-      <None Update="Specs\posdao.json">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-    </ItemGroup>
+  <ItemGroup>
+    <None Update="Specs\posdao.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 
 </Project>

@@ -12,6 +12,7 @@ using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
@@ -98,12 +99,16 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     public override void HandleMessage(Packet msg)
     {
+        int size = msg.Data.Length;
+
         switch (msg.PacketType)
         {
             case P2PMessageCode.Hello:
                 {
                     Metrics.HellosReceived++;
-                    HandleHello(Deserialize<HelloMessage>(msg.Data));
+                    HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
+                    HandleHello(helloMessage);
+                    ReportIn(helloMessage, size);
 
                     // We need to initialize subprotocols in alphabetical order. Protocols are using AdaptiveId,
                     // which should be constant for the whole session. Some protocols (like Eth) are sending messages
@@ -121,7 +126,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
             case P2PMessageCode.Disconnect:
                 {
                     DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
-                    ReportIn(disconnectMessage);
+                    ReportIn(disconnectMessage, size);
                     if (Logger.IsTrace)
                     {
                         string reason = FastEnum.IsDefined<DisconnectReason>((byte)disconnectMessage.Reason)
@@ -137,12 +142,14 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                 {
                     if (Logger.IsTrace) Logger.Trace($"{Session} Received PING on {Session.RemotePort}");
                     HandlePing();
+                    ReportIn("Ping", size);
                     break;
                 }
             case P2PMessageCode.Pong:
                 {
                     if (Logger.IsTrace) Logger.Trace($"{Session} Received PONG on {Session.RemotePort}");
                     HandlePong(msg);
+                    ReportIn("Pong", size);
                     break;
                 }
             case P2PMessageCode.AddCapability:
@@ -164,7 +171,6 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     private void HandleHello(HelloMessage hello)
     {
-        ReportIn(hello);
         bool isInbound = !_sentHello;
 
         if (Logger.IsTrace) Logger.Trace($"{Session} P2P received hello.");
@@ -316,7 +322,6 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     private void HandlePing()
     {
-        ReportIn("Ping");
         if (Logger.IsTrace) Logger.Trace($"{Session} P2P responding to ping");
         Send(PongMessage.Instance);
     }
@@ -344,7 +349,6 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     private void HandlePong(Packet msg)
     {
-        ReportIn("Pong");
         if (Logger.IsTrace) Logger.Trace($"{Session} sending P2P pong");
         _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingIn);
         _pongCompletionSource?.TrySetResult(msg);

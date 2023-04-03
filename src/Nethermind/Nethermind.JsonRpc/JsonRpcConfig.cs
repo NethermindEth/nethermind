@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
@@ -49,7 +50,8 @@ namespace Nethermind.JsonRpc
         public string EngineHost { get; set; } = "127.0.0.1";
         public int? EnginePort { get; set; } = null;
         public string[] EngineEnabledModules { get; set; } = ModuleType.DefaultEngineModules.ToArray();
-        public int MaxBatchSize { get; set; } = 100;
+        public int MaxBatchSize { get; set; } = 1024;
+        public long? MaxBatchResponseBodySize { get; set; } = 30.MB();
     };
 };
 

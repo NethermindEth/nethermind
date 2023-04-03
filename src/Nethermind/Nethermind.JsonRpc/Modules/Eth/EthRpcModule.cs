@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -15,10 +15,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -568,28 +568,23 @@ public partial class EthRpcModule : IEthRpcModule
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
                 }
-
             case FilterType.PendingTransactionFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
-                            .GetPendingTransactionFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetPendingTransactionFilterChanges(id))
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
                 }
-
             case FilterType.LogFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(
-                            _blockchainBridge.GetLogFilterChanges(id).ToArray())
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id).ToArray())
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter not found", ErrorCodes.InvalidInput);
                 }
-
             default:
                 {
-                    throw new NotSupportedException($"Filter type {filterType} is not supported");
+                    return ResultWrapper<IEnumerable<object>>.Fail($"Filter type {filterType} is not supported.", ErrorCodes.InvalidInput);
                 }
         }
     }
@@ -752,5 +747,23 @@ public partial class EthRpcModule : IEthRpcModule
                 yield return log;
             }
         }
+    }
+
+    public ResultWrapper<AccountForRpc> eth_getAccount(Address accountAddress, BlockParameter? blockParameter)
+    {
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter ?? BlockParameter.Latest);
+        if (searchResult.IsError)
+        {
+            // probably better forward Error of searchResult
+            return ResultWrapper<AccountForRpc>.Fail($"header not found", ErrorCodes.InvalidInput);
+        }
+        BlockHeader header = searchResult.Object;
+        if (!HasStateForBlock(_blockchainBridge, header))
+        {
+            return ResultWrapper<AccountForRpc>.Fail($"No state available for {blockParameter}",
+                ErrorCodes.ResourceUnavailable);
+        }
+        Account account = _stateReader.GetAccount(header.StateRoot, accountAddress);
+        return ResultWrapper<AccountForRpc>.Success(account is null ? null : new AccountForRpc(account));
     }
 }

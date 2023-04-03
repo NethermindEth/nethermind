@@ -11,10 +11,11 @@ namespace Nethermind.Network.P2P.EventArg
     {
         public string Protocol { get; set; }
         public byte ProtocolVersion { get; set; }
-        public ulong ChainId { get; set; }
+        public ulong NetworkId { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public Keccak BestHash { get; set; }
         public Keccak GenesisHash { get; set; }
+        public ForkId? ForkId { get; set; }
 
         public SyncPeerProtocolInitializedEventArgs(SyncPeerProtocolHandlerBase protocolHandler) : base(protocolHandler)
         {

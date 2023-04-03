@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
             ILogger logger = _api.LogManager.GetClassLogger();
-            if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
+            if (logger.IsInfo) logger.Info("Starting AuRa block producer & sealer");
 
             BlockProducerEnv producerEnv = GetProducerChain(additionalTxSource);
 

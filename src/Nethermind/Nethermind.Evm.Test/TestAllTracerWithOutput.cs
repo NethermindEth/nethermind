@@ -117,11 +117,11 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
         }
 

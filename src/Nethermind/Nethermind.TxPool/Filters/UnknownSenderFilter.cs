@@ -10,7 +10,7 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions with the sender address not resolved properly.
     /// </summary>
-    internal class UnknownSenderFilter : IIncomingTxFilter
+    internal sealed class UnknownSenderFilter : IIncomingTxFilter
     {
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
@@ -27,13 +27,16 @@ namespace Nethermind.TxPool.Filters
              * We need to investigate what these txs are and why the sender address is resolved to null.
              * Then we need to decide whether we really want to broadcast them.
              */
-            ++Metrics.PendingTransactionsWithExpensiveFiltering;
+            Metrics.PendingTransactionsWithExpensiveFiltering++;
             if (tx.SenderAddress is null)
             {
                 tx.SenderAddress = _ecdsa.RecoverAddress(tx);
                 if (tx.SenderAddress is null)
                 {
+                    Metrics.PendingTransactionsUnresolvableSender++;
+
                     if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
+
                     return AcceptTxResult.FailedToResolveSender;
                 }
             }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
@@ -28,13 +29,12 @@ namespace Nethermind.Merge.Plugin.Test
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
 
-        private void AssertExecutionStatusChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash,
+        private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Keccak headBlockHash, Keccak finalizedBlockHash,
              Keccak safeBlockHash)
         {
-            ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
-            Assert.AreEqual(headBlockHash, result.HeadBlockHash);
-            Assert.AreEqual(finalizedBlockHash, result.FinalizedBlockHash);
-            Assert.AreEqual(safeBlockHash, result.SafeBlockHash);
+            Assert.AreEqual(headBlockHash, blockFinder.HeadHash);
+            Assert.AreEqual(finalizedBlockHash, blockFinder.FinalizedHash);
+            Assert.AreEqual(safeBlockHash, blockFinder.SafeHash);
         }
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
@@ -78,11 +78,11 @@ namespace Nethermind.Merge.Plugin.Test
                 StateRoot = head.StateRoot!,
                 ReceiptsRoot = head.ReceiptsRoot!,
                 GasLimit = head.GasLimit,
-                Timestamp = (ulong)head.Timestamp
+                Timestamp = head.Timestamp
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null)
+        private static ExecutionPayload CreateBlockRequest(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null)
         {
             ExecutionPayload blockRequest = new()
             {
@@ -158,7 +158,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         private async Task<TestRpcBlockchain> CreateTestRpc(MergeTestBlockchain chain)
         {
-            SingleReleaseSpecProvider spec = new(London.Instance, 1);
+            TestSingleReleaseSpecProvider spec = new(London.Instance);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .WithBlockFinder(chain.BlockFinder)
                 .Build(spec);

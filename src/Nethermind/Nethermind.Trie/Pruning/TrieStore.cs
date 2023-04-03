@@ -86,9 +86,9 @@ namespace Nethermind.Trie.Pruning
 
             public bool IsNodeCached(Keccak hash) => _objectsCache.ContainsKey(hash);
 
-            public ConcurrentDictionary<Keccak, TrieNode> AllNodes => _objectsCache;
+            public ConcurrentDictionary<ValueKeccak, TrieNode> AllNodes => _objectsCache;
 
-            private readonly ConcurrentDictionary<Keccak, TrieNode> _objectsCache = new();
+            private readonly ConcurrentDictionary<ValueKeccak, TrieNode> _objectsCache = new();
 
             private int _count = 0;
 
@@ -107,7 +107,7 @@ namespace Nethermind.Trie.Pruning
                 if (_trieStore._logger.IsTrace)
                 {
                     _trieStore._logger.Trace($"Trie node dirty cache ({Count})");
-                    foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _objectsCache)
+                    foreach (KeyValuePair<ValueKeccak, TrieNode> keyValuePair in _objectsCache)
                     {
                         _trieStore._logger.Trace($"  {keyValuePair.Value}");
                     }
@@ -490,7 +490,7 @@ namespace Nethermind.Trie.Pruning
             List<TrieNode> toRemove = new(); // TODO: resettable
 
             long newMemory = 0;
-            foreach ((Keccak key, TrieNode node) in _dirtyNodes.AllNodes)
+            foreach ((ValueKeccak key, TrieNode node) in _dirtyNodes.AllNodes)
             {
                 if (node.IsPersisted)
                 {
@@ -807,7 +807,7 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
-                KeyValuePair<Keccak, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
+                KeyValuePair<ValueKeccak, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
                 Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
                 {
                     if (!cancellationToken.IsCancellationRequested)
@@ -820,15 +820,20 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
-            get => _pruningStrategy.PruningEnabled
-                   && _dirtyNodes.AllNodes.TryGetValue(new Keccak(key), out TrieNode? trieNode)
+            get => Get(key);
+        }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return _pruningStrategy.PruningEnabled
+                   && _dirtyNodes.AllNodes.TryGetValue(new ValueKeccak(key), out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp is not null
                 ? trieNode.FullRlp
-                : _currentBatch?[key] ?? _keyValueStore[key];
+                : _currentBatch?.Get(key, flags) ?? _keyValueStore.Get(key, flags);
         }
     }
 }

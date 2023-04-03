@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task prune_on_disk_multiple_times()
         {
             using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 });
@@ -108,7 +108,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task prune_on_disk_only_once()
         {
             using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 10 });
@@ -144,6 +144,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 currentItems.IsSubsetOf(allItems).Should().BeTrue();
                 currentItems.Count.Should().BeGreaterThan(0);
             }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10));
         }
 
         private static async Task WriteFileStructure(PruningTestBlockchain chain)

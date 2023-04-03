@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class ReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
+    public class ReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>
     {
         private readonly bool _supportTxHash;
         private const byte MarkTxHashByte = 255;
@@ -64,16 +64,16 @@ namespace Nethermind.Serialization.Rlp
 
             while (rlpStream.Position < lastCheck)
             {
-                logEntries.Add(Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraData));
+                logEntries.Add(Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraBytes));
             }
 
-            bool allowExtraData = (rlpBehaviors & RlpBehaviors.AllowExtraData) != 0;
-            if (!allowExtraData)
+            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
+            if (!allowExtraBytes)
             {
                 rlpStream.Check(lastCheck);
             }
 
-            if (!allowExtraData)
+            if (!allowExtraBytes)
             {
                 if (isStorage && _supportTxHash)
                 {
@@ -139,16 +139,16 @@ namespace Nethermind.Serialization.Rlp
 
             while (decoderContext.Position < lastCheck)
             {
-                logEntries.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraData));
+                logEntries.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes));
             }
 
-            bool allowExtraData = (rlpBehaviors & RlpBehaviors.AllowExtraData) != 0;
-            if (!allowExtraData)
+            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
+            if (!allowExtraBytes)
             {
                 decoderContext.Check(lastCheck);
             }
 
-            if (!allowExtraData)
+            if (!allowExtraBytes)
             {
                 if (isStorage && _supportTxHash)
                 {
@@ -374,8 +374,8 @@ namespace Nethermind.Serialization.Rlp
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 
-            bool allowExtraData = (rlpBehaviors & RlpBehaviors.AllowExtraData) != 0;
-            if (!allowExtraData)
+            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
+            if (!allowExtraBytes)
             {
                 if (isStorage && _supportTxHash)
                 {

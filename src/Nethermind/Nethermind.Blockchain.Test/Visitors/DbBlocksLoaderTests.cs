@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Test.Visitors
     {
         private int _dbLoadTimeout = 5000;
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_blocks_from_db()
         {
             for (int chainLength = 2; chainLength <= 32; chainLength++)
@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_blocks_from_db_odd()
         {
             for (int chainLength = 2; chainLength <= 32; chainLength++)
@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_from_DB_when_there_is_an_invalid_block_in_DB_and_a_valid_branch()
         {
             MemDb blocksDb = new();
@@ -196,7 +196,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             Assert.NotNull(blockInfosDb.Get(3), "level 3");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_load_from_DB_when_there_is_only_an_invalid_chain_in_DB()
         {
             MemDb blocksDb = new();

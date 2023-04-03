@@ -40,7 +40,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public byte[] Get(StorageCell storageCell)
+        public byte[] Get(in StorageCell storageCell)
         {
             return GetCurrentValue(storageCell);
         }
@@ -50,7 +50,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, byte[] newValue)
         {
             PushUpdate(storageCell, newValue);
         }
@@ -213,7 +213,7 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <param name="bytes">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(StorageCell storageCell, out byte[]? bytes)
+        protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
         {
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
@@ -233,14 +233,14 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract byte[] GetCurrentValue(StorageCell storageCell);
+        protected abstract byte[] GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(StorageCell cell, byte[] value)
+        private void PushUpdate(in StorageCell cell, byte[] value)
         {
             SetupRegistry(cell);
             IncrementChangePosition();
@@ -249,7 +249,7 @@ namespace Nethermind.State
         }
 
         /// <summary>
-        /// Increment position and size (if needed) of _changes 
+        /// Increment position and size (if needed) of _changes
         /// </summary>
         protected void IncrementChangePosition()
         {
@@ -260,7 +260,7 @@ namespace Nethermind.State
         /// Initialize the StackList at the storage cell position if needed
         /// </summary>
         /// <param name="cell"></param>
-        protected void SetupRegistry(StorageCell cell)
+        protected void SetupRegistry(in StorageCell cell)
         {
             if (!_intraBlockCache.ContainsKey(cell))
             {

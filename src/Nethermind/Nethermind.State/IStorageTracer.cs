@@ -33,13 +33,13 @@ namespace Nethermind.State
         /// <param name="before"></param>
         /// <param name="after"></param>
         /// <remarks>Depends on <see cref="IsTracingStorage"/></remarks>
-        void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after);
+        void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after);
 
         /// <summary>
         /// Reports storage access
         /// </summary>
         /// <param name="storageCell"></param>
         /// <remarks>Depends on <see cref="IsTracingStorage"/></remarks>
-        void ReportStorageRead(StorageCell storageCell);
+        void ReportStorageRead(in StorageCell storageCell);
     }
 }

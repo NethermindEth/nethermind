@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
@@ -81,42 +81,42 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             {
                 case SnapMessageCode.GetAccountRange:
                     GetAccountRangeMessage getAccountRangeMessage = Deserialize<GetAccountRangeMessage>(message.Content);
-                    ReportIn(getAccountRangeMessage);
+                    ReportIn(getAccountRangeMessage, size);
                     Handle(getAccountRangeMessage);
                     break;
                 case SnapMessageCode.AccountRange:
                     AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
-                    ReportIn(accountRangeMessage);
+                    ReportIn(accountRangeMessage, size);
                     Handle(accountRangeMessage, size);
                     break;
                 case SnapMessageCode.GetStorageRanges:
                     GetStorageRangeMessage getStorageRangesMessage = Deserialize<GetStorageRangeMessage>(message.Content);
-                    ReportIn(getStorageRangesMessage);
+                    ReportIn(getStorageRangesMessage, size);
                     Handle(getStorageRangesMessage);
                     break;
                 case SnapMessageCode.StorageRanges:
                     StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
-                    ReportIn(storageRangesMessage);
+                    ReportIn(storageRangesMessage, size);
                     Handle(storageRangesMessage, size);
                     break;
                 case SnapMessageCode.GetByteCodes:
                     GetByteCodesMessage getByteCodesMessage = Deserialize<GetByteCodesMessage>(message.Content);
-                    ReportIn(getByteCodesMessage);
+                    ReportIn(getByteCodesMessage, size);
                     Handle(getByteCodesMessage);
                     break;
                 case SnapMessageCode.ByteCodes:
                     ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
-                    ReportIn(byteCodesMessage);
+                    ReportIn(byteCodesMessage, size);
                     Handle(byteCodesMessage, size);
                     break;
                 case SnapMessageCode.GetTrieNodes:
                     GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
-                    ReportIn(getTrieNodesMessage);
+                    ReportIn(getTrieNodesMessage, size);
                     Handle(getTrieNodesMessage);
                     break;
                 case SnapMessageCode.TrieNodes:
                     TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
-                    ReportIn(trieNodesMessage);
+                    ReportIn(trieNodesMessage, size);
                     Handle(trieNodesMessage, size);
                     break;
             }
@@ -211,7 +211,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return new SlotsAndProofs() { PathsAndSlots = response.Slots, Proofs = response.Proofs };
         }
 
-        public async Task<byte[][]> GetByteCodes(Keccak[] codeHashes, CancellationToken token)
+        public async Task<byte[][]> GetByteCodes(IReadOnlyList<Keccak> codeHashes, CancellationToken token)
         {
             var request = new GetByteCodesMessage()
             {

@@ -192,7 +192,8 @@ namespace Nethermind.Mev.Test
         private static TestBundlePool CreateTestBundlePool(IEthereumEcdsa? ecdsa = null, MevConfig? config = null)
         {
             var blockTree = Substitute.For<IBlockTree>();
-            blockTree.ChainId.Returns((ulong)ChainId.Mainnet);
+            blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
+            blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
             BlockHeader header = new(
                 Keccak.Zero,
                 Keccak.Zero,

@@ -24,7 +24,8 @@ public class BlockHeader
         long number,
         long gasLimit,
         ulong timestamp,
-        byte[] extraData)
+        byte[] extraData,
+        UInt256? excessDataGas = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -34,6 +35,7 @@ public class BlockHeader
         GasLimit = gasLimit;
         Timestamp = timestamp;
         ExtraData = extraData;
+        ExcessDataGas = excessDataGas;
     }
 
     public WeakReference<BlockHeader>? MaybeParent { get; set; }
@@ -63,14 +65,15 @@ public class BlockHeader
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas { get; set; }
     public Keccak? WithdrawalsRoot { get; set; }
+    public UInt256? ExcessDataGas { get; set; }
 
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
         || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
         || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
 
-    public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
+    public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
 
-    // ToDo we need to set this flag after reading block from db
+    public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
     public bool IsPostMerge { get; set; }
 
     public string ToString(string indent)
@@ -92,7 +95,14 @@ public class BlockHeader
         builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
         builder.AppendLine($"{indent}State Root: {StateRoot}");
         builder.AppendLine($"{indent}BaseFeePerGas: {BaseFeePerGas}");
-        builder.AppendLine($"{indent}Withdrawals Root: {WithdrawalsRoot}");
+        if (WithdrawalsRoot is not null)
+        {
+            builder.AppendLine($"{indent}WithdrawalsRoot: {WithdrawalsRoot}");
+        }
+        if (ExcessDataGas is not null)
+        {
+            builder.AppendLine($"{indent}ExcessDataGas: {ExcessDataGas}");
+        }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
         builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
 

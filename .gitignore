@@ -408,3 +408,4 @@ src/Nethermind/Nethermind.BeaconNode.Host/configuration/Output
 src/Nethermind/Nethermind.BeaconNode.Host/release
 src/Nethermind/Nethermind.Runner/git-hash
 keystore/
+/.githooks

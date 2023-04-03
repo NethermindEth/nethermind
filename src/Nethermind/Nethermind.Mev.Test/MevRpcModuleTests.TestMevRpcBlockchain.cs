@@ -51,7 +51,6 @@ namespace Nethermind.Mev.Test
             TestSpecProvider testSpecProvider = releaseSpec is not null
                 ? new TestSpecProvider(releaseSpec)
                 : new TestSpecProvider(Berlin.Instance);
-            testSpecProvider.ChainId = 1;
             return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
         }
 

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Newtonsoft.Json;
 
 namespace Nethermind.Core;
 
@@ -26,9 +28,13 @@ public class Withdrawal
     public Address Address { get; set; } = Address.Zero;
 
     /// <summary>
-    /// Gets or sets the withdrawal amount in Wei.
+    /// Gets or sets the withdrawal amount in GWei.
     /// </summary>
-    public UInt256 Amount { get; set; }
+    [JsonProperty(PropertyName = "amount")]
+    public ulong AmountInGwei { get; set; }
+
+    [JsonIgnore]
+    public UInt256 AmountInWei => AmountInGwei * 1.GWei();
 
     public override string ToString() => ToString(string.Empty);
 
@@ -36,6 +42,6 @@ public class Withdrawal
         .Append($"{nameof(Index)}: {Index}, ")
         .Append($"{nameof(ValidatorIndex)}: {ValidatorIndex}, ")
         .Append($"{nameof(Address)}: {Address}, ")
-        .Append($"{nameof(Amount)}: {Amount}}}")
+        .Append($"{nameof(AmountInGwei)}: {AmountInGwei}}}")
         .ToString();
 }

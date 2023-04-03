@@ -412,7 +412,7 @@ namespace Nethermind.Mev.Source
                     }
                 }
 
-                if (simulations.Count == 0)
+                if (simulations.IsEmpty)
                 {
                     _simulatedBundles.Remove(bundle.BlockNumber, out _);
                 }

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -41,7 +40,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
                 ChainSpec chainSpec = new();
 
-                chainSpec.ChainId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId;
+                chainSpec.NetworkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
+                chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
                 chainSpec.Name = chainSpecJson.Name;
                 chainSpec.DataDir = chainSpecJson.DataDir;
                 LoadGenesis(chainSpecJson, chainSpec);
@@ -63,7 +63,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JObject>> predicate)
             {
-                var allocation = chainSpecJson.Accounts.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
+                var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
                 if (allocation is null) return null;
                 KeyValuePair<string, JObject>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
                 if (pricing.Length > 0)
@@ -95,8 +95,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400,
                 MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32,
                 MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000,
-                MaxCodeSize = chainSpecJson.Params.MaxCodeSize ?? long.MaxValue,
-                MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition ?? 0,
+                MaxCodeSize = chainSpecJson.Params.MaxCodeSize,
+                MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition,
                 Registrar = chainSpecJson.Params.EnsRegistrar,
                 ForkBlock = chainSpecJson.Params.ForkBlock,
                 ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
@@ -138,6 +138,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip3855TransitionTimestamp = chainSpecJson.Params.Eip3855TransitionTimestamp,
                 Eip3860TransitionTimestamp = chainSpecJson.Params.Eip3860TransitionTimestamp,
                 Eip4895TransitionTimestamp = chainSpecJson.Params.Eip4895TransitionTimestamp,
+                Eip4844TransitionTimestamp = chainSpecJson.Params.Eip4844TransitionTimestamp,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
@@ -193,6 +194,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                 chainSpec.HomesteadBlockNumber = 0;
             }
 
+            IEnumerable<long?> difficultyBombDelaysBlockNumbers = chainSpec.Ethash?.DifficultyBombDelays
+                .Keys
+                .Cast<long?>()
+                .ToArray();
+
             chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
             chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
             chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
@@ -203,18 +209,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.ConstantinopleFixBlockNumber =
                 chainSpec.Parameters.Eip1283DisableTransition ?? chainSpec.Parameters.Eip145Transition;
             chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
-            chainSpec.MuirGlacierNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 2 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[2]
-                : null;
-            chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition ?? (long.MaxValue - 1);
-            chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition ?? (long.MaxValue - 1);
-            chainSpec.ArrowGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 4 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[4]
-                : null;
-            chainSpec.GrayGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 5 ?
-                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[5]
-                : null;
-            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp ?? (long.MaxValue - 1);
+            chainSpec.MuirGlacierNumber = difficultyBombDelaysBlockNumbers?.Skip(2).FirstOrDefault();
+            chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition;
+            chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
+            chainSpec.ArrowGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(4).FirstOrDefault();
+            chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
+            chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
 
             // TheMerge parameters
             chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
@@ -375,6 +375,10 @@ namespace Nethermind.Specs.ChainSpecStyle
             bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
             if (withdrawalsEnabled)
                 genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
+
+            bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
+            if (isEip4844Enabled)
+                genesisHeader.ExcessDataGas ??= 0;
 
             genesisHeader.AuRaStep = step;
             genesisHeader.AuRaSignature = auRaSignature;

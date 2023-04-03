@@ -22,12 +22,17 @@ namespace Nethermind.Benchmarks.Core
         public ICache<int, object> WithRecreation()
         {
             LruCache<int, object> cache = new LruCache<int, object>(Capacity, Capacity, string.Empty);
-            for (int j = 0; j < 1024 * 64; j++)
-            {
-                cache.Set(j, _object);
-            }
+            Fill(cache);
 
             return cache;
+
+            void Fill(LruCache<int, object> cache)
+            {
+                for (int j = 0; j < 1024 * 64; j++)
+                {
+                    cache.Set(j, _object);
+                }
+            }
         }
 
         [Benchmark]

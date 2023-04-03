@@ -25,7 +25,7 @@ namespace Ethereum.KeyAddress.Test
         public void SetUp()
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            _ecdsa = new EthereumEcdsa(ChainId.Olympic, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
         }
 
         private static IEnumerable<KeyAddressTest> LoadTests()

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -48,9 +50,9 @@ namespace Nethermind.Synchronization.FastSync
 
         public DetailedProgress(ulong chainId, byte[] serializedInitialState)
         {
-            if (Known.ChainSize.ContainsKey(chainId))
+            if (Known.ChainSize.TryGetValue(chainId, out Known.SizeInfo value))
             {
-                _chainSizeInfo = Known.ChainSize[chainId];
+                _chainSizeInfo = value;
             }
 
             LoadFromSerialized(serializedInitialState);
@@ -73,7 +75,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 Metrics.StateSynced = DataSize;
                 string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,6:F2}MB";
-                if (_chainSizeInfo is not null)
+                if (_chainSizeInfo != null)
                 {
                     decimal percentage = Math.Min(1, (decimal)DataSize / _chainSizeInfo.Value.Current);
                     dataSizeInfo = string.Concat(
@@ -105,7 +107,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void LoadFromSerialized(byte[] serializedData)
         {
-            if (serializedData is not null)
+            if (serializedData != null)
             {
                 RlpStream rlpStream = new(serializedData);
                 rlpStream.ReadSequenceLength();
@@ -130,21 +132,42 @@ namespace Nethermind.Synchronization.FastSync
 
         public byte[] Serialize()
         {
-            Rlp rlp = Rlp.Encode(
-                Rlp.Encode(ConsumedNodesCount),
-                Rlp.Encode(SavedStorageCount),
-                Rlp.Encode(SavedStateCount),
-                Rlp.Encode(SavedNodesCount),
-                Rlp.Encode(SavedAccounts),
-                Rlp.Encode(SavedCode),
-                Rlp.Encode(RequestedNodesCount),
-                Rlp.Encode(DbChecks),
-                Rlp.Encode(StateWasThere),
-                Rlp.Encode(StateWasNotThere),
-                Rlp.Encode(DataSize),
-                Rlp.Encode(SecondsInSync));
+            Span<long> progress = stackalloc[]
+            {
+                ConsumedNodesCount,
+                SavedStorageCount,
+                SavedStateCount,
+                SavedNodesCount,
+                SavedAccounts,
+                SavedCode,
+                RequestedNodesCount,
+                DbChecks,
+                StateWasThere,
+                StateWasNotThere,
+                DataSize,
+                SecondsInSync
+            };
 
-            return rlp.Bytes;
+            int contentLength = GetLength(progress);
+            RlpStream stream = new RlpStream(Rlp.LengthOfSequence(contentLength));
+            stream.StartSequence(contentLength);
+            foreach (long entry in progress)
+            {
+                stream.Encode(entry);
+            }
+            return stream.Data;
+        }
+
+        private static int GetLength(Span<long> progress)
+        {
+            int sum = 0;
+
+            for (int index = 0; index < progress.Length; index++)
+            {
+                sum += Rlp.LengthOf(progress[index]);
+            }
+
+            return sum;
         }
     }
 }

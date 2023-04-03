@@ -13,7 +13,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -26,9 +25,9 @@ using Nethermind.Synchronization;
 namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <summary>
-/// Defines a class that handles the execution payload according to the
-/// <see href="https://eips.ethereum.org/EIPS/eip-3675">EIP-3675</see>.
-/// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">engine_newpayloadv2</see>.
+/// Provides an execution payload handler as defined in Engine API
+/// <see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
+/// Shanghai</see> specification.
 /// </summary>
 public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>
 {
@@ -41,10 +40,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly IBlockCacheService _blockCacheService;
     private readonly IBlockProcessingQueue _processingQueue;
     private readonly IMergeSyncController _mergeSyncController;
-    private readonly ISpecProvider _specProvider;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly ILogger _logger;
-    private readonly LruCache<Keccak, bool>? _latestBlocks;
+    private readonly LruCache<KeccakKey, bool>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
@@ -60,7 +58,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         IBlockProcessingQueue processingQueue,
         IInvalidChainTracker invalidChainTracker,
         IMergeSyncController mergeSyncController,
-        ISpecProvider specProvider,
         ILogManager logManager,
         TimeSpan? timeout = null,
         int cacheSize = 50)
@@ -75,12 +72,11 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _processingQueue = processingQueue;
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
-        _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
         if (cacheSize > 0)
-            _latestBlocks = new LruCache<Keccak, bool>(cacheSize, 0, "LatestBlocks");
+            _latestBlocks = new(cacheSize, 0, "LatestBlocks");
     }
 
     /// <summary>
@@ -103,7 +99,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         if (!HeaderValidator.ValidateHash(block!.Header))
         {
             if (_logger.IsWarn) _logger.Warn($"InvalidBlockHash. Result of {requestStr}.");
-            return NewPayloadV1Result.InvalidBlockHash;
+            return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}");
         }
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
@@ -111,13 +107,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             if (_logger.IsInfo) _logger.Info($"Invalid - block {request} is known to be a part of an invalid chain.");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
-        }
-
-        if (!_blockValidator.ValidateWithdrawals(block, out var error))
-        {
-            if (_logger.IsWarn) _logger.Warn($"Invalid: {error}");
-
-            return NewPayloadV1Result.Invalid(lastValidHash ?? block.ParentHash, error);
         }
 
         if (block.Header.Number <= _syncConfig.PivotNumberParsed)
@@ -163,7 +152,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
             if (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null)
             {
-                if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Block already known in blockTree {block}.");
+                if (_logger.IsInfo) _logger.Info($"Syncing... Block already known in blockTree {block}.");
                 return NewPayloadV1Result.Syncing;
             }
 
@@ -176,7 +165,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _beaconPivot.EnsurePivot(block.Header, true);
             _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, insertHeaderOptions);
 
-            if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Inserting block {block}.");
+            if (_logger.IsInfo) _logger.Info($"Syncing... Inserting block {block}.");
             return NewPayloadV1Result.Syncing;
         }
 

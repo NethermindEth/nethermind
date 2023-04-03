@@ -23,17 +23,26 @@ public class SepoliaSpecProvider : ISpecProvider
     }
 
     public ForkActivation? MergeBlockNumber => _theMergeBlock;
+    public ulong TimestampFork => ISpecProvider.TimestampForkNever;
     public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
     public IReleaseSpec GenesisSpec => London.Instance;
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) => London.Instance;
+    public const ulong ShanghaiBlockTimestamp = 1677557088;
+
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+        forkActivation switch
+        {
+            { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => London.Instance,
+            _ => Shanghai.Instance
+        };
 
     public long? DaoBlockNumber => null;
 
 
-    public ulong ChainId => Core.ChainId.Rinkeby;
+    public ulong NetworkId => Core.BlockchainIds.Rinkeby;
+    public ulong ChainId => NetworkId;
 
-    public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)1735371 };
+    public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)1735371, new ForkActivation(1735371, 1677557088) };
 
     private SepoliaSpecProvider() { }
 

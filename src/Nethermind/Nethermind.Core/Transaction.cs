@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -30,6 +33,7 @@ namespace Nethermind.Core
         public UInt256 MaxFeePerGas => IsEip1559 ? DecodedMaxFeePerGas : GasPrice;
         public bool IsEip1559 => Type == TxType.EIP1559;
         public bool IsEip2930 => Type == TxType.AccessList;
+        public bool IsEip4844 => Type == TxType.Blob;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
@@ -39,11 +43,83 @@ namespace Nethermind.Core
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
-        public Keccak? Hash { get; set; }
-        public PublicKey? DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
+
+        private Keccak? _hash;
+        public Keccak? Hash
+        {
+            get
+            {
+                Keccak? hash = _hash;
+                if (hash is not null) return hash;
+
+                if (_preHash.Length > 0)
+                {
+                    GenerateHash();
+                }
+
+                return _hash;
+
+                void GenerateHash()
+                {
+                    _hash = Keccak.Compute(_preHash.Span);
+                    if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+                    {
+                        ArrayPool<byte>.Shared.Return(rentedArray.Array!);
+                    }
+
+                    _preHash = default;
+                }
+            }
+            set
+            {
+                if (_preHash.Length > 0)
+                {
+                    if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+                    {
+                        ArrayPool<byte>.Shared.Return(rentedArray.Array!);
+                    }
+
+                    _preHash = default;
+                }
+
+                _hash = value;
+            }
+        }
+
+        private ReadOnlyMemory<byte> _preHash;
+        public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
+        {
+            // Used to delay hash generation, as may be filtered as having too low gas etc
+            _hash = null;
+
+            int size = transactionSequence.Length;
+            byte[] preHash = ArrayPool<byte>.Shared.Rent(size);
+            transactionSequence.CopyTo(preHash);
+            _preHash = new ReadOnlyMemory<byte>(preHash, 0, size);
+        }
+
+        public void ClearPreHash()
+        {
+            if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+            {
+                ArrayPool<byte>.Shared.Return(rentedArray.Array!);
+            }
+
+            _preHash = default;
+        }
+
         public UInt256 Timestamp { get; set; }
 
+        public int DataLength => Data?.Length ?? 0;
+
         public AccessList? AccessList { get; set; } // eip2930
+        public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+        public byte[][]? BlobVersionedHashes { get; set; } // eip4844
+
+        // Network form of blob transaction fields
+        public byte[][]? BlobKzgs { get; set; }
+        public byte[][]? Blobs { get; set; }
+        public byte[]? Proof { get; set; }
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
@@ -98,6 +174,10 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
 
+            if (IsEip4844)
+            {
+                builder.AppendLine($"{indent}BlobVersionedHashes: {BlobVersionedHashes?.Length}");
+            }
 
             return builder.ToString();
         }

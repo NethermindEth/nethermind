@@ -2,13 +2,11 @@
   <PropertyGroup>
     <TargetFramework>net7.0</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <Deterministic>true</Deterministic>
-    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
-    <PackageReference Include="System.Configuration.ConfigurationManager" Version="7.0.0" />
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="System.Configuration.ConfigurationManager" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />

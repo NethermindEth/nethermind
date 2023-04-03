@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc
         string IpcUnixDomainSocketPath { get; set; }
 
         [ConfigItem(
-            Description = "Defines which RPC modules should be enabled. Built in modules are: Admin, Baseline, Clique, Consensus, Db, Debug, Deposit, Erc20, Eth, Evm, Health Mev, NdmConsumer, NdmProvider, Net, Nft, Parity, Personal, Proof, Subscribe, Trace, TxPool, Vault, Web3.",
+            Description = "Defines which RPC modules should be enabled. Built in modules are: Admin, Clique, Consensus, Db, Debug, Deposit, Erc20, Eth, Evm, Health Mev, NdmConsumer, NdmProvider, Net, Nft, Parity, Personal, Proof, Subscribe, Trace, TxPool, Vault, Web3.",
             DefaultValue = "[Eth, Subscribe, Trace, TxPool, Web3, Personal, Proof, Net, Parity, Health, Rpc]")]
         string[] EnabledModules { get; set; }
 
@@ -122,13 +122,18 @@ namespace Nethermind.JsonRpc
         int? EnginePort { get; set; }
 
         [ConfigItem(
-            Description = "Defines which RPC modules should be enabled Execution Engine port. Built in modules are: Admin, Baseline, Clique, Consensus, Db, Debug, Deposit, Erc20, Eth, Evm, Health Mev, NdmConsumer, NdmProvider, Net, Nft, Parity, Personal, Proof, Subscribe, Trace, TxPool, Vault, Web3.",
+            Description = "Defines which RPC modules should be enabled Execution Engine port. Built in modules are: Admin, Clique, Consensus, Db, Debug, Deposit, Erc20, Eth, Evm, Health Mev, NdmConsumer, NdmProvider, Net, Nft, Parity, Personal, Proof, Subscribe, Trace, TxPool, Vault, Web3.",
             DefaultValue = "[Net, Eth, Subscribe, Web3]")]
         string[] EngineEnabledModules { get; set; }
 
         [ConfigItem(
             Description = "Limit batch size for batched json rpc call",
-            DefaultValue = "100")]
+            DefaultValue = "1024")]
         int MaxBatchSize { get; set; }
+
+        [ConfigItem(
+            Description = "Max response body size when using batch requests, subsequent requests are trimmed",
+            DefaultValue = "30000000")]
+        long? MaxBatchResponseBodySize { get; set; }
     }
 }

@@ -1,0 +1,10 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: nethermind
+Upstream-Contact: Demerzel Solutions Limited <hello@nethermind.io>
+Source: https://nethermind.io
+
+Files: *
+Copyright: 2023 Demerzel Solutions Limited
+License: LGPL-3
+  On Debian systems, the full text of the GNU Lesser General Public License v3
+  can be found in "/usr/share/common-licenses/LGPL-3".

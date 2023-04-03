@@ -20,7 +20,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        protected override byte[] GetCurrentValue(StorageCell storageCell) =>
+        protected override byte[] GetCurrentValue(in StorageCell storageCell) =>
             TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : _zeroValue;
     }
 }

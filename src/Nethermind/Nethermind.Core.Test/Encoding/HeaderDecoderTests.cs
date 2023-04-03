@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -106,6 +108,29 @@ public class HeaderDecoderTests
         {
             HeaderDecoder.Eip1559TransitionBlock = long.MaxValue;
         }
+    }
+
+    [TestCaseSource(nameof(ExcessDataGasCaseSource))]
+    public void Can_encode_decode_with_excessDataGas(UInt256? excessDataGas)
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithExcessDataGas(excessDataGas).TestObject;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+
+        blockHeader.ExcessDataGas.Should().Be(excessDataGas);
+    }
+
+    public static IEnumerable<UInt256?> ExcessDataGasCaseSource()
+    {
+        yield return null;
+        yield return UInt256.Zero;
+        yield return new UInt256(1);
+        yield return UInt256.UInt128MaxValue;
+        yield return UInt256.MaxValue;
     }
 
     [TestCase(-1)]

@@ -235,6 +235,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             expectedResult.Should().Be(serialized);
         }
 
+        [TestCase("true")]
+        [TestCase("True")]
+        [TestCase("false")]
+        [TestCase("False")]
+        public void NewHeadSubscription_with_bool_arg(string boolArg)
+        {
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", boolArg);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+
         [Test]
         public void NewHeadSubscription_on_BlockAddedToMain_event2()
         {
@@ -391,7 +402,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 jsonRpcResult.TryDequeue(out var result);
 
-                ((BlockForRpc)((JsonRpcSubscriptionResponse)result.Response).Params.Result).Difficulty.Should().Be((UInt256)i);
+                ((BlockForRpc)((JsonRpcSubscriptionResponse)result.Response!).Params.Result).Difficulty.Should().Be((UInt256)i);
             }
         }
 
@@ -454,7 +465,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string _);
 
             jsonRpcResults.Count.Should().Be(0);
         }
@@ -475,7 +486,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId);
 
             jsonRpcResults.Count.Should().Be(3);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
@@ -513,7 +524,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockReplacementEventArgs blockEventArgs = new(block);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string subscriptionId);
 
             jsonRpcResults.Count.Should().Be(5);
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
@@ -722,6 +733,25 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void NewPendingTransactionsSubscription_creating_result()
         {
             string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+
+        [Test]
+        public void NewPendingTransactionsSubscription_creating_result_with_includeTransactions_arg()
+        {
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions", "{\"includeTransactions\":true}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+
+        [TestCase("true")]
+        [TestCase("True")]
+        [TestCase("false")]
+        [TestCase("False")]
+        public void NewPendingTransactionsSubscription_creating_result_with_bool_arg(string boolArg)
+        {
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions", boolArg);
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
             expectedResult.Should().Be(serialized);
         }

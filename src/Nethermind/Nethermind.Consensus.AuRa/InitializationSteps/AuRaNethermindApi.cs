@@ -26,8 +26,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public IValidatorStore? ValidatorStore { get; set; }
 
-        public ICache<Keccak, UInt256> TransactionPermissionContractVersions { get; }
-            = new LruCache<Keccak, UInt256>(
+        public LruCache<KeccakKey, UInt256> TransactionPermissionContractVersions { get; }
+            = new(
                 PermissionBasedTxFilter.Cache.MaxCacheSize,
                 nameof(TransactionPermissionContract));
 
@@ -37,10 +37,5 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public ReportingContractBasedValidator.Cache ReportingContractValidatorCache { get; } = new ReportingContractBasedValidator.Cache();
         public TxPriorityContract.LocalDataSource? TxPriorityContractLocalDataSource { get; set; }
-
-        /// <summary>
-        /// PoS switcher for The Merge
-        /// </summary>
-        public IPoSSwitcher? PoSSwitcher { get; set; }
     }
 }

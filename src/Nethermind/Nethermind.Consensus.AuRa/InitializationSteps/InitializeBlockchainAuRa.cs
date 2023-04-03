@@ -116,6 +116,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.NonceManager is null) throw new StepDependencyException(nameof(_api.NonceManager));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
 
@@ -136,8 +137,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     _api.ReceiptStorage,
                     _api.ValidatorStore,
                     _api.FinalizationManager,
-                    new TxPoolSender(_api.TxPool,
-                    new NonceReservingTxSealer(_api.EngineSigner, _api.Timestamper, _api.TxPool, _api.EthereumEcdsa)),
+                    new TxPoolSender(_api.TxPool, new TxSealer(_api.EngineSigner, _api.Timestamper), _api.NonceManager, _api.EthereumEcdsa),
                     _api.TxPool,
                     NethermindApi.Config<IBlocksConfig>(),
                     _api.LogManager,
@@ -278,7 +278,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.TxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(txPriorityContract, localDataSource),
-                new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager));
+                new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager),
+                txPriorityContract is not null || localDataSource is not null);
         }
 
         private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)

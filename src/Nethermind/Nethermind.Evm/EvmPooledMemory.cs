@@ -90,8 +90,8 @@ namespace Nethermind.Evm
             UpdateSize(in location, (UInt256)value.Length);
 
             int intLocation = (int)location;
-            value.Span.CopyTo(_memory.AsSpan().Slice(intLocation, value.Span.Length));
-            _memory.AsSpan().Slice(intLocation + value.Span.Length, value.PaddingLength).Clear();
+            value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
+            _memory.AsSpan(intLocation + value.Span.Length, value.PaddingLength).Clear();
         }
 
         public void Save(in UInt256 location, ZeroPaddedMemory value)
@@ -106,7 +106,7 @@ namespace Nethermind.Evm
 
             int intLocation = (int)location;
             value.Memory.CopyTo(_memory.AsMemory().Slice(intLocation, value.Memory.Length));
-            _memory.AsSpan().Slice(intLocation + value.Memory.Length, value.PaddingLength).Clear();
+            _memory.AsSpan(intLocation + value.Memory.Length, value.PaddingLength).Clear();
         }
 
         public Span<byte> LoadSpan(scoped in UInt256 location)
@@ -134,7 +134,7 @@ namespace Nethermind.Evm
         {
             if (length.IsZero)
             {
-                return ReadOnlyMemory<byte>.Empty;
+                return default;
             }
 
             if (location > int.MaxValue)
@@ -151,7 +151,7 @@ namespace Nethermind.Evm
         {
             if (length.IsZero)
             {
-                return ReadOnlyMemory<byte>.Empty;
+                return default;
             }
 
             if (location > int.MaxValue)
@@ -161,7 +161,7 @@ namespace Nethermind.Evm
 
             if (_memory is null || location + length > _memory.Length)
             {
-                return ReadOnlyMemory<byte>.Empty;
+                return default;
             }
 
             return _memory.AsMemory((int)location, (int)length);
@@ -211,7 +211,7 @@ namespace Nethermind.Evm
                 int sizeAvailable = Math.Min(WordSize, (_memory?.Length ?? 0) - traceLocation);
                 if (sizeAvailable > 0)
                 {
-                    Span<byte> bytes = _memory.AsSpan().Slice(traceLocation, sizeAvailable);
+                    Span<byte> bytes = _memory.AsSpan(traceLocation, sizeAvailable);
                     memoryTrace.Add(bytes.ToHexString());
                 }
                 else // Memory might not be initialized

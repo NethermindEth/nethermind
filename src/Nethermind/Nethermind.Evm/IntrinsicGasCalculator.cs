@@ -39,7 +39,7 @@ namespace Nethermind.Evm
             long dataCost = 0;
             if (transaction.Data is not null)
             {
-                for (int i = 0; i < transaction.Data.Length; i++)
+                for (int i = 0; i < transaction.DataLength; i++)
                 {
                     dataCost += transaction.Data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
                 }
@@ -47,7 +47,7 @@ namespace Nethermind.Evm
 
             if (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled)
             {
-                dataCost += EvmPooledMemory.Div32Ceiling((UInt256)transaction.Data.Length) * GasCostOf.InitCodeWord;
+                dataCost += EvmPooledMemory.Div32Ceiling((UInt256)transaction.DataLength) * GasCostOf.InitCodeWord;
             }
 
             return dataCost;

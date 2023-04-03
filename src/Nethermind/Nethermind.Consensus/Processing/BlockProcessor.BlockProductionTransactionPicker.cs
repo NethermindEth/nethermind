@@ -55,6 +55,11 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+                if (currentTx.IsAboveInitCode(spec))
+                {
+                    return args.Set(TxAction.Skip, $"EIP-3860 - transaction size over max init code size");
+                }
+
                 if (stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");

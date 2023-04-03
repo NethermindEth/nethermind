@@ -58,9 +58,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                                 Assert.AreEqual(0L, deserialized.TxReceipts[i][j].BlockNumber, $"receipts[{i}][{j}].BlockNumber");
                                 Assert.Null(deserialized.TxReceipts[i][j].ContractAddress, $"receipts[{i}][{j}].ContractAddress");
                                 Assert.AreEqual(0L, deserialized.TxReceipts[i][j].GasUsed, $"receipts[{i}][{j}].GasUsed");
-                                Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode, deserialized.TxReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
                                 Assert.AreEqual(txReceipts[i][j].GasUsedTotal, deserialized.TxReceipts[i][j].GasUsedTotal, $"receipts[{i}][{j}].GasUsedTotal");
-                                Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null, deserialized.TxReceipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
+                                if (!txReceipts[i][j].SkipStateAndStatusInRlp)
+                                {
+                                    Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode, deserialized.TxReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
+                                    Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null, deserialized.TxReceipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
+                                }
                             }
                         }
                     }
