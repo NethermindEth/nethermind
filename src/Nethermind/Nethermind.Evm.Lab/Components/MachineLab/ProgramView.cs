@@ -61,14 +61,22 @@ internal class ProgramView : IComponent<MachineState>
         {
             X = 0,
             Y = 0,
-            Width = Dim.Fill(2),
-            Height = Dim.Fill(2),
+            Width = Dim.Fill(),
+            Height = Dim.Percent(80),
         };
         programView.Table = dataTable;
+        programView.SelectedRow = state.GetState().Index;
 
         if (!isCached)
         {
-            container.Add(programView);
+            var mediaLikeView = new MediaLikeView()
+                .View(state, new Rectangle
+                {
+                    X = 0,
+                    Y = Pos.Bottom(programView),
+                    Height = Dim.Percent(20),
+                });
+            container.Add(programView, mediaLikeView.Item1);
         }
         isCached = true;
         return (container, frameBoundaries);

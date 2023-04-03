@@ -165,6 +165,8 @@ internal class MainView : IComponent<MachineState>
     {
         switch (msg)
         {
+            case Goto idxMsg:
+                return state.GetState().Goto(idxMsg.index);
             case MoveNext _:
                 return state.GetState().Next();
             case MoveBack _:

@@ -94,7 +94,7 @@ internal class EipSelectionView : IComponent<MachineState>
 
             var submit = new Button("Submit");
             var cancel = new Button("Cancel");
-            container ??= new Dialog("Error", 60, 7, submit, cancel)
+            container ??= new Dialog("Eip Selection Panel", 60, 7, submit, cancel)
             {
                 X = frameBoundaries.X,
                 Y = frameBoundaries.Y,
