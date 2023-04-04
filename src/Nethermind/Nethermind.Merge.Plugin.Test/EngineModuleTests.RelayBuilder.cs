@@ -83,9 +83,12 @@ public partial class EngineModuleTests
         sentItem.Profit.Should().Be(0);
     }
 
-    [Test]
+    [TestCase(
+        "0x4ced29c819cf146b41ef448042773f958d5bbe297b0d6b82be677b65c85b436b",
+        "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133")]
     [Parallelizable(ParallelScope.None)]
-    public virtual async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http()
+    public virtual async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(
+        string blockHash, string parentHash)
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
@@ -101,7 +104,7 @@ public partial class EngineModuleTests
             .Respond("application/json", "{\"timestamp\":\"0x3e9\",\"prevRandao\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"suggestedFeeRecipient\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}");
 
         //TODO: think about extracting an essely serialisable class, test its serializatoin sepratly, refactor with it similar methods like the one above
-        var expected_parentHash = "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133";
+        var expected_parentHash = parentHash;
         var expected_feeRecipient = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099";
         var expected_stateRoot = "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f";
         var expected_receiptsRoot = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421";
@@ -113,7 +116,7 @@ public partial class EngineModuleTests
         var expected_timestamp = 0x3e9UL;
         var expected_extraData = "0x4e65746865726d696e64"; // Nethermind
         var expected_baseFeePerGas = (UInt256)0;
-        var expected_blockHash = "0x4ced29c819cf146b41ef448042773f958d5bbe297b0d6b82be677b65c85b436b";
+        var expected_blockHash = blockHash;
         var expected_profit = "0x0";
 
         var expected = new BoostExecutionPayloadV1

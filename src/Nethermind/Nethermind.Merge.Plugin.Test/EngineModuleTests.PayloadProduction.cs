@@ -501,7 +501,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task Empty_block_is_valid_with_withdrawals_V2()
+    public virtual async Task Empty_block_is_valid_with_withdrawals_V2()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(Shanghai.Instance));

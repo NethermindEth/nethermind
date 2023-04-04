@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin;
@@ -29,6 +30,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         ISpecProvider specProvider,
+        GCKeeper gcKeeper,
         ILogManager logManager)
     {
         _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));
@@ -40,6 +42,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         _executionGetPayloadBodiesByRangeV1Handler = executionGetPayloadBodiesByRangeV1Handler;
         _transitionConfigurationHandler = transitionConfigurationHandler;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        _gcKeeper = gcKeeper;
         _logger = logManager.GetClassLogger();
     }
 

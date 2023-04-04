@@ -27,6 +27,7 @@ using Nethermind.HealthChecks;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
@@ -103,6 +104,7 @@ public partial class EngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.SpecProvider, chain.LogManager),
             chain.SpecProvider,
+            new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
     }
 
