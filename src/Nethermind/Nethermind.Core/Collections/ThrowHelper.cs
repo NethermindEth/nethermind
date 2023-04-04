@@ -15,7 +15,7 @@ public class ThrowHelper
     internal static void IfNullAndNullsAreIllegalThenThrow<T>(object? value, string argName)
     {
         // Note that default(T) is not equal to null for value types except when T is Nullable<U>.
-        if (default(T) != null && value == null)
+        if (default(T) is not null && value is null)
             throw new ArgumentNullException(argName);
     }
 }
