@@ -1,19 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain;
+
+public class InvalidBlockException : BlockchainException
 {
-    public class InvalidBlockException : BlockchainException
-    {
-        public Block InvalidBlock { get; }
+    public InvalidBlockException(Block block, Exception? innerException = null)
+        : base($"Invalid block: {block}", innerException) => InvalidBlock = block;
 
-        public InvalidBlockException(Block invalidBlock)
-            : base($"Invalid block: {invalidBlock}")
-        {
-            InvalidBlock = invalidBlock;
-        }
-    }
+    public Block InvalidBlock { get; }
 }

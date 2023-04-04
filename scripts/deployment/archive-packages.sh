@@ -15,5 +15,6 @@ cd linux-arm64 && zip -r $GITHUB_WORKSPACE/$PACKAGE_DIR/$PACKAGE_PREFIX-linux-ar
 cd win-x64 && zip -r $GITHUB_WORKSPACE/$PACKAGE_DIR/$PACKAGE_PREFIX-windows-x64.zip . && cd ..
 cd osx-x64 && zip -r $GITHUB_WORKSPACE/$PACKAGE_DIR/$PACKAGE_PREFIX-macos-x64.zip . && cd ..
 cd osx-arm64 && zip -r $GITHUB_WORKSPACE/$PACKAGE_DIR/$PACKAGE_PREFIX-macos-arm64.zip . && cd ..
+cd ref && zip -r $GITHUB_WORKSPACE/$PACKAGE_DIR/$PACKAGE_PREFIX-ref-assemblies.zip . && cd ..
 
 echo "Archiving completed"
