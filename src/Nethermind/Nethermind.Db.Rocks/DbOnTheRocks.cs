@@ -88,6 +88,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         _rocksDbNative = rocksDbNative ?? RocksDbSharp.Native.Instance;
         _perTableDbConfig = new PerTableDbConfig(dbConfig, _settings);
         _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, rocksDbSettings.DeleteOnStart);
+
+        if (_perTableDbConfig.AdditionalSettings != null)
+        {
+            ApplyOptions(_perTableDbConfig.AdditionalSettings);
+        }
     }
 
     protected virtual RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
