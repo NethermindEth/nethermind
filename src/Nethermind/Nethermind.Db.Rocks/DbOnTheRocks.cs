@@ -89,9 +89,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         _perTableDbConfig = new PerTableDbConfig(dbConfig, _settings);
         _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, rocksDbSettings.DeleteOnStart);
 
-        if (_perTableDbConfig.AdditionalSettings != null)
+        if (_perTableDbConfig.AdditionalRocksDbOptions != null)
         {
-            ApplyOptions(_perTableDbConfig.AdditionalSettings);
+            ApplyOptions(_perTableDbConfig.AdditionalRocksDbOptions);
         }
     }
 
