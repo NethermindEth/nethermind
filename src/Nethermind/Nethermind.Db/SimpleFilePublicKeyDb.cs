@@ -12,6 +12,7 @@ using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
@@ -23,7 +24,7 @@ namespace Nethermind.Db
 
         private ILogger _logger;
         private bool _hasPendingChanges;
-        private ConcurrentDictionary<byte[], byte[]> _cache;
+        private SpanConcurrentDictionary<byte, byte[]> _cache;
 
         public string DbPath { get; }
         public string Name { get; }
@@ -49,7 +50,7 @@ namespace Nethermind.Db
             LoadData();
         }
 
-        public byte[] this[byte[] key]
+        public byte[] this[ReadOnlySpan<byte> key]
         {
             get => _cache[key];
             set
@@ -60,20 +61,20 @@ namespace Nethermind.Db
                 }
                 else
                 {
-                    _cache.AddOrUpdate(key, newValue => Add(value), (x, oldValue) => Update(oldValue, value));
+                    _cache.AddOrUpdate(key.ToArray(), newValue => Add(value), (x, oldValue) => Update(oldValue, value));
                 }
             }
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
 
-        public void Remove(byte[] key)
+        public void Remove(ReadOnlySpan<byte> key)
         {
             _hasPendingChanges = true;
             _cache.TryRemove(key, out _);
         }
 
-        public bool KeyExists(byte[] key)
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
             return _cache.ContainsKey(key);
         }
@@ -181,7 +182,7 @@ namespace Nethermind.Db
         {
             const int maxLineLength = 2048;
 
-            _cache = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            _cache = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanEqualityComparer);
 
             if (!File.Exists(DbPath))
             {

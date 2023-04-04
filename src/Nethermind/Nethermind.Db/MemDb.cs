@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
@@ -18,7 +19,7 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
-        private readonly ConcurrentDictionary<byte[], byte[]?> _db;
+        private readonly SpanConcurrentDictionary<byte, byte[]?> _db;
 
         public MemDb(string name)
             : this(0, 0)
@@ -34,22 +35,16 @@ namespace Nethermind.Db
         {
             _writeDelay = writeDelay;
             _readDelay = readDelay;
-            _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            _db = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanEqualityComparer);
         }
 
         public string Name { get; }
 
-        public byte[]? this[byte[] key]
+        public virtual byte[]? this[ReadOnlySpan<byte> key]
         {
             get
             {
-                if (_readDelay > 0)
-                {
-                    Thread.Sleep(_readDelay);
-                }
-
-                ReadsCount++;
-                return _db.TryGetValue(key, out byte[] value) ? value : null;
+                return Get(key);
             }
             set
             {
@@ -77,12 +72,12 @@ namespace Nethermind.Db
             }
         }
 
-        public void Remove(byte[] key)
+        public virtual void Remove(ReadOnlySpan<byte> key)
         {
             _db.TryRemove(key, out _);
         }
 
-        public bool KeyExists(byte[] key)
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
             return _db.ContainsKey(key);
         }
@@ -116,18 +111,29 @@ namespace Nethermind.Db
         {
         }
 
-        public Span<byte> GetSpan(byte[] key)
+        public virtual Span<byte> GetSpan(ReadOnlySpan<byte> key)
         {
             return this[key].AsSpan();
         }
 
-        public void PutSpan(byte[] key, ReadOnlySpan<byte> value)
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
         {
             this[key] = value.ToArray();
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)
         {
+        }
+
+        public virtual byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if (_readDelay > 0)
+            {
+                Thread.Sleep(_readDelay);
+            }
+
+            ReadsCount++;
+            return _db.TryGetValue(key, out byte[] value) ? value : null;
         }
     }
 }

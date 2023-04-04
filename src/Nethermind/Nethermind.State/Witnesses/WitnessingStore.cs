@@ -30,7 +30,7 @@ namespace Nethermind.State.Witnesses
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
         }
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get
             {
@@ -50,9 +50,9 @@ namespace Nethermind.State.Witnesses
             return _wrapped.StartBatch();
         }
 
-        public void Touch(byte[] key)
+        public void Touch(ReadOnlySpan<byte> key)
         {
-            _witnessCollector.Add(new Keccak(key));
+            _witnessCollector.Add(new Keccak(key.ToArray()));
         }
     }
 }

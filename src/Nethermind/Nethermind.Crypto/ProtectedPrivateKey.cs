@@ -8,7 +8,9 @@ namespace Nethermind.Crypto
 {
     public class ProtectedPrivateKey : ProtectedData<PrivateKey>
     {
-        public ProtectedPrivateKey(PrivateKey privateKey, ICryptoRandom random = null, ITimestamper timestamper = null) : base(privateKey.KeyBytes, random, timestamper)
+        public ProtectedPrivateKey(PrivateKey privateKey, string keyStoreDir,
+            ICryptoRandom? random = null, ITimestamper? timestamper = null)
+            : base(privateKey.KeyBytes, keyStoreDir, random, timestamper)
         {
             PublicKey = privateKey.PublicKey;
             CompressedPublicKey = privateKey.CompressedPublicKey;

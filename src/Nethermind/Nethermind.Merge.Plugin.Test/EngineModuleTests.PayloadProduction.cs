@@ -4,7 +4,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -18,8 +20,12 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Logging;
+using Nethermind.Logging.NLog;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -230,15 +236,20 @@ public partial class EngineModuleTests
                     FeeRecipient = Address.Zero,
                     GasLimit = 0x3d0900L,
                     GasUsed = 0,
-                    LogsBloom = new Bloom(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
+                    LogsBloom =
+                        new Bloom(Bytes.FromHexString(
+                            "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
                     ParentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c"),
                     PrevRandao = new("0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2"),
                     ReceiptsRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
                     StateRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
                     Timestamp = 0xf4240UL,
-                    Transactions = new[] {
-                        Bytes.FromHexString("0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"),
-                        Bytes.FromHexString("0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0033e85439a128c42f2ba47ca278f1375ef211e61750018ff21bcd9750d1893f2a04ee981fe5261f8853f95c865232ffdab009abcc7858ca051fb624c49744bf18d")
+                    Transactions = new[]
+                    {
+                        Bytes.FromHexString(
+                            "0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"),
+                        Bytes.FromHexString(
+                            "0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0033e85439a128c42f2ba47ca278f1375ef211e61750018ff21bcd9750d1893f2a04ee981fe5261f8853f95c865232ffdab009abcc7858ca051fb624c49744bf18d")
                     },
                 },
                 id = 67
@@ -282,7 +293,7 @@ public partial class EngineModuleTests
         Address feeRecipient = Address.Zero;
 
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
+            new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
 
         await Task.Delay(timePerSlot / 2);
 
@@ -331,8 +342,7 @@ public partial class EngineModuleTests
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         List<int?> transactionsLength = improvementContextFactory.CreatedContexts
-            .Select(c =>
-                c.CurrentBestBlock?.Transactions.Length).ToList();
+            .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
         transactionsLength.Should().Equal(3, 6, 11);
         Transaction[] txs = getPayloadResult.GetTransactions();
@@ -385,5 +395,131 @@ public partial class EngineModuleTests
 
         getPayloadResult.GetTransactions().Should().HaveCount(3);
         cancelledContext?.Disposed.Should().BeTrue();
+    }
+
+    [Test, Repeat(100)]
+    public async Task Cannot_produce_bad_blocks()
+    {
+        // this test sends two payloadAttributes on block X and X + 1 to start many block improvements
+        // as the result we want to check if we are not able to produce invalid block by repeating this test many times
+
+        bool logInvalidBlockExecution = false; // change to true if you want to log invalid blocks
+        string logFolder = "D:\\logs"; // adjust to your folder if needed by default logging is turned off
+        string guid = Guid.NewGuid().ToString();
+        ILogManager? logManager = LimboLogs.Instance;
+        if (logInvalidBlockExecution)
+        {
+            logManager = new NLogManager($"log_+{guid}", logFolder);
+        }
+
+        using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(London.Instance), logManager);
+        TimeSpan delay = TimeSpan.FromMilliseconds(10);
+        TimeSpan timePerSlot = 4 * delay;
+        StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
+        chain.PayloadPreparationService = new PayloadPreparationService(
+            chain.PostMergeBlockProducer!,
+            improvementContextFactory,
+            TimerFactory.Default,
+            chain.LogManager,
+            timePerSlot,
+            improvementDelay: delay,
+            minTimeForProduction: delay);
+
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak blockX = chain.BlockTree.HeadHash;
+        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
+        chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
+        string? payloadId = rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
+                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
+            .Result.Data.PayloadId!;
+        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
+        await blockImprovementLock.WaitAsync(delay);
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+
+        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
+
+        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(getPayloadResult);
+        if (result1.Result.Data.Status != PayloadStatus.Valid)
+        {
+            string[] files = Directory.GetFiles(logFolder);
+            foreach (string file in files)
+            {
+                if (!file.Contains(guid))
+                    File.Delete(file);
+            }
+        }
+
+        result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
+
+
+        // starting building on block X
+        await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
+            new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(4).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
+
+        int milliseconds = RandomNumberGenerator.GetInt32(timePerSlot.Milliseconds, timePerSlot.Milliseconds * 2);
+        await Task.Delay(milliseconds);
+
+        // starting building on block X + 1
+        string? secondNewPayload = rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(getPayloadResult.BlockHash, Keccak.Zero, getPayloadResult.BlockHash),
+                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
+            .Result.Data.PayloadId!;
+
+        ExecutionPayload getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload))).Data!;
+
+        Task<ResultWrapper<PayloadStatusV1>> secondBlock = rpc.engine_newPayloadV1(getSecondBlockPayload);
+        if (secondBlock.Result.Data.Status != PayloadStatus.Valid)
+        {
+            string[] files = Directory.GetFiles(logFolder);
+            foreach (string file in files)
+            {
+                if (!file.Contains(guid))
+                    File.Delete(file);
+            }
+        }
+
+        secondBlock.Result.Data.Status.Should().Be(PayloadStatus.Valid);
+    }
+
+    [Test]
+    public async Task Empty_block_is_valid_V1()
+    {
+        using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(London.Instance));
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak blockX = chain.BlockTree.HeadHash;
+        await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
+
+        PostMergeBlockProducer blockProducer = chain.PostMergeBlockProducer!;
+        Block emptyBlock = blockProducer.PrepareEmptyBlock(chain.BlockTree.Head!.Header, new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
+        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(new ExecutionPayload(emptyBlock));
+        result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
+    }
+
+    [Test]
+    public async Task Empty_block_is_valid_with_withdrawals_V2()
+    {
+        using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockChain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak blockX = chain.BlockTree.HeadHash;
+        await rpc.engine_forkchoiceUpdatedV2(
+            new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
+
+        PostMergeBlockProducer blockProducer = chain.PostMergeBlockProducer!;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = new List<Withdrawal>() { TestItem.WithdrawalA_1Eth }
+        };
+        Block emptyBlock = blockProducer.PrepareEmptyBlock(chain.BlockTree.Head!.Header, payloadAttributes);
+        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV2(new ExecutionPayload(emptyBlock));
+        result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 }

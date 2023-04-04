@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Test
                 LimboLogs.Instance, BlockchainProcessor.Options.Default);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         [Retry(3)]
         public void Test()
         {

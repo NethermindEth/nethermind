@@ -966,11 +966,16 @@ namespace Nethermind.Synchronization.Test
             protected virtual IBetterPeerStrategy BetterPeerStrategy =>
                 _betterPeerStrategy ??= new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
 
-            private ISyncModeSelector SyncModeSelector => _syncModeSelector ??=
+            public ISyncModeSelector SyncModeSelector => _syncModeSelector ??=
                 new MultiSyncModeSelector(SyncProgressResolver, PeerPool, syncConfig, No.BeaconSync, BetterPeerStrategy, LimboLogs.Instance);
 
-            private FullSyncFeed _feed;
-            public ActivatedSyncFeed<BlocksRequest> Feed => _feed ??= new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
+            private ActivatedSyncFeed<BlocksRequest?>? _feed;
+
+            public ActivatedSyncFeed<BlocksRequest?> Feed
+            {
+                get => _feed ??= new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
+                set => _feed = value;
+            }
 
             private ISealValidator? _sealValidator;
             public ISealValidator SealValidator

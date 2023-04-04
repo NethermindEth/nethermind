@@ -48,7 +48,6 @@ namespace Nethermind.Runner.Test
         [TestCase("poacore_validator.cfg", true, true)]
         [TestCase("spaceneth", false, false)]
         [TestCase("archive", false, false)]
-        [TestCase("baseline", false, false)]
         [TestCase("fast", true, true)]
         public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled)
         {
@@ -59,7 +58,6 @@ namespace Nethermind.Runner.Test
         [TestCase("archive", true)]
         [TestCase("fast", true)]
         [TestCase("spaceneth", false)]
-        [TestCase("baseline", true)]
         public void Sync_is_disabled_when_needed(string configWildcard, bool isSyncEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SynchronizationEnabled, isSyncEnabled);
@@ -68,7 +66,6 @@ namespace Nethermind.Runner.Test
         [TestCase("archive", true)]
         [TestCase("fast", true)]
         [TestCase("spaceneth", false)]
-        [TestCase("baseline", true)]
         public void Networking_is_disabled_when_needed(string configWildcard, bool isEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.NetworkingEnabled, isEnabled);
@@ -82,7 +79,6 @@ namespace Nethermind.Runner.Test
         [TestCase("xdai", "ws://localhost:3000/api")]
         [TestCase("spaceneth", "ws://localhost:3000/api")]
         [TestCase("volta", "ws://localhost:3000/api")]
-        [TestCase("baseline", "ws://localhost:3000/api")]
         public void Ethstats_values_are_correct(string configWildcard, string host)
         {
             Test<IEthStatsConfig, bool>(configWildcard, c => c.Enabled, false);
@@ -112,7 +108,6 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("spaceneth", true)]
-        [TestCase("baseline", true)]
         [TestCase("validators", true)]
         [TestCase("^validators ^spaceneth", false)]
         public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
@@ -188,9 +183,8 @@ namespace Nethermind.Runner.Test
             Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "");
         }
 
-        [TestCase("^mainnet ^spaceneth ^volta ^baseline", 50)]
+        [TestCase("^mainnet ^spaceneth ^volta", 50)]
         [TestCase("spaceneth", 4)]
-        [TestCase("baseline", 25)]
         [TestCase("volta", 25)]
         [TestCase("mainnet", 100)]
         public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
@@ -209,21 +203,19 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("mainnet xdai poacore energy", 2048)]
-        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^energy ^poacore ^xdai", 1024)]
-        [TestCase("baseline volta", 512)]
+        [TestCase("^mainnet ^spaceneth ^volta ^energy ^poacore ^xdai", 1024)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
             Test<ITxPoolConfig, int>(configWildcard, c => c.Size, poolSize);
         }
 
-        [TestCase("baseline", true)]
         [TestCase("spaceneth", true)]
         [TestCase("ropsten", true)]
         [TestCase("goerli", true)]
         [TestCase("xdai", true)]
         [TestCase("mainnet", true)]
-        [TestCase("^spaceneth ^baseline ^ropsten ^goerli ^mainnet ^xdai", false)]
+        [TestCase("^spaceneth ^ropsten ^goerli ^mainnet ^xdai", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -296,8 +288,7 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => p.Should().StartWith(startWith));
         }
 
-        [TestCase("^baseline", "Data/static-nodes.json")]
-        [TestCase("baseline", "Data/static-nodes-baseline.json")]
+        [TestCase("^", "Data/static-nodes.json")]
         public void Static_nodes_path_is_default(string configWildcard, string staticNodesPath)
         {
             Test<IInitConfig, string>(configWildcard, c => c.StaticNodesPath, staticNodesPath);
@@ -446,49 +437,6 @@ namespace Nethermind.Runner.Test
             "energyweb.cfg",
             "energyweb_archive.cfg",
         };
-
-        private IEnumerable<string> Resolve(string configWildcard)
-        {
-            Dictionary<string, IEnumerable<string>> groups = BuildConfigGroups();
-            string[] configWildcards = configWildcard.Split(" ");
-
-            List<IEnumerable<string>> toIntersect = new List<IEnumerable<string>>();
-            foreach (string singleWildcard in configWildcards)
-            {
-                string singleWildcardBase = singleWildcard.Replace("^", string.Empty);
-                var result = groups.TryGetValue(singleWildcardBase, out IEnumerable<string> value) ? value : Enumerable.Repeat(singleWildcardBase, 1);
-
-                if (singleWildcard.StartsWith("^"))
-                {
-                    result = Configs.Except(result);
-                }
-
-                toIntersect.Add(result);
-            }
-
-            var intersection = toIntersect.First();
-            foreach (IEnumerable<string> next in toIntersect.Skip(1))
-            {
-                intersection = intersection.Intersect(next);
-            }
-
-            return intersection;
-        }
-
-        private Dictionary<string, IEnumerable<string>> BuildConfigGroups()
-        {
-            Dictionary<string, IEnumerable<string>> groups = new Dictionary<string, IEnumerable<string>>();
-            foreach (PropertyInfo propertyInfo in GetType().GetProperties(BindingFlags.Instance | BindingFlags.NonPublic))
-            {
-                ConfigFileGroup groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
-                if (groupAttribute is not null)
-                {
-                    groups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this));
-                }
-            }
-
-            return groups;
-        }
 
         public IEnumerable<int> AllIndexesOf(string str, string searchString)
         {

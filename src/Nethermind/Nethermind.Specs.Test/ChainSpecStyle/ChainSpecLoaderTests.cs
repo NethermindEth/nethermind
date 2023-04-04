@@ -214,6 +214,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.MuirGlacierNumber.Should().Be(null);
             chainSpec.BerlinBlockNumber.Should().Be(GoerliSpecProvider.BerlinBlockNumber);
             chainSpec.LondonBlockNumber.Should().Be(GoerliSpecProvider.LondonBlockNumber);
+            chainSpec.ShanghaiTimestamp.Should().Be(GoerliSpecProvider.ShanghaiTimestamp);
         }
 
         [Test]
@@ -285,8 +286,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.LondonBlockNumber.Should().Be(MainnetSpecProvider.LondonBlockNumber);
             chainSpec.ArrowGlacierBlockNumber.Should().Be(MainnetSpecProvider.ArrowGlacierBlockNumber);
             chainSpec.GrayGlacierBlockNumber.Should().Be(MainnetSpecProvider.GrayGlacierBlockNumber);
-            //should be added one the timestamp for Shanghai is know and included in the chainspec for mainent.
-            //chainSpec.ShanghaiTimestamp.Should().Be(MainnetSpecProvider.ShanghaiBlockTimestamp);
+            chainSpec.ShanghaiTimestamp.Should().Be(MainnetSpecProvider.ShanghaiBlockTimestamp);
         }
 
         [Test]

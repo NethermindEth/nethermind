@@ -72,7 +72,7 @@ namespace Nethermind.Wallet
                 string newPath = (_config.EnodeKeyFile ?? UnsecuredNodeKeyFilePath).GetApplicationResourcePath(_config.KeyStoreDirectory);
                 GenerateKeyIfNeeded(newPath, oldPath);
                 using var privateKey = new PrivateKey(_fileSystem.File.ReadAllBytes(newPath));
-                return new ProtectedPrivateKey(privateKey, _cryptoRandom);
+                return new ProtectedPrivateKey(privateKey, _config.KeyStoreDirectory, _cryptoRandom);
             }
 
             void GenerateKeyIfNeeded(string newFile, string oldFile)
@@ -91,7 +91,9 @@ namespace Nethermind.Wallet
                 }
             }
 
-            if (_config.TestNodeKey is not null) return new ProtectedPrivateKey(new PrivateKey(_config.TestNodeKey), _cryptoRandom);
+            if (_config.TestNodeKey is not null)
+                return new ProtectedPrivateKey(new PrivateKey(_config.TestNodeKey), _config.KeyStoreDirectory, _cryptoRandom);
+
             var key = LoadKeyForAccount(_config.EnodeAccount);
             return key ?? LoadKeyFromFile();
         }

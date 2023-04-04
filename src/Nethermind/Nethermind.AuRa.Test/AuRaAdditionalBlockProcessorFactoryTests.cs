@@ -33,9 +33,6 @@ namespace Nethermind.AuRa.Test
         [TestCase(AuRaParameters.ValidatorType.Multi, typeof(MultiValidator))]
         public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
         {
-            IDb stateDb = Substitute.For<IDb>();
-            stateDb[Arg.Any<byte[]>()].Returns((byte[])null);
-
             AuRaValidatorFactory factory = new(Substitute.For<IAbiEncoder>(),
                 Substitute.For<IWorldState>(),
                 Substitute.For<ITransactionProcessor>(),

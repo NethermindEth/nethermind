@@ -14,6 +14,7 @@ using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.DbTuner;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -113,6 +114,17 @@ namespace Nethermind.Synchronization
 
                 StartStateSyncComponents();
             }
+
+            if (_syncConfig.TuneDbMode != ITunableDb.TuneType.Default)
+            {
+                SetupDbOptimizer();
+            }
+        }
+
+        private void SetupDbOptimizer()
+        {
+            new SyncDbTuner(_syncConfig, _snapSyncFeed, _bodiesFeed, _receiptsFeed, _dbProvider.StateDb, _dbProvider.CodeDb,
+                _dbProvider.BlocksDb, _dbProvider.ReceiptsDb);
         }
 
         private void StartFullSyncComponents()
@@ -153,7 +165,7 @@ namespace Nethermind.Synchronization
 
         private void StartSnapSyncComponents()
         {
-            _snapSyncFeed = new SnapSyncFeed(_syncMode, _snapProvider, _blockTree, _logManager);
+            _snapSyncFeed = new SnapSyncFeed(_syncMode, _snapProvider, _logManager);
             SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _logManager);
 
             Task _ = dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>

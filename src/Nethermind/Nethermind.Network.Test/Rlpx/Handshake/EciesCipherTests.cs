@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake
@@ -78,9 +81,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.IsTokenUsed, false);
             Assert.NotNull(authMessage.Signature);
 
-            byte[] data = _messageSerializationService.Serialize(authMessage);
-            Array.Resize(ref data, deciphered.Length);
-            Assert.AreEqual(deciphered, data, "serialization");
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
+            Assert.AreEqual(deciphered, data.ReadAllBytesAsArray(), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -111,10 +114,10 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.Version, 4);
             Assert.NotNull(authMessage.Signature);
 
-            byte[] data = _messageSerializationService.Serialize(authMessage);
-            Array.Resize(ref data, deciphered.Length);
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
 
-            Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169), "serialization");
+            Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169).ReadAllBytesAsArray(), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -134,9 +137,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
             Assert.AreEqual(ackMessage.IsTokenUsed, false);
 
-            byte[] data = _messageSerializationService.Serialize(ackMessage);
-            Array.Resize(ref data, deciphered.Length);
-            Assert.AreEqual(deciphered, data, "serialization");
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
+            Assert.AreEqual(deciphered, data.ReadAllBytesAsArray(), "serialization");
+            data.SafeRelease();
         }
 
         [Test]
@@ -168,11 +171,11 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
             Assert.AreEqual(ackMessage.Version, 4);
 
-            byte[] data = _messageSerializationService.Serialize(ackMessage);
-            Array.Resize(ref data, deciphered.Length);
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
 
             // TODO: check 102
-            Assert.AreEqual(deciphered.Slice(0, 102), data.Slice(0, 102), "serialization");
+            Assert.AreEqual(deciphered.Slice(0, 102), data.ReadAllBytesAsArray().Slice(0, 102), "serialization");
+            data.SafeRelease();
         }
 
         [Test]

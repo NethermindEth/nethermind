@@ -39,7 +39,7 @@ namespace Nethermind.Merge.AuRa
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator =
                 new(_specProvider, _blocksConfig);
 
-            return new AuRaPostMergeBlockProducer(
+            return new PostMergeBlockProducer(
                 txSource ?? producerEnv.TxSource,
                 producerEnv.ChainProcessor,
                 producerEnv.BlockTree,

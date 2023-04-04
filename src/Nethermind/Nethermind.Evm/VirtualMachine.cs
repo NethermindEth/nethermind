@@ -225,7 +225,7 @@ namespace Nethermind.Evm
                     }
 
                     Address callCodeOwner = currentState.Env.ExecutingAccount;
-                    EvmState previousState = currentState;
+                    using EvmState previousState = currentState;
                     currentState = _stateStack.Pop();
                     currentState.IsContinuation = true;
                     currentState.GasAvailable += previousState.GasAvailable;
@@ -253,28 +253,26 @@ namespace Nethermind.Evm
                                     _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output);
                                 }
                             }
-                            else
+                            else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
                             {
-                                if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+                                currentState.GasAvailable -= gasAvailableForCodeDeposit;
+                                _state.Restore(previousState.Snapshot);
+                                if (!previousState.IsCreateOnPreExistingAccount)
                                 {
-                                    currentState.GasAvailable -= gasAvailableForCodeDeposit;
-                                    _state.Restore(previousState.Snapshot);
-                                    if (!previousState.IsCreateOnPreExistingAccount)
-                                    {
-                                        _state.DeleteAccount(callCodeOwner);
-                                    }
-
-                                    previousCallResult = BytesZero;
-                                    previousStateSucceeded = false;
-
-                                    if (_txTracer.IsTracingActions)
-                                    {
-                                        if (invalidCode)
-                                            _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
-                                        else
-                                            _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
-                                    }
+                                    _state.DeleteAccount(callCodeOwner);
                                 }
+
+                                previousCallResult = BytesZero;
+                                previousStateSucceeded = false;
+
+                                if (_txTracer.IsTracingActions)
+                                {
+                                    _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+                                }
+                            }
+                            else if (_txTracer.IsTracingActions)
+                            {
+                                _txTracer.ReportActionEnd(0L, callCodeOwner, callResult.Output);
                             }
                         }
                         else
@@ -317,8 +315,6 @@ namespace Nethermind.Evm
                             _txTracer.ReportActionError(EvmExceptionType.Revert, previousState.GasAvailable);
                         }
                     }
-
-                    previousState.Dispose();
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException)
                 {
@@ -2609,6 +2605,12 @@ namespace Nethermind.Evm
                             if (spec.Use63Over64Rule)
                             {
                                 gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
+                            }
+
+                            if (gasLimit >= long.MaxValue)
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
                             }
 
                             long gasLimitUl = (long)gasLimit;

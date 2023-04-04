@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Test.Validators
         {
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Curve_is_correct()
         {
             BigInteger N = BigInteger.Parse("115792089237316195423570985008687907852837564279074904382605163141518161494337");
@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Test.Validators
             (HalfN == halfN).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Zero_r_is_not_valid()
         {
             byte[] sigData = new byte[65];
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
         private static byte CalculateV() => (byte)EthereumEcdsa.CalculateV(TestBlockchainIds.ChainId);
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Zero_s_is_not_valid()
         {
             byte[] sigData = new byte[65];
@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain.Test.Validators
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Bad_chain_id_is_not_valid()
         {
             byte[] sigData = new byte[65];
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test.Validators
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void No_chain_id_tx_is_valid()
         {
             byte[] sigData = new byte[65];
@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Test.Validators
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Is_valid_with_valid_chain_id()
         {
             byte[] sigData = new byte[65];
@@ -114,6 +114,7 @@ namespace Nethermind.Blockchain.Test.Validators
             txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(true)]
         [TestCase(false)]
         public void Before_eip_155_has_to_have_valid_chain_id_unless_overridden(bool validateChainId)
@@ -133,6 +134,7 @@ namespace Nethermind.Blockchain.Test.Validators
             txValidator.IsWellFormed(tx, releaseSpec).Should().Be(!validateChainId);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(TxType.Legacy, true, ExpectedResult = true)]
         [TestCase(TxType.Legacy, false, ExpectedResult = true)]
         [TestCase(TxType.AccessList, false, ExpectedResult = false)]
@@ -157,6 +159,7 @@ namespace Nethermind.Blockchain.Test.Validators
             return txValidator.IsWellFormed(tx, eip2930 ? Berlin.Instance : MuirGlacier.Instance);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(TxType.Legacy, true, false, ExpectedResult = true)]
         [TestCase(TxType.Legacy, false, false, ExpectedResult = true)]
         [TestCase(TxType.AccessList, false, false, ExpectedResult = false)]
@@ -186,7 +189,7 @@ namespace Nethermind.Blockchain.Test.Validators
             return txValidator.IsWellFormed(tx, releaseSpec);
         }
 
-
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(TxType.Legacy, ExpectedResult = true)]
         [TestCase(TxType.AccessList, ExpectedResult = false)]
         [TestCase(TxType.EIP1559, ExpectedResult = false)]
@@ -208,6 +211,7 @@ namespace Nethermind.Blockchain.Test.Validators
             return txValidator.IsWellFormed(tx, Berlin.Instance);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(TxType.Legacy, 10, 5, ExpectedResult = true)]
         [TestCase(TxType.AccessList, 10, 5, ExpectedResult = true)]
         [TestCase(TxType.EIP1559, 10, 5, ExpectedResult = true)]
@@ -235,6 +239,7 @@ namespace Nethermind.Blockchain.Test.Validators
             return txValidator.IsWellFormed(tx, London.Instance);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(true, 1, false)]
         [TestCase(false, 1, true)]
         [TestCase(true, -1, true)]
@@ -259,6 +264,7 @@ namespace Nethermind.Blockchain.Test.Validators
             txValidator.IsWellFormed(tx, releaseSpec).Should().Be(expectedResult);
         }
 
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(TxType.EIP1559, false, ExpectedResult = true)]
         [TestCase(TxType.Blob, false, ExpectedResult = false)]
         [TestCase(TxType.EIP1559, true, ExpectedResult = false)]
