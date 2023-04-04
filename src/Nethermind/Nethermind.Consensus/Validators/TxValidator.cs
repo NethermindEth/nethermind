@@ -109,12 +109,12 @@ namespace Nethermind.Consensus.Validators
 
             if (transaction.MaxFeePerDataGas is null ||
                 transaction.BlobVersionedHashes is null ||
-                transaction.BlobVersionedHashes?.Length > Eip4844Constants.MaxBlobsPerTransaction)
+                transaction.BlobVersionedHashes!.Length > Eip4844Constants.MaxBlobsPerTransaction)
             {
                 return false;
             }
 
-            // Validate network form
+            // Validate mempool version
             if (transaction.BlobVersionedHashes!.Length > 0 && (transaction.Blobs is not null ||
                                                                 transaction.BlobKzgs is not null ||
                                                                 transaction.BlobProofs is not null))
@@ -140,6 +140,19 @@ namespace Nethermind.Consensus.Validators
 
                 return KzgPolynomialCommitments.AreProofsValid(transaction.Blobs!,
                     transaction.BlobKzgs!, transaction.BlobProofs!);
+            }
+            // Or execution-payload version
+            else
+            {
+                for (int i = 0; i < transaction.BlobVersionedHashes!.Length; i++)
+                {
+                    if (transaction.BlobVersionedHashes![i].Length !=
+                        KzgPolynomialCommitments.BytesPerBlobVersionedHash ||
+                        transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+                    {
+                        return false;
+                    }
+                }
             }
 
             return true;

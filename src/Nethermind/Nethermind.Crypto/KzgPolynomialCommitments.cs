@@ -18,7 +18,9 @@ public static class KzgPolynomialCommitments
         UInt256.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513",
             System.Globalization.NumberStyles.Integer);
 
-    private const byte KzgBlobHashVersionV1 = 1;
+    public const byte KzgBlobHashVersionV1 = 1;
+    public const byte BytesPerBlobVersionedHash = 32;
+
     private static IntPtr _ckzgSetup = IntPtr.Zero;
 
     private static readonly ThreadLocal<SHA256> _sha256 = new(SHA256.Create);
@@ -52,16 +54,14 @@ public static class KzgPolynomialCommitments
     /// <exception cref="ArgumentException"></exception>
     public static bool TryComputeCommitmentV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
     {
-        const int bytesPerHash = 32;
-
         if (commitment.Length != Ckzg.Ckzg.BytesPerCommitment)
         {
             return false;
         }
 
-        if (hashBuffer.Length != bytesPerHash)
+        if (hashBuffer.Length != BytesPerBlobVersionedHash)
         {
-            throw new ArgumentException($"{nameof(hashBuffer)} should be {bytesPerHash} bytes", nameof(hashBuffer));
+            throw new ArgumentException($"{nameof(hashBuffer)} should be {BytesPerBlobVersionedHash} bytes", nameof(hashBuffer));
         }
 
         if (_sha256.Value!.TryComputeHash(commitment, hashBuffer, out _))
