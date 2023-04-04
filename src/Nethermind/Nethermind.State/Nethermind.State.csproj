@@ -3,8 +3,8 @@
     <TargetFramework>net7.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>annotations</Nullable>
-    <Deterministic>true</Deterministic>
-    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+    
+    
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
