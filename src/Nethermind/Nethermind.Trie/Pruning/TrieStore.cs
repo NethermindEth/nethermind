@@ -488,13 +488,15 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
+            const int maxPrunedItems = 8096;
+
             if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
-            List<TrieNode> toRemove = new(); // TODO: resettable
-
-            long newMemory = 0;
+            using ArrayPoolList<TrieNode> toRemove = new(maxPrunedItems);
             foreach ((ValueKeccak key, TrieNode node) in _dirtyNodes.AllNodes)
             {
+                if (toRemove.Count == maxPrunedItems) break;
+
                 if (node.IsPersisted)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
@@ -506,6 +508,7 @@ namespace Nethermind.Trie.Pruning
                             throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                         }
                     }
+
                     toRemove.Add(node);
 
                     Metrics.PrunedPersistedNodesCount++;
@@ -525,10 +528,10 @@ namespace Nethermind.Trie.Pruning
                 else
                 {
                     node.PrunePersistedRecursively(1);
-                    newMemory += node.GetMemorySize(false);
                 }
             }
 
+            long prunedMemory = 0;
             for (int index = 0; index < toRemove.Count; index++)
             {
                 TrieNode trieNode = toRemove[index];
@@ -538,9 +541,10 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 _dirtyNodes.Remove(trieNode.Keccak);
+                prunedMemory += trieNode.GetMemorySize(false);
             }
 
-            MemoryUsedByDirtyCache = newMemory;
+            MemoryUsedByDirtyCache -= prunedMemory;
             Metrics.CachedNodesCount = _dirtyNodes.Count;
 
             stopwatch.Stop();
