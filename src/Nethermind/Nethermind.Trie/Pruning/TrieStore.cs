@@ -131,24 +131,29 @@ namespace Nethermind.Trie.Pruning
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
-        private CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+        private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+        private List<TrieNode> _pruningList = null!;
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
         {
         }
 
-        public TrieStore(
-            IKeyValueStoreWithBatching? keyValueStore,
+        public TrieStore(IKeyValueStoreWithBatching? keyValueStore,
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            int singlePruningRunLimit = 500_000)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
+            if (pruningStrategy.PruningEnabled)
+            {
+                _pruningList = new List<TrieNode>(singlePruningRunLimit);
+            }
         }
 
         public long LastPersistedBlockNumber
@@ -488,14 +493,14 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
-            const int maxPrunedItems = 8096;
-
             if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
-            using ArrayPoolList<TrieNode> toRemove = new(maxPrunedItems);
+            _pruningList.Clear();
+
             foreach ((ValueKeccak key, TrieNode node) in _dirtyNodes.AllNodes)
             {
-                if (toRemove.Count == maxPrunedItems) break;
+                if (_pruningList.Count == _pruningList.Capacity) break;
+                if (stopwatch.ElapsedMilliseconds > 1000) break;
 
                 if (node.IsPersisted)
                 {
@@ -509,7 +514,7 @@ namespace Nethermind.Trie.Pruning
                         }
                     }
 
-                    toRemove.Add(node);
+                    _pruningList.Add(node);
 
                     Metrics.PrunedPersistedNodesCount++;
                 }
@@ -521,7 +526,7 @@ namespace Nethermind.Trie.Pruning
                         throw new InvalidOperationException($"Removed {node}");
                     }
 
-                    toRemove.Add(node);
+                    _pruningList.Add(node);
 
                     Metrics.PrunedTransientNodesCount++;
                 }
@@ -532,9 +537,9 @@ namespace Nethermind.Trie.Pruning
             }
 
             long prunedMemory = 0;
-            for (int index = 0; index < toRemove.Count; index++)
+            for (int index = 0; index < _pruningList.Count; index++)
             {
-                TrieNode trieNode = toRemove[index];
+                TrieNode trieNode = _pruningList[index];
                 if (trieNode.Keccak is null)
                 {
                     throw new InvalidOperationException($"{trieNode} has a null key");
@@ -544,6 +549,7 @@ namespace Nethermind.Trie.Pruning
                 prunedMemory += trieNode.GetMemorySize(false);
             }
 
+            _pruningList.Clear();
             MemoryUsedByDirtyCache -= prunedMemory;
             Metrics.CachedNodesCount = _dirtyNodes.Count;
 

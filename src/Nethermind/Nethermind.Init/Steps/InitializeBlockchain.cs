@@ -123,7 +123,8 @@ namespace Nethermind.Init.Steps
                     stateWitnessedBy,
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
                     persistenceStrategy,
-                    getApi.LogManager);
+                    getApi.LogManager,
+                    500000 * pruningConfig.CacheMb / 1024);
 
                 if (pruningConfig.Mode.IsFull())
                 {
