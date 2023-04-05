@@ -92,7 +92,7 @@ public class ExecutionPayload
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
     /// <returns><c>true</c> if block created successfully; otherise, <c>false</c>.</returns>
-    public virtual bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
+    public virtual bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
     {
         try
         {

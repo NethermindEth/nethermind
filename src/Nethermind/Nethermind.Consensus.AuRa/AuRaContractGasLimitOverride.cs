@@ -106,5 +106,10 @@ namespace Nethermind.Consensus.AuRa
             expectedGasLimit = GetGasLimitFromContract(parentHeader);
             return expectedGasLimit is null || expectedGasLimit == gasLimit;
         }
+
+        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

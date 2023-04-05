@@ -21,10 +21,15 @@ namespace Nethermind.Consensus
 
         public long GetGasLimit(BlockHeader parentHeader)
         {
+            long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
+            return GetGasLimit(parentHeader, targetGasLimit);
+        }
+
+        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit)
+        {
             long parentGasLimit = parentHeader.GasLimit;
             long gasLimit = parentGasLimit;
 
-            long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
             long newBlockNumber = parentHeader.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp); // taking the parent timestamp is a temprory solution
             if (targetGasLimit is not null)

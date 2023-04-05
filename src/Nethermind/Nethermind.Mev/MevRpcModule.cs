@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -31,6 +32,7 @@ namespace Nethermind.Mev
         private readonly ITracerFactory _tracerFactory;
         private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
+        private readonly BlockValidationService _blockValidationService;
 
         static MevRpcModule()
         {
@@ -44,7 +46,8 @@ namespace Nethermind.Mev
             IStateReader stateReader,
             ITracerFactory tracerFactory,
             ISpecProvider specProvider,
-            ISigner? signer)
+            ISigner? signer,
+            BlockValidationService blockValidationService)
         {
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
@@ -53,6 +56,14 @@ namespace Nethermind.Mev
             _tracerFactory = tracerFactory;
             _specProvider = specProvider;
             _signer = signer;
+            _blockValidationService = blockValidationService;
+        }
+
+        [JsonRpcMethod(Description = "Validates a builder submission v2", IsImplemented = true)]
+        public ResultWrapper<bool> mev_validateBuilderSubmissionV2(BuilderBlockValidationRequest request)
+        {
+            _blockValidationService.ValidateBuilderSubmissionV2(request);
+            return ResultWrapper<bool>.Success(true);
         }
 
         public ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc)

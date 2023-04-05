@@ -27,6 +27,7 @@ namespace Nethermind.Mev
         private readonly ITracerFactory _tracerFactory;
         private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
+        private readonly BlockValidationService _blockValidationService;
 
         public MevModuleFactory(
             IJsonRpcConfig jsonRpcConfig,
@@ -35,7 +36,8 @@ namespace Nethermind.Mev
             IStateReader stateReader,
             ITracerFactory tracerFactory,
             ISpecProvider specProvider,
-            ISigner? signer)
+            ISigner? signer,
+            BlockValidationService blockValidationService)
         {
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
@@ -44,6 +46,7 @@ namespace Nethermind.Mev
             _tracerFactory = tracerFactory;
             _specProvider = specProvider;
             _signer = signer;
+            _blockValidationService = blockValidationService;
         }
 
         public override IMevRpcModule Create()
@@ -55,7 +58,8 @@ namespace Nethermind.Mev
                 _stateReader,
                 _tracerFactory,
                 _specProvider,
-                _signer);
+                _signer,
+                _blockValidationService);
         }
     }
 }

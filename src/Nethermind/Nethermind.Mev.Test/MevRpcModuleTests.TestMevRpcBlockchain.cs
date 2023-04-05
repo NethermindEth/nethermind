@@ -230,13 +230,23 @@ namespace Nethermind.Mev.Test
                 UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
+                
+                BlockValidationService blockValidationService = new(chain.BlockProcessor!,
+                    TxProcessor,
+                    State,
+                    BlockFinder,
+                    SpecProvider,
+                    GasLimitCalculator,
+                    HeaderValidator,
+                    LogManager);
                 MevRpcModule = new MevRpcModule(new JsonRpcConfig(),
                     BundlePool,
                     BlockFinder,
                     StateReader,
                     _tracerFactory,
                     SpecProvider,
-                    Signer);
+                    Signer,
+                    blockValidationService);
 
                 return chain;
             }
