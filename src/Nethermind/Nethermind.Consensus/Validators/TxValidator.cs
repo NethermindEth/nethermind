@@ -101,6 +101,7 @@ namespace Nethermind.Consensus.Validators
 
         private static bool Validate4844Fields(Transaction transaction)
         {
+            // Execution-payload version part
             if (transaction.Type != TxType.Blob)
             {
                 return transaction.MaxFeePerDataGas is null &&
@@ -114,7 +115,18 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            // Validate mempool version
+            for (int i = 0; i < transaction.BlobVersionedHashes!.Length; i++)
+            {
+                if (transaction.BlobVersionedHashes[i] is null ||
+                    transaction.BlobVersionedHashes![i].Length !=
+                    KzgPolynomialCommitments.BytesPerBlobVersionedHash ||
+                    transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+                {
+                    return false;
+                }
+            }
+
+            // And validate mempool version part if presents
             if (transaction.BlobVersionedHashes!.Length > 0 && (transaction.Blobs is not null ||
                                                                 transaction.BlobKzgs is not null ||
                                                                 transaction.BlobProofs is not null))
@@ -140,19 +152,6 @@ namespace Nethermind.Consensus.Validators
 
                 return KzgPolynomialCommitments.AreProofsValid(transaction.Blobs!,
                     transaction.BlobKzgs!, transaction.BlobProofs!);
-            }
-            // Or execution-payload version
-            else
-            {
-                for (int i = 0; i < transaction.BlobVersionedHashes!.Length; i++)
-                {
-                    if (transaction.BlobVersionedHashes![i].Length !=
-                        KzgPolynomialCommitments.BytesPerBlobVersionedHash ||
-                        transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
-                    {
-                        return false;
-                    }
-                }
             }
 
             return true;

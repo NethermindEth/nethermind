@@ -362,6 +362,7 @@ public class TxValidatorTests
     {
         get
         {
+            yield return new TestCaseData(null) { TestName = "Null hash", ExpectedResult = false };
             yield return new TestCaseData(MakeArray(0)) { TestName = "Empty hash", ExpectedResult = false };
             yield return new TestCaseData(MakeArray(1, 1, 0))
             {

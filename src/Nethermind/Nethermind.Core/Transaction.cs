@@ -114,7 +114,7 @@ namespace Nethermind.Core
 
         public AccessList? AccessList { get; set; } // eip2930
         public UInt256? MaxFeePerDataGas { get; set; } // eip4844
-        public byte[][]? BlobVersionedHashes { get; set; } // eip4844
+        public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
         // Network form of blob transaction fields
         public byte[]? BlobKzgs { get; set; }
