@@ -37,6 +37,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
             public FullTestPruner FullPruner { get; private set; }
             public IPruningConfig PruningConfig { get; set; } = new PruningConfig();
+            public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
+            public ISizeInfo SizeInfo = ChainSizes.UnknownChain.Instance;
 
             public PruningTestBlockchain()
             {
@@ -47,7 +49,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 PruningDb = (IFullPruningDb)DbProvider.StateDb;
-                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, LogManager);
+                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, DriveInfo, SizeInfo, LogManager);
                 return chain;
             }
 
@@ -85,8 +87,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     IPruningConfig pruningConfig,
                     IBlockTree blockTree,
                     IStateReader stateReader,
+                    IDriveInfo driveInfo,
+                    ISizeInfo chainSizeInfo,
                     ILogManager logManager)
-                    : base(pruningDb, pruningTrigger, pruningConfig, blockTree, stateReader, logManager)
+                    : base(pruningDb, pruningTrigger, pruningConfig, blockTree, stateReader, chainSizeInfo, driveInfo, logManager)
                 {
                 }
 

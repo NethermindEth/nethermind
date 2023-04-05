@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -17,12 +18,10 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Evm;
@@ -316,7 +315,10 @@ namespace Nethermind.Init.Steps
                         api.PruningTrigger.Add(pruningTrigger);
                     }
 
-                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!, stateReader, api.LogManager);
+                    IDriveInfo drive = api.FileSystem.GetDriveInfos(fullPruningDb.GetPath(initConfig.BaseDbPath))[0];
+                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
+                        stateReader, ChainSizes.CreateChainSizeInfo(api.ChainSpec!.ChainId),
+                        drive, api.LogManager);
                     api.DisposeStack.Push(pruner);
                 }
             }

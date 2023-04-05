@@ -31,4 +31,9 @@ public enum PruningStatus
     /// Full pruning was triggered and is starting.
     /// </summary>
     Starting,
+
+    /// <summary>
+    /// Pruning failed because of low disk space
+    /// </summary>
+    NotEnoughDiscSpace,
 }

@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
@@ -25,6 +27,8 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ILogManager _logManager;
+        private readonly ISizeInfo _chainSizeInfo;
+        private readonly IDriveInfo _driveInfo;
         private IPruningContext? _currentPruning;
         private int _waitingForBlockProcessed = 0;
         private int _waitingForStateReady = 0;
@@ -40,6 +44,8 @@ namespace Nethermind.Blockchain.FullPruning
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
             IStateReader stateReader,
+            ISizeInfo chainSizeInfo,
+            IDriveInfo driveInfo,
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
@@ -48,6 +54,8 @@ namespace Nethermind.Blockchain.FullPruning
             _blockTree = blockTree;
             _stateReader = stateReader;
             _logManager = logManager;
+            _chainSizeInfo = chainSizeInfo;
+            _driveInfo = driveInfo;
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
@@ -63,6 +71,11 @@ namespace Nethermind.Blockchain.FullPruning
         /// </summary>
         private void OnPrune(object? sender, PruningTriggerEventArgs e)
         {
+            if (!HaveEnoughDiskSpaceToRun())
+            {
+                e.Status = PruningStatus.NotEnoughDiscSpace;
+                if (!_pruningConfig.AvailableSpaceCheckEnabled) return;
+            }
             // Lets assume pruning is in progress
             e.Status = PruningStatus.InProgress;
 
@@ -152,6 +165,28 @@ namespace Nethermind.Blockchain.FullPruning
         }
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
+
+        private const double ChainSizeThresholdFactor = 1.2;
+
+        private bool HaveEnoughDiskSpaceToRun()
+        {
+            long? currentChainSize = _chainSizeInfo.CurrentSize;
+            if (currentChainSize is null)
+            {
+                if (_logger.IsWarn) _logger.Warn("Chain size estimation is unavailable.");
+                return true;
+            }
+
+            long available = _driveInfo.AvailableFreeSpace;
+            if (available < currentChainSize * ChainSizeThresholdFactor)
+            {
+                if (_logger.IsError)
+                    _logger.Error(
+                        $"Not enough disk space to run full pruning. Expected {(currentChainSize * ChainSizeThresholdFactor) / 1.GB()} GB. Have {available / 1.GB()} GB");
+                return false;
+            }
+            return true;
+        }
 
         private void HandlePruningFinished(object? sender, PruningEventArgs e)
         {

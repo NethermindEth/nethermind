@@ -29,5 +29,6 @@ namespace Nethermind.Db
         public int FullPruningMaxDegreeOfParallelism { get; set; } = 0;
         public int FullPruningMinimumDelayHours { get; set; } = 240;
         public FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; } = FullPruningCompletionBehavior.None;
+        public bool AvailableSpaceCheckEnabled { get; set; } = true;
     }
 }
