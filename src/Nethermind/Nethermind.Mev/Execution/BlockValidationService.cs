@@ -47,7 +47,7 @@ public class BlockValidationService
         _headerValidator = headerValidator;
     }
 
-    public void ValidateBuilderSubmissionV2(BuilderBlockValidationRequest request)
+    public void ValidateBuilderSubmission(BuilderBlockValidationRequest request, bool v2 = false)
     {
         if (request.Message is null)
         {
@@ -66,7 +66,8 @@ public class BlockValidationService
 
         IReleaseSpec spec = _specProvider.GetSpec(builderBlock.Header);
 
-        VerifyWithdrawals(builderBlock.Withdrawals, request.WithdrawalsRoot, spec.WithdrawalsEnabled);
+        if (v2)
+            VerifyWithdrawals(builderBlock.Withdrawals, request.WithdrawalsRoot, spec.WithdrawalsEnabled);
         VerifyBlockHeader(builderBlock, request.Message);
         ValidatePayload(builderBlock, request.Message.ProposerFeeRecipient, request.Message.Value, request.RegisteredGasLimit);
 

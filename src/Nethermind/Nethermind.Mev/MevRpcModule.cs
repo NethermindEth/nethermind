@@ -59,10 +59,17 @@ namespace Nethermind.Mev
             _blockValidationService = blockValidationService;
         }
 
+        [JsonRpcMethod(Description = "Validates a builder submission v1", IsImplemented = true)]
+        public ResultWrapper<bool> mev_validateBuilderSubmissionV1(BuilderBlockValidationRequest request)
+        {
+            _blockValidationService.ValidateBuilderSubmission(request);
+            return ResultWrapper<bool>.Success(true);
+        }
+
         [JsonRpcMethod(Description = "Validates a builder submission v2", IsImplemented = true)]
         public ResultWrapper<bool> mev_validateBuilderSubmissionV2(BuilderBlockValidationRequest request)
         {
-            _blockValidationService.ValidateBuilderSubmissionV2(request);
+            _blockValidationService.ValidateBuilderSubmission(request, true);
             return ResultWrapper<bool>.Success(true);
         }
 
