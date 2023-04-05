@@ -164,7 +164,7 @@ namespace Nethermind.Init.Steps
             getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
             getApi.DisposeStack.Push(trieStore);
 
-            ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(stateWitnessedBy);
+            ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(setApi.MainStateDbWithCache);
             setApi.ReadOnlyStorageTrieStore = storageStore.AsReadOnly();
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(

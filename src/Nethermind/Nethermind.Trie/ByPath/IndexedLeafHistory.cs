@@ -10,7 +10,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie.Pruning;
 
-public class IndexedLeafHistory : ILeafHistoryStrategy
+public class IndexedLeafHistory
 {
     private ITrieStore _trieStore;
 

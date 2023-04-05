@@ -3,18 +3,12 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CSharpTest.Net.Collections;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.ByPath;
 
 namespace Nethermind.Trie.Pruning
@@ -25,13 +19,13 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class TrieStoreByPath : ITrieStore
     {
-        private static readonly byte[] _rootKeyPath = Array.Empty<byte>();
+        private static readonly byte[] _rootKeyPath = Nibbles.ToEncodedStorageBytes(Array.Empty<byte>());
 
         private int _isFirst;
 
         private IBatch? _currentBatch = null;
 
-        private readonly TrieNodePathCache _dirtyNodes;
+        private readonly IPathTrieNodeCache _dirtyNodes;
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -47,12 +41,13 @@ namespace Nethermind.Trie.Pruning
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
             ILogManager? logManager,
-            int historyBlockDepth = 0)
+            int historyBlockDepth = 128)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
-            _dirtyNodes = new TrieNodePathCache(this, historyBlockDepth, logManager);
+            //_dirtyNodes = new TrieNodePathCache(this, historyBlockDepth, logManager);
+            _dirtyNodes = new TrieNodeBlockCache(this, historyBlockDepth, logManager);
         }
 
         public long LastPersistedBlockNumber
@@ -68,6 +63,8 @@ namespace Nethermind.Trie.Pruning
                 }
             }
         }
+
+        public Keccak LastPersistedRoot { get; private set; }
 
         public long MemoryUsedByDirtyCache
         {
@@ -352,6 +349,7 @@ namespace Nethermind.Trie.Pruning
                 if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
                 LastPersistedBlockNumber = commitSet.BlockNumber;
+                LastPersistedRoot = commitSet.Root?.Keccak;
             }
             finally
             {
@@ -466,7 +464,7 @@ namespace Nethermind.Trie.Pruning
 
         private void PersistOnShutdown()
         {
-            //_dirtyNodes.PersistBlock(LatestCommittedBlockNumber);
+            //_dirtyNodes.PersistUntilBlock(LastPersistedBlockNumber);
         }
 
         #endregion
@@ -505,11 +503,6 @@ namespace Nethermind.Trie.Pruning
 
             //    if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished: {stopwatch.Elapsed} {persistedNodes / (double)million:N} mln nodes persisted.");
             //});
-        }
-
-        private byte[] EncodeLeafNode(TrieNode node)
-        {
-            return Array.Empty<byte>();
         }
 
         public void SaveNodeDirectly(long blockNumber, TrieNode trieNode)

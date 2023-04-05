@@ -36,35 +36,36 @@ namespace Nethermind.State
         //[DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
-            byte[]? bytes = null;
             byte[] addressKeyBytes = Keccak.Compute(address.Bytes).Bytes;
-            if (rootHash is not null && RootHash != rootHash)
-            {
-                Span<byte> nibbleBytes = stackalloc byte[64];
-                Nibbles.BytesToNibbleBytes(addressKeyBytes, nibbleBytes);
-                TrieNode node = TrieStore.FindCachedOrUnknown(nibbleBytes, rootHash);
-                if (node?.NodeType == NodeType.Leaf)
-                    bytes = node.Value;
-            }
+            Keccak expectedRoot = rootHash ?? RootHash;
 
-            if (bytes is null && (rootHash is null || RootHash == rootHash))
+            byte[]? bytes;
+            ///Scenarios to consider:
+            ///StateReader:
+            /// - RootRef is null and RootHash is hash of empty
+            /// - all calls will have rootHash param
+            ///StateProvider:
+            /// - Uncommitted tree - need to traverse to get the value
+            /// - Tree commited, so should have RootRef.IsDirty false
+            /// - RootRef can be set to a different hash then the latest one persissted, so need to check cache 1st
+            /// - need to check what what state root is persisted if reading from DB
+            /// 
+            if (RootRef?.IsDirty == true)
             {
-                if (RootRef?.IsPersisted == true)
+                bytes = Get(addressKeyBytes);
+            }
+            else
+            {
+                bytes = GetCachedAccount(addressKeyBytes, expectedRoot);
+                if (bytes is null)
                 {
-                    byte[]? nodeData = TrieStore[addressKeyBytes];
-                    if (nodeData is not null)
+                    TrieNode? root = GetPersistedRoot();
+                    if (root?.Keccak == expectedRoot)
                     {
-                        TrieNode node = new(NodeType.Unknown, nodeData);
-                        node.ResolveNode(TrieStore);
-                        bytes = node.Value;
+                        bytes = GetPersistedAccount(addressKeyBytes);
                     }
                 }
-                else
-                {
-                    bytes = Get(addressKeyBytes);
-                }
             }
-
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
@@ -100,5 +101,38 @@ namespace Nethermind.State
             Set(keccak.Bytes, rlp);
             return rlp;
         }
+
+        private byte[] GetCachedAccount(byte[] addressBytes, Keccak stateRoot)
+        {
+            Span<byte> nibbleBytes = stackalloc byte[64];
+            Nibbles.BytesToNibbleBytes(addressBytes, nibbleBytes);
+            TrieNode node = TrieStore.FindCachedOrUnknown(nibbleBytes, stateRoot);
+            return node?.NodeType == NodeType.Leaf ? node.Value : null;
+        }
+
+        private byte[] GetPersistedAccount(byte[] addressBytes)
+        {
+            byte[]? nodeData = TrieStore[addressBytes];
+            if (nodeData is not null)
+            {
+                TrieNode node = new(NodeType.Unknown, nodeData);
+                node.ResolveNode(TrieStore);
+                return node.Value;
+            }
+            return null;
+        }
+
+        private TrieNode? GetPersistedRoot()
+        {
+            byte[]? nodeData = TrieStore[Nibbles.ToEncodedStorageBytes(Array.Empty<byte>())];
+            if (nodeData is not null)
+            {
+                TrieNode root = new(NodeType.Unknown, nodeData);
+                root.ResolveKey(TrieStore, true);
+                return root;
+            }
+            return null;
+        }
+
     }
 }

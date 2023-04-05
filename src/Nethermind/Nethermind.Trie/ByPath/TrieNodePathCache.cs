@@ -17,13 +17,13 @@ using Nethermind.Trie.Pruning;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Trie.ByPath;
-public class TrieNodePathCache
+public class TrieNodePathCache : IPathTrieNodeCache
 {
     class NodeVersions : ConcurrentDictionary<long, TrieNode>
     {
         public NodeVersions() : base() { }
 
-        public bool HasDataForBlock(long blockNumber) => Keys.Contains(blockNumber);
+        public bool HasDataForBlock(long blockNumber) => ContainsKey(blockNumber);
     }
 
     private ConcurrentDictionary<byte[], NodeVersions> _nodesByPath = new(Bytes.EqualityComparer);
@@ -109,7 +109,7 @@ public class TrieNodePathCache
             _nodesByPath[pathToNode] = nodeVersions;
         }
         Pruning.Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
-        _logger.Info($"Added node for block {blockNumber} | node version for path {pathToNode.ToHexString()} : {nodeVersions.Count} | Paths cached: {_nodesByPath.Count}");
+        if (_logger.IsInfo) _logger.Info($"Added node for block {blockNumber} | node version for path {pathToNode.ToHexString()} : {nodeVersions.Count} | Paths cached: {_nodesByPath.Count}");
     }
 
     public void SetRootHashForBlock(long blockNo, Keccak? rootHash)
@@ -149,9 +149,12 @@ public class TrieNodePathCache
             while (nodeVersions.Keys.Count > _maxNumberOfBlocks)
             {
                 long blockToRemove = nodeVersions.Keys.Min();
-                Parallel.ForEach(_nodesByPath, (kvp) => {
-                    if (kvp.Value.TryRemove(blockToRemove, out _))
+                Parallel.ForEach(_nodesByPath.Keys, (path) => {
+                    NodeVersions nv = _nodesByPath[path];
+                    if (nv.TryRemove(blockToRemove, out _))
                     {
+                        if (nv.IsEmpty)
+                            _nodesByPath.TryRemove(path, out _);
                         Pruning.Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
                     }
                 });
