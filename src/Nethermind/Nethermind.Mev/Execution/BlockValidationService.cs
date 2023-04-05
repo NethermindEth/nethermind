@@ -105,7 +105,7 @@ public class BlockValidationService
 
         Block? parentBlock = _blockFinder.FindBlock(block.ParentHash, BlockTreeLookupOptions.None)
             ?? throw new InvalidOperationException($"Parent block with hash {block.ParentHash} not found.");
-        
+
         if (parentBlock.StateRoot is null)
         {
             throw new InvalidOperationException($"Block simulation failed. Parent Block StateRoot was null");
