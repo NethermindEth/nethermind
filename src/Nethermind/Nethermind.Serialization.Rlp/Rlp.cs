@@ -1214,14 +1214,14 @@ namespace Nethermind.Serialization.Rlp
             return length + 1;
         }
 
-        public static int LengthOf(uint _)
-        {
-            return 5;
-        }
-
         public static int LengthOfNonce(ulong _)
         {
             return 9;
+        }
+
+        public static int LengthOf(uint value)
+        {
+            return LengthOf((ulong)value);
         }
 
         public static int LengthOf(long value)
