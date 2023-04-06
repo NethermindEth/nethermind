@@ -67,5 +67,17 @@ namespace Nethermind.Trie.Pruning
         [GaugeMetric]
         [Description("Estimated memory used by cache.")]
         public static long MemoryUsedByCache { get; set; }
+
+        [GaugeMetric]
+        [Description("Time taken by the last pruning mark phase.")]
+        public static long MarkPruningTime { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of nodes that have been marked for pruning in last mark phase.")]
+        public static int MarkedNodesCount { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of bytes that have been pruned during last sweep phase.")]
+        public static long LatPrunedMemory { get; set; }
     }
 }

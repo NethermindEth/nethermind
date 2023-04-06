@@ -28,10 +28,10 @@ namespace Nethermind.Trie
         public bool IsBoundaryProofNode { get; set; }
 
         private TrieNode? _storageRoot;
-        private static object _nullNode = new();
-        private static TrieNodeDecoder _nodeDecoder = new();
-        private static AccountDecoder _accountDecoder = new();
-        private static Action<TrieNode> _markPersisted => tn => tn.IsPersisted = true;
+        private static readonly object _nullNode = new();
+        private static readonly TrieNodeDecoder _nodeDecoder = new();
+        private static readonly AccountDecoder _accountDecoder = new();
+        private static Action<TrieNode> MarkPersisted => tn => tn.IsPersisted = true;
         private RlpStream? _rlpStream;
         private object?[]? _data;
 
@@ -819,7 +819,7 @@ namespace Nethermind.Trie
 
                                 if (IsPersisted && !child.IsPersisted)
                                 {
-                                    child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
+                                    child.CallRecursively(MarkPersisted, tree, false, NullLogger.Instance);
                                 }
 
                                 break;

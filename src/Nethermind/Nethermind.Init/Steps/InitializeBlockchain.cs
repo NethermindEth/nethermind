@@ -124,7 +124,7 @@ namespace Nethermind.Init.Steps
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
                     persistenceStrategy,
                     getApi.LogManager,
-                    (int)(500000 * pruningConfig.CacheMb / 1024));
+                    (int)(TrieStore.SinglePruningDefaultLimit * pruningConfig.CacheMb / 1024));
 
                 if (pruningConfig.Mode.IsFull())
                 {

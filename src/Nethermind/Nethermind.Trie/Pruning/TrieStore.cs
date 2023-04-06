@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -21,6 +22,8 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class TrieStore : ITrieStore
     {
+        public const int SinglePruningDefaultLimit = 262_144;
+
         private class DirtyNodesCache
         {
             private readonly TrieStore _trieStore;
@@ -143,7 +146,7 @@ namespace Nethermind.Trie.Pruning
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
             ILogManager? logManager,
-            int singlePruningRunLimit = 500_000)
+            int singlePruningRunLimit = SinglePruningDefaultLimit)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
@@ -402,19 +405,23 @@ namespace Nethermind.Trie.Pruning
 
         private void RunPruningLoop()
         {
-            while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+            bool shouldPrune = _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache);
+            while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && shouldPrune)
             {
                 lock (_dirtyNodes)
                 {
                     using (_dirtyNodes.AllNodes.AcquireLock(_logger))
                     {
-                        PruneCache();
+                        shouldPrune = PruneCache();
+
                         if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
                         {
                             break;
                         }
                     }
                 }
+
+                shouldPrune |= _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache);
             }
         }
 
@@ -491,16 +498,22 @@ namespace Nethermind.Trie.Pruning
         /// removing ones that are either no longer referenced or already persisted.
         /// </summary>
         /// <exception cref="InvalidOperationException"></exception>
-        private void PruneCache()
+        private bool PruneCache()
         {
-            if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+            bool result = false;
+            long lastPersistedBlockNumber = LastPersistedBlockNumber;
+            long beyondReorgBlockNumber = LatestCommittedBlockNumber - Reorganization.MaxDepth;
+            if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {lastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
             _pruningList.Clear();
 
             foreach ((ValueKeccak key, TrieNode node) in _dirtyNodes.AllNodes)
             {
-                if (_pruningList.Count == _pruningList.Capacity) break;
-                if (stopwatch.ElapsedMilliseconds > 1000) break;
+                if (_pruningList.Count == _pruningList.Capacity || stopwatch.ElapsedMilliseconds > 1000)
+                {
+                    result = true;
+                    break;
+                }
 
                 if (node.IsPersisted)
                 {
@@ -518,7 +531,7 @@ namespace Nethermind.Trie.Pruning
 
                     Metrics.PrunedPersistedNodesCount++;
                 }
-                else if (IsNoLongerNeeded(node))
+                else if (IsNoLongerNeeded(node, lastPersistedBlockNumber, beyondReorgBlockNumber))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
                     if (node.Keccak is null)
@@ -536,6 +549,9 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
+            Metrics.MarkPruningTime = stopwatch.ElapsedMilliseconds;
+            Metrics.MarkedNodesCount = _pruningList.Count;
+
             long prunedMemory = 0;
             for (int index = 0; index < _pruningList.Count; index++)
             {
@@ -552,10 +568,13 @@ namespace Nethermind.Trie.Pruning
             _pruningList.Clear();
             MemoryUsedByDirtyCache -= prunedMemory;
             Metrics.CachedNodesCount = _dirtyNodes.Count;
+            Metrics.LatPrunedMemory = prunedMemory;
 
             stopwatch.Stop();
             Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-            if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+            if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {lastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+
+            return result;
         }
 
         /// <summary>
@@ -679,11 +698,11 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private bool IsNoLongerNeeded(TrieNode node)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool IsNoLongerNeeded(TrieNode node, long lastPersistedBlockNumber, long beyondReorgBlockNumber)
         {
             Debug.Assert(node.LastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
-            return node.LastSeen < LastPersistedBlockNumber
-                   && node.LastSeen < LatestCommittedBlockNumber - Reorganization.MaxDepth;
+            return node.LastSeen < lastPersistedBlockNumber && node.LastSeen < beyondReorgBlockNumber;
         }
 
         private void DequeueOldCommitSets()
