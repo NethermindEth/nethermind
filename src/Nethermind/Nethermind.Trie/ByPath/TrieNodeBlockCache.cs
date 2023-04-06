@@ -55,13 +55,19 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
         {
             long blockNo = blocks.Min();
-            if (_nodesByBlock.TryGetValue(blockNo, out ConcurrentDictionary<byte[], TrieNode> nodeDictrionary))
+            long minBlockNumberStored = _nodesByBlock.Keys.Min();
+
+            while (blockNo >= minBlockNumberStored)
             {
-                if (nodeDictrionary.TryGetValue(path, out TrieNode node))
+                if (_nodesByBlock.TryGetValue(blockNo, out ConcurrentDictionary<byte[], TrieNode> nodeDictrionary))
                 {
-                    Pruning.Metrics.LoadedFromCacheNodesCount++;
-                    return node;
+                    if (nodeDictrionary.TryGetValue(path, out TrieNode node))
+                    {
+                        Pruning.Metrics.LoadedFromCacheNodesCount++;
+                        return node;
+                    }
                 }
+                blockNo--;
             }
         }
         return null;
@@ -78,6 +84,9 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             _nodesByBlock[blockNumber] = nodeDictrionary;
         }
         nodeDictrionary?.TryAdd(trieNode.FullPath, trieNode);
+        if (trieNode.PathToNode == Array.Empty<byte>())
+            nodeDictrionary?.TryAdd(trieNode.PathToNode, trieNode);
+
         Interlocked.CompareExchange(ref _highestBlockNumberCached, blockNumber, _highestBlockNumberCached);
     }
 
@@ -92,6 +101,8 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
     public void PersistUntilBlock(long blockNumber)
     {
+        if (_nodesByBlock.IsEmpty)
+            return;
         long currentBlockNumber = _nodesByBlock.Keys.Min();
         while (currentBlockNumber <= blockNumber)
         {
@@ -99,12 +110,11 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             {
                 Parallel.ForEach(nodesByPath.Values, node =>
                 {
-                    if (!node.IsPersisted && node.IsLeaf && node.PathToNode.Length < 64)
-                        return;
                     _trieStore.SaveNodeDirectly(blockNumber, node);
                     node.IsPersisted = true;
                 });
             }
+            currentBlockNumber++;
         }
     }
 

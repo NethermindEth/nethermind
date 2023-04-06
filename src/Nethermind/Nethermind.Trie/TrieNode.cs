@@ -282,7 +282,8 @@ namespace Nethermind.Trie
                 {
                     if (FullRlp is null)
                     {
-                        if (tree.Capability == TrieNodeResolverCapability.Hash)
+                        //|| PathToNode is temp until storage changes are merged
+                        if (tree.Capability == TrieNodeResolverCapability.Hash || PathToNode == null)
                         {
                             if (Keccak is null)
                                 throw new TrieException("Unable to resolve node without Keccak");

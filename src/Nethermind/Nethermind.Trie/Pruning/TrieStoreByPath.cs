@@ -25,7 +25,7 @@ namespace Nethermind.Trie.Pruning
 
         private IBatch? _currentBatch = null;
 
-        private readonly IPathTrieNodeCache _dirtyNodes;
+        private readonly IPathTrieNodeCache _committedNodes;
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -33,6 +33,11 @@ namespace Nethermind.Trie.Pruning
 
         public TrieStoreByPath(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
+        {
+        }
+
+        public TrieStoreByPath(IKeyValueStoreWithBatching? keyValueStore, int historyBlockDepth, ILogManager? logManager)
+                : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager, historyBlockDepth)
         {
         }
 
@@ -46,8 +51,7 @@ namespace Nethermind.Trie.Pruning
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
-            //_dirtyNodes = new TrieNodePathCache(this, historyBlockDepth, logManager);
-            _dirtyNodes = new TrieNodeBlockCache(this, historyBlockDepth, logManager);
+            _committedNodes = new TrieNodeBlockCache(this, historyBlockDepth, logManager);
         }
 
         public long LastPersistedBlockNumber
@@ -100,8 +104,8 @@ namespace Nethermind.Trie.Pruning
         {
             get
             {
-                Metrics.CachedNodesCount = _dirtyNodes.Count;
-                return _dirtyNodes.Count;
+                Metrics.CachedNodesCount = _committedNodes.Count;
+                return _committedNodes.Count;
             }
         }
 
@@ -130,10 +134,10 @@ namespace Nethermind.Trie.Pruning
                     throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
                 }
 
-                _dirtyNodes.AddNode(blockNumber, node);
+                _committedNodes.AddNode(blockNumber, node);
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
 
-                if (_dirtyNodes.MaxNumberOfBlocks == 0)
+                if (_committedNodes.MaxNumberOfBlocks == 0)
                     Persist(node, blockNumber, null);
 
                 CommittedNodesCount++;
@@ -161,13 +165,13 @@ namespace Nethermind.Trie.Pruning
                     bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
                     if (shouldPersistSnapshot)
                     {
-                        Persist(set);
+                        _committedNodes.PersistUntilBlock(set.BlockNumber - _committedNodes.MaxNumberOfBlocks + 1);
                     }
                     else
                     {
-                        _dirtyNodes.Prune();
+                        _committedNodes.Prune();
                     }
-                    _dirtyNodes?.SetRootHashForBlock(set.BlockNumber, set.Root?.Keccak);
+                    _committedNodes?.SetRootHashForBlock(set.BlockNumber, set.Root?.Keccak);
 
                     CurrentPackage = null;
                 }
@@ -250,21 +254,21 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode FindCachedOrUnknown(Keccak keccak, Span<byte> nodePath)
         {
-            TrieNode node = _dirtyNodes.GetNode(nodePath.ToArray(), keccak);
+            TrieNode node = _committedNodes.GetNode(nodePath.ToArray(), keccak);
             node ??= new TrieNode(NodeType.Unknown, nodePath);
             return node;
         }
 
         public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Keccak rootHash)
         {
-            TrieNode node = _dirtyNodes.GetNode(rootHash, nodePath.ToArray());
+            TrieNode node = _committedNodes.GetNode(rootHash, nodePath.ToArray());
             node ??= new TrieNode(NodeType.Unknown, nodePath);
             return node;
         }
 
         internal TrieNode FindCachedOrUnknown(Keccak keccak, Span<byte> nodePath, bool isReadOnly)
         {
-            return _dirtyNodes.GetNode(keccak, nodePath.ToArray());
+            return _committedNodes.GetNode(keccak, nodePath.ToArray());
         }
 
         //public void Dump() => _dirtyNodes.Dump();

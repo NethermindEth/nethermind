@@ -285,6 +285,7 @@ namespace Nethermind.Trie
 
         public void UpdateRootHash()
         {
+            RootRef?.ResolveNode(TrieStore);
             RootRef?.ResolveKey(TrieStore, true);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }

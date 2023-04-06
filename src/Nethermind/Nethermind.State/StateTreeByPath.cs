@@ -48,8 +48,6 @@ namespace Nethermind.State
             /// - Uncommitted tree - need to traverse to get the value
             /// - Tree commited, so should have RootRef.IsDirty false
             /// - RootRef can be set to a different hash then the latest one persissted, so need to check cache 1st
-            /// - need to check what what state root is persisted if reading from DB
-            /// 
             if (RootRef?.IsDirty == true)
             {
                 bytes = Get(addressKeyBytes);
@@ -57,14 +55,7 @@ namespace Nethermind.State
             else
             {
                 bytes = GetCachedAccount(addressKeyBytes, expectedRoot);
-                if (bytes is null)
-                {
-                    TrieNode? root = GetPersistedRoot();
-                    if (root?.Keccak == expectedRoot)
-                    {
-                        bytes = GetPersistedAccount(addressKeyBytes);
-                    }
-                }
+                bytes ??= GetPersistedAccount(addressKeyBytes);
             }
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
