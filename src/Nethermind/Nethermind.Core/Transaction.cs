@@ -33,7 +33,7 @@ namespace Nethermind.Core
         public UInt256 MaxFeePerGas => Supports1559Fields ? DecodedMaxFeePerGas : GasPrice;
         public bool SupportsAccessList => Type >= TxType.AccessList;
         public bool Supports1559Fields => Type >= TxType.EIP1559;
-        public bool SupportsBlobs => Type >= TxType.Blob;
+        public bool SupportsBlobs => Type == TxType.Blob;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
