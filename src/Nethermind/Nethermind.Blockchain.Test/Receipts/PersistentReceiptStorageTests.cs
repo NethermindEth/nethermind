@@ -8,22 +8,33 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts
 {
+
+    [TestFixture(true)]
+    [TestFixture(false)]
     public class PersistentReceiptStorageTests
     {
         private MemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
         private PersistentReceiptStorage _storage = null!;
         private ReceiptsRecovery _receiptsRecovery;
         private IBlockFinder _blockTree;
+        private readonly bool _useCompactReceipts;
+
+        public PersistentReceiptStorageTests(bool useCompactReceipts)
+        {
+            _useCompactReceipts = useCompactReceipts;
+        }
 
         [SetUp]
         public void SetUp()
@@ -33,7 +44,9 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptsRecovery = new(ethereumEcdsa, specProvider);
             _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
             _blockTree = Substitute.For<IBlockFinder>();
-            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, _receiptsRecovery, _blockTree) { MigratedBlockNumber = 0 };
+            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, _receiptsRecovery, _blockTree,
+                new ReceiptArrayStorageDecoder(_useCompactReceipts)
+                ) { MigratedBlockNumber = 0 };
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         }
 
@@ -112,8 +125,17 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.ClearCache();
             _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
             iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
-            receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
-            receiptStructRef.Logs.Should().BeNullOrEmpty();
+            if (_useCompactReceipts)
+            {
+                receiptStructRef.LogsRlp.IsNullOrEmpty().Should().BeTrue();
+                receiptStructRef.Logs.Should().NotBeNullOrEmpty();
+            }
+            else
+            {
+                receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
+                receiptStructRef.Logs.Should().BeNullOrEmpty();
+            }
+
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }
 
