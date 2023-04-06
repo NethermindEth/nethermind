@@ -307,7 +307,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 new ForkActivation(99_000_000, 99_681_338_455) // far in the future
             };
 
-            CompareSpecProviders(mainnet, provider, forkActivationsToTest);
+            CompareSpecProviders(mainnet, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
 
             Assert.AreEqual(MainnetSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(0_000_000, provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay);

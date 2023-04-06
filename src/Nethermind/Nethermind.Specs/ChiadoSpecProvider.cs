@@ -44,5 +44,5 @@ public class ChiadoSpecProvider : ISpecProvider
         };
     }
 
-    public const ulong ShanghaiTimestamp = 1678832736;
+    public const ulong ShanghaiTimestamp = long.MaxValue;
 }
