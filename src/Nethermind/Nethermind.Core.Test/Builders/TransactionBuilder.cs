@@ -144,9 +144,14 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithBlobVersionedHashes(int count)
+        public TransactionBuilder<T> WithBlobVersionedHashes(int? count)
         {
-            TestObjectInternal.BlobVersionedHashes = Enumerable.Range(0, count).Select(x =>
+            if (count is null)
+            {
+                return this;
+            }
+
+            TestObjectInternal.BlobVersionedHashes = Enumerable.Range(0, count.Value).Select(x =>
             {
                 byte[] bvh = new byte[32];
                 bvh[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;

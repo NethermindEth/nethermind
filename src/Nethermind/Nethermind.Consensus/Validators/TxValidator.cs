@@ -105,12 +105,16 @@ namespace Nethermind.Consensus.Validators
             if (transaction.Type != TxType.Blob)
             {
                 return transaction.MaxFeePerDataGas is null &&
-                       transaction.BlobVersionedHashes is null;
+                       transaction.BlobVersionedHashes is null &&
+                       transaction.BlobKzgs is null &&
+                       transaction.Blobs is null &&
+                       transaction.BlobProofs is null;
             }
 
             if (transaction.MaxFeePerDataGas is null ||
                 transaction.BlobVersionedHashes is null ||
-                transaction.BlobVersionedHashes!.Length > Eip4844Constants.MaxBlobsPerTransaction)
+                transaction.BlobVersionedHashes!.Length > Eip4844Constants.MaxBlobsPerTransaction ||
+                transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)
             {
                 return false;
             }
@@ -126,7 +130,7 @@ namespace Nethermind.Consensus.Validators
                 }
             }
 
-            // And validate mempool version part if presents
+            // And mempool version part if presents
             if (transaction.BlobVersionedHashes!.Length > 0 && (transaction.Blobs is not null ||
                                                                 transaction.BlobKzgs is not null ||
                                                                 transaction.BlobProofs is not null))

@@ -293,12 +293,9 @@ public class TxValidatorTests
             .WithTimestamp(ulong.MaxValue)
             .WithMaxFeePerGas(1)
             .WithMaxFeePerDataGas(isMaxFeePerDataGasSet ? 1 : null)
+            .WithBlobVersionedHashes(txType == TxType.Blob ? Eip4844Constants.MinBlobsPerTransaction : null)
             .WithChainId(TestBlockchainIds.ChainId)
             .WithSignature(signature);
-        if (txType == TxType.Blob)
-        {
-            txBuilder = txBuilder.WithBlobVersionedHashes(0);
-        }
 
         Transaction tx = txBuilder.TestObject;
 
@@ -306,11 +303,14 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
 
-    [TestCase(0, ExpectedResult = true)]
+    [TestCase(0, ExpectedResult = false)]
+    [TestCase(Eip4844Constants.MinBlobsPerTransaction - 1, ExpectedResult = false)]
+    [TestCase(Eip4844Constants.MinBlobsPerTransaction, ExpectedResult = true)]
+    [TestCase(Eip4844Constants.MinBlobsPerTransaction + 1, ExpectedResult = true)]
     [TestCase(Eip4844Constants.MaxBlobsPerTransaction - 1, ExpectedResult = true)]
     [TestCase(Eip4844Constants.MaxBlobsPerTransaction, ExpectedResult = true)]
     [TestCase(Eip4844Constants.MaxBlobsPerTransaction + 1, ExpectedResult = false)]
-    public bool Blobs_count_should_not_exceed_max_count_per_tx(int blobsCount)
+    public bool Blobs_count_should_be_within_constraints(int blobsCount)
     {
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r

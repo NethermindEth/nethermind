@@ -10,4 +10,5 @@ public class Eip4844Constants
 {
     public const int MaxBlobsPerBlock = 4;
     public const int MaxBlobsPerTransaction = MaxBlobsPerBlock;
+    public const int MinBlobsPerTransaction = 1;
 }
