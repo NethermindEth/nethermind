@@ -564,5 +564,10 @@ namespace Nethermind.Trie.Pruning
             //    : _currentBatch?[key] ?? _keyValueStore[key];
             get => _currentBatch?[key] ?? _keyValueStore[key];
         }
+        /// <summary>
+        /// This method is here to support testing.
+        /// </summary>
+        public void ClearCache()
+        {}
     }
 }

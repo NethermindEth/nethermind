@@ -61,6 +61,10 @@ namespace Nethermind.Trie.Pruning
         {
             throw new NotImplementedException();
         }
+        public void ClearCache()
+        {
+            _trieStore.ClearCache();
+        }
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
