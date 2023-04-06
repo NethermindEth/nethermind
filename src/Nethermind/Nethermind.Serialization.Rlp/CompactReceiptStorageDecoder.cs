@@ -47,7 +47,7 @@ namespace Nethermind.Serialization.Rlp
 
             while (rlpStream.Position < lastCheck)
             {
-                logEntries.Add(Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(SlimLogEntryDecoder.Instance.Decode(rlpStream, RlpBehaviors.AllowExtraBytes));
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -93,7 +93,7 @@ namespace Nethermind.Serialization.Rlp
 
             while (decoderContext.Position < lastCheck)
             {
-                logEntries.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(SlimLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -141,7 +141,7 @@ namespace Nethermind.Serialization.Rlp
             List<LogEntry> logEntries = new();
             while (decoderContext.Position < lastCheck)
             {
-                logEntries.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(SlimLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
             }
             item.Logs = logEntries.ToArray();
 
@@ -186,7 +186,7 @@ namespace Nethermind.Serialization.Rlp
             LogEntry[] logs = item.Logs ?? Array.Empty<LogEntry>();
             for (int i = 0; i < logs.Length; i++)
             {
-                rlpStream.Encode(logs[i]);
+                SlimLogEntryDecoder.Instance.Encode(rlpStream, logs[i]);
             }
         }
 
@@ -224,7 +224,7 @@ namespace Nethermind.Serialization.Rlp
             LogEntry[] logs = item.Logs ?? Array.Empty<LogEntry>();
             for (int i = 0; i < logs.Length; i++)
             {
-                logsLength += Rlp.LengthOf(logs[i]);
+                logsLength += SlimLogEntryDecoder.Instance.GetLength(logs[i]);
             }
 
             return logsLength;

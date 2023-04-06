@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -17,6 +18,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip_storage(
             [Values(RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, RlpBehaviors.Storage)] RlpBehaviors encodeBehaviors,
+            [Values(true, false)] bool withNonEmptyTopic,
             [Values(true, false)] bool valueDecoder)
         {
             TxReceipt GetExpected()
@@ -43,6 +45,14 @@ namespace Nethermind.Core.Test.Encoding
                     receiptBuilder.WithRecipient(null!);
                 }
 
+                if (withNonEmptyTopic)
+                {
+                    receiptBuilder.WithLogs(Build.A.LogEntry
+                        .WithTopics(new Keccak("0x00000000000000000000000000000000000000000000000000000000000000ff"))
+                        .WithData(Bytes.FromHexString("0x0000000000ff0000000000"))
+                        .TestObject);
+                }
+
                 receiptBuilder.WithError(null);
 
                 return receiptBuilder.WithCalculatedBloom().TestObject;
@@ -51,6 +61,14 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt BuildReceipt()
             {
                 ReceiptBuilder receiptBuilder = Build.A.Receipt.WithAllFieldsFilled;
+
+                if (withNonEmptyTopic)
+                {
+                    receiptBuilder.WithLogs(Build.A.LogEntry
+                        .WithTopics(new Keccak("0x00000000000000000000000000000000000000000000000000000000000000ff"))
+                        .WithData(Bytes.FromHexString("0x0000000000ff0000000000"))
+                        .TestObject);
+                }
 
                 return receiptBuilder.TestObject;
             }
