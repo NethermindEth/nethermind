@@ -565,6 +565,10 @@ namespace Nethermind.Trie.Pruning
                 prunedMemory += trieNode.GetMemorySize(false);
             }
 
+            if (_logger.IsInfo)
+                _logger.Info(
+                    $"Pruned {_pruningList.Count} nodes for {prunedMemory / 1.MB()}MB of memory, mark took {Metrics.MarkPruningTime}ms, prune took {stopwatch.ElapsedMilliseconds}ms, Count left in cache is {_dirtyNodes.Count} for {MemoryUsedByDirtyCache / 1.MB()}MB.");
+
             _pruningList.Clear();
             MemoryUsedByDirtyCache -= prunedMemory;
             Metrics.CachedNodesCount = _dirtyNodes.Count;
