@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.Validators
 
         private static bool Validate1559GasFields(Transaction transaction, IReleaseSpec releaseSpec)
         {
-            if (!releaseSpec.IsEip1559Enabled || !transaction.Supports1559Fields)
+            if (!releaseSpec.IsEip1559Enabled || !transaction.Supports1559)
                 return true;
 
             return transaction.MaxFeePerGas >= transaction.MaxPriorityFeePerGas;

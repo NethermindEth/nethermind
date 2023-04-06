@@ -28,7 +28,7 @@ public class TransactionForRpc
         GasPrice = transaction.GasPrice;
         Gas = transaction.GasLimit;
         Input = Data = transaction.Data;
-        if (transaction.Supports1559Fields)
+        if (transaction.Supports1559)
         {
             GasPrice = baseFee is not null
                 ? transaction.CalculateEffectiveGasPrice(true, baseFee.Value)
@@ -122,7 +122,7 @@ public class TransactionForRpc
             Hash = Hash
         };
 
-        if (tx.Supports1559Fields)
+        if (tx.Supports1559)
         {
             tx.GasPrice = MaxPriorityFeePerGas ?? 0;
         }
@@ -154,7 +154,7 @@ public class TransactionForRpc
             MaxFeePerDataGas = MaxFeePerDataGas,
         };
 
-        if (tx.Supports1559Fields)
+        if (tx.Supports1559)
         {
             tx.GasPrice = MaxPriorityFeePerGas ?? 0;
             tx.DecodedMaxFeePerGas = MaxFeePerGas ?? 0;

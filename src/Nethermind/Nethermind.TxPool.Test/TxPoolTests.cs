@@ -1585,7 +1585,7 @@ namespace Nethermind.TxPool.Test
         private void EnsureSenderBalance(Transaction transaction)
         {
             UInt256 requiredBalance;
-            if (transaction.Supports1559Fields)
+            if (transaction.Supports1559)
             {
                 if (UInt256.MultiplyOverflow(transaction.MaxFeePerGas, (UInt256)transaction.GasLimit, out requiredBalance))
                 {

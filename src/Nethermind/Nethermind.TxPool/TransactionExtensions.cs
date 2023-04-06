@@ -13,7 +13,7 @@ namespace Nethermind.TxPool
     {
         public static UInt256 CalculateGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
         {
-            if (eip1559Enabled && tx.Supports1559Fields)
+            if (eip1559Enabled && tx.Supports1559)
             {
                 if (tx.GasLimit > 0)
                 {
@@ -28,7 +28,7 @@ namespace Nethermind.TxPool
 
         public static UInt256 CalculateAffordableGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee, in UInt256 balance)
         {
-            if (eip1559Enabled && tx.Supports1559Fields)
+            if (eip1559Enabled && tx.Supports1559)
             {
                 if (balance > tx.Value && tx.GasLimit > 0)
                 {

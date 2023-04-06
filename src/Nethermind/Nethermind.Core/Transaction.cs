@@ -30,9 +30,9 @@ namespace Nethermind.Core
         public UInt256? GasBottleneck { get; set; }
         public UInt256 MaxPriorityFeePerGas => GasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
-        public UInt256 MaxFeePerGas => Supports1559Fields ? DecodedMaxFeePerGas : GasPrice;
+        public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
         public bool SupportsAccessList => Type >= TxType.AccessList;
-        public bool Supports1559Fields => Type >= TxType.EIP1559;
+        public bool Supports1559 => Type >= TxType.EIP1559;
         public bool SupportsBlobs => Type == TxType.Blob;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
@@ -145,7 +145,7 @@ namespace Nethermind.Core
         public string ToShortString()
         {
             string gasPriceString =
-                Supports1559Fields ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
+                Supports1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
             return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
         }
 
@@ -155,7 +155,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Hash:      {Hash}");
             builder.AppendLine($"{indent}From:      {SenderAddress}");
             builder.AppendLine($"{indent}To:        {To}");
-            if (Supports1559Fields)
+            if (Supports1559)
             {
                 builder.AppendLine($"{indent}MaxPriorityFeePerGas: {MaxPriorityFeePerGas}");
                 builder.AppendLine($"{indent}MaxFeePerGas: {MaxFeePerGas}");

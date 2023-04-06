@@ -33,13 +33,13 @@ namespace Nethermind.Core.Test
 
         [TestCase(1, true)]
         [TestCase(300, true)]
-        public void Supports1559Fields_returns_expected_results(int decodedFeeCap, bool expectedSupports1559Fields)
+        public void Supports1559_returns_expected_results(int decodedFeeCap, bool expectedSupports1559)
         {
             Transaction transaction = new();
             transaction.DecodedMaxFeePerGas = (uint)decodedFeeCap;
             transaction.Type = TxType.EIP1559;
             Assert.AreEqual(transaction.MaxFeePerGas, transaction.DecodedMaxFeePerGas);
-            Assert.AreEqual(expectedSupports1559Fields, transaction.Supports1559Fields);
+            Assert.AreEqual(expectedSupports1559, transaction.Supports1559);
         }
     }
 }
