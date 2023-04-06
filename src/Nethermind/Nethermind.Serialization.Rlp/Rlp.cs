@@ -1219,11 +1219,6 @@ namespace Nethermind.Serialization.Rlp
             return 9;
         }
 
-        public static int LengthOf(uint value)
-        {
-            return LengthOf((ulong)value);
-        }
-
         public static int LengthOf(long value)
         {
             // everything has a length prefix
