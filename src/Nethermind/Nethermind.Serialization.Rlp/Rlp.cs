@@ -333,6 +333,18 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        /// <summary>
+        /// Special case for nonce
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public static Rlp EncodeNonce(ulong value)
+        {
+            Span<byte> bytes = stackalloc byte[8];
+            BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
+            return Encode(bytes);
+        }
+
         public static Rlp Encode(byte[]? input)
         {
             return input is null ? OfEmptyByteArray : Encode(input.AsSpan());
