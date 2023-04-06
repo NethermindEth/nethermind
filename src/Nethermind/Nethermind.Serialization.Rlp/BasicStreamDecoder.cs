@@ -6,7 +6,7 @@ namespace Nethermind.Serialization.Rlp;
 // If any of these is triggered in prod, then something went wrong, coz these are fairly slow path. These are only
 // useful for easy tests.
 
-public class ByteStreamDecoder: IRlpStreamDecoder<byte>
+public class ByteStreamDecoder : IRlpStreamDecoder<byte>
 {
     public int GetLength(byte item, RlpBehaviors rlpBehaviors)
     {
@@ -24,7 +24,7 @@ public class ByteStreamDecoder: IRlpStreamDecoder<byte>
     }
 }
 
-public class ShortStreamDecoder: IRlpStreamDecoder<short>
+public class ShortStreamDecoder : IRlpStreamDecoder<short>
 {
     public int GetLength(short item, RlpBehaviors rlpBehaviors)
     {
@@ -33,7 +33,7 @@ public class ShortStreamDecoder: IRlpStreamDecoder<short>
 
     public short Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        return (short) rlpStream.DecodeLong();
+        return (short)rlpStream.DecodeLong();
     }
 
     public void Encode(RlpStream stream, short item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -42,16 +42,16 @@ public class ShortStreamDecoder: IRlpStreamDecoder<short>
     }
 }
 
-public class UShortStreamDecoder: IRlpStreamDecoder<ushort>
+public class UShortStreamDecoder : IRlpStreamDecoder<ushort>
 {
     public int GetLength(ushort item, RlpBehaviors rlpBehaviors)
     {
-        return Rlp.LengthOf((long) item);
+        return Rlp.LengthOf((long)item);
     }
 
     public ushort Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        return (ushort) rlpStream.DecodeLong();
+        return (ushort)rlpStream.DecodeLong();
     }
 
     public void Encode(RlpStream stream, ushort item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -60,7 +60,7 @@ public class UShortStreamDecoder: IRlpStreamDecoder<ushort>
     }
 }
 
-public class IntStreamDecoder: IRlpStreamDecoder<int>
+public class IntStreamDecoder : IRlpStreamDecoder<int>
 {
     public int GetLength(int item, RlpBehaviors rlpBehaviors)
     {
@@ -78,11 +78,11 @@ public class IntStreamDecoder: IRlpStreamDecoder<int>
     }
 }
 
-public class UIntStreamDecoder: IRlpStreamDecoder<uint>
+public class UIntStreamDecoder : IRlpStreamDecoder<uint>
 {
     public int GetLength(uint item, RlpBehaviors rlpBehaviors)
     {
-        return Rlp.LengthOf((long) item);
+        return Rlp.LengthOf((long)item);
     }
 
     public uint Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -96,7 +96,7 @@ public class UIntStreamDecoder: IRlpStreamDecoder<uint>
     }
 }
 
-public class ULongStreamDecoder: IRlpStreamDecoder<ulong>
+public class ULongStreamDecoder : IRlpStreamDecoder<ulong>
 {
     public int GetLength(ulong item, RlpBehaviors rlpBehaviors)
     {
