@@ -243,6 +243,30 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
 
         [Test]
+        public void Chiado_loads_properly()
+        {
+            ChainSpecLoader loader = new(new EthereumJsonSerializer());
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/chiado.json");
+            ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+            ChiadoSpecProvider chiado = ChiadoSpecProvider.Instance;
+
+            List<ForkActivation> forkActivationsToTest = new()
+            {
+                (ForkActivation)0,
+                (ForkActivation)1,
+                (ForkActivation)999_999_999, // far in the future
+            };
+
+            CompareSpecProviders(chiado, provider, forkActivationsToTest, CompareSpecsOptions.IsGnosis);
+            Assert.AreEqual(ChiadoSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
+            Assert.AreEqual(BlockchainIds.Chiado, provider.ChainId);
+            Assert.AreEqual(BlockchainIds.Chiado, provider.NetworkId);
+        }
+
+
+        [Test]
         public void Mainnet_loads_properly()
         {
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
@@ -285,7 +309,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 new ForkActivation(99_000_000, 99_681_338_455) // far in the future
             };
 
-            CompareSpecProviders(mainnet, provider, forkActivationsToTest);
+            CompareSpecProviders(mainnet, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
 
             Assert.AreEqual(MainnetSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(0_000_000, provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay);
@@ -308,39 +332,67 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(BlockchainIds.Mainnet, provider.NetworkId);
         }
 
+        [Flags]
+        enum CompareSpecsOptions
+        {
+            None = 0,
+            IsMainnet = 1,
+            CheckDifficultyBomb = 2,
+            IsGnosis = 4 // for Gnosis and Chiado testnets
+        }
+
         private static void CompareSpecProviders(
             ISpecProvider oldSpecProvider,
             ISpecProvider newSpecProvider,
             IEnumerable<ForkActivation> forkActivations,
-            bool checkDifficultyBomb = false)
+            CompareSpecsOptions compareSpecsOptions = CompareSpecsOptions.None)
         {
             foreach (ForkActivation activation in forkActivations)
             {
                 IReleaseSpec oldSpec = oldSpecProvider.GetSpec(activation);
                 IReleaseSpec newSpec = newSpecProvider.GetSpec(activation);
                 long? daoBlockNumber = newSpecProvider.DaoBlockNumber;
-                bool isMainnet = daoBlockNumber is not null;
 
-                CompareSpecs(oldSpec, newSpec, activation, isMainnet, checkDifficultyBomb);
+                bool isMainnet = daoBlockNumber is not null;
+                if (isMainnet)
+                    compareSpecsOptions |= CompareSpecsOptions.IsMainnet;
+
+                CompareSpecs(oldSpec, newSpec, activation, compareSpecsOptions);
             }
         }
 
-        private static void CompareSpecs(IReleaseSpec expectedSpec, IReleaseSpec ActualSpec, ForkActivation activation, bool isMainnet,
-            bool checkDifficultyBomb = false)
+        private static void CompareSpecs(IReleaseSpec expectedSpec, IReleaseSpec ActualSpec, ForkActivation activation, CompareSpecsOptions compareSpecsOptions)
         {
+            bool isMainnet = (compareSpecsOptions & CompareSpecsOptions.IsMainnet) != 0;
+            bool checkDifficultyBomb = (compareSpecsOptions & CompareSpecsOptions.CheckDifficultyBomb) != 0;
+            bool isGnosis = (compareSpecsOptions & CompareSpecsOptions.IsGnosis) != 0;
+
             PropertyInfo[] propertyInfos =
                 typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
             foreach (PropertyInfo propertyInfo in propertyInfos
                          .Where(p => p.Name != nameof(IReleaseSpec.Name))
+
+                         // handle mainnet specific exceptions
                          .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.MaximumExtraDataSize))
                          .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
                          .Where(p => isMainnet || checkDifficultyBomb ||
                                      p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
                          .Where(p => isMainnet || checkDifficultyBomb ||
                                      p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
+
+                         // handle RLP decoders
                          .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
                          .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
-                         .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp)))
+                         .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp))
+
+                         // handle gnosis specific exceptions
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaximumUncleCount))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip170Enabled))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip1283Enabled))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.LimitCodeSize))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.UseConstantinopleNetGasMetering)))
             {
                 Assert.AreEqual(propertyInfo.GetValue(expectedSpec), propertyInfo.GetValue(ActualSpec),
                     activation + "." + propertyInfo.Name);
@@ -379,7 +431,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)999_999_999, // far in the future
             };
 
-            CompareSpecProviders(ropsten, provider, forkActivationsToTest, true);
+            CompareSpecProviders(ropsten, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
             Assert.AreEqual(RopstenSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(RopstenSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
         }
