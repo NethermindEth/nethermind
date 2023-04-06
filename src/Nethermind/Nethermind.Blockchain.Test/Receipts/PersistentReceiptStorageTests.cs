@@ -46,7 +46,8 @@ namespace Nethermind.Blockchain.Test.Receipts
             _blockTree = Substitute.For<IBlockFinder>();
             _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, _receiptsRecovery, _blockTree,
                 new ReceiptArrayStorageDecoder(_useCompactReceipts)
-                ) { MigratedBlockNumber = 0 };
+                )
+            { MigratedBlockNumber = 0 };
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         }
 
