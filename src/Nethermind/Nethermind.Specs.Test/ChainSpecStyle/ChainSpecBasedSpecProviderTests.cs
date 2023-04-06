@@ -261,6 +261,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             CompareSpecProviders(chiado, provider, forkActivationsToTest, CompareSpecsOptions.IsGnosis);
             Assert.AreEqual(ChiadoSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
+            Assert.AreEqual(BlockchainIds.Chiado, provider.ChainId);
+            Assert.AreEqual(BlockchainIds.Chiado, provider.NetworkId);
         }
 
 
