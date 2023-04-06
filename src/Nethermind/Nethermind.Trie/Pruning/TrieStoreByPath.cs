@@ -529,7 +529,12 @@ namespace Nethermind.Trie.Pruning
             {
                 //_logger.Info($"Saving node pointer - path to: {trieNode.PathToNode.ToHexString()} full path: {fullPath.ToHexString()}");
                 byte[] pathToNodeBytes = Nibbles.ToEncodedStorageBytes(trieNode.PathToNode);
-                keyValueStore[pathToNodeBytes] = pathBytes;
+                byte[] newPath = new byte[pathBytes.Length + 1];
+                Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
+                newPath[0] = 128;
+                if (trieNode.FullRlp == null)
+                    newPath = null;
+                keyValueStore[pathToNodeBytes] = newPath;
             }
             //_logger.Info($"Saving node - full path: {fullPath.ToHexString()} key: {trieNode.Key?.ToHexString()}");
             keyValueStore[pathBytes] = trieNode.FullRlp;

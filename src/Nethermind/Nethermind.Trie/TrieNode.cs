@@ -37,6 +37,9 @@ namespace Nethermind.Trie
         private RlpStream? _rlpStream;
         private object?[]? _data;
 
+        // can be used for storage prefix
+        public byte[]? StorePrefix { get; set; }
+
         /// <summary>
         /// Ethereum Patricia Trie specification allows for branch values,
         /// although branched never have values as all the keys are of equal length.
@@ -72,15 +75,13 @@ namespace Nethermind.Trie
         {
             get
             {
-                if (IsLeaf && PathToNode is not null)
-                {
-                    Debug.Assert(PathToNode.Length + Key.Length == 64);
-                    byte[] full = new byte[64];
-                    PathToNode.CopyTo(full, 0);
-                    Array.Copy(Key, 0, full, PathToNode.Length, 64 - PathToNode.Length);
-                    return full;
-                }
-                return PathToNode;
+                if (!IsLeaf || PathToNode is null) return PathToNode;
+                Debug.Assert(PathToNode.Length + Key.Length == 64);
+                Span<byte> full = new byte[StorePrefix is null? 64: StorePrefix.Length + 64];
+                StorePrefix?.CopyTo(full);
+                PathToNode.CopyTo(full);
+                Key?[..(64 - PathToNode.Length)].CopyTo(full.Slice(StorePrefix?.Length??0 + PathToNode.Length));
+                return full.ToArray();
             }
         }
 
@@ -679,9 +680,21 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
+        public TrieNode CloneWithChangedKey(byte[] path, int removeLength) => CloneWithChangedKey(path, PathToNode!.AsSpan()[..^removeLength]);
+
+        public TrieNode CloneNodeForDeletion()
+        {
+            TrieNode trieNode = new TrieNode(NodeType);
+            if (PathToNode is not null) trieNode.PathToNode = (byte[])PathToNode.Clone();
+            if (StorePrefix is not null) trieNode.StorePrefix = (byte[])StorePrefix.Clone();
+            if(Key is not null) trieNode.Key = (byte[])Key.Clone();
+            trieNode._rlpStream = null;
+            return trieNode;
+        }
+
         public TrieNode Clone()
         {
-            TrieNode trieNode = new(NodeType);
+            TrieNode trieNode = new TrieNode(NodeType);
             if (_data is not null)
             {
                 trieNode.InitData();
@@ -698,6 +711,10 @@ namespace Nethermind.Trie
             }
             if (PathToNode is not null)
                 trieNode.PathToNode = (byte[])PathToNode.Clone();
+
+            if (StorePrefix is not null)
+                trieNode.StorePrefix = (byte[])StorePrefix.Clone();
+
             return trieNode;
         }
 
