@@ -38,7 +38,7 @@ namespace Nethermind.Serialization.Rlp
 
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
-        internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes); // use bytes to avoid stack overflow
+        internal static readonly Rlp EmptyBloom = Encode(new byte[Bloom.ByteLength]); // use bytes to avoid stack overflow
 
         static Rlp()
         {
@@ -535,7 +535,7 @@ namespace Nethermind.Serialization.Rlp
             result[0] = 185;
             result[1] = 1;
             result[2] = 0;
-            Buffer.BlockCopy(bloom.Bytes, 0, result, 3, 256);
+            bloom.Bytes.CopyTo(result.AsSpan(3, 256));
             return new Rlp(result);
         }
 

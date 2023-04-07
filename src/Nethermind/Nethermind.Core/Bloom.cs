@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -13,13 +18,28 @@ namespace Nethermind.Core
         public static readonly Bloom Empty = new();
         public const int BitLength = 2048;
         public const int ByteLength = BitLength / 8;
+        public const int Vector256Size = 32;
+        public const int Vector256Length = ByteLength / Vector256Size;
+
+        private BloomData _data;
 
         public Bloom()
+        { }
+
+        public Bloom(byte[] bytes) : this(bytes.AsSpan())
+        { }
+
+        public Bloom(ReadOnlySpan<byte> bytes)
         {
-            Bytes = new byte[ByteLength];
+            if (bytes.Length != Bloom.ByteLength)
+            {
+                Bloom.ThrowBytesWrongLength(bytes.Length);
+            }
+
+            bytes.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.As<BloomData, byte>(ref _data), Bloom.ByteLength));
         }
 
-        public Bloom(Bloom[] blooms) : this()
+        public Bloom(Bloom[] blooms)
         {
             for (int i = 0; i < blooms.Length; i++)
             {
@@ -29,16 +49,10 @@ namespace Nethermind.Core
 
         public Bloom(LogEntry[] logEntries, Bloom? blockBloom = null)
         {
-            Bytes = new byte[ByteLength];
             Add(logEntries, blockBloom);
         }
 
-        public Bloom(byte[] bytes)
-        {
-            Bytes = bytes;
-        }
-
-        public byte[] Bytes { get; }
+        public Span<byte> Bytes => MemoryMarshal.CreateSpan(ref Unsafe.As<BloomData, byte>(ref _data), Bloom.ByteLength);
 
         public void Set(byte[] sequence)
         {
@@ -49,7 +63,7 @@ namespace Nethermind.Core
         {
             if (ReferenceEquals(this, Empty))
             {
-                throw new InvalidOperationException("An attempt was made to update Bloom.Empty constant");
+                ThrowInvalidOperationException();
             }
 
             BloomExtract indexes = GetExtract(sequence);
@@ -62,12 +76,19 @@ namespace Nethermind.Core
                 masterBloom.Set(indexes.Index2);
                 masterBloom.Set(indexes.Index3);
             }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowInvalidOperationException()
+            {
+                throw new InvalidOperationException("An attempt was made to update Bloom.Empty constant");
+            }
         }
 
         public bool Matches(byte[] sequence)
         {
             BloomExtract indexes = GetExtract(sequence);
-            return Matches(ref indexes);
+            return Matches(in indexes);
         }
 
         public override string ToString()
@@ -108,7 +129,7 @@ namespace Nethermind.Core
 
         public override int GetHashCode()
         {
-            return Bytes.GetSimplifiedHashCode();
+            return ((ReadOnlySpan<byte>)Bytes).GetSimplifiedHashCode();
         }
 
         public void Add(LogEntry[] logEntries, Bloom? blockBloom = null)
@@ -117,10 +138,13 @@ namespace Nethermind.Core
             {
                 LogEntry logEntry = logEntries[entryIndex];
                 byte[] addressBytes = logEntry.LoggersAddress.Bytes;
+
                 Set(addressBytes, blockBloom);
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+
+                Keccak[] topics = logEntry.Topics;
+                for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
                 {
-                    Keccak topic = logEntry.Topics[topicIndex];
+                    Keccak topic = topics[topicIndex];
                     Set(topic.Bytes, blockBloom);
                 }
             }
@@ -128,48 +152,57 @@ namespace Nethermind.Core
 
         public void Accumulate(Bloom bloom)
         {
-            Bytes.AsSpan().Or(bloom.Bytes);
+            ref BloomData data = ref bloom._data;
+            for (int i = 0; i < Bloom.Vector256Length; i++)
+            {
+                Vector256<byte> v1 = Vector256.LoadUnsafe(ref Unsafe.AddByteOffset(ref Unsafe.As<BloomData, byte>(ref _data), i * Bloom.Vector256Size));
+                Vector256<byte> v2 = Vector256.LoadUnsafe(ref Unsafe.AddByteOffset(ref Unsafe.As<BloomData, byte>(ref data), i * Bloom.Vector256Size));
+                Vector256.StoreUnsafe(Vector256.BitwiseOr(v1, v2), ref Unsafe.AddByteOffset(ref Unsafe.As<BloomData, byte>(ref _data), i * Bloom.Vector256Size));
+            }
         }
 
         public bool Matches(LogEntry logEntry)
         {
             if (Matches(logEntry.LoggersAddress))
             {
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+                var topics = logEntry.Topics;
+                for (int i = 0; i < topics.Length; i++)
                 {
-                    if (!Matches(logEntry.Topics[topicIndex]))
+                    if (!Matches(topics[i]))
                     {
-                        return false;
+                        goto NotFound;
                     }
                 }
 
                 return true;
             }
-
+NotFound:
             return false;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Get(int index)
         {
-            int bytePosition = index / 8;
-            int shift = index % 8;
-            return Bytes[bytePosition].GetBit(shift);
+            int bytePosition = index >> 3;
+            int shift = 7 - (index & 0x7);
+            return (Unsafe.AddByteOffset(ref Unsafe.As<BloomData, byte>(ref _data), bytePosition) & (1 << shift)) != 0;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Set(int index)
         {
-            int bytePosition = index / 8;
-            int shift = index % 8;
-            Bytes[bytePosition].SetBit(shift);
+            int bytePosition = index >> 3;
+            int shift = 7 - (index & 0x7);
+            Unsafe.AddByteOffset(ref Unsafe.As<BloomData, byte>(ref _data), bytePosition) |= (byte)(1 << shift);
         }
 
         public bool Matches(Address address) => Matches(address.Bytes);
 
         public bool Matches(Keccak topic) => Matches(topic.Bytes);
 
-        public bool Matches(ref BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
+        public bool Matches(in BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 
-        public bool Matches(BloomExtract extract) => Matches(ref extract);
+        public bool Matches(BloomExtract extract) => Matches(in extract);
 
         public static BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
 
@@ -177,17 +210,18 @@ namespace Nethermind.Core
 
         private static BloomExtract GetExtract(byte[] sequence)
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             int GetIndex(Span<byte> bytes, int index1, int index2)
             {
-                return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
+                return 2047 - ((bytes[index1] << 8) + bytes[index2]) & 0x7ff;
             }
 
-            var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
-            var indexes = new BloomExtract(GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
+            Span<byte> keccak = ValueKeccak.Compute(sequence).BytesAsSpan;
+            BloomExtract indexes = new BloomExtract(GetIndex(keccak, 0, 1), GetIndex(keccak, 2, 3), GetIndex(keccak, 4, 5));
             return indexes;
         }
 
-        public struct BloomExtract
+        public readonly struct BloomExtract
         {
             public BloomExtract(int index1, int index2, int index3)
             {
@@ -205,34 +239,35 @@ namespace Nethermind.Core
 
         public Bloom Clone()
         {
-            Bloom clone = new();
-            Bytes.CopyTo(clone.Bytes, 0);
-            return clone;
+            return new(Bytes);
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        internal static void ThrowBytesWrongLength(int length)
+        {
+            throw new ArgumentOutOfRangeException($"bytes should be length {Bloom.ByteLength} but is {length}");
+        }
+
+        private unsafe struct BloomData
+        {
+            public fixed byte Data[Bloom.ByteLength];
         }
     }
 
     public ref struct BloomStructRef
     {
-        public const int BitLength = 2048;
-        public const int ByteLength = BitLength / 8;
-
-        public BloomStructRef(LogEntry[] logEntries, Bloom? blockBloom = null)
-        {
-            Bytes = new byte[ByteLength];
-            Add(logEntries, blockBloom);
-        }
-
         public BloomStructRef(Span<byte> bytes)
         {
+            if (bytes.Length != Bloom.ByteLength)
+            {
+                Bloom.ThrowBytesWrongLength(bytes.Length);
+            }
+
             Bytes = bytes;
         }
 
         public Span<byte> Bytes { get; }
-
-        public void Set(byte[] sequence)
-        {
-            Set(sequence, null);
-        }
 
         private void Set(Span<byte> sequence, Bloom? masterBloom = null)
         {
@@ -246,12 +281,6 @@ namespace Nethermind.Core
                 masterBloom.Set(indexes.Index2);
                 masterBloom.Set(indexes.Index3);
             }
-        }
-
-        public bool Matches(byte[] sequence)
-        {
-            Bloom.BloomExtract indexes = GetExtract(sequence);
-            return Matches(ref indexes);
         }
 
         public override string ToString()
@@ -268,7 +297,6 @@ namespace Nethermind.Core
         public static bool operator !=(BloomStructRef a, BloomStructRef b) => !(a == b);
         public static bool operator ==(BloomStructRef a, BloomStructRef b) => a.Equals(b);
 
-
         public bool Equals(Bloom? other)
         {
             if (ReferenceEquals(null, other)) return false;
@@ -279,7 +307,6 @@ namespace Nethermind.Core
         {
             return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
-
 
         public override bool Equals(object? obj)
         {
@@ -295,77 +322,50 @@ namespace Nethermind.Core
 
         public void Add(LogEntry[] logEntries, Bloom? blockBloom)
         {
-            for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
+            for (int i = 0; i < logEntries.Length; i++)
             {
-                LogEntry logEntry = logEntries[entryIndex];
+                LogEntry logEntry = logEntries[i];
                 byte[] addressBytes = logEntry.LoggersAddress.Bytes;
+
                 Set(addressBytes, blockBloom);
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+
+                var topics = logEntry.Topics;
+                for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
                 {
-                    Keccak topic = logEntry.Topics[topicIndex];
+                    Keccak topic = topics[topicIndex];
                     Set(topic.Bytes, blockBloom);
                 }
             }
         }
 
-        public void Accumulate(BloomStructRef bloom)
-        {
-            Bytes.Or(bloom.Bytes);
-        }
-
-        public bool Matches(LogEntry logEntry)
-        {
-            if (Matches(logEntry.LoggersAddress))
-            {
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
-                {
-                    if (!Matches(logEntry.Topics[topicIndex]))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            return false;
-        }
-
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool Get(int index)
         {
-            int bytePosition = index / 8;
-            int shift = index % 8;
-            return Bytes[bytePosition].GetBit(shift);
+            int bytePosition = index >> 3;
+            int shift = 7 - (index & 0x7);
+            return (Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(Bytes), bytePosition) & (1 << shift)) != 0;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Set(int index)
         {
-            int bytePosition = index / 8;
-            int shift = index % 8;
-            Bytes[bytePosition].SetBit(shift);
+            int bytePosition = index >> 3;
+            int shift = 7 - (index & 0x7);
+            Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(Bytes), bytePosition) |= (byte)(1 << shift);
         }
 
-        public bool Matches(Address address) => Matches(address.Bytes);
-
-        public bool Matches(Keccak topic) => Matches(topic.Bytes);
-
-        public bool Matches(ref Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
-
-        public bool Matches(Bloom.BloomExtract extract) => Matches(ref extract);
-
-        public static Bloom.BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
-
-        public static Bloom.BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
+        public bool Matches(in Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 
         private static Bloom.BloomExtract GetExtract(Span<byte> sequence)
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             int GetIndex(Span<byte> bytes, int index1, int index2)
             {
-                return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
+                return 2047 - ((bytes[index1] << 8) + bytes[index2]) & 0x7ff;
             }
 
-            var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
-            var indexes = new Bloom.BloomExtract(GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
+            Span<byte> keccak = ValueKeccak.Compute(sequence).BytesAsSpan;
+            Bloom.BloomExtract indexes = new Bloom.BloomExtract(GetIndex(keccak, 0, 1), GetIndex(keccak, 2, 3), GetIndex(keccak, 4, 5));
             return indexes;
         }
     }

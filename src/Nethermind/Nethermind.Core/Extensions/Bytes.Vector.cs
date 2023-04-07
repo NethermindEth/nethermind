@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -38,18 +40,18 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-        public static void Or(this Span<byte> thisSpam, Span<byte> valueSpam)
+        public static void Or(this Span<byte> thisSpan, Span<byte> valueSpan)
         {
-            var length = thisSpam.Length;
-            if (length != valueSpam.Length)
+            var length = thisSpan.Length;
+            if (length != valueSpan.Length)
             {
                 throw new ArgumentException("Both byte spans has to be same length.");
             }
 
             int i = 0;
 
-            fixed (byte* thisPtr = thisSpam)
-            fixed (byte* valuePtr = valueSpam)
+            fixed (byte* thisPtr = thisSpan)
+            fixed (byte* valuePtr = valueSpan)
             {
                 if (Avx2.IsSupported)
                 {
@@ -73,35 +75,27 @@ namespace Nethermind.Core.Extensions
 
             for (; i < length; i++)
             {
-                thisSpam[i] |= valueSpam[i];
+                thisSpan[i] |= valueSpan[i];
             }
+        }
+
+        public static uint CountBits(this ReadOnlySpan<byte> thisSpan)
+        {
+            Debug.Assert(thisSpan.Length % sizeof(ulong) == 0);
+
+            int result = 0;
+            ReadOnlySpan<ulong> ulongSpan = MemoryMarshal.Cast<byte, ulong>(thisSpan);
+            for (int i = 0; i < ulongSpan.Length; i++)
+            {
+                result += BitOperations.PopCount(ulongSpan[i]);
+            }
+
+            return (uint)result;
         }
 
         public static uint CountBits(this Span<byte> thisSpan)
         {
-            uint result = 0;
-            if (Popcnt.IsSupported)
-            {
-                Span<uint> uintSpam = MemoryMarshal.Cast<byte, uint>(thisSpan);
-                for (int i = 0; i < uintSpam.Length; i++)
-                {
-                    result += Popcnt.PopCount(uintSpam[i]);
-                }
-            }
-            else
-            {
-                for (int i = 0; i < thisSpan.Length; i++)
-                {
-                    int n = thisSpan[i];
-                    while (n > 0)
-                    {
-                        n &= n - 1;
-                        result++;
-                    }
-                }
-            }
-
-            return result;
+            return ((ReadOnlySpan<byte>)thisSpan).CountBits();
         }
     }
 }

@@ -26,7 +26,7 @@ namespace Nethermind.Core.Test.Json
         public void Full_bloom()
         {
             TestConverter(
-                new Bloom(Enumerable.Range(0, 255).Select(i => (byte)i).ToArray()),
+                new Bloom(Enumerable.Range(0, 256).Select(i => (byte)i).ToArray()),
                 (bloom, bloom1) => bloom.Equals(bloom1), new BloomConverter());
         }
     }

@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Filters
             return Address is null || Address == address;
         }
 
-        public bool Matches(Core.Bloom bloom)
+        public bool Matches(Bloom bloom)
         {
             if (Addresses is not null)
             {
@@ -62,8 +62,8 @@ namespace Nethermind.Blockchain.Filters
                 var indexes = AddressesBloomExtracts;
                 for (var i = 0; i < indexes.Length; i++)
                 {
-                    var index = indexes[i];
-                    result = bloom.Matches(ref index);
+                    ref readonly var index = ref indexes[i];
+                    result = bloom.Matches(in index);
                     if (result)
                     {
                         break;
@@ -90,8 +90,8 @@ namespace Nethermind.Blockchain.Filters
                 var indexes = AddressesBloomExtracts;
                 for (var i = 0; i < indexes.Length; i++)
                 {
-                    var index = indexes[i];
-                    result = bloom.Matches(ref index);
+                    ref readonly var index = ref indexes[i];
+                    result = bloom.Matches(in index);
                     if (result)
                     {
                         break;
