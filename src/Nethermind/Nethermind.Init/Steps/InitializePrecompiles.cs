@@ -10,11 +10,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps;
 
-public class InitPrecompiles : IStep
+public class InitializePrecompiles : IStep
 {
     private readonly INethermindApi _api;
 
-    public InitPrecompiles(INethermindApi api)
+    public InitializePrecompiles(INethermindApi api)
     {
         _api = api;
     }
@@ -23,7 +23,7 @@ public class InitPrecompiles : IStep
     {
         if (_api.SpecProvider!.GetFinalSpec().IsEip4844Enabled)
         {
-            ILogger logger = _api.LogManager.GetClassLogger<InitPrecompiles>();
+            ILogger logger = _api.LogManager.GetClassLogger<InitializePrecompiles>();
 
             try
             {
