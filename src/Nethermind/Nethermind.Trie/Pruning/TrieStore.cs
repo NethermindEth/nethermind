@@ -412,12 +412,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     using (_dirtyNodes.AllNodes.AcquireLock(_logger))
                     {
-                        shouldPrune = PruneCache();
-
-                        if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
-                        {
-                            break;
-                        }
+                        shouldPrune = PruneCache() || CanPruneCacheFurther();
                     }
                 }
 
