@@ -38,7 +38,7 @@ public class PerTableDbConfig
 
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
     public long? MaxWriteBytesPerSec => ReadConfig<long?>(nameof(MaxWriteBytesPerSec));
-    public ulong RecycleLogFileNum => ReadConfig<ulong>(nameof(RecycleLogFileNum));
+    public uint RecycleLogFileNum => ReadConfig<uint>(nameof(RecycleLogFileNum));
     public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
