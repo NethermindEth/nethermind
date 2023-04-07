@@ -509,7 +509,7 @@ namespace Nethermind.Trie.Pruning
 
             foreach ((ValueKeccak key, TrieNode node) in _dirtyNodes.AllNodes)
             {
-                if (_pruningList.Count == _pruningList.Capacity || stopwatch.ElapsedMilliseconds > 1000)
+                if (_pruningList.Count == _pruningList.Capacity || stopwatch.ElapsedMilliseconds > 3000)
                 {
                     result = true;
                     break;
@@ -565,15 +565,15 @@ namespace Nethermind.Trie.Pruning
                 prunedMemory += trieNode.GetMemorySize(false);
             }
 
+            MemoryUsedByDirtyCache -= prunedMemory;
+            Metrics.CachedNodesCount = _dirtyNodes.Count;
+            Metrics.LatPrunedMemory = prunedMemory;
+
             if (_logger.IsInfo)
                 _logger.Info(
                     $"Pruned {_pruningList.Count} nodes for {prunedMemory / 1.MB()}MB of memory, mark took {Metrics.MarkPruningTime}ms, prune took {stopwatch.ElapsedMilliseconds}ms, Count left in cache is {_dirtyNodes.Count} for {MemoryUsedByDirtyCache / 1.MB()}MB.");
 
             _pruningList.Clear();
-            MemoryUsedByDirtyCache -= prunedMemory;
-            Metrics.CachedNodesCount = _dirtyNodes.Count;
-            Metrics.LatPrunedMemory = prunedMemory;
-
             stopwatch.Stop();
             Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
             if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {lastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
