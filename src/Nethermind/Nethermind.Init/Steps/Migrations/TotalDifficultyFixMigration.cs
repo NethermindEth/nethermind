@@ -4,10 +4,13 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using FastEnumUtility;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
@@ -16,17 +19,19 @@ namespace Nethermind.Init.Steps.Migrations;
 
 public class TotalDifficultyFixMigration : IDatabaseMigration
 {
-    private readonly IApiWithNetwork _api;
     private readonly ILogger _logger;
     private readonly ISyncConfig _syncConfig;
+    private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+    private readonly IBlockTree _blockTree;
 
     private Task? _fixTask;
     private CancellationTokenSource? _cancellationTokenSource;
 
-    public TotalDifficultyFixMigration(IApiWithNetwork api, ISyncConfig syncConfig)
+    public TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelInfoRepository, IBlockTree? blockTree, ISyncConfig syncConfig, ILogManager logManager)
     {
-        _api = api;
-        _logger = _api.LogManager.GetClassLogger();
+        _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        _logger = logManager.GetClassLogger();
         _syncConfig = syncConfig;
     }
 
@@ -56,34 +61,59 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
 
     private void RunMigration(long startingBlock, long? lastBlock, CancellationToken cancellationToken)
     {
-        IChainLevelInfoRepository chainLevelInfoRepository = _api.ChainLevelInfoRepository ?? throw new ArgumentNullException(nameof(_api.ChainLevelInfoRepository));
-        IBlockTree blockTree = _api.BlockTree ?? throw new ArgumentNullException(nameof(_api.BlockTree));
-
-        lastBlock ??= blockTree.BestKnownNumber;
+        lastBlock ??= _blockTree.BestKnownNumber;
 
         if (_logger.IsInfo) _logger.Info($"Starting TotalDifficultyFixMigration. From block {startingBlock} to block {lastBlock}");
-
-        UInt256 previousTd = chainLevelInfoRepository.LoadLevel(startingBlock - 1)!.BlockInfos[0].TotalDifficulty;
 
         for (long blockNumber = startingBlock; blockNumber <= lastBlock; ++blockNumber)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            BlockHeader header = blockTree.FindHeader(blockNumber)!;
 
-            UInt256 expectedTd = previousTd + header.Difficulty;
-            ChainLevelInfo currentLevel = chainLevelInfoRepository.LoadLevel(blockNumber)!;
-            UInt256 actualTd = currentLevel.BlockInfos[0].TotalDifficulty;
-            if (actualTd != expectedTd)
+            ChainLevelInfo currentLevel = _chainLevelInfoRepository.LoadLevel(blockNumber)!;
+
+            bool shouldPersist = false;
+            foreach (BlockInfo blockInfo in currentLevel.BlockInfos)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn($"Found discrepancy in block's total difficulty: should be {expectedTd}, was {actualTd}. Fixing.");
-                currentLevel.BlockInfos[0].TotalDifficulty = expectedTd;
-                chainLevelInfoRepository.PersistLevel(blockNumber, currentLevel);
+                BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash)!;
+                UInt256? parentTd = FindParentTd(header, blockNumber);
+
+                if (parentTd is null) continue;
+
+                UInt256 expectedTd = parentTd.Value + header.Difficulty;
+                UInt256 actualTd = blockInfo.TotalDifficulty;
+                if (actualTd != expectedTd)
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn(
+                            $"Found discrepancy in block {header.ToString(BlockHeader.Format.Short)} total difficulty: should be {expectedTd}, was {actualTd}. Fixing.");
+                    blockInfo.TotalDifficulty = expectedTd;
+                    shouldPersist = true;
+                }
             }
 
-            previousTd = expectedTd;
+            if (shouldPersist)
+            {
+                _chainLevelInfoRepository.PersistLevel(blockNumber, currentLevel);
+            }
         }
 
         if (_logger.IsInfo) _logger.Info("Ended TotalDifficultyFixMigration.");
+    }
+
+    UInt256? FindParentTd(BlockHeader blockHeader, long level)
+    {
+        if (blockHeader.ParentHash is null) return null;
+        Keccak? parentHash = _blockTree.FindHeader(blockHeader.ParentHash)?.Hash;
+        if (parentHash is null) return null;
+        ChainLevelInfo levelInfo = _chainLevelInfoRepository.LoadLevel(level - 1)!;
+        foreach (BlockInfo blockInfo in levelInfo.BlockInfos)
+        {
+            if (parentHash == blockInfo.BlockHash)
+            {
+                return blockInfo.TotalDifficulty;
+            }
+        }
+
+        return null;
     }
 }
