@@ -134,19 +134,27 @@ namespace Nethermind.Core
 
         public void Add(LogEntry[] logEntries, Bloom? blockBloom = null)
         {
-            for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
+            for (int i = 0; i < logEntries.Length; i++)
             {
-                LogEntry logEntry = logEntries[entryIndex];
+                LogEntry logEntry = logEntries[i];
                 byte[] addressBytes = logEntry.LoggersAddress.Bytes;
 
                 Set(addressBytes, blockBloom);
 
                 Keccak[] topics = logEntry.Topics;
-                for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
+                if (topics.Length > 0)
                 {
-                    Keccak topic = topics[topicIndex];
-                    Set(topic.Bytes, blockBloom);
+                    AddTopics(blockBloom, topics);
                 }
+            }
+        }
+
+        private void AddTopics(Bloom? blockBloom, Keccak[] topics)
+        {
+            for (int i = 0; i < topics.Length; i++)
+            {
+                Keccak topic = topics[i];
+                Set(topic.Bytes, blockBloom);
             }
         }
 
@@ -318,24 +326,6 @@ NotFound:
         public override int GetHashCode()
         {
             return Core.Extensions.Bytes.GetSimplifiedHashCode(Bytes);
-        }
-
-        public void Add(LogEntry[] logEntries, Bloom? blockBloom)
-        {
-            for (int i = 0; i < logEntries.Length; i++)
-            {
-                LogEntry logEntry = logEntries[i];
-                byte[] addressBytes = logEntry.LoggersAddress.Bytes;
-
-                Set(addressBytes, blockBloom);
-
-                var topics = logEntry.Topics;
-                for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
-                {
-                    Keccak topic = topics[topicIndex];
-                    Set(topic.Bytes, blockBloom);
-                }
-            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
