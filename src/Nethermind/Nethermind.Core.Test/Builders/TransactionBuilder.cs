@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
@@ -140,6 +141,40 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> WithBlobVersionedHashes(byte[][] blobVersionedHashes)
         {
             TestObjectInternal.BlobVersionedHashes = blobVersionedHashes;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobVersionedHashes(int? count)
+        {
+            if (count is null)
+            {
+                return this;
+            }
+
+            TestObjectInternal.BlobVersionedHashes = Enumerable.Range(0, count.Value).Select(x =>
+            {
+                byte[] bvh = new byte[32];
+                bvh[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+                return bvh;
+            }).ToArray();
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobs(byte[] blobs)
+        {
+            TestObjectInternal.Blobs = blobs;
+
+            return this;
+        }
+        public TransactionBuilder<T> WithBlobKzgs(byte[] blobKzgs)
+        {
+            TestObjectInternal.BlobKzgs = blobKzgs;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithProofs(byte[] proofs)
+        {
+            TestObjectInternal.BlobProofs = proofs;
             return this;
         }
 
