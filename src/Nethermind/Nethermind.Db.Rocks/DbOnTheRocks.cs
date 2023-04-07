@@ -127,7 +127,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // ReSharper disable once VirtualMemberCallInConstructor
             if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
             DbOptions = new DbOptions();
-            BuildOptions(dbConfig, DbOptions);
+            BuildOptions(_perTableDbConfig, DbOptions);
 
             ColumnFamilies? columnFamilies = null;
             if (columnNames != null)
@@ -136,7 +136,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 foreach (string columnFamily in columnNames)
                 {
                     ColumnFamilyOptions options = new();
-                    BuildOptions(dbConfig, options);
+                    BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options);
                     columnFamilies.Add(columnFamily, options);
                 }
             }
@@ -230,18 +230,18 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             Metrics.OtherDbWrites++;
     }
 
-    protected virtual void BuildOptions<T>(IDbConfig dbConfig, Options<T> options) where T : Options<T>
+    protected virtual void BuildOptions<T>(PerTableDbConfig dbConfig, Options<T> options) where T : Options<T>
     {
         _maxThisDbSize = 0;
         BlockBasedTableOptions tableOptions = new();
         tableOptions.SetBlockSize(16 * 1024);
         tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
-        tableOptions.SetCacheIndexAndFilterBlocks(_perTableDbConfig.CacheIndexAndFilterBlocks);
+        tableOptions.SetCacheIndexAndFilterBlocks(dbConfig.CacheIndexAndFilterBlocks);
 
         tableOptions.SetFilterPolicy(BloomFilterPolicy.Create());
         tableOptions.SetFormatVersion(4);
 
-        ulong blockCacheSize = _perTableDbConfig.BlockCacheSize;
+        ulong blockCacheSize = dbConfig.BlockCacheSize;
 
         tableOptions.SetBlockCache(_cache);
 
@@ -265,21 +265,21 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
          */
         options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
 
-        if (_perTableDbConfig.MaxOpenFiles.HasValue)
+        if (dbConfig.MaxOpenFiles.HasValue)
         {
-            options.SetMaxOpenFiles(_perTableDbConfig.MaxOpenFiles.Value);
+            options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
         }
 
-        if (_perTableDbConfig.MaxWriteBytesPerSec.HasValue)
+        if (dbConfig.MaxWriteBytesPerSec.HasValue)
         {
             _rateLimiter =
-                _rocksDbNative.rocksdb_ratelimiter_create(_perTableDbConfig.MaxWriteBytesPerSec.Value, 1000, 10);
+                _rocksDbNative.rocksdb_ratelimiter_create(dbConfig.MaxWriteBytesPerSec.Value, 1000, 10);
             _rocksDbNative.rocksdb_options_set_ratelimiter(options.Handle, _rateLimiter.Value);
         }
 
-        ulong writeBufferSize = _perTableDbConfig.WriteBufferSize;
+        ulong writeBufferSize = dbConfig.WriteBufferSize;
         options.SetWriteBufferSize(writeBufferSize);
-        int writeBufferNumber = (int)_perTableDbConfig.WriteBufferNumber;
+        int writeBufferNumber = (int)dbConfig.WriteBufferNumber;
         options.SetMaxWriteBufferNumber(writeBufferNumber);
         options.SetMinWriteBufferNumberToMerge(2);
 

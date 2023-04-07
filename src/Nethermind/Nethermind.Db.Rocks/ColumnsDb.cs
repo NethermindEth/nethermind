@@ -36,7 +36,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return keys;
     }
 
-    protected override void BuildOptions<O>(IDbConfig dbConfig, Options<O> options)
+    protected override void BuildOptions<O>(PerTableDbConfig dbConfig, Options<O> options)
     {
         base.BuildOptions(dbConfig, options);
         options.SetCreateMissingColumnFamilies();
