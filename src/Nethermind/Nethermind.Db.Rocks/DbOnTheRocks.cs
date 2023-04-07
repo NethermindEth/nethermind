@@ -77,7 +77,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         RocksDbSettings rocksDbSettings,
         IDbConfig dbConfig,
         ILogManager logManager,
-        ColumnFamilies? columnFamilies = null,
+        IList<string>? columnFamilies = null,
         RocksDbSharp.Native? rocksDbNative = null,
         IFileSystem? fileSystem = null)
     {
@@ -109,7 +109,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     }
 
     private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager? logManager,
-        ColumnFamilies? columnFamilies = null, bool deleteOnStart = false)
+        IList<string>? columnNames = null, bool deleteOnStart = false)
     {
         _fullPath = GetFullDbPath(dbPath, basePath);
         _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
@@ -126,7 +126,21 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
             // ReSharper disable once VirtualMemberCallInConstructor
             if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
-            DbOptions = BuildOptions(dbConfig);
+            DbOptions = new DbOptions();
+            BuildOptions(dbConfig, DbOptions);
+
+            ColumnFamilies? columnFamilies = null;
+            if (columnNames != null)
+            {
+                columnFamilies = new ColumnFamilies();
+                foreach (string columnFamily in columnNames)
+                {
+                    ColumnFamilyOptions options = new();
+                    BuildOptions(dbConfig, options);
+                    columnFamilies.Add(columnFamily, options);
+                }
+            }
+
             InitCache(dbConfig);
 
             // ReSharper disable once VirtualMemberCallInConstructor
@@ -216,7 +230,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             Metrics.OtherDbWrites++;
     }
 
-    protected virtual DbOptions BuildOptions(IDbConfig dbConfig)
+    protected virtual void BuildOptions<T>(IDbConfig dbConfig, Options<T> options) where T : Options<T>
     {
         _maxThisDbSize = 0;
         BlockBasedTableOptions tableOptions = new();
@@ -234,7 +248,6 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // IntPtr cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
         // tableOptions.SetBlockCache(cache);
 
-        DbOptions options = new();
         options.SetCreateIfMissing();
         options.SetAdviseRandomOnOpen(true);
         options.OptimizeForPointLookup(
@@ -298,8 +311,6 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             options.EnableStatistics();
         }
         options.SetStatsDumpPeriodSec(dbConfig.StatsDumpPeriodSec);
-
-        return options;
     }
 
     public byte[]? this[ReadOnlySpan<byte> key]
