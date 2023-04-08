@@ -126,7 +126,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
         }
     }
 
-    public void PersistUntilBlock(long blockNumber)
+    public void PersistUntilBlock(long blockNumber, IBatch? batch = null)
     {
         ICollection<NodeVersions> allPaths = _nodesByPath.Values;
         foreach (NodeVersions nodeVersion in allPaths)
@@ -137,7 +137,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
             TrieNode node = nodeVersion[toPersist];
             if (!node.IsPersisted && node.IsLeaf && node.PathToNode.Length < 64)
                 continue;
-            _trieStore.SaveNodeDirectly(blockNumber, node);
+            _trieStore.SaveNodeDirectly(blockNumber, node, batch);
             node.IsPersisted = true;
         }
     }

@@ -19,6 +19,6 @@ namespace Nethermind.Trie.Pruning
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        void SaveNodeDirectly(long blockNumber, TrieNode trieNode);
+        void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore batch = null);
     }
 }

@@ -7,16 +7,56 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
+using static Nethermind.Trie.ByPath.TrieNodeBlockCache;
 
 namespace Nethermind.Trie.ByPath;
 public class TrieNodeBlockCache : IPathTrieNodeCache
 {
+    public class NodesByBlock : ConcurrentDictionary<long, ConcurrentDictionary<byte[], TrieNode>>
+    {
+        public NodesByBlock() : base()
+        {
+        }
+
+        private int _nodesCount;
+        public int NodesCount { get => _nodesCount; }
+        public long MemoryUsed { get; private set; }
+
+        public void AddOrUpdate(long blockNumber, TrieNode trieNode)
+        {
+            if (!TryGetValue(blockNumber, out ConcurrentDictionary<byte[], TrieNode> nodeDictionary))
+            {
+                nodeDictionary = new(Bytes.EqualityComparer);
+                this[blockNumber] = nodeDictionary;
+            }
+
+            TrieNode addFunc(byte[] key)
+            {
+                Interlocked.Increment(ref _nodesCount);
+                MemoryUsed += trieNode.GetMemorySize(false);
+                return trieNode;
+            }
+
+            TrieNode updateFunc(byte[] key, TrieNode prev)
+            {
+                MemoryUsed += prev.GetMemorySize(false) - trieNode.GetMemorySize(false);
+                return trieNode;
+            }
+
+            nodeDictionary?.AddOrUpdate(trieNode.FullPath, addFunc, updateFunc);
+            if (trieNode.PathToNode == Array.Empty<byte>())
+                nodeDictionary?.AddOrUpdate(trieNode.PathToNode, k => trieNode, (k, n) => trieNode);
+        }
+    }
+
+
     private readonly ITrieStore _trieStore;
-    private readonly ConcurrentDictionary<long, ConcurrentDictionary<byte[], TrieNode>> _nodesByBlock = new();
+    private readonly NodesByBlock _nodesByBlock = new();
     private readonly ConcurrentDictionary<Keccak, HashSet<long>> _rootHashToBlock = new();
     private long _highestBlockNumberCached = -1;
     private int _maxNumberOfBlocks;
@@ -78,14 +118,9 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         if (_maxNumberOfBlocks == 0)
             return;
 
-        if (!_nodesByBlock.TryGetValue(blockNumber, out ConcurrentDictionary<byte[], TrieNode> nodeDictrionary))
-        {
-            nodeDictrionary = new(Bytes.EqualityComparer);
-            _nodesByBlock[blockNumber] = nodeDictrionary;
-        }
-        nodeDictrionary?.TryAdd(trieNode.FullPath, trieNode);
-        if (trieNode.PathToNode == Array.Empty<byte>())
-            nodeDictrionary?.TryAdd(trieNode.PathToNode, trieNode);
+        _nodesByBlock.AddOrUpdate(blockNumber, trieNode);
+
+        Pruning.Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
 
         Interlocked.CompareExchange(ref _highestBlockNumberCached, blockNumber, _highestBlockNumberCached);
     }
@@ -99,7 +134,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             _rootHashToBlock[rootHash] = new HashSet<long>(new[] { blockNo });
     }
 
-    public void PersistUntilBlock(long blockNumber)
+    public void PersistUntilBlock(long blockNumber, IBatch? batch = null)
     {
         if (_nodesByBlock.IsEmpty)
             return;
@@ -110,7 +145,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             {
                 Parallel.ForEach(nodesByPath.Values, node =>
                 {
-                    _trieStore.SaveNodeDirectly(blockNumber, node);
+                    _trieStore.SaveNodeDirectly(blockNumber, node, batch);
                     node.IsPersisted = true;
                 });
             }

@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Trie.ByPath;
@@ -165,7 +166,18 @@ namespace Nethermind.Trie.Pruning
                     bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
                     if (shouldPersistSnapshot)
                     {
-                        _committedNodes.PersistUntilBlock(set.BlockNumber - _committedNodes.MaxNumberOfBlocks + 1);
+                        long persistTarget = Math.Min(Math.Max(LastPersistedBlockNumber, set.BlockNumber - _committedNodes.MaxNumberOfBlocks) + 1, set.BlockNumber);
+
+                        do
+                        {
+                            if (_commitSetQueue.TryPeek(out BlockCommitSet frontSet) && frontSet.BlockNumber <= persistTarget)
+                            {
+                                Persist(frontSet);
+                                AnnounceReorgBoundaries();
+                                _commitSetQueue.TryDequeue(out _);
+                                if (_logger.IsTrace) _logger.Trace($"Current committed block {blockNumber} | persist target {persistTarget} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
+                            }
+                        } while (LastPersistedBlockNumber < persistTarget);
                     }
                     else
                     {
@@ -407,7 +419,7 @@ namespace Nethermind.Trie.Pruning
         {
             while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
             {
-                if (blockCommitSet.BlockNumber < LatestCommittedBlockNumber - Reorganization.MaxDepth - 1)
+                if (blockCommitSet.BlockNumber < LastPersistedBlockNumber)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {LatestCommittedBlockNumber} - {Reorganization.MaxDepth}");
                     _commitSetQueue.TryDequeue(out _);
@@ -509,12 +521,7 @@ namespace Nethermind.Trie.Pruning
             //});
         }
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode)
-        {
-            SaveNodeDirectly(blockNumber, trieNode, _keyValueStore);
-        }
-
-        private void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore keyValueStore = null)
+       public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore keyValueStore = null)
         {
             keyValueStore ??= _keyValueStore;
 
