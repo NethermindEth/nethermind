@@ -46,14 +46,14 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Total Difficulty of the pivot block for the Fast Blocks sync (not - this is total difficulty and not difficulty).", DefaultValue = "null")]
         string PivotTotalDifficulty { get; }
 
-        [ConfigItem(Description = "Number of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
-        string? PivotNumber { get; set; }
+        [ConfigItem(Description = "Number of the pivot block for the Fast Blocks sync.", DefaultValue = "0")]
+        string PivotNumber { get; set; }
 
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
         string? PivotHash { get; set; }
 
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
-        long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
+        long PivotNumberParsed => LongConverter.FromString(PivotNumber);
 
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");

@@ -36,10 +36,10 @@ namespace Nethermind.Blockchain.Synchronization
         public long AncientBodiesBarrier { get; set; }
         public long AncientReceiptsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
-        private string? _pivotNumber;
-        public string? PivotNumber
+        private string _pivotNumber = "0";
+        public string PivotNumber
         {
-            get => FastSync || SnapSync ? _pivotNumber : null;
+            get => FastSync || SnapSync ? _pivotNumber : "0";
             set => _pivotNumber = value;
         }
 
