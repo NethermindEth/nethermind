@@ -20,6 +20,8 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class TrieStoreByPath : ITrieStore
     {
+        private const byte PathMarker = 128;
+
         private static readonly byte[] _rootKeyPath = Nibbles.ToEncodedStorageBytes(Array.Empty<byte>());
 
         private int _isFirst;
@@ -120,11 +122,6 @@ namespace Nethermind.Trie.Pruning
             {
                 TrieNode node = nodeCommitInfo.Node!;
 
-                if (node!.Keccak is null)
-                {
-                    throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
-                }
-
                 if (CurrentPackage is null)
                 {
                     throw new TrieStoreException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
@@ -220,9 +217,9 @@ namespace Nethermind.Trie.Pruning
 
             keyValueStore ??= _keyValueStore;
             byte[]? rlp = _currentBatch?[keyPath] ?? keyValueStore[keyPath];
-            if (path.Length < 64 && rlp?.Length == 32)
+            if (path.Length < 64 && rlp?[0] == PathMarker)
             {
-                byte[]? pointsToPath = _currentBatch?[rlp] ?? keyValueStore[rlp];
+                byte[]? pointsToPath = _currentBatch?[rlp[1..]] ?? keyValueStore[rlp[1..]];
                 if (pointsToPath is not null)
                     rlp = pointsToPath;
             }
@@ -384,7 +381,7 @@ namespace Nethermind.Trie.Pruning
                 throw new ArgumentNullException(nameof(currentNode));
             }
 
-            if (currentNode.Keccak is not null)
+            if (currentNode.Keccak is not null || currentNode.FullRlp is null)
             {
                 Debug.Assert(blockNumber == TrieNode.LastSeenNotSet || currentNode.LastSeen != TrieNode.LastSeenNotSet, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
