@@ -1537,8 +1537,13 @@ namespace Nethermind.Serialization.Rlp
         }
 
         // Assumes that length is greater then 0
-        private static int LengthOfByteString(int length, byte firstByte)
+        public static int LengthOfByteString(int length, byte firstByte)
         {
+            if (length == 0)
+            {
+                return 1;
+            }
+
             if (length == 1 && firstByte < 128)
             {
                 return 1;

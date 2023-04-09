@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -25,7 +27,7 @@ namespace Nethermind.Serialization.Rlp
             Address? address = rlpStream.DecodeAddress();
             long sequenceLength = rlpStream.ReadSequenceLength();
             long untilPosition = rlpStream.Position + sequenceLength;
-            List<Keccak> topics = new List<Keccak>();
+            using ArrayPoolList<Keccak> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
             while (rlpStream.Position < untilPosition)
             {
                 topics.Add(rlpStream.DecodeZeroPrefixKeccak());
@@ -51,7 +53,7 @@ namespace Nethermind.Serialization.Rlp
             Address? address = decoderContext.DecodeAddress();
             long sequenceLength = decoderContext.ReadSequenceLength();
             long untilPosition = decoderContext.Position + sequenceLength;
-            List<Keccak> topics = new List<Keccak>();
+            using ArrayPoolList<Keccak> topics = new((int)(sequenceLength * 2 / Rlp.LengthOfKeccakRlp));
             while (decoderContext.Position < untilPosition)
             {
                 topics.Add(decoderContext.DecodeZeroPrefixKeccak());

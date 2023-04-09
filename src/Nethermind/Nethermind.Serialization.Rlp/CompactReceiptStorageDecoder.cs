@@ -4,7 +4,9 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 #pragma warning disable 618
@@ -43,8 +45,9 @@ namespace Nethermind.Serialization.Rlp
             txReceipt.Sender = rlpStream.DecodeAddress();
             txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
 
-            int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
-            List<LogEntry> logEntries = new();
+            int sequenceLength = rlpStream.ReadSequenceLength();
+            int lastCheck = sequenceLength + rlpStream.Position;
+            using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
 
             while (rlpStream.Position < lastCheck)
             {
@@ -96,9 +99,11 @@ namespace Nethermind.Serialization.Rlp
             txReceipt.Sender = decoderContext.DecodeAddress();
             txReceipt.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
 
-            int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            List<LogEntry> logEntries = new();
+            int sequenceLength = decoderContext.ReadSequenceLength();
+            int lastCheck = sequenceLength + decoderContext.Position;
 
+            // Don't know the size exactly, I'll just assume its just an address and add some margin
+            using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
             while (decoderContext.Position < lastCheck)
             {
                 logEntries.Add(SlimLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
@@ -151,9 +156,9 @@ namespace Nethermind.Serialization.Rlp
             item.Sender = (decoderContext.DecodeAddress() ?? Address.Zero).ToStructRef();
             item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
 
-            // Need to regenerate bloom. Can't lazily load log.
-            int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            List<LogEntry> logEntries = new();
+            int sequenceLength = decoderContext.ReadSequenceLength();
+            int lastCheck = sequenceLength + decoderContext.Position;
+            using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
             while (decoderContext.Position < lastCheck)
             {
                 logEntries.Add(SlimLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
