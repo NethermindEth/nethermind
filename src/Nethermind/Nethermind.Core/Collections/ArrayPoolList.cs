@@ -21,7 +21,6 @@ namespace Nethermind.Core.Collections
 
         public ArrayPoolList(int capacity) : this(ArrayPool<T>.Shared, capacity)
         {
-
         }
 
         public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity)
@@ -122,6 +121,7 @@ namespace Nethermind.Core.Collections
             if (newCount > _capacity)
             {
                 int newCapacity = _capacity * 2;
+                if (newCapacity == 0) newCapacity = 1;
                 while (newCount > newCapacity)
                 {
                     newCapacity *= 2;
