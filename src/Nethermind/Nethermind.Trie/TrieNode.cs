@@ -76,11 +76,11 @@ namespace Nethermind.Trie
             get
             {
                 if (!IsLeaf || PathToNode is null) return PathToNode;
-                Debug.Assert(PathToNode.Length + Key.Length == 64);
+                Debug.Assert(PathToNode is not null);
                 Span<byte> full = new byte[StorePrefix is null? 64: StorePrefix.Length + 64];
                 StorePrefix?.CopyTo(full);
                 PathToNode.CopyTo(full);
-                Key?[..(64 - PathToNode.Length)].CopyTo(full.Slice(StorePrefix?.Length??0 + PathToNode.Length));
+                Key?[..(64 - PathToNode.Length)].CopyTo(full.Slice((StorePrefix?.Length??0) + PathToNode.Length));
                 return full.ToArray();
             }
         }

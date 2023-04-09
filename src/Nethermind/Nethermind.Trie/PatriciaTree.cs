@@ -32,7 +32,7 @@ namespace Nethermind.Trie
         public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
         public static readonly byte[] EmptyKeyPath = Array.Empty<byte>();
 
-        public TrieType TrieType { get; protected set; }
+        public TrieType TrieType { get; set; }
 
         /// <summary>
         /// To save allocations this used to be static but this caused one of the hardest to reproduce issues
@@ -322,8 +322,7 @@ namespace Nethermind.Trie
             }
         }
 
-        [DebuggerStepThrough]
-        public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
+        public byte[]? GetInternal(Span<byte> rawKey, Keccak? rootHash = null)
         {
             try
             {
@@ -343,7 +342,36 @@ namespace Nethermind.Trie
             }
         }
 
-        [DebuggerStepThrough]
+        public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
+        {
+            if(Capability == TrieNodeResolverCapability.Hash) return GetInternal(rawKey, rootHash);
+
+            if (RootRef is null) return null;
+            if (rootHash is null)
+            {
+                if (RootRef?.IsDirty == true)
+                {
+                    return GetInternal(rawKey);
+                }
+                rootHash = RootHash;
+            }
+
+            // try and get cached nodes
+            Span<byte> nibbleBytes = stackalloc byte[64];
+            Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes);
+            TrieNode node = TrieStore.FindCachedOrUnknown(nibbleBytes, rootHash);
+            if (node.NodeType == NodeType.Leaf) return node.Value;
+
+            // if not in cached nodes - then check persisted nodes
+            byte[]? nodeData = TrieStore[rawKey.ToArray()];
+            if (nodeData is null) return null;
+
+            if (nodeData[0] == 128) nodeData = TrieStore[nodeData[1..]];
+            node = new TrieNode(NodeType.Unknown, nodeData);
+            node.ResolveNode(TrieStore);
+            return node.Value;
+        }
+
         public void Set(Span<byte> rawKey, byte[] value)
         {
             if (_logger.IsTrace)
@@ -359,7 +387,6 @@ namespace Nethermind.Trie
             if (array is not null) ArrayPool<byte>.Shared.Return(array);
         }
 
-        [DebuggerStepThrough]
         public void Set(Span<byte> rawKey, Rlp? value)
         {
             Set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
