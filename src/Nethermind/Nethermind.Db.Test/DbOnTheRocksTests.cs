@@ -217,7 +217,7 @@ namespace Nethermind.Db.Test
             RocksDbSettings rocksDbSettings,
             IDbConfig dbConfig,
             ILogManager logManager,
-            ColumnFamilies? columnFamilies = null,
+            IList<string>? columnFamilies = null,
             RocksDbSharp.Native? rocksDbNative = null,
             IFileSystem? fileSystem = null
         ) : base(basePath, rocksDbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)

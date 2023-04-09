@@ -26,23 +26,16 @@ namespace Nethermind.Specs
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
-        public ulong TimestampFork => ISpecProvider.TimestampForkNever;
+        public ulong TimestampFork => ShanghaiTimestamp;
         public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
-
-        private IReleaseSpec IstanbulNoBomb { get; } = Istanbul.Instance;
-
-        private IReleaseSpec BerlinNoBomb { get; } = Berlin.Instance;
-
-        private IReleaseSpec LondonNoBomb { get; } = London.Instance;
-
 
         public IReleaseSpec GetSpec(ForkActivation forkActivation)
         {
             return forkActivation.BlockNumber switch
             {
                 < IstanbulBlockNumber => GenesisSpec,
-                < BerlinBlockNumber => IstanbulNoBomb,
+                < BerlinBlockNumber => Istanbul.Instance,
                 < LondonBlockNumber => Berlin.Instance,
                 _ => forkActivation.Timestamp switch
                 {

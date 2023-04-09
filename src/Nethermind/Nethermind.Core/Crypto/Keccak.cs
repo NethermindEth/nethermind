@@ -160,6 +160,11 @@ namespace Nethermind.Core.Crypto
         public static bool operator <(ValueKeccak left, ValueKeccak right) => left.CompareTo(right) < 0;
         public static bool operator >=(ValueKeccak left, ValueKeccak right) => left.CompareTo(right) >= 0;
         public static bool operator <=(ValueKeccak left, ValueKeccak right) => left.CompareTo(right) <= 0;
+
+        public Keccak ToKeccak()
+        {
+            return new Keccak(BytesAsSpan.ToArray());
+        }
     }
 
     /// <summary>

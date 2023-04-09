@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
@@ -171,7 +172,11 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 pruning.MarkStart();
                 using CopyTreeVisitor copyTreeVisitor = new(pruning, _logManager);
-                VisitingOptions visitingOptions = new() { MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism };
+                VisitingOptions visitingOptions = new()
+                {
+                    MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
+                    FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
+                };
                 _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
 
                 if (!pruning.CancellationTokenSource.IsCancellationRequested)
@@ -195,8 +200,9 @@ namespace Nethermind.Blockchain.FullPruning
                     pruning.Dispose();
                 }
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                _logger.Error("Error during pruning. ", e);
                 pruning.Dispose();
                 throw;
             }
