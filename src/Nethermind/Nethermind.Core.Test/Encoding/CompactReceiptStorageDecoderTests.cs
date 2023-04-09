@@ -70,7 +70,7 @@ namespace Nethermind.Core.Test.Encoding
                         .TestObject);
                 }
 
-                return receiptBuilder.TestObject;
+                return receiptBuilder.WithCalculatedBloom().TestObject;
             }
 
             TxReceipt txReceipt = BuildReceipt();
