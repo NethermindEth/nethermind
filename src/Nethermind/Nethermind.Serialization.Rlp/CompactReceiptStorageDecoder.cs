@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -62,14 +61,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(lastCheck);
             }
 
-            ReadOnlySpan<byte> bloomEntries = rlpStream.DecodeByteArraySpan();
-            Bloom bloom = new Bloom();
-            byte[] bloomBytes = bloom.Bytes;
-            for (int i = 0; i < bloomEntries.Length; i+=2)
-            {
-                bloomBytes[bloomEntries[i]] = bloomEntries[i + 1];
-            }
-            txReceipt.Bloom = bloom;
+            txReceipt.Bloom = new Bloom(txReceipt.Logs);
 
             return txReceipt;
         }
@@ -117,14 +109,7 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
-            ReadOnlySpan<byte> bloomEntries = decoderContext.DecodeByteArraySpan();
-            Bloom bloom = new Bloom();
-            byte[] bloomBytes = bloom.Bytes;
-            for (int i = 0; i < bloomEntries.Length; i+=2)
-            {
-                bloomBytes[bloomEntries[i]] = bloomEntries[i + 1];
-            }
-            txReceipt.Bloom = bloom;
+            txReceipt.Bloom = new Bloom(txReceipt.Logs);
 
             return txReceipt;
         }
@@ -165,14 +150,7 @@ namespace Nethermind.Serialization.Rlp
             }
             item.Logs = logEntries.ToArray();
 
-            ReadOnlySpan<byte> bloomEntries = decoderContext.DecodeByteArraySpan();
-            Bloom bloom = new Bloom();
-            byte[] bloomBytes = bloom.Bytes;
-            for (int i = 0; i < bloomEntries.Length; i+=2)
-            {
-                bloomBytes[bloomEntries[i]] = bloomEntries[i + 1];
-            }
-            item.Bloom = bloom.ToStructRef();
+            item.Bloom = new Bloom(item.Logs).ToStructRef();
         }
 
         public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -215,28 +193,6 @@ namespace Nethermind.Serialization.Rlp
             {
                 SlimLogEntryDecoder.Instance.Encode(rlpStream, logs[i]);
             }
-
-            if (item.Bloom != null)
-            {
-                byte[] buffer = ArrayPool<byte>.Shared.Rent(256 * 2);
-                int bufferLength = 0;
-                byte[] bytes = item.Bloom.Bytes;
-                for (int i = 0; i < bytes.Length; i++)
-                {
-                    if (bytes[i] != 0)
-                    {
-                        buffer[bufferLength] = (byte)i;
-                        buffer[bufferLength + 1] = bytes[i];
-                        bufferLength += 2;
-                    }
-                }
-                rlpStream.Encode(buffer.AsSpan(0, bufferLength));
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
-            else
-            {
-                rlpStream.WriteByte(Rlp.EmptyArrayByte);
-            }
         }
 
         private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
@@ -263,26 +219,6 @@ namespace Nethermind.Serialization.Rlp
 
             logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
-
-            if (item.Bloom != null)
-            {
-                byte[] bytes = item.Bloom.Bytes;
-                byte? firstByte = null;
-                int byteArraySize = 0;
-                for (int i = 0; i < bytes.Length; i++)
-                {
-                    if (bytes[i] != 0)
-                    {
-                        if (firstByte == null) firstByte = (byte)i;
-                        byteArraySize += 2;
-                    }
-                }
-                contentLength += Rlp.LengthOfByteString(byteArraySize, firstByte ?? 0);
-            }
-            else
-            {
-                contentLength += 1;
-            }
 
             return (contentLength, logsLength);
         }

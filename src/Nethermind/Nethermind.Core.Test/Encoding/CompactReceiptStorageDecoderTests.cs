@@ -20,7 +20,6 @@ namespace Nethermind.Core.Test.Encoding
         public void Can_do_roundtrip_storage(
             [Values(RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, RlpBehaviors.Storage)] RlpBehaviors encodeBehaviors,
             [Values(true, false)] bool withNonEmptyTopic,
-            [Values(true, false)] bool withLargeBloom,
             [Values(true, false)] bool valueDecoder)
         {
             TxReceipt GetExpected()
@@ -57,18 +56,7 @@ namespace Nethermind.Core.Test.Encoding
 
                 receiptBuilder.WithError(null);
 
-                if (withLargeBloom)
-                {
-                    Bloom bloom = new Bloom();
-                    bloom.Bytes.Fill((byte) 255);
-                    receiptBuilder.WithBloom(bloom);
-                }
-                else
-                {
-                    receiptBuilder.WithCalculatedBloom();
-                }
-
-                return receiptBuilder.TestObject;
+                return receiptBuilder.WithCalculatedBloom().TestObject;
             }
 
             TxReceipt BuildReceipt()
@@ -83,18 +71,7 @@ namespace Nethermind.Core.Test.Encoding
                         .TestObject);
                 }
 
-                if (withLargeBloom)
-                {
-                    Bloom bloom = new Bloom();
-                    bloom.Bytes.Fill((byte) 255);
-                    receiptBuilder.WithBloom(bloom);
-                }
-                else
-                {
-                    receiptBuilder.WithCalculatedBloom();
-                }
-
-                return receiptBuilder.TestObject;
+                return receiptBuilder.WithCalculatedBloom().TestObject;
             }
 
             TxReceipt txReceipt = BuildReceipt();
