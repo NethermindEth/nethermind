@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -19,6 +20,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Can_do_roundtrip_storage(
             [Values(RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, RlpBehaviors.Storage)] RlpBehaviors encodeBehaviors,
             [Values(true, false)] bool withNonEmptyTopic,
+            [Values(true, false)] bool withLargeBloom,
             [Values(true, false)] bool valueDecoder)
         {
             TxReceipt GetExpected()
@@ -55,7 +57,18 @@ namespace Nethermind.Core.Test.Encoding
 
                 receiptBuilder.WithError(null);
 
-                return receiptBuilder.WithCalculatedBloom().TestObject;
+                if (withLargeBloom)
+                {
+                    Bloom bloom = new Bloom();
+                    bloom.Bytes.Fill((byte) 255);
+                    receiptBuilder.WithBloom(bloom);
+                }
+                else
+                {
+                    receiptBuilder.WithCalculatedBloom();
+                }
+
+                return receiptBuilder.TestObject;
             }
 
             TxReceipt BuildReceipt()
@@ -70,7 +83,18 @@ namespace Nethermind.Core.Test.Encoding
                         .TestObject);
                 }
 
-                return receiptBuilder.WithCalculatedBloom().TestObject;
+                if (withLargeBloom)
+                {
+                    Bloom bloom = new Bloom();
+                    bloom.Bytes.Fill((byte) 255);
+                    receiptBuilder.WithBloom(bloom);
+                }
+                else
+                {
+                    receiptBuilder.WithCalculatedBloom();
+                }
+
+                return receiptBuilder.TestObject;
             }
 
             TxReceipt txReceipt = BuildReceipt();

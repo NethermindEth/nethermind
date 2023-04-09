@@ -218,7 +218,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.Bloom != null)
             {
-                byte[] buffer = ArrayPool<byte>.Shared.Rent(256);
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(256 * 2);
                 int bufferLength = 0;
                 byte[] bytes = item.Bloom.Bytes;
                 for (int i = 0; i < bytes.Length; i++)
