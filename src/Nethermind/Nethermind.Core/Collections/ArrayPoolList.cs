@@ -148,6 +148,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IReadOnlyList<T>, IDispo
         if (newCount > _capacity)
         {
             int newCapacity = _capacity * 2;
+            if (newCapacity == 0) newCapacity = 1;
             while (newCount > newCapacity)
             {
                 newCapacity *= 2;
