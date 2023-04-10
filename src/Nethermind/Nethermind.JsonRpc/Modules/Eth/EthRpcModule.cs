@@ -193,7 +193,7 @@ public partial class EthRpcModule : IEthRpcModule
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
 
-        byte[] storage = _stateReader.GetStorage(account.StorageRoot, positionIndex);
+        byte[] storage = _stateReader.GetStorage(account.StorageRoot, address, positionIndex);
         return ResultWrapper<byte[]>.Success(storage.PadLeft(32));
     }
 

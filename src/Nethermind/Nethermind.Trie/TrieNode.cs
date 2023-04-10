@@ -38,7 +38,17 @@ namespace Nethermind.Trie
         private object?[]? _data;
 
         // can be used for storage prefix
-        public byte[]? StorePrefix { get; set; }
+        private byte[]? _storageNibblePathPrefix;
+        public byte[] StoreNibblePathPrefix {
+            get
+            {
+                return _storageNibblePathPrefix ?? Array.Empty<byte>();
+            }
+            set
+            {
+                _storageNibblePathPrefix = value;
+            }
+        }
 
         /// <summary>
         /// Ethereum Patricia Trie specification allows for branch values,
@@ -77,10 +87,10 @@ namespace Nethermind.Trie
             {
                 if (!IsLeaf || PathToNode is null) return PathToNode;
                 Debug.Assert(PathToNode is not null);
-                Span<byte> full = new byte[StorePrefix is null? 64: StorePrefix.Length + 64];
-                StorePrefix?.CopyTo(full);
-                PathToNode.CopyTo(full);
-                Key?[..(64 - PathToNode.Length)].CopyTo(full.Slice((StorePrefix?.Length??0) + PathToNode.Length));
+                Span<byte> full = new byte[StoreNibblePathPrefix.Length + 64];
+                StoreNibblePathPrefix.CopyTo(full);
+                PathToNode.CopyTo(full.Slice(StoreNibblePathPrefix.Length));
+                Key?[..(64 - PathToNode.Length)].CopyTo(full.Slice(StoreNibblePathPrefix.Length + PathToNode.Length));
                 return full.ToArray();
             }
         }
@@ -686,7 +696,7 @@ namespace Nethermind.Trie
         {
             TrieNode trieNode = new TrieNode(NodeType);
             if (PathToNode is not null) trieNode.PathToNode = (byte[])PathToNode.Clone();
-            if (StorePrefix is not null) trieNode.StorePrefix = (byte[])StorePrefix.Clone();
+            if (StoreNibblePathPrefix is not null) trieNode.StoreNibblePathPrefix = (byte[])StoreNibblePathPrefix.Clone();
             if(Key is not null) trieNode.Key = (byte[])Key.Clone();
             trieNode._rlpStream = null;
             return trieNode;
@@ -712,8 +722,8 @@ namespace Nethermind.Trie
             if (PathToNode is not null)
                 trieNode.PathToNode = (byte[])PathToNode.Clone();
 
-            if (StorePrefix is not null)
-                trieNode.StorePrefix = (byte[])StorePrefix.Clone();
+            if (StoreNibblePathPrefix is not null)
+                trieNode.StoreNibblePathPrefix = (byte[])StoreNibblePathPrefix.Clone();
 
             return trieNode;
         }

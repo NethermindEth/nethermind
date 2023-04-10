@@ -109,7 +109,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 DbProvider,
                 BlockTree,
                 ReadOnlyTrieStore,
-                ReadOnlyStorageTrieStore,
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,

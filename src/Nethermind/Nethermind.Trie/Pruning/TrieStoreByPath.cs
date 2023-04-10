@@ -4,11 +4,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Trie.ByPath;
 
@@ -21,6 +23,9 @@ namespace Nethermind.Trie.Pruning
     public class TrieStoreByPath : ITrieStore
     {
         private const byte PathMarker = 128;
+        private const int AccountLeafNibblesLength = 64;
+        private const int StorageLeafNibblesLength = PatriciaTree.StoragePrefixLength * 2 + 64;
+
 
         private static readonly byte[] _rootKeyPath = Nibbles.ToEncodedStorageBytes(Array.Empty<byte>());
 
@@ -135,8 +140,7 @@ namespace Nethermind.Trie.Pruning
                 _committedNodes.AddNode(blockNumber, node);
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
 
-                if (_committedNodes.MaxNumberOfBlocks == 0)
-                    Persist(node, blockNumber, null);
+                Persist(node, blockNumber, null);
 
                 CommittedNodesCount++;
             }
@@ -211,22 +215,23 @@ namespace Nethermind.Trie.Pruning
 
         internal byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Keccak rootHash = null)
         {
-            byte[] keyPath = path.Length < 64 ?
-                        Nibbles.ToEncodedStorageBytes(path) :
-                        Nibbles.ToBytes(path);
+            byte[] keyPath = path.Length is (AccountLeafNibblesLength or StorageLeafNibblesLength) ? Nibbles.ToBytes(path): Nibbles.ToEncodedStorageBytes(path);
+            _logger.Info($"LoadRlp {keyPath.ToHexString()} path.Length {path.Length} - {(path.Length != 0 ? path.ToHexString(): Array.Empty<byte>())}");
 
             keyValueStore ??= _keyValueStore;
             byte[]? rlp = _currentBatch?[keyPath] ?? keyValueStore[keyPath];
-            if (path.Length < 64 && rlp?[0] == PathMarker)
+            if (rlp?[0] == PathMarker)
             {
                 byte[]? pointsToPath = _currentBatch?[rlp[1..]] ?? keyValueStore[rlp[1..]];
                 if (pointsToPath is not null)
                     rlp = pointsToPath;
             }
+            _logger.Info($"LoadRlp Value : {rlp}");
+
 
             if (rlp is null)
             {
-                throw new TrieException($"Node {keyPath} is missing from the DB");
+                throw new TrieException($"Node {keyPath.ToHexString()} is missing from the DB | path.Length {path.Length} - {path.ToHexString()}");
             }
 
             Metrics.LoadedFromDbNodesCount++;
@@ -520,24 +525,43 @@ namespace Nethermind.Trie.Pruning
 
        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore keyValueStore = null)
         {
+            _logger.Info($"Saving Node Directly: {blockNumber}");
             keyValueStore ??= _keyValueStore;
 
-            byte[] fullPath = trieNode.FullPath;
+            byte[]? fullPath = trieNode.FullPath;
+            // if (fullPath is null) throw new ArgumentNullException();
 
-            byte[] pathBytes = fullPath.Length < 64 ? Nibbles.ToEncodedStorageBytes(fullPath) : Nibbles.ToBytes(fullPath);
-            if (trieNode.IsLeaf && (trieNode.Key.Length < 64 || trieNode.PathToNode.Length == 0))
+            _logger.Info($"FullPath for Node: {fullPath.ToHexString()}");
+            byte[] pathBytes = fullPath.Length is AccountLeafNibblesLength or StorageLeafNibblesLength ? Nibbles.ToBytes(fullPath): Nibbles.ToEncodedStorageBytes(fullPath);
+            _logger.Info($"Path Bytes for Node: {pathBytes.ToHexString()}");
+
+            if (trieNode.IsLeaf && (trieNode.Key.Length is not (AccountLeafNibblesLength or StorageLeafNibblesLength) || trieNode.PathToNode.Length == 0))
             {
-                //_logger.Info($"Saving node pointer - path to: {trieNode.PathToNode.ToHexString()} full path: {fullPath.ToHexString()}");
-                byte[] pathToNodeBytes = Nibbles.ToEncodedStorageBytes(trieNode.PathToNode);
+                byte[]? nibbs = trieNode.StoreNibblePathPrefix.Concat(trieNode.PathToNode).ToArray();
+                byte[] pathToNodeBytes = Nibbles.ToEncodedStorageBytes(nibbs);
                 byte[] newPath = new byte[pathBytes.Length + 1];
                 Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
-                newPath[0] = 128;
+                newPath[0] = PathMarker;
                 if (trieNode.FullRlp == null)
-                    newPath = null;
+                {
+                    _logger.Info($"Deleting Leaf Node Pointer: {pathToNodeBytes.ToHexString()}");
+                    keyValueStore[pathToNodeBytes] = null;
+                }
+                _logger.Info($"Saving Leaf Node Pointer - PathToNode(Key): {pathToNodeBytes.ToHexString()} ActualPathInDb(Value): {newPath?.ToHexString()}");
                 keyValueStore[pathToNodeBytes] = newPath;
             }
-            //_logger.Info($"Saving node - full path: {fullPath.ToHexString()} key: {trieNode.Key?.ToHexString()}");
-            keyValueStore[pathBytes] = trieNode.FullRlp;
+
+            if (trieNode.FullRlp is null)
+            {
+                _logger.Info($"Deleting Node - PathBytes(key): {pathBytes.ToHexString()}");
+                keyValueStore[pathBytes] = trieNode.FullRlp;
+            }
+            else
+            {
+                _logger.Info($"Saving Node - PathBytes(key): {pathBytes.ToHexString()} FullRlp: {trieNode.FullRlp?.ToHexString()}");
+                keyValueStore[pathBytes] = trieNode.FullRlp;
+            }
+
         }
 
         public bool ExistsInDB(Keccak hash, byte[] pathNibbles)

@@ -48,7 +48,6 @@ namespace Nethermind.Merge.Plugin.Test
                 _context.DbProvider!,
                 _context.BlockTree!,
                 _context.ReadOnlyTrieStore!,
-                _context.ReadOnlyStorageTrieStore!,
                 _context.SpecProvider!,
                 _context.BlockValidator!,
                 _context.RewardCalculatorSource!,

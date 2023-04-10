@@ -76,7 +76,7 @@ namespace Nethermind.Core.Test.Builders
             {
                 store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
 
-                var storageTree = new StorageTree(store, LimboLogs.Instance);
+                var storageTree = new StorageTree(store, LimboLogs.Instance, AccountAddress0.Bytes);
 
                 storageTree.Set(SlotsWithPaths[0].Path, SlotsWithPaths[0].SlotRlpValue, false);
                 storageTree.Set(SlotsWithPaths[1].Path, SlotsWithPaths[1].SlotRlpValue, false);

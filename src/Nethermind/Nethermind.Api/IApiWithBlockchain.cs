@@ -44,7 +44,6 @@ namespace Nethermind.Api
         IHeaderValidator? HeaderValidator { get; set; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
-        IReadOnlyTrieStore? ReadOnlyStorageTrieStore { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         /// <summary>
         /// PoS switcher for The Merge

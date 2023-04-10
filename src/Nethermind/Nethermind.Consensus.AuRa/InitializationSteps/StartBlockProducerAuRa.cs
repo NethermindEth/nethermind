@@ -172,7 +172,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         {
             // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
             IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority =
-                new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.ReadOnlyStorageTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+                new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
             (_txPriorityContract, _localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
@@ -231,7 +231,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         {
             ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider dbProvider, ReadOnlyBlockTree blockTree)
             {
-                return new(dbProvider, _api.ReadOnlyTrieStore, _api.ReadOnlyStorageTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
+                return new(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
             }
 
             BlockProducerEnv Create()

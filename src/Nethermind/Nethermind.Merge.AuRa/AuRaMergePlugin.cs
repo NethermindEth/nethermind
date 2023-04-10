@@ -58,7 +58,6 @@ namespace Nethermind.Merge.AuRa
                 _api.DbProvider!,
                 _api.BlockTree!,
                 _api.ReadOnlyTrieStore!,
-                _api.ReadOnlyStorageTrieStore!,
                 _api.SpecProvider!,
                 _api.BlockValidator!,
                 _api.RewardCalculatorSource!,

@@ -78,7 +78,6 @@ namespace Nethermind.Api
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
                 _readOnlyDbProvider,
                 ReadOnlyTrieStore,
-                ReadOnlyStorageTrieStore,
                 readOnlyTree,
                 SpecProvider,
                 LogManager);

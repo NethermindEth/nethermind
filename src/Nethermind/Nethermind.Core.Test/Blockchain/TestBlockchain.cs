@@ -137,7 +137,7 @@ public class TestBlockchain : IDisposable
         State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
-        StateReader = new StateReader(ReadOnlyTrieStore, ReadOnlyStorageTrieStore, CodeDb, LogManager);
+        StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         IDb blockDb = new MemDb();
         IDb headerDb = new MemDb();
@@ -243,7 +243,6 @@ public class TestBlockchain : IDisposable
             DbProvider,
             BlockTree,
             ReadOnlyTrieStore,
-            ReadOnlyStorageTrieStore,
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,

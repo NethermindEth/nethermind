@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -22,7 +20,7 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test;
 
 [TestFixture]
-public class TrieByPathTests
+public class TrieByPathWithPrefixTest
 {
     private ILogger _logger;
     private ILogManager _logManager;
@@ -31,7 +29,7 @@ public class TrieByPathTests
     [SetUp]
     public void SetUp()
     {
-        _logManager = LimboLogs.Instance;
+        _logManager = NUnitLogManager.Instance;
         // new NUnitLogManager(LogLevel.Trace);
         _logger = _logManager.GetClassLogger();
     }
@@ -69,7 +67,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Commit(0);
 
@@ -80,9 +81,12 @@ public class TrieByPathTests
     [Test]
     public void Single_leaf_update_same_block()
     {
-        MemDb memDb = new();
+        MemDb memDb = new MemDb();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
+        PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountA, _longLeaf2);
         patriciaTree.Commit(0);
@@ -100,7 +104,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Commit(0);
         patriciaTree.Set(_keyAccountA, _longLeaf2);
@@ -122,7 +129,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountA, Array.Empty<byte>());
         patriciaTree.Commit(0);
@@ -139,7 +149,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Commit(0);
         patriciaTree.Set(_keyAccountA, Array.Empty<byte>());
@@ -158,7 +171,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, new ConstantInterval(4), LimboLogs.Instance);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Commit(0);
         patriciaTree.Commit(1);
         patriciaTree.Commit(2);
@@ -192,7 +208,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
         patriciaTree.Set(_keyAccountC, _longLeaf1);
@@ -223,7 +242,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
         patriciaTree.Set(_keyAccountC, _longLeaf1);
@@ -246,7 +268,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
 
         for (int j = 0; j < i; j++)
         {
@@ -271,7 +296,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
 
         for (int j = 0; j < i; j++)
         {
@@ -312,7 +340,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
 
         for (int j = 0; j < i; j++)
         {
@@ -344,7 +375,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
 
         for (int j = 0; j < i; j++)
         {
@@ -381,7 +415,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
 
         for (int j = 0; j < i; j++)
         {
@@ -413,7 +450,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
 
         for (int j = 0; j < i; j++)
         {
@@ -464,7 +504,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
         patriciaTree.Set(_keyAccountC, _longLeaf1);
@@ -486,8 +529,11 @@ public class TrieByPathTests
         MemDb memDb = new MemDb();
         using TrieStoreByPath trieStore = new TrieStoreByPath(memDb, No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
 
-        PatriciaTree patriciaTree = new PatriciaTree(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
-        patriciaTree.TrieType = TrieType.State;
+        PatriciaTree patriciaTree = new PatriciaTree(trieStore, Keccak.EmptyTreeHash, true, true, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };;
+        patriciaTree.TrieType = TrieType.Storage;
 
 
 
@@ -513,7 +559,10 @@ public class TrieByPathTests
 
     private static PatriciaTree CreateCheckTree(MemDb memDb, PatriciaTree patriciaTree)
     {
-        PatriciaTree checkTree = new(memDb, patriciaTree.Capability);
+        PatriciaTree checkTree = new PatriciaTree(memDb, NUnitLogManager.Instance, patriciaTree.Capability)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };;
         checkTree.RootHash = patriciaTree.RootHash;
         return checkTree;
     }
@@ -523,7 +572,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf2);
         patriciaTree.Commit(0);
@@ -538,7 +590,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
         patriciaTree.Commit(0);
@@ -553,7 +608,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf2);
         patriciaTree.UpdateRootHash();
@@ -574,7 +632,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
         patriciaTree.UpdateRootHash();
@@ -607,7 +668,10 @@ public class TrieByPathTests
 
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(key1, _longLeaf1);
         patriciaTree.Set(key2, _longLeaf1);
         patriciaTree.Set(key3, _longLeaf1);
@@ -655,7 +719,10 @@ public class TrieByPathTests
 
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(key1, _longLeaf1);
         patriciaTree.Set(key2, _longLeaf1);
         patriciaTree.Set(key3, _longLeaf1);
@@ -677,7 +744,10 @@ public class TrieByPathTests
     {
         MemDb memDb = new();
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
         patriciaTree.Set(_keyAccountC, _longLeaf1);
@@ -840,7 +910,10 @@ public class TrieByPathTests
         MemDb memDb = new();
 
         using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
-        PatriciaTree patriciaTree = new(trieStore, _logManager);
+        PatriciaTree patriciaTree = new(trieStore, _logManager)
+        {
+            StorageBytePathPrefix = _keyAccountA
+        };
 
         byte[][] accounts = new byte[accountsCount][];
         byte[][] randomValues = new byte[uniqueValuesCount][];
@@ -962,156 +1035,5 @@ public class TrieByPathTests
             verifiedBlocks++;
         }
     }
-
-     [TestCase(96, 192, 96, 1541344441)]
-    [TestCase(128, 256, 128, 988091870)]
-    [TestCase(128, 256, 128, 2107374965)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(4, 16, 4, 1242692908)]
-    [TestCase(8, 32, 8, 1543322391)]
-    public void Fuzz_accounts_with_storage(
-        int accountsCount,
-        int blocksCount,
-        int lookupLimit,
-        int? seed)
-    {
-        int usedSeed = seed ?? _random.Next(int.MaxValue);
-        _random = new Random(usedSeed);
-        _logger.Info($"RANDOM SEED {usedSeed}");
-
-        string fileName = Path.GetTempFileName();
-        //string fileName = "C:\\Temp\\fuzz.txt";
-        _logger.Info(
-            $"Fuzzing with accounts: {accountsCount}, " +
-            $"blocks {blocksCount}, " +
-            $"lookup: {lookupLimit} into file {fileName}");
-
-        using FileStream fileStream = new(fileName, FileMode.Create);
-        using StreamWriter streamWriter = new(fileStream);
-
-        Queue<Keccak> rootQueue = new();
-
-        MemDb memDb = new();
-
-        using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
-        StateProvider stateProvider = new StateProvider(trieStore, new MemDb(), _logManager);
-        StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
-
-        Account[] accounts = new Account[accountsCount];
-        Address[] addresses = new Address[accountsCount];
-
-        for (int i = 0; i < accounts.Length; i++)
-        {
-            bool isEmptyValue = _random.Next(0, 2) == 0;
-            if (isEmptyValue)
-            {
-                accounts[i] = Account.TotallyEmpty;
-            }
-            else
-            {
-                accounts[i] = TestItem.GenerateRandomAccount();
-            }
-
-            addresses[i] = TestItem.GetRandomAddress(_random);
-        }
-
-        for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
-        {
-            bool isEmptyBlock = _random.Next(5) == 0;
-            if (!isEmptyBlock)
-            {
-                for (int i = 0; i < Math.Max(1, accountsCount / 8); i++)
-                {
-                    int randomAddressIndex = _random.Next(addresses.Length);
-                    int randomAccountIndex = _random.Next(accounts.Length);
-
-                    Address address = addresses[randomAddressIndex];
-                    Account account = accounts[randomAccountIndex];
-
-                    if (stateProvider.AccountExists(address))
-                    {
-                        Account existing = stateProvider.GetAccount(address);
-                        if (existing.Balance != account.Balance)
-                        {
-                            if (account.Balance > existing.Balance)
-                            {
-                                stateProvider.AddToBalance(
-                                    address, account.Balance - existing.Balance, MuirGlacier.Instance);
-                            }
-                            else
-                            {
-                                stateProvider.SubtractFromBalance(
-                                    address, existing.Balance - account.Balance, MuirGlacier.Instance);
-                            }
-
-                            stateProvider.IncrementNonce(address);
-                        }
-
-                        byte[] storage = new byte[1];
-                        _random.NextBytes(storage);
-                        storageProvider.Set(new StorageCell(address, 1), storage);
-                    }
-                    else if (!account.IsTotallyEmpty)
-                    {
-                        stateProvider.CreateAccount(address, account.Balance);
-
-                        byte[] storage = new byte[1];
-                        _random.NextBytes(storage);
-                        storageProvider.Set(new StorageCell(address, 1), storage);
-                    }
-                }
-            }
-
-            streamWriter.WriteLine(
-                $"Commit block {blockNumber} | empty: {isEmptyBlock}");
-
-            storageProvider.Commit();
-            stateProvider.Commit(MuirGlacier.Instance);
-
-            storageProvider.CommitTrees(blockNumber);
-            stateProvider.CommitTree(blockNumber);
-            rootQueue.Enqueue(stateProvider.StateRoot);
-        }
-
-        streamWriter.Flush();
-        fileStream.Seek(0, SeekOrigin.Begin);
-
-        streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
-        _logger.Info($"DB size: {memDb.Keys.Count}");
-
-        int verifiedBlocks = 0;
-
-        while (rootQueue.TryDequeue(out Keccak currentRoot))
-        {
-            try
-            {
-                stateProvider.StateRoot = currentRoot;
-                for (int i = 0; i < addresses.Length; i++)
-                {
-                    if (stateProvider.AccountExists(addresses[i]))
-                    {
-                        for (int j = 0; j < 256; j++)
-                        {
-                            storageProvider.Get(new StorageCell(addresses[i], (UInt256)j));
-                        }
-                    }
-                }
-
-                _logger.Info($"Verified positive {verifiedBlocks}");
-            }
-            catch (Exception ex)
-            {
-                if (verifiedBlocks % lookupLimit == 0)
-                {
-                    throw new InvalidDataException(ex.ToString());
-                }
-                else
-                {
-                    _logger.Info($"Verified negative {verifiedBlocks} which is ok here");
-                }
-            }
-
-            verifiedBlocks++;
-        }
-    }
 }
+

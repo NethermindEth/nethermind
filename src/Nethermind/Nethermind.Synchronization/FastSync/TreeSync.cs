@@ -71,7 +71,7 @@ namespace Nethermind.Synchronization.FastSync
         private LruKeyCache<Keccak> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
         private LruKeyCache<Keccak> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
         private readonly HashSet<Keccak> _codesSameAsNodes = new();
-        private readonly ConcurrentDictionary<Keccak, List<byte>> _additionalLeafNibbles = new();
+        private readonly ConcurrentDictionary<Keccak, List<byte>> _additionalLeafNibbles;
 
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
@@ -540,9 +540,15 @@ namespace Nethermind.Synchronization.FastSync
                     IDb dbToCheck = syncItem.NodeDataType == NodeDataType.Code ? _codeDb : _stateDb;
                     Interlocked.Increment(ref _data.DbChecks);
                     bool keyExists;
-                    if (syncItem.NodeDataType == NodeDataType.State && _stateStore.Capability == TrieNodeResolverCapability.Path)
+                    if (_stateStore.Capability == TrieNodeResolverCapability.Path)
                     {
-                        keyExists = _stateStore.ExistsInDB(syncItem.Hash, syncItem.PathNibbles);
+                        keyExists = syncItem.NodeDataType switch
+                        {
+                            NodeDataType.State => _stateStore.ExistsInDB(syncItem.Hash, syncItem.PathNibbles),
+                            NodeDataType.Storage => _stateStore.ExistsInDB(syncItem.Hash,
+                                syncItem.AccountPathNibbles.Concat(syncItem.PathNibbles).ToArray()),
+                            _ => dbToCheck.KeyExists(syncItem.Hash)
+                        };
                     }
                     else
                     {
@@ -700,7 +706,23 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
-                            _stateDb.Set(syncItem.Hash, data);
+                            if (_stateStore.Capability == TrieNodeResolverCapability.Path)
+                            {
+                                _stateStore.SaveNodeDirectly(0, node);
+                                if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
+                                {
+                                    foreach (byte nibble in additionalNibbles)
+                                    {
+                                        TrieNode clone = node.Clone();
+                                        clone.PathToNode[^1] = nibble;
+                                        _stateStore.SaveNodeDirectly(0, clone);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                _stateDb.Set(syncItem.Hash, data);
+                            }
                         }
                         finally
                         {

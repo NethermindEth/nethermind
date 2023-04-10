@@ -26,7 +26,7 @@ namespace Nethermind.Trie
         {
             TrieNode node = new(NodeType.Branch);
             node.PathToNode = pathToNode.ToArray();
-            node.StorePrefix = storagePrefix.ToArray();
+            node.StoreNibblePathPrefix = storagePrefix.ToArray();
             return node;
         }
 
@@ -57,7 +57,7 @@ namespace Nethermind.Trie
                 Key = path,
                 Value = value,
                 PathToNode = pathToNode.ToArray(),
-                StorePrefix = storagePrefix.ToArray()
+                StoreNibblePathPrefix = storagePrefix.ToArray()
             };
         }
 
@@ -81,7 +81,7 @@ namespace Nethermind.Trie
             TrieNode node = new(NodeType.Extension);
             node.Key = path;
             node.PathToNode = pathToNode.ToArray();
-            node.StorePrefix = storagePrefix.ToArray();
+            node.StoreNibblePathPrefix = storagePrefix.ToArray();
             return node;
         }
 
@@ -108,7 +108,7 @@ namespace Nethermind.Trie
             node.SetChild(0, child);
             node.Key = path;
             node.PathToNode = pathToNode.ToArray();
-            node.StorePrefix = storagePrefix.ToArray();
+            node.StoreNibblePathPrefix = storagePrefix.ToArray();
             return node;
         }
     }

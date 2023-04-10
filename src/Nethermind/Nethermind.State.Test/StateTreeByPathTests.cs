@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -582,6 +583,26 @@ namespace Nethermind.Store.Test
             Account a1_0 = tree.Get(TestItem.AddressA, root0);
 
             Assert.IsNull(a1_0);
+        }
+
+        [Test]
+        public void CopyStateTest()
+        {
+            MemDb memDb = new MemDb();
+            using TrieStoreByPath trieStore = new TrieStoreByPath(memDb, No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
+
+            StateTreeByPath tree = new(trieStore, LimboLogs.Instance);
+
+            tree.Set(TestItem.AddressA, _account1);
+            tree.Set(TestItem.AddressB, _account1);
+            tree.Set(TestItem.AddressC, _account1);
+            tree.Set(TestItem.AddressD, _account1);
+            tree.Set(TestItem.AddressA, null);
+            tree.Commit(0);
+            tree.Get(TestItem.AddressA).Should().BeNull();
+            tree.Get(TestItem.AddressB).Balance.Should().BeEquivalentTo(_account1.Balance);
+            tree.Get(TestItem.AddressC).Balance.Should().BeEquivalentTo(_account1.Balance);
+            tree.Get(TestItem.AddressD).Balance.Should().BeEquivalentTo(_account1.Balance);
         }
     }
 }

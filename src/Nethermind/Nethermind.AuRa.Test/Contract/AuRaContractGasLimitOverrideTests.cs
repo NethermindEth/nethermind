@@ -85,7 +85,6 @@ namespace Nethermind.AuRa.Test.Contract
                     new ReadOnlyTxProcessingEnv(
                         DbProvider,
                         new TrieStoreByPath(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                        new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                         BlockTree, SpecProvider, LimboLogs.Instance));
 
                 GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();

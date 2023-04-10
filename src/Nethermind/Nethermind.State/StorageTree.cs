@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -22,6 +23,10 @@ namespace Nethermind.State
 
         private static readonly Dictionary<UInt256, byte[]> Cache = new(CacheSizeInt);
 
+        private Address? AccountAddress { get; }
+        private byte[]? AccountPath { get; }
+
+
         static StorageTree()
         {
             Span<byte> buffer = stackalloc byte[32];
@@ -33,16 +38,35 @@ namespace Nethermind.State
             }
         }
 
-        public StorageTree(ITrieStore? trieStore, ILogManager? logManager)
-            : base(trieStore, Keccak.EmptyTreeHash, false, true, logManager)
-        {
-            TrieType = TrieType.Storage;
-        }
+        public StorageTree(ITrieStore trieStore, ILogManager? logManager, Address? accountAddress = null)
+            : this(trieStore, Keccak.EmptyTreeHash, logManager, accountAddress)
+        { }
 
-        public StorageTree(ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager)
+        public StorageTree(ITrieStore trieStore, ILogManager? logManager, byte[]? accountPath)
+            : this(trieStore, Keccak.EmptyTreeHash, logManager, accountPath)
+        { }
+
+        public StorageTree(ITrieStore trieStore, Keccak rootHash, ILogManager? logManager,  Address? accountAddress = null)
             : base(trieStore, rootHash, false, true, logManager)
         {
             TrieType = TrieType.Storage;
+            if (trieStore.Capability == TrieNodeResolverCapability.Path)
+            {
+                AccountAddress = accountAddress ?? throw new ArgumentException("this cannot be null while using path based trie store");
+                AccountPath = Keccak.Compute(accountAddress.Bytes).Bytes;
+                StorageBytePathPrefix = AccountPath;
+            }
+        }
+
+        public StorageTree(ITrieStore trieStore, Keccak rootHash, ILogManager? logManager,  byte[]? accountPath)
+            : base(trieStore, rootHash, false, true, logManager)
+        {
+            TrieType = TrieType.Storage;
+            if (trieStore.Capability == TrieNodeResolverCapability.Path)
+            {
+                AccountPath = accountPath ?? throw new ArgumentException("this cannot be null while using path based trie store");
+                StorageBytePathPrefix = AccountPath;
+            }
         }
 
         private static void GetKey(in UInt256 index, in Span<byte> key)

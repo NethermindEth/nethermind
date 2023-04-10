@@ -139,7 +139,6 @@ namespace Nethermind.AuRa.Test.Transactions
                 ReadOnlyTransactionProcessorSource = new ReadOnlyTxProcessingEnv(
                     DbProvider,
                     new TrieStoreByPath(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                    new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 BlockTree, SpecProvider,
                     LimboLogs.Instance);
                 RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTransactionProcessorSource);

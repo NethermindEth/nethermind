@@ -33,6 +33,13 @@ namespace Nethermind.Trie
             }
         }
 
+        public static byte[] BytesToNibbleBytes(Span<byte> bytes)
+        {
+            Span<byte> nibbles =  stackalloc byte[2 * bytes.Length];
+            BytesToNibbleBytes(bytes, nibbles);
+            return nibbles.ToArray();
+        }
+
         public static Nibble[] FromHexString(string hexString)
         {
             if (hexString is null)

@@ -262,7 +262,7 @@ namespace Nethermind.Synchronization.Test
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             TrieStoreByPath trieStoreByPath = new(stateDb, LimboLogs.Instance);
 
-            StateReader stateReader = new(trieStoreByPath, trieStore, codeDb, logManager);
+            StateReader stateReader = new(trieStoreByPath, codeDb, logManager);
             StateProvider stateProvider = new(trieStore, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);

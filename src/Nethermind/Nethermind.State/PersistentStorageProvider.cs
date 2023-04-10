@@ -90,7 +90,7 @@ namespace Nethermind.State
         /// <param name="tracer">Storage tracer</param>
         protected override void CommitCore(IStorageTracer tracer)
         {
-            if (_logger.IsTrace) _logger.Trace("Committing storage changes");
+            _logger.Info("Committing storage changes");
 
             if (_changes[_currentPosition] is null)
             {
@@ -154,14 +154,16 @@ namespace Nethermind.State
                     case ChangeType.JustCache:
                         break;
                     case ChangeType.Update:
-                        if (_logger.IsTrace)
+                        _logger.Info($"SSSSSSSSSSSSSSSSSSSSSSSS {i}");
+                        if (i == 12)
                         {
-                            _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
+                            _logger.Info("This is it");
                         }
-
+                        _logger.Info($"Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
                         Db.Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageCell.Address);
+                        _logger.Info($"Storage Tree Set: {change.StorageCell.Index} - {tree.StorageBytePathPrefix.ToHexString()}");
                         tree.Set(change.StorageCell.Index, change.Value);
                         if (isTracing)
                         {
@@ -217,13 +219,10 @@ namespace Nethermind.State
 
         private StorageTree GetOrCreateStorage(Address address)
         {
-            if (!_storages.ContainsKey(address))
-            {
-                StorageTree storageTree = new(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
-                return _storages[address] = storageTree;
-            }
+            if (_storages.TryGetValue(address, out StorageTree value)) return value;
 
-            return _storages[address];
+            StorageTree storageTree = new StorageTree(_trieStore, _stateProvider.GetStorageRoot(address), _logManager, address);
+            return _storages[address] = storageTree;
         }
 
         private byte[] LoadFromTree(in StorageCell storageCell)
@@ -278,7 +277,7 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
-            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager, address);
         }
     }
 }
