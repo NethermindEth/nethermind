@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -384,7 +385,7 @@ namespace Nethermind.Consensus.Processing
 
             if (!readonlyChain)
             {
-                _stats.UpdateStats(lastProcessed, _blockTree, _recoveryQueue.Count, _blockQueue.Count, blockProcessingTimeInMs);
+                _stats.UpdateStats(lastProcessed, _blockTree, _recoveryQueue.Count, _blockQueue.Count, _stopwatch.ElapsedMicroseconds());
             }
 
             return lastProcessed;
