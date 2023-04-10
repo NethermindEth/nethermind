@@ -50,7 +50,7 @@ namespace Nethermind.Serialization.Rlp
 
             while (rlpStream.Position < lastCheck)
             {
-                logEntries.Add(SlimLogEntryDecoder.Instance.Decode(rlpStream, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(CompactLogEntryDecoder.Instance.Decode(rlpStream, RlpBehaviors.AllowExtraBytes));
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -98,7 +98,7 @@ namespace Nethermind.Serialization.Rlp
             using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
             while (decoderContext.Position < lastCheck)
             {
-                logEntries.Add(SlimLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(CompactLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -146,7 +146,7 @@ namespace Nethermind.Serialization.Rlp
             using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
             while (decoderContext.Position < lastCheck)
             {
-                logEntries.Add(SlimLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(CompactLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
             }
             item.Logs = logEntries.ToArray();
 
@@ -191,7 +191,7 @@ namespace Nethermind.Serialization.Rlp
             LogEntry[] logs = item.Logs ?? Array.Empty<LogEntry>();
             for (int i = 0; i < logs.Length; i++)
             {
-                SlimLogEntryDecoder.Instance.Encode(rlpStream, logs[i]);
+                CompactLogEntryDecoder.Instance.Encode(rlpStream, logs[i]);
             }
         }
 
@@ -229,7 +229,7 @@ namespace Nethermind.Serialization.Rlp
             LogEntry[] logs = item.Logs ?? Array.Empty<LogEntry>();
             for (int i = 0; i < logs.Length; i++)
             {
-                logsLength += SlimLogEntryDecoder.Instance.GetLength(logs[i]);
+                logsLength += CompactLogEntryDecoder.Instance.GetLength(logs[i]);
             }
 
             return logsLength;

@@ -11,9 +11,9 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class SlimLogEntryDecoder
+    public class CompactLogEntryDecoder
     {
-        public static SlimLogEntryDecoder Instance { get; } = new();
+        public static CompactLogEntryDecoder Instance { get; } = new();
 
         public LogEntry? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
