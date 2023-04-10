@@ -154,16 +154,13 @@ namespace Nethermind.State
                     case ChangeType.JustCache:
                         break;
                     case ChangeType.Update:
-                        _logger.Info($"SSSSSSSSSSSSSSSSSSSSSSSS {i}");
-                        if (i == 12)
+                        if (_logger.IsTrace)
                         {
-                            _logger.Info("This is it");
+                            _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
-                        _logger.Info($"Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
                         Db.Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageCell.Address);
-                        _logger.Info($"Storage Tree Set: {change.StorageCell.Index} - {tree.StorageBytePathPrefix.ToHexString()}");
                         tree.Set(change.StorageCell.Index, change.Value);
                         if (isTracing)
                         {
