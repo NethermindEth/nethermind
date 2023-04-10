@@ -23,6 +23,8 @@ internal class MnemonicInput : IComponent<MachineState>
     {
         var innerState = state.GetState();
 
+
+        var bytecodeMnemonics = BytecodeParser.Dissassemble(innerState.Bytecode).ToMultiLineString();
         var frameBoundaries = new Rectangle(
                 X: rect?.X ?? Pos.Center(),
                 Y: rect?.Y ?? Pos.Center(),
@@ -30,12 +32,14 @@ internal class MnemonicInput : IComponent<MachineState>
                 Height: rect?.Height ?? Dim.Percent(75)
             );
 
-        inputField = new Terminal.Gui.TextView
+        inputField ??= new Terminal.Gui.TextView
         {
             Width = Dim.Fill(),
             Height = Dim.Fill(2),
             Border = new Border()
         };
+        inputField.Text = bytecodeMnemonics;
+
 
         buttons.submit ??= new Button("Submit");
         buttons.cancel ??= new Button("Cancel");
@@ -53,9 +57,15 @@ internal class MnemonicInput : IComponent<MachineState>
             container.Add(inputField);
             buttons.submit.Clicked += () =>
             {
-                var newBytecode = BytecodeParser.Parse((string)inputField.Text).ToByteArray();
-                BytecodeChanged?.Invoke(newBytecode);
-                EventsSink.EnqueueEvent(new BytecodeInsertedB(newBytecode));
+                try
+                {
+                    var newBytecode = BytecodeParser.Parse((string)inputField.Text.TrimSpace()).ToByteArray();
+                    BytecodeChanged?.Invoke(newBytecode);
+                    EventsSink.EnqueueEvent(new BytecodeInsertedB(newBytecode));
+                } catch (Exception ex)
+                {
+                    EventsSink.EnqueueEvent(new ThrowError("Error parsing Mnemonics"));
+                }
                 Application.RequestStop();
             };
 

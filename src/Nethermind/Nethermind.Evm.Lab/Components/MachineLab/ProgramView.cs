@@ -4,6 +4,7 @@
 using System.Data;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Lab.Interfaces;
+using Nethermind.Evm.Lab.Parser;
 using Terminal.Gui;
 
 namespace Nethermind.Evm.Lab.Componants;
@@ -12,28 +13,10 @@ internal class ProgramView : IComponent<MachineState>
     bool isCached = false;
     private FrameView? container = null;
     private TableView? programView = null;
-    private IReadOnlyList<(int Idx, string Operation)> Dissassemble(byte[] bytecode)
-    {
-        var opcodes = new List<(int Idx, string Operation)>();
-
-        for (int i = 0; i < bytecode.Length; i++)
-        {
-            var instruction = (Instruction)bytecode[i];
-            if (!instruction.IsValid())
-            {
-                opcodes.Add((i, "INVALID"));
-                continue;
-            }
-            int immediatesCount = instruction.GetImmediateCount();
-            byte[] immediates = bytecode.Slice(i + 1, immediatesCount);
-            opcodes.Add((i, $"{instruction.ToString()} {immediates.ToHexString(immediates.Any())}"));
-            i += immediatesCount;
-        }
-        return opcodes;
-    }
+    
     public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
-        var dissassembledBytecode = Dissassemble(state.GetState().Bytecode);
+        var dissassembledBytecode = BytecodeParser.Dissassemble(state.GetState().Bytecode);
 
         var frameBoundaries = new Rectangle(
                 X: rect?.X ?? 0,
@@ -52,9 +35,9 @@ internal class ProgramView : IComponent<MachineState>
         var dataTable = new DataTable();
         dataTable.Columns.Add("Position");
         dataTable.Columns.Add("Operation");
-        foreach (var (k, v) in dissassembledBytecode)
+        foreach (var instr in dissassembledBytecode)
         {
-            dataTable.Rows.Add(k, v);
+            dataTable.Rows.Add(instr.idx, instr.ToString());
         }
 
         programView ??= new TableView()
