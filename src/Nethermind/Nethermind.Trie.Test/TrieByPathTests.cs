@@ -697,9 +697,9 @@ public class TrieByPathTests
         checkTree.Get(_keyAccountD).Should().BeEquivalentTo(_longLeaf1);
     }
 
-    // [TestCase(256, 128, 128, 32)]
+    [TestCase(256, 128, 128, 32)]
     [TestCase(128, 128, 8, 8)]
-    // [TestCase(4, 16, 4, 4)]
+    [TestCase(4, 16, 4, 4)]
     public void Fuzz_accounts(
         int accountsCount,
         int blocksCount,
@@ -963,7 +963,7 @@ public class TrieByPathTests
         }
     }
 
-     [TestCase(96, 192, 96, 1541344441)]
+    [TestCase(96, 192, 96, 1541344441)]
     [TestCase(128, 256, 128, 988091870)]
     [TestCase(128, 256, 128, 2107374965)]
     [TestCase(128, 256, 128, null)]
