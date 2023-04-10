@@ -15,11 +15,15 @@ public class PerTableDbConfig
     private readonly IDbConfig _dbConfig;
     private readonly RocksDbSettings _settings;
 
-    public PerTableDbConfig(IDbConfig dbConfig, RocksDbSettings rocksDbSettings)
+    public PerTableDbConfig(IDbConfig dbConfig, RocksDbSettings rocksDbSettings, string? columnName = null)
     {
         _dbConfig = dbConfig;
         _settings = rocksDbSettings;
         _tableName = _settings.DbName;
+        if (columnName != null)
+        {
+            _tableName += columnName;
+        }
     }
 
     public bool CacheIndexAndFilterBlocks => _settings.CacheIndexAndFilterBlocks ?? ReadConfig<bool>(nameof(CacheIndexAndFilterBlocks));
@@ -34,16 +38,25 @@ public class PerTableDbConfig
 
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
     public long? MaxWriteBytesPerSec => ReadConfig<long?>(nameof(MaxWriteBytesPerSec));
+    public uint RecycleLogFileNum => ReadConfig<uint>(nameof(RecycleLogFileNum));
+    public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
+    public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
+    public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
 
     private T? ReadConfig<T>(string propertyName)
     {
-        return ReadConfig<T>(_dbConfig, propertyName, _tableName);
+        return ReadConfig<T>(_dbConfig, propertyName, GetPrefix());
     }
 
-    private static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
+    private string GetPrefix()
     {
-        string prefixed = string.Concat(tableName.StartsWith("State") ? string.Empty : string.Concat(tableName, "Db"),
-            propertyName);
+        return _tableName.StartsWith("State") ? "State" : string.Concat(_tableName, "Db");
+    }
+
+    private static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string prefix)
+    {
+        string prefixed = string.Concat(prefix, propertyName);
+
         try
         {
             Type type = dbConfig.GetType();

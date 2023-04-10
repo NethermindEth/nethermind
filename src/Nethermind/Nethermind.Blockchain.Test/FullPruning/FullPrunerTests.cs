@@ -24,9 +24,23 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.FullPruning
 {
+
+    [TestFixture(0, 1)]
+    [TestFixture(0, 4)]
+    [TestFixture(1, 1)]
+    [TestFixture(1, 4)]
     [Parallelizable(ParallelScope.All)]
     public class FullPrunerTests
     {
+        private int _fullPrunerMemoryBudgetMb;
+        private int _degreeOfParallelism;
+
+        public FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParallelism)
+        {
+            _fullPrunerMemoryBudgetMb = fullPrunerMemoryBudgetMb;
+            _degreeOfParallelism = degreeOfParallelism;
+        }
+
         [Test, Timeout(Timeout.MaxTestTime)]
         public async Task can_prune()
         {
@@ -123,7 +137,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.FullPruningDb[key].Should().BeEquivalentTo(key);
         }
 
-        private static TestContext CreateTest(bool successfulPruning = true, bool clearPrunedDb = false) => new(successfulPruning, clearPrunedDb);
+        private TestContext CreateTest(bool successfulPruning = true, bool clearPrunedDb = false) => new(successfulPruning, clearPrunedDb, _fullPrunerMemoryBudgetMb, _degreeOfParallelism);
 
         private class TestContext
         {
@@ -140,7 +154,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
             public ISizeInfo SizeInfo = ChainSizes.UnknownChain.Instance;
 
-            public TestContext(bool successfulPruning, bool clearPrunedDb = false)
+            public TestContext(bool successfulPruning, bool clearPrunedDb = false, int fullScanMemoryBudgetMb = 0, int degreeOfParallelism = 0)
             {
                 BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
                 _clearPrunedDb = clearPrunedDb;
@@ -154,7 +168,11 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 StateReader = new StateReader(new TrieStore(TrieDb, LimboLogs.Instance), new TestMemDb(), LimboLogs.Instance);
                 FullPruningDb = new TestFullPruningDb(new RocksDbSettings("test", "test"), rocksDbFactory, successfulPruning, clearPrunedDb);
 
-                Pruner = new(FullPruningDb, PruningTrigger, new PruningConfig(), BlockTree, StateReader, SizeInfo, DriveInfo, LimboLogs.Instance);
+                Pruner = new(FullPruningDb, PruningTrigger, new PruningConfig()
+                {
+                    FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
+                    FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
+                }, BlockTree, StateReader, SizeInfo, DriveInfo, LimboLogs.Instance);
             }
 
             public async Task<bool> WaitForPruning()

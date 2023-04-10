@@ -13,35 +13,57 @@ namespace Nethermind.Crypto;
 
 public static class KzgPolynomialCommitments
 {
-    public static readonly UInt256 BlsModulus = UInt256.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513", System.Globalization.NumberStyles.Integer);
-    public static readonly ulong FieldElementsPerBlob = 4096;
+    // https://eips.ethereum.org/EIPS/eip-4844#parameters
+    public static readonly UInt256 BlsModulus =
+        UInt256.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513",
+            System.Globalization.NumberStyles.Integer);
 
-    private const byte KzgBlobHashVersionV1 = 1;
+    public const byte KzgBlobHashVersionV1 = 1;
+    public const byte BytesPerBlobVersionedHash = 32;
+
     private static IntPtr _ckzgSetup = IntPtr.Zero;
 
     private static readonly ThreadLocal<SHA256> _sha256 = new(SHA256.Create);
 
-    private static Task? _initializeTask = null;
+    private static Task? _initializeTask;
 
-    public static Task Initialize(ILogger? logger = null) => _initializeTask ?? (_initializeTask = Task.Run(() =>
+    public static Task Initialize(ILogger? logger = null) => _initializeTask ??= Task.Run(() =>
+    {
+        if (_ckzgSetup != IntPtr.Zero) return;
+
+        string trustedSetupTextFileLocation =
+            Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
+                         string.Empty, "kzg_trusted_setup.txt");
+
+        if (logger?.IsInfo == true)
+            logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
+        _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
+
+        if (_ckzgSetup == IntPtr.Zero)
         {
-            if (_ckzgSetup != IntPtr.Zero) return;
+            throw new InvalidOperationException("Unable to load trusted setup");
+        }
+    });
 
-            string trustedSetupTextFileLocation =
-                Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
-                             string.Empty, "kzg_trusted_setup.txt");
-
-            if (logger?.IsInfo == true) logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
-            _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
-
-            if (_ckzgSetup == IntPtr.Zero)
-            {
-                throw new InvalidOperationException("Unable to load trusted setup");
-            }
-        }));
-
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="commitment">Commitment to calculate hash from</param>
+    /// <param name="hashBuffer">Holds the output, can safely contain any data before the call.</param>
+    /// <returns>Result of the attempt</returns>
+    /// <exception cref="ArgumentException"></exception>
     public static bool TryComputeCommitmentV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
     {
+        if (commitment.Length != Ckzg.Ckzg.BytesPerCommitment)
+        {
+            return false;
+        }
+
+        if (hashBuffer.Length != BytesPerBlobVersionedHash)
+        {
+            throw new ArgumentException($"{nameof(hashBuffer)} should be {BytesPerBlobVersionedHash} bytes", nameof(hashBuffer));
+        }
+
         if (_sha256.Value!.TryComputeHash(commitment, hashBuffer, out _))
         {
             hashBuffer[0] = KzgBlobHashVersionV1;
@@ -51,16 +73,29 @@ public static class KzgPolynomialCommitments
         return false;
     }
 
-    public static unsafe bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> proof)
+    public static bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y,
+        ReadOnlySpan<byte> proof)
     {
-        if (_ckzgSetup == IntPtr.Zero)
+        try
         {
-            throw new InvalidOperationException("KZG is not initialized");
+            return Ckzg.Ckzg.VerifyKzgProof(commitment, z, y, proof, _ckzgSetup);
         }
-
-        fixed (byte* commitmentPtr = commitment, zPtr = z, yPtr = y, proofPtr = proof)
+        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
-            return Ckzg.Ckzg.VerifyKzgProof(commitmentPtr, zPtr, yPtr, proofPtr, _ckzgSetup) == 0;
+            return false;
+        }
+    }
+
+    public static bool AreProofsValid(byte[] blobs, byte[] commitments, byte[] proofs)
+    {
+        try
+        {
+            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(blobs, commitments, proofs, blobs.Length / Ckzg.Ckzg.BytesPerBlob,
+                _ckzgSetup);
+        }
+        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+        {
+            return false;
         }
     }
 }
