@@ -72,6 +72,17 @@ namespace Nethermind.Core.Test.Builders
                 stateTree.Commit(0);
             }
 
+            public static void FillStateTreeWithTestAccounts(StateTreeByPath stateTree)
+            {
+                stateTree.Set(AccountsWithPaths[0].Path, AccountsWithPaths[0].Account);
+                stateTree.Set(AccountsWithPaths[1].Path, AccountsWithPaths[1].Account);
+                stateTree.Set(AccountsWithPaths[2].Path, AccountsWithPaths[2].Account);
+                stateTree.Set(AccountsWithPaths[3].Path, AccountsWithPaths[3].Account);
+                stateTree.Set(AccountsWithPaths[4].Path, AccountsWithPaths[4].Account);
+                stateTree.Set(AccountsWithPaths[5].Path, AccountsWithPaths[5].Account);
+                stateTree.Commit(0);
+            }
+
             public static (StateTree stateTree, StorageTree storageTree) GetTrees(ITrieStore? store)
             {
                 store ??= new TrieStore(new MemDb(), LimboLogs.Instance);

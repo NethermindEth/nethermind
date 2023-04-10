@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _defaultPeerMaxRandomLatency = defaultPeerMaxRandomLatency;
         }
 
-        public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios => TrieScenarios.Scenarios;
+        public static (string Name, Action<StateTreeByPath, ITrieStore, IDb> Action)[] Scenarios => TrieScenarios.Scenarios;
 
         [SetUp]
         public void Setup()
@@ -161,10 +161,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                 LocalStateDb = LocalDb;
                 LocalCodeDb = new MemDb();
                 RemoteCodeDb = new MemDb();
-                RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
+                RemoteTrieStore = new TrieStoreByPath(RemoteStateDb, logManager);
 
-                RemoteStateTree = new StateTree(RemoteTrieStore, logManager);
-                LocalStateTree = new StateTree(new TrieStore(LocalStateDb, logManager), logManager);
+                RemoteStateTree = new StateTreeByPath(RemoteTrieStore, logManager);
+                LocalStateTree = new StateTreeByPath(new TrieStoreByPath(LocalStateDb, logManager), logManager);
             }
 
             public IDb RemoteCodeDb { get; }
@@ -174,8 +174,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             public ITrieStore RemoteTrieStore { get; }
             public IDb RemoteStateDb { get; }
             public IDb LocalStateDb { get; }
-            public StateTree RemoteStateTree { get; }
-            public StateTree LocalStateTree { get; }
+            public StateTreeByPath RemoteStateTree { get; }
+            public StateTreeByPath LocalStateTree { get; }
 
             public void CompareTrees(string stage, bool skipLogs = false)
             {

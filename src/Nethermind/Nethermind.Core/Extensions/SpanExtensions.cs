@@ -51,6 +51,8 @@ namespace Nethermind.Core.Extensions
         [DebuggerStepThrough]
         private static string ToHexViaLookup(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
+            if (bytes.Length == 0) return string.Empty;
+
             if (withEip55Checksum)
             {
                 return ToHexStringWithEip55Checksum(bytes, withZeroX, skipLeadingZeros);
@@ -72,6 +74,8 @@ namespace Nethermind.Core.Extensions
 
         private static string ToHexStringWithEip55Checksum(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros)
         {
+            if (bytes.Length == 0) return string.Empty;
+
             string hashHex = Keccak.Compute(bytes.ToHexString(false)).ToString(false);
 
             int leadingZeros = skipLeadingZeros ? Bytes.CountLeadingZeros(bytes) : 0;
