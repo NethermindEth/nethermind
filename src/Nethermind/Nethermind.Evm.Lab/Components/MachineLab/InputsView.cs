@@ -13,6 +13,7 @@ internal class InputsView : IComponent<MachineState>
     private FrameView? container = null;
     private TextField? bytecodeInputField = null;
     private TextField? calldataInputField = null;
+    private Button? mnemonicInputViewBtn = null;
     public (View, Rectangle?) View(IState<MachineState> state, Rectangle? rect = null)
     {
         var innerState = state.GetState();
@@ -41,8 +42,15 @@ internal class InputsView : IComponent<MachineState>
         bytecodeInputField ??= new TextField(state.GetState().Bytecode.ToHexString(true))
         {
             Y = Pos.Bottom(label_bytecode),
-            Width = Dim.Fill(),
+            Width = Dim.Percent(80),
             Height = Dim.Percent(40)
+        };
+
+        mnemonicInputViewBtn ??= new Button("MnemonicInput")
+        {
+            X = Pos.Right(bytecodeInputField),
+            Y = Pos.Bottom(label_bytecode),
+            Width = Dim.Percent(20),
         };
 
         var label_calldata = new Label("Calldata Inout Area")
@@ -75,7 +83,17 @@ internal class InputsView : IComponent<MachineState>
                 }
             };
 
-            container.Add(label_bytecode, bytecodeInputField, label_calldata, calldataInputField);
+            mnemonicInputViewBtn.Clicked += () =>
+            {
+                var mnemonicInputView = new MnemonicInput();
+                mnemonicInputView.BytecodeChanged += (nbcode) =>
+                {
+                    bytecodeInputField.Text = nbcode.ToHexString(true);
+                };
+                Application.Run((Dialog)mnemonicInputView.View(state).Item1);
+            };
+
+            container.Add(label_bytecode, bytecodeInputField, label_calldata, calldataInputField, mnemonicInputViewBtn);
         }
         isCached = true;
         return (container, frameBoundaries);

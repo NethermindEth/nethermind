@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Lab.Components;
+using Nethermind.Evm.Lab.Parser;
 using Nethermind.Evm.Test;
 using Nethermind.Evm.Tracing;
 using Nethermind.Specs;
@@ -11,7 +12,6 @@ using Nethermind.Specs.Forks;
 
 var mainView = new MainView(args.Length == 0 ? "604260005260206000F3" : args[0]);
 mainView.Run(mainView.InitialState);
-
 
 
 

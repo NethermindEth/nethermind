@@ -34,7 +34,15 @@ internal class StackView : IComponent<MachineState>
             Width = Dim.Fill(2),
             Height = Dim.Fill(2),
         };
-        stackView.SetSource(innerState.Current.Stack);
+
+        var cleanedUpDataSource = innerState.Current.Stack.Select(entry =>
+        {
+            int firstNonZeroBitIdx = 0;
+            while (firstNonZeroBitIdx < entry.Length && entry[firstNonZeroBitIdx] == '0') firstNonZeroBitIdx++;
+            int length = Math.Max(55, entry.Length - firstNonZeroBitIdx);
+            return entry[^length..];
+        }).ToList();
+        stackView.SetSource(cleanedUpDataSource);
 
         if (!isCached)
             container.Add(stackView);

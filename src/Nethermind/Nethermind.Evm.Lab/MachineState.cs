@@ -13,6 +13,7 @@ namespace MachineState.Actions
     public record MoveBack : ActionsBase;
     public record Goto(int index) : ActionsBase;
     public record BytecodeInserted(string bytecode) : ActionsBase;
+    public record BytecodeInsertedB(byte[] bytecode) : ActionsBase;
     public record CallDataInserted(string calldata) : ActionsBase;
     public record FileLoaded(string filePath) : ActionsBase;
     public record TracesLoaded(string filePath) : ActionsBase;

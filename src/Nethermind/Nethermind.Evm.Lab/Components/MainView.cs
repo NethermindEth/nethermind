@@ -186,7 +186,12 @@ internal class MainView : IComponent<MachineState>
                 }
             case BytecodeInserted biMsg:
                 {
-                    state.GetState().Bytecode = Nethermind.Core.Extensions.Bytes.FromHexString(biMsg.bytecode);
+                    EventsSink.EnqueueEvent(new BytecodeInsertedB(Nethermind.Core.Extensions.Bytes.FromHexString(biMsg.bytecode)), true);
+                    break;
+                }
+            case BytecodeInsertedB biMsg:
+                {
+                    state.GetState().Bytecode = biMsg.bytecode;
                     EventsSink.EnqueueEvent(new RunBytecode(), true);
                     break;
                 }
