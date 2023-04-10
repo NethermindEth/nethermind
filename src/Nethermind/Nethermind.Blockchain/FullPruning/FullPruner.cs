@@ -71,11 +71,6 @@ namespace Nethermind.Blockchain.FullPruning
         /// </summary>
         private void OnPrune(object? sender, PruningTriggerEventArgs e)
         {
-            if (!HaveEnoughDiskSpaceToRun())
-            {
-                e.Status = PruningStatus.NotEnoughDiscSpace;
-                if (!_pruningConfig.AvailableSpaceCheckEnabled) return;
-            }
             // Lets assume pruning is in progress
             e.Status = PruningStatus.InProgress;
 
@@ -86,8 +81,13 @@ namespace Nethermind.Blockchain.FullPruning
             // If we are already pruning, we don't need to do anything
             else if (CanStartNewPruning())
             {
+                // Check if we have enough disk space to run pruning
+                if (!HaveEnoughDiskSpaceToRun() && _pruningConfig.AvailableSpaceCheckEnabled)
+                {
+                    e.Status = PruningStatus.NotEnoughDiscSpace;
+                }
                 // we mark that we are waiting for block (for thread safety)
-                if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 1, 0) == 0)
+                else if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 1, 0) == 0)
                 {
                     // we don't want to start pruning in the middle of block processing, lets wait for new head.
                     _blockTree.OnUpdateMainChain += OnUpdateMainChain;

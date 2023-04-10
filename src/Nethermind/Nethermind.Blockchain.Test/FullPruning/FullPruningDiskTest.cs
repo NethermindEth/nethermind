@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public FullTestPruner FullPruner { get; private set; }
             public IPruningConfig PruningConfig { get; set; } = new PruningConfig();
             public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
-            public ISizeInfo SizeInfo = ChainSizes.UnknownChain.Instance;
+            public ISizeInfo SizeInfo = Substitute.For<ISizeInfo>();
 
             public PruningTestBlockchain()
             {
@@ -49,6 +49,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 PruningDb = (IFullPruningDb)DbProvider.StateDb;
+                DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
+                SizeInfo.CurrentSize.Returns((long?)null);
                 FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, DriveInfo, SizeInfo, LogManager);
                 return chain;
             }
@@ -120,6 +122,20 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 await RunPruning(chain, i, true);
             }
+        }
+
+        [TestCase(100, 150, false)]
+        [TestCase(150, 100, true)]
+        [TestCase(120, 100, true)]
+        [TestCase(120, 101, false)]
+        public async Task should_check_available_space_before_running(long availableSpace, long requiredSpace, bool isEnoughSpace)
+        {
+            using PruningTestBlockchain chain = await PruningTestBlockchain.Create();
+            chain.SizeInfo.CurrentSize.Returns(requiredSpace);
+            chain.DriveInfo.AvailableFreeSpace.Returns(availableSpace);
+            PruningTriggerEventArgs args = new();
+            chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
+            args.Status.Should().Be(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiscSpace);
         }
 
         private static async Task RunPruning(PruningTestBlockchain chain, int time, bool onlyFirstRuns)
