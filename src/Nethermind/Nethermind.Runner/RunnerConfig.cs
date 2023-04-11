@@ -3,7 +3,7 @@
 
 namespace Nethermind.Runner;
 
-public class RunnerConfig: IRunnerConfig
+public class RunnerConfig : IRunnerConfig
 {
     public long? MaxHeapMb { get; set; } = null;
 }

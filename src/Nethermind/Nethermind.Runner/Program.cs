@@ -282,7 +282,7 @@ namespace Nethermind.Runner
 
             foreach (string arg in args)
             {
-                 processStartInfo.ArgumentList.Add(arg);
+                processStartInfo.ArgumentList.Add(arg);
             }
 
             using Process? process = new Process { StartInfo = processStartInfo };

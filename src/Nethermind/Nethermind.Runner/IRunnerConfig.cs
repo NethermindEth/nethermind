@@ -5,10 +5,11 @@ using Nethermind.Config;
 
 namespace Nethermind.Runner;
 
-public interface IRunnerConfig: IConfig
+public interface IRunnerConfig : IConfig
 {
-    [ConfigItem(Description = "Set max heap size", DefaultValue = "0")]
+    [ConfigItem(Description = "Set max heap size", DefaultValue = "null")]
     long? MaxHeapMb { get; set; }
 
+    [ConfigItem(Description = "", DefaultValue = "false", HiddenFromDocs = true)]
     bool ShouldWrapInRunner => MaxHeapMb != null;
 }
