@@ -38,7 +38,7 @@ namespace Nethermind.TxPool.Test
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
             ReceiptsRecovery receiptsRecovery = new(_ethereumEcdsa, _specProvider);
-            _persistentStorage = new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, receiptsRecovery);
+            _persistentStorage = new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, receiptsRecovery, Build.A.BlockTree().TestObject);
             _receiptFinder = new FullInfoReceiptFinder(_persistentStorage, receiptsRecovery, Substitute.For<IBlockFinder>());
             _inMemoryStorage = new InMemoryReceiptStorage();
         }
@@ -111,6 +111,7 @@ namespace Nethermind.TxPool.Test
             var block = GetBlock(transaction);
             var receipt = GetReceipt(transaction, block);
             storage.Insert(block, receipt);
+            receipt = storage.Get(block)[0];
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
             var fetchedReceipt = receiptFinder.Get(block).ForTransaction(transaction.Hash);
@@ -129,6 +130,7 @@ namespace Nethermind.TxPool.Test
             var block = GetBlock(transaction);
             var receipt = GetReceipt(transaction, block);
             storage.Insert(block, receipt);
+            receipt = storage.Get(block)[0];
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
             var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);

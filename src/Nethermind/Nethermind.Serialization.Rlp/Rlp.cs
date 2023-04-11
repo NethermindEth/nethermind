@@ -16,8 +16,9 @@ namespace Nethermind.Serialization.Rlp
 {
     /// <summary>
     ///     https://github.com/ethereum/wiki/wiki/RLP
+    ///
+    ///     Note: Prefer RlpStream to encode instead, which does not create a new byte array on each call.
     /// </summary>
-    //[DebuggerStepThrough]
     public class Rlp
     {
         public const int LengthOfKeccakRlp = 33;
@@ -218,17 +219,6 @@ namespace Nethermind.Serialization.Rlp
             return Encode(rlpSequence);
         }
 
-        public static Rlp Encode(string[] strings)
-        {
-            Rlp[] rlpSequence = new Rlp[strings.Length];
-            for (int i = 0; i < strings.Length; i++)
-            {
-                rlpSequence[i] = Encode(strings[i]);
-            }
-
-            return Encode(rlpSequence);
-        }
-
         public static Rlp Encode(Transaction transaction)
         {
             return Encode(transaction, false);
@@ -245,65 +235,6 @@ namespace Nethermind.Serialization.Rlp
                 chainId);
         }
 
-        public static Rlp Encode(UInt256? value)
-        {
-            if (value.HasValue)
-            {
-                return Encode(value.Value);
-            }
-            else
-            {
-                return new Rlp(0);
-            }
-        }
-
-        public static Rlp Encode(UInt256 value)
-        {
-            if (value.IsZero)
-            {
-                return OfEmptyByteArray;
-            }
-
-            Span<byte> bytes = stackalloc byte[32];
-            value.ToBigEndian(bytes);
-            return Encode(bytes.WithoutLeadingZeros());
-        }
-
-        public static Rlp Encode(bool value)
-        {
-            return value ? new Rlp(1) : OfEmptyByteArray;
-        }
-
-        public static Rlp Encode(byte value)
-        {
-            if (value == 0L)
-            {
-                return OfEmptyByteArray;
-            }
-
-            if (value < 128L)
-            {
-                return new Rlp(value);
-            }
-
-            return Encode(new[] { value });
-        }
-
-        public static Rlp Encode(short value)
-        {
-            return Encode((long)value);
-        }
-
-        public static Rlp Encode(ushort value)
-        {
-            return Encode((long)value);
-        }
-
-        public static Rlp Encode(uint value)
-        {
-            return value == 0U ? OfEmptyByteArray : Encode((long)value);
-        }
-
         public static Rlp Encode(int value)
         {
             if (value == 0)
@@ -312,23 +243,6 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return value < 0 ? Encode(new BigInteger(value), 4) : Encode((long)value);
-        }
-
-        /// <summary>
-        /// Special case for nonce
-        /// </summary>
-        /// <param name="value"></param>
-        /// <returns></returns>
-        public static Rlp EncodeNonce(ulong value)
-        {
-            Span<byte> bytes = stackalloc byte[8];
-            BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
-            return Encode(bytes);
-        }
-
-        public static Rlp Encode(ulong value)
-        {
-            return Encode((long)value);
         }
 
         public static Rlp Encode(long value)
@@ -352,16 +266,6 @@ namespace Nethermind.Serialization.Rlp
         public static Rlp Encode(BigInteger bigInteger, int outputLength = -1)
         {
             return bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray(outputLength));
-        }
-
-        public static Rlp Encode(string s)
-        {
-            if (string.IsNullOrEmpty(s))
-            {
-                return OfEmptyByteArray;
-            }
-
-            return Encode(Encoding.ASCII.GetBytes(s));
         }
 
         public static int Encode(Span<byte> buffer, int position, byte[]? input)
@@ -427,6 +331,18 @@ namespace Nethermind.Serialization.Rlp
                 input.CopyTo(rlpResult.AsSpan(1 + serializedLength.Length));
                 return new Rlp(rlpResult);
             }
+        }
+
+        /// <summary>
+        /// Special case for nonce
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public static Rlp EncodeNonce(ulong value)
+        {
+            Span<byte> bytes = stackalloc byte[8];
+            BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
+            return Encode(bytes);
         }
 
         public static Rlp Encode(byte[]? input)
@@ -519,26 +435,6 @@ namespace Nethermind.Serialization.Rlp
             };
         }
 
-        public static Rlp Encode(Bloom? bloom)
-        {
-            if (bloom is null)
-            {
-                return OfEmptyByteArray;
-            }
-
-            if (ReferenceEquals(bloom, Bloom.Empty))
-            {
-                return EmptyBloom;
-            }
-
-            byte[] result = new byte[259];
-            result[0] = 185;
-            result[1] = 1;
-            result[2] = 0;
-            Buffer.BlockCopy(bloom.Bytes, 0, result, 3, 256);
-            return new Rlp(result);
-        }
-
         public static Rlp Encode(Keccak? keccak)
         {
             if (keccak is null)
@@ -560,53 +456,6 @@ namespace Nethermind.Serialization.Rlp
             result[0] = 160;
             Buffer.BlockCopy(keccak.Bytes, 0, result, 1, 32);
             return new Rlp(result);
-        }
-
-        public static Rlp Encode(Address? address)
-        {
-            if (address is null)
-            {
-                return OfEmptyByteArray;
-            }
-
-            byte[] result = new byte[21];
-            result[0] = 148;
-            Buffer.BlockCopy(address.Bytes, 0, result, 1, 20);
-            return new Rlp(result);
-        }
-
-        public static Rlp Encode(IList<Keccak> sequence)
-        {
-            Rlp[] rlpSequence = new Rlp[sequence.Count];
-            for (int i = 0; i < sequence.Count; i++)
-            {
-                rlpSequence[i] = Encode(sequence[i]);
-            }
-
-            return Encode(rlpSequence);
-        }
-
-        public static int GetByteArrayRlpLength(int contentLength, bool firstByteLessThan128)
-        {
-            int result;
-            switch (contentLength)
-            {
-                case 0:
-                case 1 when firstByteLessThan128:
-                    result = 1;
-                    break;
-                case < 56:
-                    result = 1 + contentLength;
-                    break;
-                default:
-                    {
-                        int lengthOfLength = LengthOfLength(contentLength);
-                        result = 1 + lengthOfLength + contentLength;
-                        break;
-                    }
-            }
-
-            return result;
         }
 
         public static int StartSequence(byte[] buffer, int position, int sequenceLength)
@@ -941,6 +790,21 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 return new Keccak(keccakSpan.ToArray());
+            }
+
+            public Keccak? DecodeZeroPrefixKeccak()
+            {
+                int prefix = PeekByte();
+                if (prefix == 128)
+                {
+                    ReadByte();
+                    return null;
+                }
+
+                ReadOnlySpan<byte> theSpan = DecodeByteArraySpan();
+                byte[] keccakByte = new byte[32];
+                theSpan.CopyTo(keccakByte.AsSpan(32 - theSpan.Length));
+                return new Keccak(keccakByte);
             }
 
             public void DecodeKeccakStructRef(out KeccakStructRef keccak)
@@ -1365,11 +1229,6 @@ namespace Nethermind.Serialization.Rlp
             return length + 1;
         }
 
-        public static int LengthOf(uint _)
-        {
-            return 5;
-        }
-
         public static int LengthOfNonce(ulong _)
         {
             return 9;
@@ -1522,8 +1381,13 @@ namespace Nethermind.Serialization.Rlp
         }
 
         // Assumes that length is greater then 0
-        private static int LengthOfByteString(int length, byte firstByte)
+        public static int LengthOfByteString(int length, byte firstByte)
         {
+            if (length == 0)
+            {
+                return 1;
+            }
+
             if (length == 1 && firstByte < 128)
             {
                 return 1;

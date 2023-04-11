@@ -469,7 +469,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(string value)
+        public void Encode(string? value)
         {
             if (string.IsNullOrEmpty(value))
             {
@@ -812,6 +812,21 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return new Keccak(keccakSpan.ToArray());
+        }
+
+        public Keccak? DecodeZeroPrefixKeccak()
+        {
+            int prefix = PeekByte();
+            if (prefix == 128)
+            {
+                ReadByte();
+                return null;
+            }
+
+            ReadOnlySpan<byte> theSpan = DecodeByteArraySpan();
+            byte[] keccakByte = new byte[32];
+            theSpan.CopyTo(keccakByte.AsSpan(32 - theSpan.Length));
+            return new Keccak(keccakByte);
         }
 
         public Address? DecodeAddress()
