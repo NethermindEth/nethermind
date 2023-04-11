@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public MemDb TrieDb { get; }
             public MemDb CopyDb { get; }
             public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
-            public ISizeInfo SizeInfo = ChainSizes.UnknownChain.Instance;
+            public IChainEstimations _chainEstimations = ChainSizes.UnknownChain.Instance;
 
             public TestContext(bool successfulPruning, bool clearPrunedDb = false, int fullScanMemoryBudgetMb = 0, int degreeOfParallelism = 0)
             {
@@ -172,7 +172,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
-                }, BlockTree, StateReader, SizeInfo, DriveInfo, LimboLogs.Instance);
+                }, BlockTree, StateReader, _chainEstimations, DriveInfo, LimboLogs.Instance);
             }
 
             public async Task<bool> WaitForPruning()

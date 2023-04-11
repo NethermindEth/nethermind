@@ -44,11 +44,11 @@ namespace Nethermind.Synchronization.FastSync
 
         internal (DateTime small, DateTime full) LastReportTime = (DateTime.MinValue, DateTime.MinValue);
 
-        private readonly ISizeInfo _chainSizeInfo;
+        private readonly IChainEstimations _chainEstimations;
 
         public DetailedProgress(ulong chainId, byte[] serializedInitialState)
         {
-            _chainSizeInfo = ChainSizes.CreateChainSizeInfo(chainId);
+            _chainEstimations = ChainSizes.CreateChainSizeInfo(chainId);
 
             LoadFromSerialized(serializedInitialState);
         }
@@ -70,12 +70,12 @@ namespace Nethermind.Synchronization.FastSync
 
                 Metrics.StateSynced = DataSize;
                 string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,6:F2}MB";
-                if (_chainSizeInfo.CurrentSize is not null)
+                if (_chainEstimations.StateSize is not null)
                 {
-                    decimal percentage = Math.Min(1, (decimal)DataSize / _chainSizeInfo.CurrentSize.Value);
+                    decimal percentage = Math.Min(1, (decimal)DataSize / _chainEstimations.StateSize.Value);
                     dataSizeInfo = string.Concat(
                         $"~{percentage:P2} | ", dataSizeInfo,
-                        $" / ~{(decimal)_chainSizeInfo.CurrentSize.Value / 1000 / 1000,6:F2}MB");
+                        $" / ~{(decimal)_chainEstimations.StateSize.Value / 1000 / 1000,6:F2}MB");
                 }
 
                 if (logger.IsInfo) logger.Info(

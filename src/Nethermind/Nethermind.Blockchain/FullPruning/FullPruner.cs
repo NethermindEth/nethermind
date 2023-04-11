@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ILogManager _logManager;
-        private readonly ISizeInfo _chainSizeInfo;
+        private readonly IChainEstimations _chainEstimations;
         private readonly IDriveInfo _driveInfo;
         private IPruningContext? _currentPruning;
         private int _waitingForBlockProcessed = 0;
@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.FullPruning
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
             IStateReader stateReader,
-            ISizeInfo chainSizeInfo,
+            IChainEstimations chainEstimations,
             IDriveInfo driveInfo,
             ILogManager logManager)
         {
@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.FullPruning
             _blockTree = blockTree;
             _stateReader = stateReader;
             _logManager = logManager;
-            _chainSizeInfo = chainSizeInfo;
+            _chainEstimations = chainEstimations;
             _driveInfo = driveInfo;
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger();
@@ -170,7 +170,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         private bool HaveEnoughDiskSpaceToRun()
         {
-            long? currentChainSize = _chainSizeInfo.CurrentSize;
+            long? currentChainSize = _chainEstimations.StateSize;
             if (currentChainSize is null)
             {
                 if (_logger.IsWarn) _logger.Warn("Chain size estimation is unavailable.");
