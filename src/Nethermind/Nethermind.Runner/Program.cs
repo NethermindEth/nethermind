@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
@@ -27,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
 using Nethermind.Hive;
+using Nethermind.Init.Cpu;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
@@ -38,6 +40,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
+using NLog.Targets;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Runner
@@ -142,13 +145,20 @@ namespace Nethermind.Runner
             // leaving here as an example of adding Debug plugin
             // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
             // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
-            pluginLoader.Load(SimpleConsoleLogManager.Instance);
+            pluginLoader.Load(IsWrapped ? NullLogManager.Instance : SimpleConsoleLogManager.Instance);
 
             BuildOptionsFromConfigFiles(app);
 
             app.OnExecute(async () =>
             {
                 IConfigProvider configProvider = BuildConfigProvider(app, loggerConfigSource, logLevelOverride, configsDirectory, configFile);
+
+                IRunnerConfig runConfig = configProvider.GetConfig<IRunnerConfig>();
+                if (runConfig.ShouldWrapInRunner && !IsWrapped)
+                {
+                    return WrapInRunner(args, runConfig);
+                }
+
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
                 IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();
@@ -248,6 +258,41 @@ namespace Nethermind.Runner
             finally
             {
                 _appClosed.Wait();
+            }
+        }
+
+        private static int WrapInRunner(string[] args, IRunnerConfig runnerConfig)
+        {
+            string executable = Process.GetCurrentProcess().MainModule!.FileName;
+            ProcessStartInfo? processStartInfo = new ProcessStartInfo
+            {
+                FileName = executable,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = false, // It wont exit if input also redirected
+            };
+
+            if (runnerConfig.MaxHeapMb != null)
+            {
+                processStartInfo.Environment["DOTNET_GCHeapHardLimit"] = (runnerConfig.MaxHeapMb.Value * 1000000).ToString("X");
+            }
+            processStartInfo.Environment[IsWrappedFlag] = "1";
+
+            foreach (string arg in args)
+            {
+                 processStartInfo.ArgumentList.Add(arg);
+            }
+
+            using Process? process = new Process { StartInfo = processStartInfo };
+            using (new ConsoleExitHandler(process))
+            {
+                process.Start();
+                process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput());
+                process.StandardError.BaseStream.CopyToAsync(Console.OpenStandardError());
+                process.WaitForExit();
+                return process.ExitCode;
             }
         }
 
@@ -557,5 +602,10 @@ namespace Nethermind.Runner
 
             return info.ToString();
         }
+
+        private const string IsWrappedFlag = "IS_WRAPPED";
+
+        private static bool? _isWrapped = null;
+        private static bool IsWrapped => _isWrapped ??= (Environment.GetEnvironmentVariable(IsWrappedFlag) == "1");
     }
 }

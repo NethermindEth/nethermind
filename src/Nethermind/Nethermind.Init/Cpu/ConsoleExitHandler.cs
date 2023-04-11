@@ -9,11 +9,11 @@ using System.Diagnostics;
 
 namespace Nethermind.Init.Cpu;
 
-internal class ConsoleExitHandler : IDisposable
+public class ConsoleExitHandler : IDisposable
 {
     private readonly Process process;
 
-    internal ConsoleExitHandler(Process process)
+    public ConsoleExitHandler(Process process)
     {
         this.process = process;
 
