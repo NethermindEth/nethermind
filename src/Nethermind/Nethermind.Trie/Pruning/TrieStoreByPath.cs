@@ -525,15 +525,15 @@ namespace Nethermind.Trie.Pruning
 
        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore keyValueStore = null)
         {
-            _logger.Info($"Saving Node Directly: {blockNumber}");
+            // _logger.Info($"Saving Node Directly: {blockNumber}");
             keyValueStore ??= _keyValueStore;
 
             byte[]? fullPath = trieNode.FullPath;
             // if (fullPath is null) throw new ArgumentNullException();
 
-            _logger.Info($"FullPath for Node: {fullPath.ToHexString()}");
+            // _logger.Info($"FullPath for Node: {fullPath.ToHexString()}");
             byte[] pathBytes = fullPath.Length is AccountLeafNibblesLength or StorageLeafNibblesLength ? Nibbles.ToBytes(fullPath): Nibbles.ToEncodedStorageBytes(fullPath);
-            _logger.Info($"Path Bytes for Node: {pathBytes.ToHexString()}");
+            // _logger.Info($"Path Bytes for Node: {pathBytes.ToHexString()}");
 
             if (trieNode.IsLeaf && (trieNode.Key.Length is not (AccountLeafNibblesLength or StorageLeafNibblesLength) || trieNode.PathToNode.Length == 0))
             {
@@ -544,21 +544,21 @@ namespace Nethermind.Trie.Pruning
                 newPath[0] = PathMarker;
                 if (trieNode.FullRlp == null)
                 {
-                    _logger.Info($"Deleting Leaf Node Pointer: {pathToNodeBytes.ToHexString()}");
+                    // _logger.Info($"Deleting Leaf Node Pointer: {pathToNodeBytes.ToHexString()}");
                     keyValueStore[pathToNodeBytes] = null;
                 }
-                _logger.Info($"Saving Leaf Node Pointer - PathToNode(Key): {pathToNodeBytes.ToHexString()} ActualPathInDb(Value): {newPath?.ToHexString()}");
+                // _logger.Info($"Saving Leaf Node Pointer - PathToNode(Key): {pathToNodeBytes.ToHexString()} ActualPathInDb(Value): {newPath?.ToHexString()}");
                 keyValueStore[pathToNodeBytes] = newPath;
             }
 
             if (trieNode.FullRlp is null)
             {
-                _logger.Info($"Deleting Node - PathBytes(key): {pathBytes.ToHexString()}");
+                // _logger.Info($"Deleting Node - PathBytes(key): {pathBytes.ToHexString()}");
                 keyValueStore[pathBytes] = trieNode.FullRlp;
             }
             else
             {
-                _logger.Info($"Saving Node - PathBytes(key): {pathBytes.ToHexString()} FullRlp: {trieNode.FullRlp?.ToHexString()}");
+                // _logger.Info($"Saving Node - PathBytes(key): {pathBytes.ToHexString()} FullRlp: {trieNode.FullRlp?.ToHexString()}");
                 keyValueStore[pathBytes] = trieNode.FullRlp;
             }
 
