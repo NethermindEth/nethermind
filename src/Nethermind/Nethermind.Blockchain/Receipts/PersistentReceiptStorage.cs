@@ -57,7 +57,14 @@ namespace Nethermind.Blockchain.Receipts
         public Keccak FindBlockHash(Keccak txHash)
         {
             var blockHashData = _transactionDb.Get(txHash);
-            return blockHashData is null ? FindReceiptObsolete(txHash)?.BlockHash : new Keccak(blockHashData);
+            if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
+
+            if (blockHashData.Length == Keccak.Size) return new Keccak(blockHashData);
+
+            long blockNum = Rlp.Decode<long>(blockHashData);
+            BlockHeader header = _blockFinder.FindHeader(blockNum); // TODO: Metadata is probably faster
+            if (header == null) return null;
+            return header.Hash;
         }
 
         // Find receipt stored with old - obsolete format.
@@ -224,9 +231,20 @@ namespace Nethermind.Blockchain.Receipts
         {
             TxReceipt[] receipts = Get(block);
             using IBatch batch = _transactionDb.StartBatch();
-            foreach (TxReceipt txReceipt in receipts)
+
+            if (_blockFinder.IsFinalized(block.Header))
             {
-                batch[txReceipt.TxHash.Bytes] = block.Hash.Bytes;
+                foreach (TxReceipt txReceipt in receipts)
+                {
+                    batch[txReceipt.TxHash.Bytes] = Rlp.Encode(block.Number).Bytes;
+                }
+            }
+            else
+            {
+                foreach (TxReceipt txReceipt in receipts)
+                {
+                    batch[txReceipt.TxHash.Bytes] = block.Hash.Bytes;
+                }
             }
         }
     }
