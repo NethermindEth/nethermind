@@ -25,6 +25,7 @@ namespace Nethermind.Api
         public string? LogRules { get; set; } = null;
         public bool StoreReceipts { get; set; } = true;
         public bool ReceiptsMigration { get; set; } = false;
+        public bool CompactReceiptStore { get; set; } = true;
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
         public DumpOptions AutoDump { get; set; } = DumpOptions.Receipts;
 

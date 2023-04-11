@@ -56,6 +56,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithExcessDataGas(UInt256 excessDataGas)
+        {
+            TestObjectInternal.Header.ExcessDataGas = excessDataGas;
+            return this;
+        }
+
         public BlockBuilder WithTransactions(int txCount, IReleaseSpec releaseSpec)
         {
             Transaction[] txs = new Transaction[txCount];
@@ -242,7 +248,7 @@ namespace Nethermind.Core.Test.Builders
             return WithWithdrawals(withdrawals);
         }
 
-        public BlockBuilder WithWithdrawals(Withdrawal[]? withdrawals)
+        public BlockBuilder WithWithdrawals(params Withdrawal[]? withdrawals)
         {
             TestObjectInternal = TestObjectInternal
                 .WithReplacedBody(TestObjectInternal.Body.WithChangedWithdrawals(withdrawals));

@@ -16,8 +16,4 @@
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="HardwareInformation" />
-  </ItemGroup>
-
 </Project>
