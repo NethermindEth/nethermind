@@ -273,13 +273,6 @@ namespace Nethermind.Trie.Pruning
             return node;
         }
 
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Keccak rootHash)
-        {
-            TrieNode node = _committedNodes.GetNode(rootHash, nodePath.ToArray());
-            node ??= new TrieNode(NodeType.Unknown, nodePath);
-            return node;
-        }
-
         internal TrieNode FindCachedOrUnknown(Keccak keccak, Span<byte> nodePath, bool isReadOnly)
         {
             return _committedNodes.GetNode(keccak, nodePath.ToArray());

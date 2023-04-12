@@ -29,10 +29,5 @@ namespace Nethermind.Trie.Pruning
         {
             return false;
         }
-
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Keccak rootHash)
-        {
-            throw new NotImplementedException();
-        }
     }
 }

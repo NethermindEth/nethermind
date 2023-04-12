@@ -828,11 +828,6 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Keccak rootHash)
-        {
-            throw new NotImplementedException();
-        }
-
         public byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash)
         {
             throw new NotImplementedException();

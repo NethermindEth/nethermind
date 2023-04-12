@@ -68,11 +68,6 @@ namespace Nethermind.Trie.Pruning
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Keccak rootHash)
-        {
-            throw new NotImplementedException();
-        }
-
         public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
     }
 }
