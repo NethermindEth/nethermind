@@ -27,6 +27,7 @@ namespace Nethermind.Blockchain.Receipts
         private long _migratedBlockNumber;
         private readonly ReceiptArrayStorageDecoder _storageDecoder = ReceiptArrayStorageDecoder.Instance;
         private readonly IBlockFinder _blockFinder;
+        private readonly IReceiptConfig _receiptConfig;
 
         private const int CacheSize = 64;
         private readonly LruCache<KeccakKey, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
@@ -36,6 +37,7 @@ namespace Nethermind.Blockchain.Receipts
             ISpecProvider specProvider,
             IReceiptsRecovery receiptsRecovery,
             IBlockFinder blockFinder,
+            IReceiptConfig receiptConfig,
             ReceiptArrayStorageDecoder? storageDecoder = null
         )
         {
@@ -48,6 +50,7 @@ namespace Nethermind.Blockchain.Receipts
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
+            _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
 
             byte[] lowestBytes = _database.Get(Keccak.Zero);
             _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
@@ -61,7 +64,7 @@ namespace Nethermind.Blockchain.Receipts
 
             if (blockHashData.Length == Keccak.Size) return new Keccak(blockHashData);
 
-            long blockNum = Rlp.Decode<long>(blockHashData);
+            long blockNum = new RlpStream(blockHashData).DecodeLong();
             BlockHeader header = _blockFinder.FindHeader(blockNum); // TODO: Metadata is probably faster
             if (header == null) return null;
             return header.Hash;
@@ -232,7 +235,7 @@ namespace Nethermind.Blockchain.Receipts
             TxReceipt[] receipts = Get(block);
             using IBatch batch = _transactionDb.StartBatch();
 
-            if (_blockFinder.IsFinalized(block.Header))
+            if (_receiptConfig.CompactTxIndex && block.Number < (_blockFinder.FindBestSuggestedHeader()?.Number ?? 0) - Reorganization.MaxDepth)
             {
                 foreach (TxReceipt txReceipt in receipts)
                 {

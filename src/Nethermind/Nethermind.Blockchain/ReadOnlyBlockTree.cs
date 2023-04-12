@@ -44,11 +44,6 @@ namespace Nethermind.Blockchain
             set => _wrapped.BestPersistedState = value;
         }
 
-        public bool IsFinalized(BlockHeader header)
-        {
-            return _wrapped.IsFinalized(header);
-        }
-
 
         public BlockHeader? LowestInsertedBeaconHeader
         {
