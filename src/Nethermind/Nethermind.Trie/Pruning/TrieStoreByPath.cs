@@ -266,10 +266,10 @@ namespace Nethermind.Trie.Pruning
             return new TrieNode(NodeType.Unknown, keccak);
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak keccak, Span<byte> nodePath)
+        public TrieNode FindCachedOrUnknown(Keccak keccak, Span<byte> nodePath, Span<byte> storagePrefix)
         {
-            TrieNode node = _committedNodes.GetNode(nodePath.ToArray(), keccak);
-            node ??= new TrieNode(NodeType.Unknown, nodePath);
+            TrieNode node = _committedNodes.GetNode(storagePrefix.ToArray().Concat(nodePath.ToArray()).ToArray(), keccak);
+            node ??= new TrieNode(NodeType.Unknown, nodePath){StoreNibblePathPrefix = storagePrefix.ToArray()};
             return node;
         }
 

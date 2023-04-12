@@ -37,9 +37,9 @@ namespace Nethermind.Trie.Pruning
             return new(NodeType.Unknown, hash);
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath)
+        public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath, Span<byte> storagePrefix)
         {
-            return new(NodeType.Unknown, nodePath, hash);
+            return new(NodeType.Unknown, nodePath, hash){StoreNibblePathPrefix = storagePrefix.ToArray()};
         }
 
         public byte[] LoadRlp(Keccak hash)

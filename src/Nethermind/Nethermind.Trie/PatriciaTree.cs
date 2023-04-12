@@ -339,7 +339,7 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                RootRef = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>());
+                RootRef = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
             }
         }
 
@@ -381,7 +381,7 @@ namespace Nethermind.Trie
             Span<byte> nibbleBytes = stackalloc byte[StoreNibblePathPrefix.Length + 64];
             StoreNibblePathPrefix.CopyTo(nibbleBytes);
             Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes.Slice(StoreNibblePathPrefix.Length));
-            TrieNode node = TrieStore.FindCachedOrUnknown(rootHash, nibbleBytes);
+            TrieNode node = TrieStore.FindCachedOrUnknown(rootHash, nibbleBytes, StoreNibblePathPrefix);
             if (node.NodeType == NodeType.Leaf) return node.Value;
 
             // if not in cached nodes - then check persisted nodes`
@@ -1234,7 +1234,7 @@ namespace Nethermind.Trie
                         }
                         break;
                     case TrieNodeResolverCapability.Path:
-                        rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash, Array.Empty<byte>());
+                        rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
                         try
                         {
                             if (rootRef.NodeType == NodeType.Unknown)
