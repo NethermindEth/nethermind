@@ -53,7 +53,7 @@ namespace Nethermind.Merge.Plugin.Test
                 Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
                     .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(to)
-                    .WithValue(1.GWei())
+                    .WithValue(value.GWei())
                     .WithGasPrice(1.GWei())
                     .WithChainId(chain.SpecProvider.ChainId)
                     .WithSenderAddress(from.Address)
