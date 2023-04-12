@@ -26,6 +26,7 @@ namespace Nethermind.State
         private Address? AccountAddress { get; }
         private byte[]? AccountPath { get; }
 
+        internal const byte StorageDifferentiatingByte = 128;
 
         static StorageTree()
         {
@@ -53,9 +54,9 @@ namespace Nethermind.State
             if (trieStore.Capability == TrieNodeResolverCapability.Path)
             {
                 AccountAddress = accountAddress ?? throw new ArgumentException("this cannot be null while using path based trie store");
-                Span<byte> path = AccountPath = new byte[AccountAddress.Bytes.Length + 1];
+                Span<byte> path = AccountPath = new byte[StoragePrefixLength];
                 Keccak.Compute(accountAddress.Bytes).Bytes.CopyTo(path);
-                AccountPath[^1] = 128;
+                AccountPath[^1] = StorageDifferentiatingByte;
                 StorageBytePathPrefix = AccountPath;
             }
         }
