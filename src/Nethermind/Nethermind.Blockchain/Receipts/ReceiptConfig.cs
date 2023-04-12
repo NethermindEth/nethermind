@@ -3,7 +3,7 @@
 
 namespace Nethermind.Blockchain.Receipts;
 
-public class ReceiptConfig: IReceiptConfig
+public class ReceiptConfig : IReceiptConfig
 {
     public bool StoreReceipts { get; set; } = true;
     public bool ReceiptsMigration { get; set; } = false;

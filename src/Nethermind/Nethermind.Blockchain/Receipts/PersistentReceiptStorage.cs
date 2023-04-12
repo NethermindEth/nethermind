@@ -3,7 +3,7 @@
 
 using System;
 using System.IO;
-using Nethermind.Blockchain.Find;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Receipts
         private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         private long _migratedBlockNumber;
         private readonly ReceiptArrayStorageDecoder _storageDecoder = ReceiptArrayStorageDecoder.Instance;
-        private readonly IBlockFinder _blockFinder;
+        private readonly IBlockTree _blockTree;
         private readonly IReceiptConfig _receiptConfig;
 
         private const int CacheSize = 64;
@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Receipts
             IColumnsDb<ReceiptsColumns> receiptsDb,
             ISpecProvider specProvider,
             IReceiptsRecovery receiptsRecovery,
-            IBlockFinder blockFinder,
+            IBlockTree blockTree,
             IReceiptConfig receiptConfig,
             ReceiptArrayStorageDecoder? storageDecoder = null
         )
@@ -48,13 +48,52 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _blocksDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
 
             byte[] lowestBytes = _database.Get(Keccak.Zero);
             _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
+
+            _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
+        }
+
+        private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+        {
+            // Dont block main loop
+            Task.Run(() =>
+            {
+                Block newMain = e.Block;
+
+                // Move finalized block's tx index to use block number
+                if (_receiptConfig.CompactTxIndex)
+                {
+                    Block newFinalized = _blockTree.FindBlock(newMain.Number - Reorganization.MaxDepth);
+                    if (newFinalized != null)
+                    {
+                        EnsureCanonical(newFinalized);
+                    }
+                }
+
+                // Delete old tx index
+                if (_receiptConfig.TxLookupLimit > 0)
+                {
+                    Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
+                    if (newOldTx != null)
+                    {
+                        ClearTxIndexForBlock(newOldTx);
+                    }
+                }
+            });
+        }
+
+        private void ClearTxIndexForBlock(Block block)
+        {
+            foreach (Transaction transaction in block.Transactions)
+            {
+                _transactionDb[transaction.Hash.Bytes] = null;
+            }
         }
 
         public Keccak FindBlockHash(Keccak txHash)
@@ -65,7 +104,7 @@ namespace Nethermind.Blockchain.Receipts
             if (blockHashData.Length == Keccak.Size) return new Keccak(blockHashData);
 
             long blockNum = new RlpStream(blockHashData).DecodeLong();
-            BlockHeader header = _blockFinder.FindHeader(blockNum); // TODO: Metadata is probably faster
+            BlockHeader header = _blockTree.FindHeader(blockNum); // TODO: Metadata is probably faster
             if (header == null) return null;
             return header.Hash;
         }
@@ -132,7 +171,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public TxReceipt[] Get(Keccak blockHash)
         {
-            Block? block = _blockFinder.FindBlock(blockHash);
+            Block? block = _blockTree.FindBlock(blockHash);
             if (block == null) return Array.Empty<TxReceipt>();
             return Get(block);
         }
@@ -153,7 +192,7 @@ namespace Nethermind.Blockchain.Receipts
 
             if (_storageDecoder.IsCompactEncoding(receiptsData))
             {
-                Block block = _blockFinder.FindBlock(blockHash);
+                Block block = _blockTree.FindBlock(blockHash);
                 recoveryContext = _receiptsRecovery.CreateRecoveryContext(block!);
             }
 
@@ -235,11 +274,11 @@ namespace Nethermind.Blockchain.Receipts
             TxReceipt[] receipts = Get(block);
             using IBatch batch = _transactionDb.StartBatch();
 
-            long headNumber = _blockFinder.FindBestSuggestedHeader()?.Number ?? 0;
+            long headNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
 
             if (_receiptConfig.TxLookupLimit == -1) return;
             if (_receiptConfig.TxLookupLimit != 0 && block.Number <= headNumber - _receiptConfig.TxLookupLimit) return;
-            if (_receiptConfig.CompactTxIndex && block.Number < headNumber - Reorganization.MaxDepth)
+            if (_receiptConfig.CompactTxIndex && block.Number <= headNumber - Reorganization.MaxDepth)
             {
                 foreach (TxReceipt txReceipt in receipts)
                 {
