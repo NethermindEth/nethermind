@@ -12,7 +12,7 @@ using Nethermind.Merge.Plugin.Data;
 namespace Nethermind.Merge.Plugin.Handlers
 {
     /// <summary>
-    /// https://github.com/ethereum/execution-apis/blob/main/src/engine/experimental/blob-extension.md#engine_getpayloadv3
+    /// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/experimental/blob-extension.md#engine_getpayloadv3">engine_getpayloadv3</a>
     /// </summary>
     public class GetPayloadV3Handler : IAsyncHandler<byte[], GetPayloadV2Result?>
     {

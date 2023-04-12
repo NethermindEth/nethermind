@@ -156,7 +156,7 @@ public partial class EngineModuleTests
 
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null)
         {
-            GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL).WithBaseFeePerGas(1);
+            GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
             PayloadPreparationService = mockedPayloadPreparationService;
             LogManager = logManager ?? LogManager;

@@ -82,11 +82,6 @@ public partial class EngineModuleTests
             ExecutionPayload executionPayload1 = await SendNewBlockV3(rpcModule, chain, new List<Withdrawal>());
             Transaction[] txs = BuildTransactions(
                 chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 1);
-            foreach (Transaction tx in txs)
-            {
-                tx.Type = TxType.Blob;
-                tx.MaxFeePerDataGas = 1;
-            }
             chain.AddTransactions(txs);
 
             EventHandler<BlockEventArgs> onBlockImprovedHandler = (_, _) => blockImprovementLock.Release(1);

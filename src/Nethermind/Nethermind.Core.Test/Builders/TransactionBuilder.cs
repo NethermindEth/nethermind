@@ -83,9 +83,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithMaxFeePerGas(UInt256 feeCap)
+        public TransactionBuilder<T> WithMaxFeePerGas(UInt256 feeCap, bool force = false)
         {
-            TestObjectInternal.DecodedMaxFeePerGas = feeCap;
+            if (force || TestObjectInternal.Supports1559)
+            {
+                TestObjectInternal.DecodedMaxFeePerGas = feeCap;
+            }
             return this;
         }
 
@@ -167,13 +170,15 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithShardBlobTxFields(int blobCount)
+        public TransactionBuilder<T> WithShardBlobTxTypeAndFields(int blobCount)
         {
             if (blobCount is 0)
             {
                 return this;
             }
 
+            TestObjectInternal.Type = TxType.Blob;
+            TestObjectInternal.MaxFeePerDataGas ??= 1;
             TestObjectInternal.Blobs = new byte[Ckzg.Ckzg.BytesPerBlob * blobCount];
             TestObjectInternal.BlobKzgs = new byte[Ckzg.Ckzg.BytesPerCommitment * blobCount];
             TestObjectInternal.BlobProofs = new byte[Ckzg.Ckzg.BytesPerProof * blobCount];
@@ -188,6 +193,7 @@ namespace Nethermind.Core.Test.Builders
                     TestObjectInternal.BlobProofs.AsSpan(Ckzg.Ckzg.BytesPerProof * i, Ckzg.Ckzg.BytesPerProof * (i + 1)),
                     TestObjectInternal.BlobVersionedHashes[i].AsSpan());
             }
+
 
             return this;
         }

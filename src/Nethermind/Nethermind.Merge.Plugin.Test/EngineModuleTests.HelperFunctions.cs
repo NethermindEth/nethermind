@@ -53,14 +53,13 @@ namespace Nethermind.Merge.Plugin.Test
                 Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
                     .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(to)
-                    .WithValue(value.GWei())
+                    .WithValue(1.GWei())
                     .WithGasPrice(1.GWei())
-                    .WithMaxFeePerGas(1.GWei())
                     .WithChainId(chain.SpecProvider.ChainId)
                     .WithSenderAddress(from.Address)
-                    .WithShardBlobTxFields(blobCountPerTx)
-                    .SignedAndResolved(from)
-                    .TestObject;
+                    .WithShardBlobTxTypeAndFields(blobCountPerTx)
+                    .WithMaxFeePerGas(1.GWei())
+                    .SignedAndResolved(from).TestObject;
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
             Account account = chain.StateReader.GetAccount(parentHeader.StateRoot!, from.Address)!;
@@ -100,7 +99,6 @@ namespace Nethermind.Merge.Plugin.Test
                 Timestamp = parent.Timestamp + 1,
                 Withdrawals = withdrawals,
                 ExcessDataGas = excessDataGas,
-                BaseFeePerGas = 1,
             };
 
             blockRequest.SetTransactions(Array.Empty<Transaction>());
