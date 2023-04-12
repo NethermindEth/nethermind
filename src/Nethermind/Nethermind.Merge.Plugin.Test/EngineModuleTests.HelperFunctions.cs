@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Test
                     .WithChainId(chain.SpecProvider.ChainId)
                     .WithSenderAddress(from.Address)
                     .WithShardBlobTxTypeAndFields(blobCountPerTx)
-                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxFeePerGasIfSupports1559(1.GWei())
                     .SignedAndResolved(from).TestObject;
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;

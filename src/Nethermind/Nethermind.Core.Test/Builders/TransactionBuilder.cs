@@ -83,14 +83,14 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithMaxFeePerGas(UInt256 feeCap, bool force = false)
+        public TransactionBuilder<T> WithMaxFeePerGas(UInt256 feeCap)
         {
-            if (force || TestObjectInternal.Supports1559)
-            {
-                TestObjectInternal.DecodedMaxFeePerGas = feeCap;
-            }
+            TestObjectInternal.DecodedMaxFeePerGas = feeCap;
             return this;
         }
+
+        public TransactionBuilder<T> WithMaxFeePerGasIfSupports1559(UInt256 feeCap) =>
+            TestObjectInternal.Supports1559 ? WithMaxFeePerGas(feeCap) : this;
 
         public TransactionBuilder<T> WithMaxPriorityFeePerGas(UInt256 maxPriorityFeePerGas)
         {
