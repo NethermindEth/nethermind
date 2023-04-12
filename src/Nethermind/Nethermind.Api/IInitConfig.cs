@@ -56,7 +56,7 @@ namespace Nethermind.Api
         [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "true", HiddenFromDocs = true)]
         bool StoreReceipts { get; set; }
 
-        [ConfigItem(Description = "Moved to ReceiptConfig", DefaultValue = "false", HiddenFromDocs = true)]
+        [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "false", HiddenFromDocs = true)]
         bool ReceiptsMigration { get; set; }
 
         [ConfigItem(Description = "Diagnostics modes", DefaultValue = "None")]

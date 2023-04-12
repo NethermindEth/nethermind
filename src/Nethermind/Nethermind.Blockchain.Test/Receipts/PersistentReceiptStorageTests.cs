@@ -201,7 +201,7 @@ namespace Nethermind.Blockchain.Test.Receipts
 
             anotherBlock.Hash.Should().NotBe(block.Hash!);
             _storage.Insert(anotherBlock, new[] { Build.A.Receipt.TestObject }, ensureCanonical);
-            _blockTree.FindHeader(anotherBlock.Number).Returns(anotherBlock.Header);
+            _blockTree.FindBlockHash(anotherBlock.Number).Returns(anotherBlock.Hash);
 
             Keccak findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
             if (ensureCanonical)
@@ -286,6 +286,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             _blockTree.FindBlock(block.Hash).Returns(block);
             _blockTree.FindBlock(block.Number).Returns(block);
             _blockTree.FindHeader(block.Number).Returns(block.Header);
+            _blockTree.FindBlockHash(block.Number).Returns(block.Hash);
             if (isFinalized)
             {
                 BlockHeader farHead = Build.A.BlockHeader

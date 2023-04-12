@@ -104,9 +104,7 @@ namespace Nethermind.Blockchain.Receipts
             if (blockHashData.Length == Keccak.Size) return new Keccak(blockHashData);
 
             long blockNum = new RlpStream(blockHashData).DecodeLong();
-            BlockHeader header = _blockTree.FindHeader(blockNum); // TODO: Metadata is probably faster
-            if (header == null) return null;
-            return header.Hash;
+            return _blockTree.FindBlockHash(blockNum);
         }
 
         // Find receipt stored with old - obsolete format.
