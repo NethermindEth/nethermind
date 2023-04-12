@@ -996,6 +996,18 @@ namespace Nethermind.Trie
             return childOrRef;
         }
 
+
+        internal byte[] GetChildPathInPathBasedStorage(int i)
+        {
+            int totalLen = PathToNode.Length + (Key?.Length ?? 0) + (IsBranch ? 1 : 0);
+            Span<byte> childPath = stackalloc byte[totalLen];
+            PathToNode.CopyTo(childPath);
+            Key.CopyTo(childPath.Slice(PathToNode.Length));
+            if (IsBranch)
+                childPath[totalLen - 1] = (byte)i;
+            return childPath.ToArray();
+        }
+
         private object? ResolveChild(ITrieNodeResolver tree, int i)
         {
             object? childOrRef;
