@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -49,7 +50,7 @@ public class GetBlobsBundleV1Handler : IAsyncHandler<byte[], BlobsBundleV1?>
                 $"GetBlobsBundleV1 result: {blobsBundle.Kzgs.Length} kzgs and blobs.");
 
         Metrics.GetBlobsBundleRequests++;
-        Metrics.NumberOfTransactionsInGetBlobsBundle = block.Transactions.Length;
+        Metrics.NumberOfBlobsInGetBlobsBundle = block.Transactions.Sum(x => x.Blobs?.Length ?? 0);
         return ResultWrapper<BlobsBundleV1?>.Success(blobsBundle);
     }
 }

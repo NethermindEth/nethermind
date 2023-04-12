@@ -1,12 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Nethermind.Core.Attributes;
 
 namespace Nethermind.Merge.Plugin
@@ -32,7 +27,7 @@ namespace Nethermind.Merge.Plugin
         [Description("Number of GetBlobsBundle Requests")]
         public static long GetBlobsBundleRequests { get; set; }
 
-        [Description("Number of Transactions included in the Last GetBlobsBundle Request")]
-        public static int NumberOfTransactionsInGetBlobsBundle { get; set; }
+        [Description("Number of blobs in the Last GetBlobsBundle Request")]
+        public static int NumberOfBlobsInGetBlobsBundle { get; set; }
     }
 }

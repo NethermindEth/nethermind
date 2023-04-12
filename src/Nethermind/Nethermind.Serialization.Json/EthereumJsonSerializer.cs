@@ -47,7 +47,7 @@ namespace Nethermind.Serialization.Json
                 new NullableBigIntegerConverter(),
                 new PublicKeyConverter(),
                 new TxTypeConverter(),
-                new MemoryByteConverter()
+                new MemoryByteConverter(),
             });
 
         public IList<JsonConverter> BasicConverters { get; } = CommonConverters.ToList();

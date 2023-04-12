@@ -181,7 +181,6 @@ namespace Nethermind.Core.Test.Builders
             for (int i = 0; i < blobCount; i++)
             {
                 TestObjectInternal.BlobVersionedHashes[i] = new byte[32];
-                TestObjectInternal.BlobVersionedHashes[i]![0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
                 TestObjectInternal.Blobs[Ckzg.Ckzg.BytesPerBlob * i] = 1;
                 KzgPolynomialCommitments.KzgifyBlob(
                     TestObjectInternal.Blobs.AsSpan(Ckzg.Ckzg.BytesPerBlob * i, Ckzg.Ckzg.BytesPerBlob * (i + 1)),
