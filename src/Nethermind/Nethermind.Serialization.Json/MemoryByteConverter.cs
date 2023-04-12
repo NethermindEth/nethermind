@@ -5,31 +5,30 @@ using System;
 using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
 
-namespace Nethermind.Serialization.Json
+namespace Nethermind.Serialization.Json;
+
+public class MemoryByteConverter : JsonConverter<Memory<byte>>
 {
-    public class MemoryByteConverter : JsonConverter<Memory<byte>>
+    public override void WriteJson(JsonWriter writer, Memory<byte> value, JsonSerializer serializer)
     {
-        public override void WriteJson(JsonWriter writer, Memory<byte> value, JsonSerializer serializer)
+        if (value.IsEmpty)
         {
-            if (value.IsEmpty)
-            {
-                writer.WriteNull();
-            }
-            else
-            {
-                writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value, true));
-            }
+            writer.WriteNull();
+        }
+        else
+        {
+            writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value, true));
+        }
+    }
+
+    public override Memory<byte> ReadJson(JsonReader reader, Type objectType, Memory<byte> existingValue, bool hasExistingValue, JsonSerializer serializer)
+    {
+        if (reader.TokenType == JsonToken.Null)
+        {
+            return null;
         }
 
-        public override Memory<byte> ReadJson(JsonReader reader, Type objectType, Memory<byte> existingValue, bool hasExistingValue, JsonSerializer serializer)
-        {
-            if (reader.TokenType == JsonToken.Null)
-            {
-                return null;
-            }
-
-            string s = (string)reader.Value;
-            return Bytes.FromHexString(s);
-        }
+        string s = (string)reader.Value;
+        return Bytes.FromHexString(s);
     }
 }
