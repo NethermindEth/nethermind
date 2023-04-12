@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -43,7 +44,7 @@ namespace Nethermind.State
             : this(trieStore, Keccak.EmptyTreeHash, logManager, accountAddress)
         { }
 
-        public StorageTree(ITrieStore trieStore, ILogManager? logManager, byte[]? accountPath)
+        public StorageTree(ITrieStore trieStore, ILogManager? logManager, Keccak? accountPath)
             : this(trieStore, Keccak.EmptyTreeHash, logManager, accountPath)
         { }
 
@@ -61,13 +62,16 @@ namespace Nethermind.State
             }
         }
 
-        public StorageTree(ITrieStore trieStore, Keccak rootHash, ILogManager? logManager, byte[]? accountPath)
+        public StorageTree(ITrieStore trieStore, Keccak rootHash, ILogManager? logManager, Keccak? accountPath)
             : base(trieStore, rootHash, false, true, logManager)
         {
             TrieType = TrieType.Storage;
             if (trieStore.Capability == TrieNodeResolverCapability.Path)
             {
-                AccountPath = accountPath ?? throw new ArgumentException("this cannot be null while using path based trie store");
+                Debug.Assert(accountPath != null, nameof(accountPath) + " != null");
+                Span<byte> path = AccountPath = new byte[StoragePrefixLength];
+                accountPath.Bytes.CopyTo(path);
+                path[^1] = StorageDifferentiatingByte;
                 StorageBytePathPrefix = AccountPath;
             }
         }

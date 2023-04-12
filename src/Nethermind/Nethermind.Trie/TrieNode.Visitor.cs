@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -67,7 +68,13 @@ namespace Nethermind.Trie
                             {
                                 using (trieVisitContext.AbsolutePathNext((byte)i))
                                 {
-                                    VisitChild(i, GetChild(trieNodeResolver, i), trieNodeResolver, treeVisitor, visitContext);
+                                    TrieNode? child = nodeResolver.Capability switch
+                                    {
+                                        TrieNodeResolverCapability.Hash => GetChild(trieNodeResolver, i),
+                                        TrieNodeResolverCapability.Path => GetChild(trieNodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), i),
+                                        _ => throw new ArgumentOutOfRangeException()
+                                    };
+                                    VisitChild(i, child, trieNodeResolver, treeVisitor, visitContext);
                                 }
                             }
                         }
@@ -109,7 +116,15 @@ namespace Nethermind.Trie
                             TrieNode?[] children = new TrieNode?[BranchesCount];
                             for (int i = 0; i < BranchesCount; i++)
                             {
-                                children[i] = GetChild(nodeResolver, i);
+                                using (trieVisitContext.AbsolutePathNext((byte)i))
+                                {
+                                    children[i] = nodeResolver.Capability switch
+                                    {
+                                        TrieNodeResolverCapability.Hash => GetChild(nodeResolver, i),
+                                        TrieNodeResolverCapability.Path => GetChild(nodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), i),
+                                        _ => throw new ArgumentOutOfRangeException()
+                                    };
+                                }
                             }
 
                             if (trieVisitContext.Semaphore.CurrentCount > 1)
@@ -137,7 +152,12 @@ namespace Nethermind.Trie
                         trieVisitContext.AddVisited();
                         using (trieVisitContext.AbsolutePathNext(Key!))
                         {
-                            TrieNode child = GetChild(nodeResolver, 0);
+                            TrieNode child = nodeResolver.Capability switch
+                            {
+                                TrieNodeResolverCapability.Hash => GetChild(nodeResolver, 0),
+                                TrieNodeResolverCapability.Path => GetChild(nodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), 0),
+                                _ => throw new ArgumentOutOfRangeException()
+                            };
                             if (child is null)
                             {
                                 throw new InvalidDataException($"Child of an extension {Key} should not be null.");
@@ -178,15 +198,17 @@ namespace Nethermind.Trie
                                     trieVisitContext.Level++;
                                     trieVisitContext.BranchChildIndex = null;
 
-                                    if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
+                                    using (trieVisitContext.AbsolutePathNext(new byte[]{8,0}))
                                     {
-                                        storageRoot!.Accept(visitor, nodeResolver, trieVisitContext);
+                                        if (TryResolveStorageRoot(nodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), out TrieNode? storageRoot))
+                                        {
+                                            storageRoot!.Accept(visitor, nodeResolver, trieVisitContext);
+                                        }
+                                        else
+                                        {
+                                            visitor.VisitMissingNode(account.StorageRoot, trieVisitContext);
+                                        }
                                     }
-                                    else
-                                    {
-                                        visitor.VisitMissingNode(account.StorageRoot, trieVisitContext);
-                                    }
-
                                     trieVisitContext.Level--;
                                     trieVisitContext.IsStorage = false;
                                 }
