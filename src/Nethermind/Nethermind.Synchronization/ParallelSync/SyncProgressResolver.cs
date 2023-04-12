@@ -64,7 +64,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return true;
             }
 
-            TrieNode trieNode = _trieNodeResolver.FindCachedOrUnknown(stateRoot);
+            TrieNode trieNode = _trieNodeResolver.FindCachedOrUnknown(stateRoot, Array.Empty<byte>(), Array.Empty<byte>());
             bool stateRootIsInMemory = trieNode.NodeType != NodeType.Unknown;
             // We check whether one of below happened:
             //   1) the block has been processed but not yet persisted (pruning) OR
