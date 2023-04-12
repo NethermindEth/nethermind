@@ -14,7 +14,7 @@ internal class ConfigsView : IComponent<MachineState>
     bool isCached = false;
     private FrameView? container = null;
     private ComboBox? forksChoice = null;
-    private TextField? gasValueInput = null;
+    private NumberInputField? gasValueInput = null;
     //private CheckBox? ignoreGasCheck = null;
 
     private List<string> Forks = typeof(Shanghai).Module.GetTypes().Where(type => type.Namespace == typeof(Shanghai).Namespace && type.GetCustomAttribute<System.Runtime.CompilerServices.CompilerGeneratedAttribute>() == null).Select(type => type.Name).Append("Custom").ToList();
@@ -59,7 +59,7 @@ internal class ConfigsView : IComponent<MachineState>
             Y = Pos.Bottom(forksChoice),
             Width = Dim.Fill(),
         };
-        gasValueInput ??= new TextField()
+        gasValueInput ??= new NumberInputField()
         {
             Y = Pos.Bottom(label_gasSetter),
             Width = Dim.Fill(),

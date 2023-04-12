@@ -63,7 +63,8 @@ internal class InputsView : IComponent<MachineState>
         {
             Y = Pos.Bottom(label_calldata),
             Width = Dim.Fill(),
-            Height = Dim.Percent(20)
+            Height = Dim.Percent(20),
+            Enabled = false
         };
 
         if (!isCached)
