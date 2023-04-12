@@ -554,8 +554,9 @@ namespace Nethermind.Trie.Pruning
 
         public bool ExistsInDB(Keccak hash, byte[] pathNibbles)
         {
-            byte[] pathBytes = pathNibbles.Length < 64 ?
-                Nibbles.ToEncodedStorageBytes(pathNibbles) : Nibbles.ToBytes(pathNibbles);
+            byte[] pathBytes = pathNibbles.Length is AccountLeafNibblesLength or StorageLeafNibblesLength
+                ? Nibbles.ToBytes(pathNibbles)
+                : Nibbles.ToEncodedStorageBytes(pathNibbles);
 
             byte[] rlp = _currentBatch?[pathBytes] ?? _keyValueStore[pathBytes];
             if (rlp is not null)

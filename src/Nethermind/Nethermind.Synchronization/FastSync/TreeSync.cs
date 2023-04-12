@@ -383,14 +383,12 @@ namespace Nethermind.Synchronization.FastSync
             try
             {
                 // it finished downloading
-                if (_stateStore.Capability == TrieNodeResolverCapability.Path)
+                rootNodeKeyExists = _stateStore.Capability switch
                 {
-                    rootNodeKeyExists = _stateStore.ExistsInDB(_rootNode, Array.Empty<byte>());
-                }
-                else
-                {
-                    rootNodeKeyExists = _stateDb.KeyExists(_rootNode);
-                }
+                    TrieNodeResolverCapability.Hash => _stateDb.KeyExists(_rootNode),
+                    TrieNodeResolverCapability.Path => _stateStore.ExistsInDB(_rootNode, Array.Empty<byte>()),
+                    _ => throw new ArgumentOutOfRangeException()
+                };
             }
             catch (ObjectDisposedException)
             {
@@ -542,13 +540,26 @@ namespace Nethermind.Synchronization.FastSync
                     bool keyExists;
                     if (_stateStore.Capability == TrieNodeResolverCapability.Path)
                     {
-                        keyExists = syncItem.NodeDataType switch
+                        switch (syncItem.NodeDataType)
                         {
-                            NodeDataType.State => _stateStore.ExistsInDB(syncItem.Hash, syncItem.PathNibbles),
-                            NodeDataType.Storage => _stateStore.ExistsInDB(syncItem.Hash,
-                                syncItem.AccountPathNibbles.Concat(syncItem.PathNibbles).ToArray()),
-                            _ => dbToCheck.KeyExists(syncItem.Hash)
-                        };
+                            case NodeDataType.State:
+                                keyExists = _stateStore.ExistsInDB(syncItem.Hash, syncItem.PathNibbles);
+                                break;
+                            case NodeDataType.Storage:
+                                Span<byte> storagePath = new byte[66 + syncItem.PathNibbles.Length];
+                                syncItem.AccountPathNibbles.CopyTo(storagePath);
+                                storagePath[64] = 8;
+                                storagePath[65] = 0;
+                                syncItem.PathNibbles.CopyTo(storagePath.Slice(66));
+                                keyExists = _stateStore.ExistsInDB(syncItem.Hash, storagePath.ToArray());
+                                break;
+                            case NodeDataType.None:
+                            case NodeDataType.Code:
+                            case NodeDataType.All:
+                            default:
+                                keyExists = dbToCheck.KeyExists(syncItem.Hash);
+                                break;
+                        }
                     }
                     else
                     {
@@ -638,7 +649,7 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private void SaveNode(StateSyncItem syncItem, byte[] data, TrieNode node)
+        private void SaveNode(StateSyncItem syncItem, byte[] data, TrieNode? node)
         {
             if (_logger.IsTrace) _logger.Trace($"SAVE {new string('+', syncItem.Level * 2)}{syncItem.NodeDataType.ToString().ToUpperInvariant()} {syncItem.Hash}");
             Interlocked.Increment(ref _data.SavedNodesCount);
@@ -646,28 +657,33 @@ namespace Nethermind.Synchronization.FastSync
             {
                 case NodeDataType.State:
                     {
+                        Debug.Assert(node is not null);
                         Interlocked.Increment(ref _data.SavedStateCount);
                         _stateDbLock.EnterWriteLock();
                         try
                         {
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStateTrieNodes);
-                            if (_stateStore.Capability == TrieNodeResolverCapability.Path)
+                            switch (_stateStore.Capability)
                             {
-                                _stateStore.SaveNodeDirectly(0, node);
-                                if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
-                                {
-                                    foreach (byte nibble in additionalNibbles)
+                                case TrieNodeResolverCapability.Hash:
+                                    _stateDb.Set(syncItem.Hash, data);
+                                    break;
+                                case TrieNodeResolverCapability.Path:
+                                    _stateStore.SaveNodeDirectly(0, node);
+                                    if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
                                     {
-                                        TrieNode clone = node.Clone();
-                                        clone.PathToNode[^1] = nibble;
-                                        _stateStore.SaveNodeDirectly(0, clone);
+                                        // TODO: what is this for?
+                                        foreach (byte nibble in additionalNibbles)
+                                        {
+                                            TrieNode clone = node.Clone();
+                                            clone.PathToNode[^1] = nibble;
+                                            _stateStore.SaveNodeDirectly(0, clone);
+                                        }
                                     }
-                                }
-                            }
-                            else
-                            {
-                                _stateDb.Set(syncItem.Hash, data);
+                                    break;
+                                default:
+                                    throw new ArgumentOutOfRangeException();
                             }
                         }
                         finally
@@ -679,6 +695,7 @@ namespace Nethermind.Synchronization.FastSync
                     }
                 case NodeDataType.Storage:
                     {
+                        Debug.Assert(node is not null);
                         lock (_codesSameAsNodes)
                         {
                             if (_codesSameAsNodes.Contains(syncItem.Hash))
@@ -706,22 +723,25 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
-                            if (_stateStore.Capability == TrieNodeResolverCapability.Path)
+                            switch (_stateStore.Capability )
                             {
-                                _stateStore.SaveNodeDirectly(0, node);
-                                if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
-                                {
-                                    foreach (byte nibble in additionalNibbles)
+                                case TrieNodeResolverCapability.Hash:
+                                    _stateDb.Set(syncItem.Hash, data);
+                                    break;
+                                case TrieNodeResolverCapability.Path:
+                                    _stateStore.SaveNodeDirectly(0, node);
+                                    if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
                                     {
-                                        TrieNode clone = node.Clone();
-                                        clone.PathToNode[^1] = nibble;
-                                        _stateStore.SaveNodeDirectly(0, clone);
+                                        foreach (byte nibble in additionalNibbles)
+                                        {
+                                            TrieNode clone = node.Clone();
+                                            clone.PathToNode[^1] = nibble;
+                                            _stateStore.SaveNodeDirectly(0, clone);
+                                        }
                                     }
-                                }
-                            }
-                            else
-                            {
-                                _stateDb.Set(syncItem.Hash, data);
+                                    break;
+                                default:
+                                    throw new ArgumentOutOfRangeException();
                             }
                         }
                         finally
@@ -824,7 +844,15 @@ namespace Nethermind.Synchronization.FastSync
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
-            TrieNode trieNode = new(NodeType.Unknown, currentStateSyncItem.PathNibbles, currentStateSyncItem.Hash, currentResponseItem);
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, currentStateSyncItem.PathNibbles, currentStateSyncItem.Hash, currentResponseItem);
+            if (currentStateSyncItem.AccountPathNibbles is not null && currentStateSyncItem.AccountPathNibbles.Length != 0)
+            {
+                Span<byte> storagePrefix = new byte[66];
+                currentStateSyncItem.AccountPathNibbles.CopyTo(storagePrefix);
+                storagePrefix[64] = 8;
+                storagePrefix[65] = 0;
+                trieNode.StoreNibblePathPrefix = storagePrefix.ToArray();
+            }
             trieNode.ResolveNode(NullTrieNodeResolver.Instance); // TODO: will this work now?
 
             switch (trieNode.NodeType)
