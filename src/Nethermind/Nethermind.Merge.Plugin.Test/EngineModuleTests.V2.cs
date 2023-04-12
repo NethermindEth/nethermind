@@ -120,7 +120,8 @@ public partial class EngineModuleTests
         successResponse.Should().NotBeNull();
         response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
-            Id = successResponse.Id, Result = expectedPayload
+            Id = successResponse.Id,
+            Result = expectedPayload
         }));
 
         response = RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV2",
@@ -133,7 +134,9 @@ public partial class EngineModuleTests
             Id = successResponse.Id,
             Result = new PayloadStatusV1
             {
-                LatestValidHash = expectedBlockHash, Status = PayloadStatus.Valid, ValidationError = null
+                LatestValidHash = expectedBlockHash,
+                Status = PayloadStatus.Valid,
+                ValidationError = null
             }
         }));
 
@@ -245,7 +248,9 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceState = new(startingHead, Keccak.Zero, startingHead);
         PayloadAttributes payload = new()
         {
-            Timestamp = Timestamper.UnixTime.Seconds, SuggestedFeeRecipient = Address.Zero, PrevRandao = Keccak.Zero
+            Timestamp = Timestamper.UnixTime.Seconds,
+            SuggestedFeeRecipient = Address.Zero,
+            PrevRandao = Keccak.Zero
         };
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoiceResponse =
             rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payload);
@@ -281,7 +286,9 @@ public partial class EngineModuleTests
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes()
                 {
-                    Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = feeRecipient
+                    Timestamp = 100,
+                    PrevRandao = TestItem.KeccakA,
+                    SuggestedFeeRecipient = feeRecipient
                 })
             .Result.Data.PayloadId!;
 

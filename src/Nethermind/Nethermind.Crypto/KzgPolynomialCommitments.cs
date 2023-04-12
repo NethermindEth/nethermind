@@ -104,7 +104,7 @@ public static class KzgPolynomialCommitments
     /// </summary>
     public static void KzgifyBlob(Span<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1)
     {
-        Ckzg.Ckzg.ComputeBlobKzgProof(blob, commitment,  proof, _ckzgSetup);
+        Ckzg.Ckzg.ComputeBlobKzgProof(blob, commitment, proof, _ckzgSetup);
         TryComputeCommitmentHashV1(commitment, hashV1);
     }
 }
