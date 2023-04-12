@@ -53,12 +53,14 @@ namespace Nethermind.State
             if (trieStore.Capability == TrieNodeResolverCapability.Path)
             {
                 AccountAddress = accountAddress ?? throw new ArgumentException("this cannot be null while using path based trie store");
-                AccountPath = Keccak.Compute(accountAddress.Bytes).Bytes;
+                Span<byte> path = AccountPath = new byte[AccountAddress.Bytes.Length + 1];
+                Keccak.Compute(accountAddress.Bytes).Bytes.CopyTo(path);
+                AccountPath[^1] = 128;
                 StorageBytePathPrefix = AccountPath;
             }
         }
 
-        public StorageTree(ITrieStore trieStore, Keccak rootHash, ILogManager? logManager,  byte[]? accountPath)
+        public StorageTree(ITrieStore trieStore, Keccak rootHash, ILogManager? logManager, byte[]? accountPath)
             : base(trieStore, rootHash, false, true, logManager)
         {
             TrieType = TrieType.Storage;
