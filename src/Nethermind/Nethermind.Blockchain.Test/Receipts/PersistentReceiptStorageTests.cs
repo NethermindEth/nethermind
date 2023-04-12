@@ -175,9 +175,11 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void EnsureCanonical_should_change_tx_blockhash([Values(false, true)] bool ensureCanonical)
+        public void EnsureCanonical_should_change_tx_blockhash(
+            [Values(false, true)] bool ensureCanonical,
+            [Values(false, true)] bool isFinalized)
         {
-            (Block block, TxReceipt[] receipts) = InsertBlock();
+            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: isFinalized);
             _storage.FindBlockHash(receipts[0].TxHash!).Should().Be(block.Hash!);
 
             Block anotherBlock = Build.A.Block
@@ -200,7 +202,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             }
         }
 
-        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null)
+        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false)
         {
             block ??= Build.A.Block
                 .WithNumber(1)
@@ -209,6 +211,7 @@ namespace Nethermind.Blockchain.Test.Receipts
                 .TestObject;
 
             _blockTree.FindBlock(block.Hash).Returns(block);
+            _blockTree.IsFinalized(block.Header).Returns(isFinalized);
             var receipts = new[] { Build.A.Receipt.WithCalculatedBloom().TestObject };
             _storage.Insert(block, receipts);
             _receiptsRecovery.TryRecover(block, receipts);
