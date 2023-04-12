@@ -202,6 +202,14 @@ namespace Nethermind.Blockchain.Test.Receipts
             }
         }
 
+        [Test]
+        public void EnsureCanonical_should_use_blocknumber_if_finalized()
+        {
+            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should()
+                .BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+        }
+
         private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false)
         {
             block ??= Build.A.Block
