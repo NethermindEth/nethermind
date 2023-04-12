@@ -23,8 +23,8 @@ namespace Nethermind.Trie.Pruning
     public class TrieStoreByPath : ITrieStore
     {
         private const byte PathMarker = 128;
-        private const int AccountLeafNibblesLength = 64;
-        private const int StorageLeafNibblesLength = PatriciaTree.StoragePrefixLength * 2 + 64;
+        public const int AccountLeafNibblesLength = 64;
+        public const int StorageLeafNibblesLength = PatriciaTree.StoragePrefixLength * 2 + 64;
 
 
         private static readonly byte[] _rootKeyPath = Nibbles.ToEncodedStorageBytes(Array.Empty<byte>());

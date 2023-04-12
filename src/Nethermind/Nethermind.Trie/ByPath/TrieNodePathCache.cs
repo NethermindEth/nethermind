@@ -91,22 +91,27 @@ public class TrieNodePathCache : IPathTrieNodeCache
         byte[] path = trieNode.FullPath;
 
         AddNodeInternal(path, trieNode, blockNumber);
-        if (trieNode.IsLeaf && (trieNode.Key.Length < 64 || trieNode.PathToNode.Length == 0))
-            AddNodeInternal(trieNode.PathToNode, trieNode, blockNumber);
-
+        if (trieNode.IsLeaf && (trieNode.Key.Length is not (TrieStoreByPath.AccountLeafNibblesLength or TrieStoreByPath.StorageLeafNibblesLength) || trieNode.PathToNode.Length == 0))
+            AddNodeInternal(trieNode.StoreNibblePathPrefix.Concat(trieNode.PathToNode).ToArray(), trieNode, blockNumber);
     }
 
     private void AddNodeInternal(byte[] pathToNode, TrieNode trieNode, long blockNumber)
     {
         if (_nodesByPath.TryGetValue(pathToNode, out NodeVersions nodeVersions))
         {
-            nodeVersions[blockNumber] = trieNode;
+            if(trieNode.FullRlp is null)
+                nodeVersions.TryRemove(blockNumber, out _);
+            else
+                nodeVersions[blockNumber] = trieNode;
         }
         else
         {
-            nodeVersions = new NodeVersions();
-            nodeVersions.TryAdd(blockNumber, trieNode);
-            _nodesByPath[pathToNode] = nodeVersions;
+            if (trieNode.FullRlp is not null)
+            {
+                nodeVersions = new NodeVersions();
+                nodeVersions.TryAdd(blockNumber, trieNode);
+                _nodesByPath[pathToNode] = nodeVersions;
+            }
         }
         Pruning.Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
         if (_logger.IsInfo) _logger.Info($"Added node for block {blockNumber} | node version for path {pathToNode.ToHexString()} : {nodeVersions.Count} | Paths cached: {_nodesByPath.Count}");

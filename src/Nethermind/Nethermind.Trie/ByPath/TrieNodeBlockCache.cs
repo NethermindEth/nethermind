@@ -35,6 +35,19 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
                 this[blockNumber] = nodeDictionary;
             }
 
+            if (trieNode.FullRlp is null)
+            {
+                if (nodeDictionary.TryRemove(trieNode.FullPath, out TrieNode prev))
+                {
+                    MemoryUsed -= prev.GetMemorySize(false);
+                }
+
+                if (trieNode.PathToNode == Array.Empty<byte>())
+                {
+                    nodeDictionary.TryRemove(trieNode.StoreNibblePathPrefix, out _);
+                }
+            }
+
             TrieNode addFunc(byte[] key)
             {
                 Interlocked.Increment(ref _nodesCount);
@@ -48,9 +61,11 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
                 return trieNode;
             }
 
+
+
             nodeDictionary?.AddOrUpdate(trieNode.FullPath, addFunc, updateFunc);
             if (trieNode.PathToNode == Array.Empty<byte>())
-                nodeDictionary?.AddOrUpdate(trieNode.PathToNode, k => trieNode, (k, n) => trieNode);
+                nodeDictionary?.AddOrUpdate(trieNode.StoreNibblePathPrefix, k => trieNode, (k, n) => trieNode);
         }
     }
 

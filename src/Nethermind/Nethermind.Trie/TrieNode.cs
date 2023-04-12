@@ -85,7 +85,17 @@ namespace Nethermind.Trie
         {
             get
             {
-                if (!IsLeaf || PathToNode is null) return PathToNode;
+                if (!IsLeaf || PathToNode is null)
+                {
+                    if (StoreNibblePathPrefix.Length == 0)
+                    {
+                        return PathToNode;
+                    }
+                    Span<byte> fullPathToNode = new byte[StoreNibblePathPrefix.Length + (PathToNode?.Length ?? 0)];
+                    StoreNibblePathPrefix.CopyTo(fullPathToNode);
+                    PathToNode?.CopyTo(fullPathToNode.Slice(StoreNibblePathPrefix.Length));
+                    return fullPathToNode.ToArray();
+                }
                 Debug.Assert(PathToNode is not null);
                 Span<byte> full = new byte[StoreNibblePathPrefix.Length + 64];
                 StoreNibblePathPrefix.CopyTo(full);
@@ -696,7 +706,7 @@ namespace Nethermind.Trie
         {
             TrieNode trieNode = new TrieNode(NodeType);
             if (PathToNode is not null) trieNode.PathToNode = (byte[])PathToNode.Clone();
-            if (StoreNibblePathPrefix is not null) trieNode.StoreNibblePathPrefix = (byte[])StoreNibblePathPrefix.Clone();
+            trieNode.StoreNibblePathPrefix = StoreNibblePathPrefix.Length == 0? Array.Empty<byte>(): (byte[])StoreNibblePathPrefix.Clone();
             if(Key is not null) trieNode.Key = (byte[])Key.Clone();
             trieNode._rlpStream = null;
             return trieNode;
