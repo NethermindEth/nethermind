@@ -235,7 +235,11 @@ namespace Nethermind.Blockchain.Receipts
             TxReceipt[] receipts = Get(block);
             using IBatch batch = _transactionDb.StartBatch();
 
-            if (_receiptConfig.CompactTxIndex && block.Number < (_blockFinder.FindBestSuggestedHeader()?.Number ?? 0) - Reorganization.MaxDepth)
+            long headNumber = _blockFinder.FindBestSuggestedHeader()?.Number ?? 0;
+
+            if (_receiptConfig.TxLookupLimit == -1) return;
+            if (_receiptConfig.TxLookupLimit != 0 && block.Number <= headNumber - _receiptConfig.TxLookupLimit) return;
+            if (_receiptConfig.CompactTxIndex && block.Number < headNumber - Reorganization.MaxDepth)
             {
                 foreach (TxReceipt txReceipt in receipts)
                 {

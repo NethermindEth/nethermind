@@ -26,10 +26,11 @@ namespace Nethermind.Blockchain.Test.Receipts
     public class PersistentReceiptStorageTests
     {
         private MemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
-        private PersistentReceiptStorage _storage = null!;
         private ReceiptsRecovery _receiptsRecovery;
         private IBlockFinder _blockTree;
         private readonly bool _useCompactReceipts;
+        private ReceiptConfig _receiptConfig;
+        private PersistentReceiptStorage _storage;
 
         public PersistentReceiptStorageTests(bool useCompactReceipts)
         {
@@ -41,20 +42,25 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
             EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
-            IReceiptConfig receiptConfig = new ReceiptConfig();
+            _receiptConfig = new ReceiptConfig();
             _receiptsRecovery = new(ethereumEcdsa, specProvider);
             _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
             _blockTree = Substitute.For<IBlockFinder>();
+            CreateStorage();
+        }
+
+        private void CreateStorage()
+        {
             _storage = new PersistentReceiptStorage(
                 _receiptsDb,
                 MainnetSpecProvider.Instance,
                 _receiptsRecovery,
                 _blockTree,
-                receiptConfig,
+                _receiptConfig,
                 new ReceiptArrayStorageDecoder(_useCompactReceipts)
             )
             { MigratedBlockNumber = 0 };
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -217,7 +223,25 @@ namespace Nethermind.Blockchain.Test.Receipts
                 .BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
         }
 
-        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false)
+        [Test]
+        public void When_TxLookupLimitIs_NegativeOne_DoNotIndexTxHash()
+        {
+            _receiptConfig.TxLookupLimit = -1;
+            CreateStorage();
+            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeNull();
+        }
+
+        [Test]
+        public void When_HeadBlockIsFarAhead_DoNotIndexTxHash()
+        {
+            _receiptConfig.TxLookupLimit = 1000;
+            CreateStorage();
+            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeNull();
+        }
+
+        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
         {
             block ??= Build.A.Block
                 .WithNumber(1)
@@ -231,6 +255,14 @@ namespace Nethermind.Blockchain.Test.Receipts
             {
                 BlockHeader farHead = Build.A.BlockHeader
                     .WithNumber(Reorganization.MaxDepth + 5)
+                    .TestObject;
+                _blockTree.FindBestSuggestedHeader().Returns(farHead);
+            }
+
+            if (headNumber != null)
+            {
+                BlockHeader farHead = Build.A.BlockHeader
+                    .WithNumber(headNumber.Value)
                     .TestObject;
                 _blockTree.FindBestSuggestedHeader().Returns(farHead);
             }
