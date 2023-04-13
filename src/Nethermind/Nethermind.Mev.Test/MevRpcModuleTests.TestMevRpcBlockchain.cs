@@ -232,7 +232,7 @@ namespace Nethermind.Mev.Test
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory =
-                    new (DbProvider.AsReadOnly(true),
+                    new(DbProvider.AsReadOnly(true),
                     ReadOnlyTrieStore,
                     BlockTree,
                     SpecProvider,

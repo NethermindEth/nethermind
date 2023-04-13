@@ -59,7 +59,7 @@ public class BlockValidationService
         _receiptStorage = receiptStorage;
         _rewardCalculatorSource = rewardCalculatorSource;
         _blockValidator = blockValidator;
-        _transactionsExecutorFactory =  new(specProvider!, logManager);;
+        _transactionsExecutorFactory = new(specProvider!, logManager); ;
     }
 
     public void ValidateBuilderSubmission(Block builderBlock, BidTrace message, uint registeredGasLimit,

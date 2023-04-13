@@ -121,7 +121,7 @@ namespace Nethermind.Mev
                 rpcConfig.EnableModules(ModuleType.Mev);
 
                 ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory =
-                    new (getFromApi.DbProvider!.AsReadOnly(true),
+                    new(getFromApi.DbProvider!.AsReadOnly(true),
                     getFromApi.ReadOnlyTrieStore,
                     getFromApi.BlockTree,
                     getFromApi.SpecProvider,
