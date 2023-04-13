@@ -202,7 +202,20 @@ namespace Nethermind.Trie
                                     {
                                         if (TryResolveStorageRoot(nodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), out TrieNode? storageRoot))
                                         {
-                                            storageRoot!.Accept(visitor, nodeResolver, trieVisitContext);
+                                            using TrieVisitContext storageTrieVisitContext = new TrieVisitContext
+                                            {
+                                                // hacky but other solutions are not much better, something nicer would require a bit of thinking
+                                                // we introduced a notion of an account on the visit context level which should have no knowledge of account really
+                                                // but we know that we have multiple optimizations and assumptions on trees
+                                                ExpectAccounts = trieVisitContext.ExpectAccounts,
+                                                MaxDegreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism,
+                                                KeepTrackOfAbsolutePath = trieVisitContext.KeepTrackOfAbsolutePath
+                                            };
+                                            storageTrieVisitContext.Level = trieVisitContext.Level;
+                                            storageTrieVisitContext.IsStorage = true;
+                                            storageTrieVisitContext.BranchChildIndex = null;
+
+                                            storageRoot!.Accept(visitor, nodeResolver, storageTrieVisitContext);
                                         }
                                         else
                                         {
