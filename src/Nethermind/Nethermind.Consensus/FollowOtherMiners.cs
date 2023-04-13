@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -15,8 +16,10 @@ namespace Nethermind.Consensus
             _specProvider = specProvider;
         }
 
-        public long GetGasLimit(BlockHeader parentHeader)
+        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit = null)
         {
+            if (targetGasLimit is not null)
+                throw new InvalidOperationException("You cannot set target gas limit for FollowOtherMiners");
             long gasLimit = parentHeader.GasLimit;
             long newBlockNumber = parentHeader.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
@@ -24,9 +27,5 @@ namespace Nethermind.Consensus
             return gasLimit;
         }
 
-        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit = null)
-        {
-            throw new System.NotImplementedException();
-        }
     }
 }
