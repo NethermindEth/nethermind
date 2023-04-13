@@ -8,6 +8,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx
@@ -45,7 +46,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 var result = UnpooledByteBufferAllocator.Default.Buffer();
                 Encode(null, input.ToUnpooledByteBuffer(), result);
-                return result.ReadAllBytes();
+                return result.ReadAllBytesAsArray();
             }
         }
 

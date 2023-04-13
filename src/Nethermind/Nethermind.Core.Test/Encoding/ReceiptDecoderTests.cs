@@ -64,11 +64,11 @@ namespace Nethermind.Core.Test.Encoding
             if (valueDecoder)
             {
                 Rlp.ValueDecoderContext valueContext = rlp.Bytes.AsRlpValueContext();
-                deserialized = decoder.Decode(ref valueContext, RlpBehaviors.Storage)!;
+                deserialized = decoder.Decode(ref valueContext, RlpBehaviors.Storage);
             }
             else
             {
-                deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage)!;
+                deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage);
             }
 
             deserialized.Should().BeEquivalentTo(GetExpected());
@@ -93,7 +93,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts)!;
+            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
             AssertStorageReceipt(txReceipt, deserialized);
         }
@@ -116,7 +116,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt);
-            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream())!;
+            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream());
 
             Assert.AreEqual(null, deserialized.BlockHash, "block hash");
             Assert.AreEqual(0L, deserialized.BlockNumber, "block number");
@@ -150,7 +150,7 @@ namespace Nethermind.Core.Test.Encoding
             ReceiptStorageDecoder decoder = new();
 
             byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
-            TxReceipt deserialized = decoder.Decode(new RlpStream(rlpStreamResult), RlpBehaviors.Storage)!;
+            TxReceipt deserialized = decoder.Decode(new RlpStream(rlpStreamResult), RlpBehaviors.Storage);
 
             AssertStorageReceipt(txReceipt, deserialized);
         }
@@ -166,8 +166,8 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptMessageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.EncodeNew(txReceipt);
-            TxReceipt deserialized = Rlp.Decode<TxReceipt>(rlpStreamResult);
+            byte[] rlpStreamResult = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
+            TxReceipt deserialized = Rlp.Decode<TxReceipt>(rlpStreamResult, RlpBehaviors.None);
 
             AssertMessageReceipt(txReceipt, deserialized);
         }
@@ -184,7 +184,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptMessageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.Encode(txReceipt).Bytes;
+            byte[] rlpStreamResult = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
             TxReceipt deserialized = decoder.Decode(new RlpStream(rlpStreamResult));
 
             AssertMessageReceipt(txReceipt, deserialized);
@@ -210,9 +210,27 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts)!;
+            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
             AssertStorageReceipt(txReceipt, deserialized);
+        }
+
+        [Test]
+        public void Netty_and_rlp_array_encoding_should_be_the_same()
+        {
+            TxReceipt[] receipts = new[]
+            {
+                Build.A.Receipt.WithAllFieldsFilled.TestObject,
+                Build.A.Receipt.WithAllFieldsFilled.TestObject
+            };
+
+            ReceiptStorageDecoder decoder = new();
+            Rlp rlp = decoder.Encode(receipts);
+            using (NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts))
+            {
+                byte[] nettyBytes = nettyRlpStream.AsSpan().ToArray();
+                nettyBytes.Should().BeEquivalentTo(rlp.Bytes);
+            }
         }
 
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
@@ -232,7 +250,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts)!;
+            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
             AssertStorageReceipt(txReceipt, deserialized);
         }
@@ -244,7 +262,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptMessageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.Encode(txReceipt).Bytes;
+            byte[] rlpStreamResult = decoder.EncodeNew(txReceipt);
             TxReceipt deserialized = decoder.Decode(new RlpStream(rlpStreamResult));
 
             AssertMessageReceipt(txReceipt, deserialized);
@@ -273,6 +291,5 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(txReceipt.Recipient, deserialized.Recipient, "recipient");
             Assert.AreEqual(txReceipt.StatusCode, deserialized.StatusCode, "status");
         }
-
     }
 }

@@ -13,6 +13,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
@@ -59,7 +60,7 @@ namespace Nethermind.Consensus.Clique
                 _snapshotManager,
                 getFromApi.LogManager);
 
-            // both Clique and the merge provide no block rewards 
+            // both Clique and the merge provide no block rewards
             setInApi.RewardCalculatorSource = NoBlockRewards.Instance;
             setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
 
@@ -109,7 +110,8 @@ namespace Nethermind.Consensus.Clique
                 producerEnv.StorageProvider, // do not remove transactions from the pool when preprocessing
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                getFromApi.LogManager);
+                getFromApi.LogManager,
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)));
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
                 readOnlyBlockTree,

@@ -1,8 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -25,7 +24,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Return_rjump_name_for_beginsub_opcode_for_post_eof()
         {
-            Instruction.RJUMP.GetName(true, Shanghai.Instance).Should().Be("RJUMP");
+            Instruction.RJUMP.GetName(true, Cancun.Instance).Should().Be("RJUMP");
         }
 
 
@@ -38,7 +37,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Return_rjumpi_name_for_returnsub_opcode_for_post_eof()
         {
-            Instruction.RJUMPI.GetName(true, Shanghai.Instance).Should().Be("RJUMPI");
+            Instruction.RJUMPI.GetName(true, Cancun.Instance).Should().Be("RJUMPI");
         }
 
 
@@ -52,7 +51,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Return_rjumpv_name_for_jumpsub_opcode_for_post_eof()
         {
-            Instruction.RJUMPV.GetName(true, Shanghai.Instance).Should().Be("RJUMPV");
+            Instruction.RJUMPV.GetName(true, Cancun.Instance).Should().Be("RJUMPV");
         }
 
 

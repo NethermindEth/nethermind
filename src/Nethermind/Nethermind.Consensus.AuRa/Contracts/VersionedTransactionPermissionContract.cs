@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Address contractAddress,
             long activation,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ICache<Keccak, UInt256> cache,
+            LruCache<KeccakKey, UInt256> cache,
             ILogManager logManager,
             ISpecProvider specProvider)
             : base(

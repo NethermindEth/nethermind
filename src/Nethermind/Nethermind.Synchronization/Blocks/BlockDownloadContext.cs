@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 else
                 {
-                    Blocks[i - 1] = new Block(header, BlockBody.Empty);
+                    Blocks[i - 1] = new Block(header);
                 }
             }
         }

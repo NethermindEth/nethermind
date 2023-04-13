@@ -90,6 +90,7 @@ namespace Nethermind.Trie
                         }
 
                         visitor.VisitBranch(this, trieVisitContext);
+                        trieVisitContext.AddVisited();
                         trieVisitContext.Level++;
 
                         if (trieVisitContext.MaxDegreeOfParallelism != 1 && trieVisitContext.Semaphore.CurrentCount > 1)
@@ -123,6 +124,7 @@ namespace Nethermind.Trie
                 case NodeType.Extension:
                     {
                         visitor.VisitExtension(this, trieVisitContext);
+                        trieVisitContext.AddVisited();
                         TrieNode child = GetChild(nodeResolver, 0);
                         if (child is null)
                         {
@@ -144,6 +146,7 @@ namespace Nethermind.Trie
                 case NodeType.Leaf:
                     {
                         visitor.VisitLeaf(this, trieVisitContext, Value);
+                        trieVisitContext.AddVisited();
                         if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                         {
                             Account account = _accountDecoder.Decode(Value.AsRlpStream());

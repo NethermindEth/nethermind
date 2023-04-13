@@ -36,7 +36,7 @@ namespace Nethermind.Core.Test
 
             for (int i = 0; i < 1024 / 32; i += 32)
             {
-                keccakHash.Update(bytes, i, 32);
+                keccakHash.Update(bytes.AsSpan(i, 32));
             }
 
             Assert.AreEqual(result, keccakHash.Hash.ToHexString(true));
@@ -79,6 +79,8 @@ namespace Nethermind.Core.Test
 
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", null, -1)]
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", -1)]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000000", 0)]
+        [TestCase("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", 0)]
         [TestCase("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", "0x0000000000000000000000000000000000000000000000000000000000000000", 1)]
         public void Compare(string a, string b, int result)
         {

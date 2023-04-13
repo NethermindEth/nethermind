@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Test
                 new ArraySegment<Address>(),
                 new LogEntry[] { },
                 true,
-                true);
+                true, 0);
             transactionSubstate.Error.Should().Be("Reverted 0x0506070809");
         }
 
@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test
                 new ArraySegment<Address>(),
                 new LogEntry[] { },
                 true,
-                true);
+                true, 0);
             transactionSubstate.Error.Should().Be("Reverted 0x0506070809");
         }
     }

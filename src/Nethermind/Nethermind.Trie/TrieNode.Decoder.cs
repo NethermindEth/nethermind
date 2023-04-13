@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -17,6 +17,8 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
+        private const int StackallocByteThreshold = 256;
+
         private class TrieNodeDecoder
         {
             public byte[] Encode(ITrieNodeResolver tree, TrieNode? item)
@@ -37,6 +39,7 @@ namespace Nethermind.Trie
                 };
             }
 
+            [SkipLocalsInit]
             private static byte[] EncodeExtension(ITrieNodeResolver tree, TrieNode item)
             {
                 Debug.Assert(item.NodeType == NodeType.Extension,
@@ -44,7 +47,18 @@ namespace Nethermind.Trie
                 Debug.Assert(item.Key is not null,
                     "Extension key is null when encoding");
 
-                byte[] keyBytes = item.Key.ToBytes();
+                byte[] hexPrefix = item.Key;
+                int hexLength = HexPrefix.ByteLength(hexPrefix);
+                byte[]? rentedBuffer = hexLength > StackallocByteThreshold
+                    ? ArrayPool<byte>.Shared.Rent(hexLength)
+                    : null;
+
+                Span<byte> keyBytes = (rentedBuffer is null
+                    ? stackalloc byte[StackallocByteThreshold]
+                    : rentedBuffer)[..hexLength];
+
+                HexPrefix.CopyToSpan(hexPrefix, isLeaf: false, keyBytes);
+
                 TrieNode nodeRef = item.GetChild(tree, 0);
                 Debug.Assert(nodeRef is not null,
                     "Extension child is null when encoding.");
@@ -56,6 +70,10 @@ namespace Nethermind.Trie
                 RlpStream rlpStream = new(totalLength);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(keyBytes);
+                if (rentedBuffer is not null)
+                {
+                    ArrayPool<byte>.Shared.Return(rentedBuffer);
+                }
                 if (nodeRef.Keccak is null)
                 {
                     // I think it can only happen if we have a short extension to a branch with a short extension as the only child?
@@ -74,6 +92,7 @@ namespace Nethermind.Trie
                 return rlpStream.Data;
             }
 
+            [SkipLocalsInit]
             private static byte[] EncodeLeaf(TrieNode node)
             {
                 if (node.Key is null)
@@ -81,12 +100,26 @@ namespace Nethermind.Trie
                     throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
                 }
 
-                byte[] keyBytes = node.Key.ToBytes();
+                byte[] hexPrefix = node.Key;
+                int hexLength = HexPrefix.ByteLength(hexPrefix);
+                byte[]? rentedBuffer = hexLength > StackallocByteThreshold
+                    ? ArrayPool<byte>.Shared.Rent(hexLength)
+                    : null;
+
+                Span<byte> keyBytes = (rentedBuffer is null
+                    ? stackalloc byte[StackallocByteThreshold]
+                    : rentedBuffer)[..hexLength];
+
+                HexPrefix.CopyToSpan(hexPrefix, isLeaf: true, keyBytes);
                 int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new(totalLength);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(keyBytes);
+                if (rentedBuffer is not null)
+                {
+                    ArrayPool<byte>.Shared.Return(rentedBuffer);
+                }
                 rlpStream.Encode(node.Value);
                 return rlpStream.Data;
             }
@@ -117,12 +150,15 @@ namespace Nethermind.Trie
             {
                 int totalLength = 0;
                 item.InitData();
-                item.SeekChild(0);
+                byte[] rlp = item.FullRlp ?? Array.Empty<byte>();
+                Rlp.ValueDecoderContext reader = new(rlp);
+                item.SeekChild(ref reader, 0);
+
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (item._rlpStream is not null && item._data![i] is null)
+                    if (reader.IsEmpty is false && item._data![i] is null)
                     {
-                        (int prefixLength, int contentLength) = item._rlpStream.PeekPrefixAndContentLength();
+                        (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
                         totalLength += prefixLength + contentLength;
                     }
                     else
@@ -143,7 +179,10 @@ namespace Nethermind.Trie
                         }
                     }
 
-                    item._rlpStream?.SkipItem();
+                    if (reader.IsEmpty == false)
+                    {
+                        reader.SkipItem();
+                    }
                 }
 
                 return totalLength;
@@ -152,22 +191,29 @@ namespace Nethermind.Trie
             private static void WriteChildrenRlp(ITrieNodeResolver tree, TrieNode item, Span<byte> destination)
             {
                 int position = 0;
-                RlpStream rlpStream = item._rlpStream;
+                byte[] data = item.FullRlp ?? Array.Empty<byte>();
+                Rlp.ValueDecoderContext reader = new(data);
+
                 item.InitData();
-                item.SeekChild(0);
+                item.SeekChild(ref reader, 0);
+
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (rlpStream is not null && item._data![i] is null)
+                    if (reader.IsEmpty is false && item._data![i] is null)
                     {
-                        int length = rlpStream.PeekNextRlpLength();
-                        Span<byte> nextItem = rlpStream.Data.AsSpan().Slice(rlpStream.Position, length);
+                        int length = reader.PeekNextRlpLength();
+                        Span<byte> nextItem = data.AsSpan(reader.Position, length);
                         nextItem.CopyTo(destination.Slice(position, nextItem.Length));
                         position += nextItem.Length;
-                        rlpStream.SkipItem();
+                        reader.SkipItem();
                     }
                     else
                     {
-                        rlpStream?.SkipItem();
+                        if (reader.IsEmpty is false)
+                        {
+                            reader.SkipItem();
+                        }
+
                         if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] is null)
                         {
                             destination[position++] = 128;

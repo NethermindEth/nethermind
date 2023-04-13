@@ -22,14 +22,6 @@ namespace Nethermind.JsonRpc
     {
         void ReportCall(in RpcReport report, long elapsedMicroseconds = 0, long? size = null);
 
-        public void ReportCalls(in IReadOnlyList<RpcReport> reports)
-        {
-            for (int i = 0; i < reports.Count; i++)
-            {
-                ReportCall(reports[i]);
-            }
-        }
-
         MethodStats GetMethodStats(string methodName);
     }
 }

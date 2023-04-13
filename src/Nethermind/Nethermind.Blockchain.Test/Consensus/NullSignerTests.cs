@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Test.Consensus
     [TestFixture]
     public class NullSignerTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Test()
         {
             NullSigner signer = NullSigner.Instance;
@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             signer.CanSign.Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Test_signing()
         {
             NullSigner signer = NullSigner.Instance;

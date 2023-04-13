@@ -94,7 +94,7 @@ namespace Nethermind.Crypto
 
         private static Keccak512 InternalCompute(byte[] input)
         {
-            return new Keccak512(KeccakHash.ComputeHash(input, Size).ToArray());
+            return new Keccak512(KeccakHash.ComputeHashBytes(input, Size));
         }
 
         public static Keccak512 Compute(string? input)

@@ -22,7 +22,7 @@ namespace Nethermind.Network.Rlpx
 
             Rlp.ValueDecoderContext headerBodyItems = HeaderBytes.AsSpan(3, 13).AsRlpValueContext();
             int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
-            int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
+            int numberOfItems = headerBodyItems.PeekNumberOfItemsRemaining(headerDataEnd);
             headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
             int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
             _currentContextId = contextId;

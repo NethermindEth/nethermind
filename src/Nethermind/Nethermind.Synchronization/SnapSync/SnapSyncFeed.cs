@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.SnapSync
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Snap;
 
-        public SnapSyncFeed(ISyncModeSelector syncModeSelector, ISnapProvider snapProvider, IBlockTree blockTree, ILogManager logManager)
+        public SnapSyncFeed(ISyncModeSelector syncModeSelector, ISnapProvider snapProvider, ILogManager logManager)
         {
             _syncModeSelector = syncModeSelector;
             _snapProvider = snapProvider;
@@ -186,6 +186,11 @@ namespace Nethermind.Synchronization.SnapSync
                             }
                         }
                     }
+                }
+
+                if (result == AddRangeResult.ExpiredRootHash)
+                {
+                    return SyncResponseHandlingResult.NoProgress;
                 }
 
                 return SyncResponseHandlingResult.OK;

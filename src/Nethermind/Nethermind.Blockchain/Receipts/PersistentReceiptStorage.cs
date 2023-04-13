@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -28,7 +29,7 @@ namespace Nethermind.Blockchain.Receipts
         private static readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
 
         private const int CacheSize = 64;
-        private readonly ICache<Keccak, TxReceipt[]> _receiptsCache = new LruCache<Keccak, TxReceipt[]>(CacheSize, CacheSize, "receipts");
+        private readonly LruCache<KeccakKey, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
         public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery)
         {
@@ -172,7 +173,10 @@ namespace Nethermind.Blockchain.Receipts
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(block.Header);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
-            _blocksDb.Set(block.Hash!, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
+            using (NettyRlpStream stream = StorageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
+            {
+                _blocksDb.Set(block.Hash!, stream.AsSpan());
+            }
 
             if (blockNumber < MigratedBlockNumber)
             {

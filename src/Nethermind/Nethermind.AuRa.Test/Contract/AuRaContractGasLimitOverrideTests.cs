@@ -12,6 +12,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
@@ -23,7 +24,7 @@ namespace Nethermind.AuRa.Test.Contract
     {
         private const int CorrectHeadGasLimit = 100000000;
 
-        // TestContract: 
+        // TestContract:
         // pragma solidity ^0.5.0;
         // contract TestValidatorSet {
         //    function blockGasLimit() public view returns(uint256) {
@@ -99,6 +100,7 @@ namespace Nethermind.AuRa.Test.Contract
                     ReceiptStorage,
                     LimboLogs.Instance,
                     BlockTree,
+                    new WithdrawalProcessor(State, LogManager),
                     null,
                     GasLimitCalculator as AuRaContractGasLimitOverride);
             }

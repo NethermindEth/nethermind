@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         static ReceiptsSyncFeedTests()
         {
-            _specProvider = new SingleReleaseSpecProvider(Istanbul.Instance, 1);
+            _specProvider = new TestSingleReleaseSpecProvider(Istanbul.Instance);
             _1024BodiesWithOneTxEach = new Scenario(_specProvider, 1024, 1);
             _256BodiesWithOneTxEach = new Scenario(_specProvider, 256, 1);
             _64BodiesWithOneTxEach = new Scenario(_specProvider, 64, 1);
@@ -269,14 +269,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.ContainsKey(ci.Arg<Keccak>())
-                        ? scenario.BlocksByHash[ci.Arg<Keccak>()]
-                        : null);
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block value) ? value : null);
 
             _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.ContainsKey(ci.Arg<Keccak>())
-                        ? scenario.BlocksByHash[ci.Arg<Keccak>()].Header
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block value) ? value.Header
                         : null);
 
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?)null);

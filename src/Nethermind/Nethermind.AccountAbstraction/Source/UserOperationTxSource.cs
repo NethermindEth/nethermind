@@ -131,8 +131,8 @@ namespace Nethermind.AccountAbstraction.Source
 
                 // add userOp accessList to combined list
                 foreach (KeyValuePair<Address, HashSet<UInt256>> kv in userOperation.AccessList.Data)
-                    if (usedAccessList.ContainsKey(kv.Key))
-                        usedAccessList[kv.Key].UnionWith(kv.Value);
+                    if (usedAccessList.TryGetValue(kv.Key, out HashSet<UInt256>? value))
+                        value.UnionWith(kv.Value);
                     else
                         usedAccessList[kv.Key] = kv.Value;
             }

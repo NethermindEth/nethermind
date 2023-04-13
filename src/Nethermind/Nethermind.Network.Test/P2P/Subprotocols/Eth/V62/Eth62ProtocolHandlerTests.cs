@@ -16,6 +16,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -25,6 +27,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -44,6 +47,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private Block _genesisBlock;
         private Eth62ProtocolHandler _handler;
         private IGossipPolicy _gossipPolicy;
+        private readonly TxDecoder _txDecoder = new();
 
         [SetUp]
         public void Setup()
@@ -448,41 +452,81 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.SubprotocolRequested -= HandlerOnSubprotocolRequested;
         }
 
-        [TestCase(1)]
-        [TestCase(255)]
-        [TestCase(256)]
-        public void should_send_up_to_256_txs_in_one_TransactionsMessage(int txCount)
+        [TestCase(1, true)]
+        [TestCase(1055, true)]
+        [TestCase(1056, false)]
+        public void should_send_txs_with_size_up_to_MaxPacketSize_in_one_TransactionsMessage(int txCount, bool shouldBeSentInJustOneMessage)
         {
             Transaction[] txs = new Transaction[txCount];
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
             }
 
             _handler.SendNewTransactions(txs);
 
-            _session.Received(1).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == txCount));
+            if (shouldBeSentInJustOneMessage)
+            {
+                _session.Received(1).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == txCount));
+            }
+            else
+            {
+                _session.Received(2).DeliverMessage(Arg.Any<TransactionsMessage>());
+            }
         }
 
         [TestCase(257)]
         [TestCase(300)]
+        [TestCase(1055)]
+        [TestCase(1056)]
         [TestCase(1500)]
         [TestCase(10000)]
-        public void should_send_more_than_256_txs_in_more_than_one_TransactionsMessage(int txCount)
+        public void should_send_txs_with_size_exceeding_MaxPacketSize_in_more_than_one_TransactionsMessage(int txCount)
         {
-            int messagesCount = txCount / 256 + 1;
-            int nonFullMsgTxsCount = txCount % 256;
+            int sizeOfOneTestTransaction = _txDecoder.GetLength(Build.A.Transaction.SignedAndResolved().TestObject);
+            int maxNumberOfTxsInOneMsg = TransactionsMessage.MaxPacketSize / sizeOfOneTestTransaction; // it's 1055
+            int nonFullMsgTxsCount = txCount % maxNumberOfTxsInOneMsg;
+            int messagesCount = txCount / maxNumberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);
+
             Transaction[] txs = new Transaction[txCount];
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
             }
 
             _handler.SendNewTransactions(txs);
 
-            _session.Received(messagesCount).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == 256 || m.Transactions.Count == nonFullMsgTxsCount));
+            _session.Received(messagesCount).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == maxNumberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount));
+        }
+
+        [TestCase(0)]
+        [TestCase(128)]
+        [TestCase(4096)]
+        [TestCase(100000)]
+        [TestCase(102400)]
+        [TestCase(222222)]
+        public void should_send_single_transaction_even_if_exceed_MaxPacketSize(int dataSize)
+        {
+            int txCount = 512; //we will try to send 512 txs
+
+            Transaction[] txs = new Transaction[txCount];
+
+            for (int i = 0; i < txCount; i++)
+            {
+                txs[i] = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
+            }
+
+            Transaction tx = txs[0];
+            int sizeOfOneTx = tx.GetLength(new TxDecoder());
+            int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
+            int nonFullMsgTxsCount = txCount % numberOfTxsInOneMsg;
+            int messagesCount = txCount / numberOfTxsInOneMsg + (nonFullMsgTxsCount > 0 ? 1 : 0);
+
+            _handler.SendNewTransactions(txs);
+
+            _session.Received(messagesCount).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == numberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount));
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

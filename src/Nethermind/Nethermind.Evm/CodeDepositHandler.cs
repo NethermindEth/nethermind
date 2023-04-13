@@ -19,26 +19,36 @@ namespace Nethermind.Evm
                 : GasCostOf.CodeDeposit * byteCodeLength;
         }
 
-        public static bool CodeIsValid(ReadOnlySpan<byte> code, IReleaseSpec spec)
+        public static bool CodeIsValid(ReadOnlySpan<byte> code, IReleaseSpec spec, int fromVersion)
         {
-            return spec.IsEip3540Enabled && EvmObjectFormat.IsEof(code)
-                ? EvmObjectFormat.TryExtractHeader(code, out _)
-                : !spec.IsEip3541Enabled || code is not [InvalidStartingCodeByte, ..];
+            bool valid = true;
+            if (spec.IsEip3540Enabled)
+            {
+                //fromVersion = (execType is ExecutionType.Create1 or ExecutionType.Create2) ? fromVersion : 0; //// hmmmm
+                bool isCodeEof = EvmObjectFormat.IsEof(code);
+                int codeVersion = isCodeEof ? EvmObjectFormat.GetCodeVersion(code) : 0;
+                valid &= codeVersion >= fromVersion
+                      && (isCodeEof ?  // this needs test cases
+                           EvmObjectFormat.IsValidEof(code, out _) :
+                                fromVersion > 0 ? false : code is not [InvalidStartingCodeByte, ..]);
+            }
+            else if (spec.IsEip3541Enabled)
+            {
+                valid &= code is not [InvalidStartingCodeByte, ..];
+            }
+
+            return valid;
         }
 
-        public static bool CodeIsInvalid(ReadOnlySpan<byte> code, IReleaseSpec spec) => !CodeIsValid(code, spec);
+        public static bool CodeIsInvalid(ReadOnlySpan<byte> code, IReleaseSpec spec, int fromVersion) => !CodeIsValid(code, spec, fromVersion);
 
         public static bool CreateCodeIsValid(ICodeInfo codeInfo, ReadOnlySpan<byte> initCode, IReleaseSpec spec)
         {
             if (spec.IsEip3540Enabled)
             {
-                byte version = codeInfo.EofVersion();
-                if (version > 0 && version != EvmObjectFormat.GetCodeVersion(initCode))
-                    return false;
-                if (codeInfo.IsEof()) // this needs test cases
-                    return EvmObjectFormat.IsEof(initCode) && EvmObjectFormat.IsValidEof(initCode, out _);
+                byte containerVersion = codeInfo.EofVersion();
+                return CodeIsValid(initCode, spec, containerVersion);
             }
-
             return true;
         }
     }

@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -17,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -27,6 +29,7 @@ namespace Nethermind.Consensus.Processing
         protected readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IWitnessCollector _witnessCollector;
+        private readonly IWithdrawalProcessor _withdrawalProcessor;
         private readonly IBlockValidator _blockValidator;
         private readonly IStorageProvider _storageProvider;
         private readonly IRewardCalculator _rewardCalculator;
@@ -49,7 +52,8 @@ namespace Nethermind.Consensus.Processing
             IStorageProvider? storageProvider,
             IReceiptStorage? receiptStorage,
             IWitnessCollector? witnessCollector,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            IWithdrawalProcessor? withdrawalProcessor = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -58,8 +62,10 @@ namespace Nethermind.Consensus.Processing
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
+            _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
+
 
             _receiptsTracer = new BlockReceiptsTracer();
         }
@@ -226,6 +232,7 @@ namespace Nethermind.Consensus.Processing
 
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer, spec);
+            _withdrawalProcessor.ProcessWithdrawals(block, spec);
             _receiptsTracer.EndBlockTrace();
 
             _stateProvider.Commit(spec);
@@ -257,7 +264,8 @@ namespace Nethermind.Consensus.Processing
                 bh.Number,
                 bh.GasLimit,
                 bh.Timestamp,
-                bh.ExtraData)
+                bh.ExtraData,
+                bh.ExcessDataGas)
             {
                 Bloom = Bloom.Empty,
                 Author = bh.Author,
@@ -270,7 +278,8 @@ namespace Nethermind.Consensus.Processing
                 AuRaSignature = bh.AuRaSignature,
                 ReceiptsRoot = bh.ReceiptsRoot,
                 BaseFeePerGas = bh.BaseFeePerGas,
-                IsPostMerge = bh.IsPostMerge
+                WithdrawalsRoot = bh.WithdrawalsRoot,
+                IsPostMerge = bh.IsPostMerge,
             };
 
             return suggestedBlock.CreateCopy(headerForProcessing);

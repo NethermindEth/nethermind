@@ -159,7 +159,7 @@ public class ChainLevelHelper : IChainLevelHelper
             {
                 Block? block = _blockTree.FindBlock(hashesToRequest[i], BlockTreeLookupOptions.None);
                 if (block is null) return false;
-                BlockBody blockBody = new(block.Transactions, block.Uncles);
+                BlockBody blockBody = new(block.Transactions, block.Uncles, block?.Withdrawals);
                 context.SetBody(i + offset, blockBody);
             }
 

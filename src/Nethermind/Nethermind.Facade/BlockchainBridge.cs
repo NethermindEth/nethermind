@@ -256,10 +256,8 @@ namespace Nethermind.Facade
                     blockHeader.Number + 1,
                     blockHeader.GasLimit,
                     Math.Max(blockHeader.Timestamp + 1, _timestamper.UnixTime.Seconds),
-                    Array.Empty<byte>())
-                {
-                    BaseFeePerGas = BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpecFor1559(blockHeader.Number + 1)),
-                }
+                    Array.Empty<byte>(),
+                    null)
                 : new(
                     blockHeader.ParentHash!,
                     blockHeader.UnclesHash!,
@@ -268,11 +266,21 @@ namespace Nethermind.Facade
                     blockHeader.Number,
                     blockHeader.GasLimit,
                     blockHeader.Timestamp,
-                    blockHeader.ExtraData)
-                {
-                    BaseFeePerGas = blockHeader.BaseFeePerGas,
-                };
+                    blockHeader.ExtraData,
+                    blockHeader.ExcessDataGas);
 
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(callHeader);
+            callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
+                ? BaseFeeCalculator.Calculate(blockHeader, releaseSpec)
+                : blockHeader.BaseFeePerGas;
+
+            if (releaseSpec.IsEip4844Enabled)
+            {
+                // TODO: Calculate ExcessDataGas depending on parent ExcessDataGas and number of blobs in txs
+                callHeader.ExcessDataGas = treatBlockHeaderAsParentBlock
+                    ? 0
+                    : blockHeader.ExcessDataGas;
+            }
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
@@ -289,7 +297,6 @@ namespace Nethermind.Facade
             return _processingEnv.StateReader.GetNonce(stateRoot, address);
         }
 
-        public ulong GetNetworkId() => _processingEnv.BlockTree.ChainId;
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
         public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);

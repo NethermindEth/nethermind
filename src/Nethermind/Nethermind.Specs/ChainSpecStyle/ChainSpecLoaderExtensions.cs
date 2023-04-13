@@ -31,7 +31,7 @@ public static class ChainSpecLoaderExtensions
             fileName = fileName.GetApplicationResourcePath();
             if (File.Exists(fileName))
             {
-                if (logger.IsWarn) logger.Warn("ChainSpecPath matched an embedded resource inside the binary. Loading chainspec from embedded resources instead of file!");
+                if (logger.IsInfo) logger.Info("ChainSpecPath matched an embedded resource inside the binary. Loading chainspec from embedded resources instead of file!");
             }
             else
             {

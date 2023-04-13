@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -32,13 +32,15 @@ namespace Nethermind.Evm
             IReadOnlyCollection<Address> destroyList,
             IReadOnlyCollection<LogEntry> logs,
             bool shouldRevert,
-            bool isTracerConnected)
+            bool isTracerConnected,
+            int fromVersion)
         {
             Output = output;
             Refund = refund;
             DestroyList = destroyList;
             Logs = logs;
             ShouldRevert = shouldRevert;
+            FromVersion = fromVersion;
             if (ShouldRevert)
             {
                 // TODO: is this invoked even if there is no tracer? why would we construct error messages then?
@@ -77,6 +79,7 @@ namespace Nethermind.Evm
         public bool IsError => Error is not null && !ShouldRevert;
 
         public string Error { get; }
+        public int FromVersion { set; get; }
 
         public ReadOnlyMemory<byte> Output { get; }
 

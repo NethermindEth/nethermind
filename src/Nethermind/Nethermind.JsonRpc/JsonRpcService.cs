@@ -385,6 +385,9 @@ public class JsonRpcService : IJsonRpcService
     public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage) =>
         GetErrorResponse(null, errorCode, errorMessage, null, null);
 
+    public JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object id) =>
+        GetErrorResponse(methodName, errorCode, errorMessage, null, id);
+
     public JsonConverter[] Converters { get; }
 
     private JsonRpcErrorResponse GetErrorResponse(string? methodName, int errorCode, string? errorMessage, object? errorData, object? id, Action? disposableAction = null)

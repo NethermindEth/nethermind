@@ -4,6 +4,7 @@
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.Rlpx;
@@ -33,7 +34,7 @@ public class Eth67ProtocolHandler : Eth66ProtocolHandler
 
     public override string Name => "eth67";
 
-    public override byte ProtocolVersion => 67;
+    public override byte ProtocolVersion => EthVersions.Eth67;
 
     public override void HandleMessage(ZeroPacket message)
     {

@@ -10,14 +10,14 @@ namespace Nethermind.Blockchain
     {
         public static string GetDescription(Address address)
         {
-            if (GoerliValidators.ContainsKey(address))
+            if (GoerliValidators.TryGetValue(address, out string value))
             {
-                return GoerliValidators[address];
+                return value;
             }
 
-            if (RinkebyValidators.ContainsKey(address))
+            if (RinkebyValidators.TryGetValue(address, out value))
             {
-                return RinkebyValidators[address];
+                return value;
             }
 
             return "?";

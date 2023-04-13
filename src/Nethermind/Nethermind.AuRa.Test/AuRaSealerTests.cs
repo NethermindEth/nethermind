@@ -46,7 +46,7 @@ namespace Nethermind.AuRa.Test
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _validatorStore = Substitute.For<IValidatorStore>();
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
-            Signer signer = new(ChainId.Mainnet, Build.A.PrivateKey.TestObject, LimboLogs.Instance);
+            Signer signer = new(TestBlockchainIds.ChainId, Build.A.PrivateKey.TestObject, LimboLogs.Instance);
             _address = signer.Address;
 
             _auRaSealer = new AuRaSealer(
@@ -78,7 +78,7 @@ namespace Nethermind.AuRa.Test
 
             block = await _auRaSealer.SealBlock(block, CancellationToken.None);
 
-            EthereumEcdsa ecdsa = new(ChainId.Morden, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.Morden, LimboLogs.Instance);
             Signature signature = new(block.Header.AuRaSignature);
             signature.V += Signature.VOffset;
             Address? recoveredAddress = ecdsa.RecoverAddress(signature, block.Header.CalculateHash(RlpBehaviors.ForSealing));

@@ -104,10 +104,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 if (updateOnlyIfNull)
                 {
-                    if (_logger.IsInfo) _logger.Info($"BeaconPivot was null. Setting beacon pivot to {blockHeader}");
+                    if (_logger.IsInfo) _logger.Info($"BeaconPivot was null. Setting beacon pivot to {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
                 }
 
-                // ToDo Sarah in some cases this could be wrong
                 if (beaconPivotExists && (PivotNumber > blockHeader.Number || blockHeader.Hash == PivotHash))
                 {
                     return;
@@ -120,7 +119,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 CurrentBeaconPivot = blockHeader;
                 _blockTree.LowestInsertedBeaconHeader = blockHeader;
                 ShouldForceStartNewSync = false;
-                if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader}");
+                if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
             }
         }
 
@@ -145,7 +144,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 }
             }
 
-            if (_logger.IsInfo) _logger.Info($"Loaded Beacon Pivot: {CurrentBeaconPivot}");
+            if (CurrentBeaconPivot != null)
+            {
+                if (_logger.IsInfo) _logger.Info($"Loaded Beacon Pivot: {CurrentBeaconPivot?.ToString(BlockHeader.Format.FullHashAndNumber)}");
+            }
         }
     }
 

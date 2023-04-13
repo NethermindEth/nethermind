@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
+using System.Globalization;
 using System.Net.Http;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -19,7 +18,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
-using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -74,9 +73,9 @@ public partial class EngineModuleTests
 
         await wait.WaitOneAsync(100, CancellationToken.None);
 
-        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        ExecutionPayloadV1 executionPayloadV1 = response.Data!;
+        ExecutionPayload executionPayloadV1 = response.Data!;
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
         executionPayloadV1.GasLimit.Should().Be(10_000_000L);
@@ -102,57 +101,46 @@ public partial class EngineModuleTests
             .Respond("application/json", "{\"timestamp\":\"0x3e9\",\"prevRandao\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"suggestedFeeRecipient\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"}");
 
         //TODO: think about extracting an essely serialisable class, test its serializatoin sepratly, refactor with it similar methods like the one above
-        string expected_parentHash = "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133";
-        string expected_feeRecipient = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099";
-        string expected_stateRoot = "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f";
-        string expected_receiptsRoot = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421";
-        string expected_logsBloom = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
-        string expected_prevRandao = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760";
-        string expected_blockNumber = "0x1";
-        string expected_gasLimit = "0x3d0900";
-        string expected_gasUsed = "0x0";
-        string expected_timestamp = "0x3e9";
-        string expected_extraData = "0x4e65746865726d696e64"; // Nethermind
-        string expected_baseFeePerGas = "0x0";
-        string expected_blockHash = "0x4ced29c819cf146b41ef448042773f958d5bbe297b0d6b82be677b65c85b436b";
-        string expected_transactions = "[]";
-        string expected_profit = "0x0";
+        var expected_parentHash = "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133";
+        var expected_feeRecipient = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099";
+        var expected_stateRoot = "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f";
+        var expected_receiptsRoot = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421";
+        var expected_logsBloom = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        var expected_prevRandao = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760";
+        var expected_blockNumber = 1;
+        var expected_gasLimit = 0x3d0900L;
+        var expected_gasUsed = 0;
+        var expected_timestamp = 0x3e9UL;
+        var expected_extraData = "0x4e65746865726d696e64"; // Nethermind
+        var expected_baseFeePerGas = (UInt256)0;
+        var expected_blockHash = "0x4ced29c819cf146b41ef448042773f958d5bbe297b0d6b82be677b65c85b436b";
+        var expected_profit = "0x0";
 
+        var expected = new BoostExecutionPayloadV1
+        {
+            Block = new ExecutionPayload
+            {
+                ParentHash = new(expected_parentHash),
+                FeeRecipient = new(expected_feeRecipient),
+                StateRoot = new(expected_stateRoot),
+                ReceiptsRoot = new(expected_receiptsRoot),
+                LogsBloom = new(Bytes.FromHexString(expected_logsBloom)),
+                PrevRandao = new(expected_prevRandao),
+                BlockNumber = expected_blockNumber,
+                GasLimit = expected_gasLimit,
+                GasUsed = expected_gasUsed,
+                Timestamp = expected_timestamp,
+                ExtraData = Bytes.FromHexString(expected_extraData),
+                BaseFeePerGas = expected_baseFeePerGas,
+                BlockHash = new(expected_blockHash),
+                Transactions = Array.Empty<byte[]>()
+            },
+            Profit = UInt256.Parse(expected_profit[2..], NumberStyles.HexNumber)
+        };
 
-        string expectedContent = "{\"block\":{\"parentHash\":\"" +
-                                 expected_parentHash +
-                                 "\",\"feeRecipient\":\"" +
-                                 expected_feeRecipient +
-                                 "\",\"stateRoot\":\"" +
-                                 expected_stateRoot +
-                                 "\",\"receiptsRoot\":\"" +
-                                 expected_receiptsRoot +
-                                 "\",\"logsBloom\":\"" +
-                                 expected_logsBloom +
-                                 "\",\"prevRandao\":\"" +
-                                 expected_prevRandao +
-                                 "\",\"blockNumber\":\"" +
-                                 expected_blockNumber +
-                                 "\",\"gasLimit\":\"" +
-                                 expected_gasLimit +
-                                 "\",\"gasUsed\":\"" +
-                                 expected_gasUsed +
-                                 "\",\"timestamp\":\"" +
-                                 expected_timestamp +
-                                 "\",\"extraData\":\"" +
-                                 expected_extraData +
-                                 "\",\"baseFeePerGas\":\"" +
-                                 expected_baseFeePerGas +
-                                 "\",\"blockHash\":\"" +
-                                 expected_blockHash +
-                                 "\",\"transactions\":" +
-                                 expected_transactions +
-                                 "},\"profit\":\"" +
-                                 expected_profit +
-                                 "\"}";
-
-        mockHttp.Expect(HttpMethod.Post, relayUrl + BoostRelay.SendPayloadPath)
-            .WithContent(expectedContent);
+        mockHttp
+            .Expect(HttpMethod.Post, relayUrl + BoostRelay.SendPayloadPath)
+            .WithContent(serializer.Serialize(expected));
 
         DefaultHttpClient defaultHttpClient = new(mockHttp.ToHttpClient(), serializer, chain.LogManager, 1, 100);
         BoostRelay boostRelay = new(defaultHttpClient, relayUrl);
@@ -177,9 +165,9 @@ public partial class EngineModuleTests
 
         await wait.WaitOneAsync(100, CancellationToken.None);
 
-        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        ExecutionPayloadV1 executionPayloadV1 = response.Data!;
+        ExecutionPayload executionPayloadV1 = response.Data!;
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
 
@@ -223,9 +211,9 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random, GasLimit = 10_000_000L }).Result.Data
             .PayloadId!;
 
-        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        ExecutionPayloadV1 executionPayloadV1 = response.Data!;
+        ExecutionPayload executionPayloadV1 = response.Data!;
         executionPayloadV1.GasLimit.Should().Be(4_000_000L);
     }
 }

@@ -1,0 +1,3 @@
+#! /bin/bash
+rm -rf /usr/share/nethermind
+rm -rf /usr/bin/nethermind

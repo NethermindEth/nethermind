@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
@@ -29,10 +30,10 @@ namespace Nethermind.Network.Test.Rlpx
         private byte[] _frame;
 
         private IFrameCipher _frameCipherA;
-        private IFrameMacProcessor _macProcessorA;
+        private FrameMacProcessor _macProcessorA;
 
         private IFrameCipher _frameCipherB;
-        private IFrameMacProcessor _macProcessorB;
+        private FrameMacProcessor _macProcessorB;
 
         [SetUp]
         public void Setup()
@@ -141,7 +142,7 @@ namespace Nethermind.Network.Test.Rlpx
             message.GenesisHash = Keccak.Zero;
             message.ProtocolVersion = 63;
             message.TotalDifficulty = 10000000000;
-            message.ChainId = 5;
+            message.NetworkId = 5;
 
             StatusMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);

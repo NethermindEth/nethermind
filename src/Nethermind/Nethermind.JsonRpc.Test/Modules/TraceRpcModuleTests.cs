@@ -1,35 +1,34 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.Logging;
-using NUnit.Framework;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
-using Nethermind.Serialization.Json;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -39,7 +38,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private class Context
         {
-            public async Task Build(ISpecProvider? specProvider = null, Boolean isAura = false)
+            public async Task Build(ISpecProvider? specProvider = null, bool isAura = false)
             {
                 JsonRpcConfig = new JsonRpcConfig();
                 Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
@@ -618,7 +617,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 Eip1559TransitionBlock = 1
             };
-            TestSpecProvider specProvider = new(releaseSpec) { ChainId = ChainId.Mainnet };
+            TestSpecProvider specProvider = new(releaseSpec);
             await context.Build(specProvider, isAura: true);
             TestRpcBlockchain blockchain = context.Blockchain;
             UInt256 currentNonceAddressC = blockchain.State.GetAccount(TestItem.AddressC).Nonce;

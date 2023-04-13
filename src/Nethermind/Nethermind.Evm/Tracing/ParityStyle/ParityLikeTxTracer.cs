@@ -1,10 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -387,7 +386,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
             Dictionary<UInt256, ParityStateChange<byte[]>> storage = null;
             if (!_trace.StateChanges.ContainsKey(storageCell.Address))
@@ -397,15 +396,15 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
             storage = _trace.StateChanges[storageCell.Address].Storage ?? (_trace.StateChanges[storageCell.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
 
-            if (storage.ContainsKey(storageCell.Index))
+            if (storage.TryGetValue(storageCell.Index, out ParityStateChange<byte[]> value))
             {
-                before = storage[storageCell.Index].Before ?? before;
+                before = value.Before ?? before;
             }
 
             storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
         }
 

@@ -10,11 +10,13 @@ namespace Nethermind.Trie
     {
         private SemaphoreSlim? _semaphore;
         private readonly int _maxDegreeOfParallelism = 1;
+        private int _visitedNodes;
 
         public int Level { get; internal set; }
         public bool IsStorage { get; internal set; }
         public int? BranchChildIndex { get; internal set; }
         public bool ExpectAccounts { get; init; }
+        public int VisitedNodes => _visitedNodes;
 
         public int MaxDegreeOfParallelism
         {
@@ -41,6 +43,18 @@ namespace Nethermind.Trie
         public void Dispose()
         {
             _semaphore?.Dispose();
+        }
+
+        public void AddVisited()
+        {
+            int visitedNodes = Interlocked.Increment(ref _visitedNodes);
+
+            // TODO: Fine tune interval? Use TrieNode.GetMemorySize(false) to calculate memory usage?
+            if (visitedNodes % 1_000_000 == 0)
+            {
+                GC.Collect();
+            }
+
         }
     }
 }

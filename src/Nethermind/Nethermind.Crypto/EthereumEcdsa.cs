@@ -61,7 +61,7 @@ namespace Nethermind.Crypto
         }
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="tx"></param>
@@ -73,7 +73,7 @@ namespace Nethermind.Crypto
         }
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="tx"></param>
         /// <param name="useSignatureChainId"></param>
@@ -89,8 +89,8 @@ namespace Nethermind.Crypto
 
             // feels like it is the same check twice
             bool applyEip155 = useSignatureChainId
-                               || tx.Signature.V == _chainIdValue * 2 + 35ul
-                               || tx.Signature.V == _chainIdValue * 2 + 36ul;
+                               || tx.Signature.V == CalculateV(_chainIdValue, false)
+                               || tx.Signature.V == CalculateV(_chainIdValue, true);
 
             ulong chainId;
             switch (tx.Type)
@@ -109,6 +109,8 @@ namespace Nethermind.Crypto
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
             return RecoverAddress(tx.Signature, hash);
         }
+
+        public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
 
         public Address? RecoverAddress(Signature signature, Keccak message)
         {

@@ -18,6 +18,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -79,7 +80,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
             ILogger logger = _api.LogManager.GetClassLogger();
-            if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
+            if (logger.IsInfo) logger.Info("Starting AuRa block producer & sealer");
 
             BlockProducerEnv producerEnv = GetProducerChain(additionalTxSource);
 
@@ -158,6 +159,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.ReceiptStorage,
                 _api.LogManager,
                 changeableTxProcessingEnv.BlockTree,
+                new WithdrawalProcessor(_api.StateProvider!, _api.LogManager),
                 auRaTxFilter,
                 CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride,
                 contractRewriter)

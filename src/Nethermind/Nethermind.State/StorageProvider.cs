@@ -41,17 +41,17 @@ namespace Nethermind.State
             _persistentStorageProvider.CommitTrees(blockNumber);
         }
 
-        public byte[] Get(StorageCell storageCell)
+        public byte[] Get(in StorageCell storageCell)
         {
             return _persistentStorageProvider.Get(storageCell);
         }
 
-        public byte[] GetOriginal(StorageCell storageCell)
+        public byte[] GetOriginal(in StorageCell storageCell)
         {
             return _persistentStorageProvider.GetOriginal(storageCell);
         }
 
-        public byte[] GetTransientState(StorageCell storageCell)
+        public byte[] GetTransientState(in StorageCell storageCell)
         {
             return _transientStorageProvider.Get(storageCell);
         }
@@ -77,12 +77,12 @@ namespace Nethermind.State
             _transientStorageProvider.Restore(snapshot.TransientStorageSnapshot);
         }
 
-        public void Set(StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, byte[] newValue)
         {
             _persistentStorageProvider.Set(storageCell, newValue);
         }
 
-        public void SetTransientState(StorageCell storageCell, byte[] newValue)
+        public void SetTransientState(in StorageCell storageCell, byte[] newValue)
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }

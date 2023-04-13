@@ -165,7 +165,7 @@ namespace Nethermind.Hive
             List<Block> blocks = new List<Block>();
 
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
-            while (rlpStream.ReadNumberOfItemsRemaining() > 0)
+            while (rlpStream.PeekNumberOfItemsRemaining() > 0)
             {
                 rlpStream.PeekNextItem();
                 Block block = Rlp.Decode<Block>(rlpStream);

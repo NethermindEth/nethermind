@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,15 +7,15 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -101,6 +101,7 @@ namespace Nethermind.Evm.Test
         }
 
         protected virtual TestAllTracerWithOutput CreateTracer() => new();
+        protected virtual BlockReceiptsTracer CreateBlockTracer() => new();
 
         protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
         {
@@ -109,9 +110,9 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
-        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0)
+        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0, byte[][] blobVersionedHashes = null)
         {
-            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code, blockGasLimit: blockGasLimit, timestamp: timestamp);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code, blockGasLimit: blockGasLimit, timestamp: timestamp, blobVersionedHashes: blobVersionedHashes);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
@@ -124,7 +125,8 @@ namespace Nethermind.Evm.Test
             SenderRecipientAndMiner senderRecipientAndMiner = null,
             int value = 1,
             long blockGasLimit = DefaultBlockGasLimit,
-            ulong timestamp = 0)
+            ulong timestamp = 0,
+            byte[][] blobVersionedHashes = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
@@ -143,6 +145,7 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithValue(value)
+                .WithBlobVersionedHashes(blobVersionedHashes)
                 .To(senderRecipientAndMiner.Recipient)
                 .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;

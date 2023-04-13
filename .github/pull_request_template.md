@@ -12,12 +12,12 @@ _Please choose one of the keywords above to refer to the issue this PR solves fo
 
 - [ ] Bugfix (a non-breaking change that fixes an issue)
 - [ ] New feature (a non-breaking change that adds functionality)
-- [ ] Breaking change (a fix or a feature that would cause existing functionality not to work as expected)
+- [ ] Breaking change (a change that causes existing functionality not to work as expected)
+- [ ] Optimization
+- [ ] Refactoring
 - [ ] Documentation update
-- [ ] Code style update (formatting, renaming)
-- [ ] Refactoring (no functional or API changes)
 - [ ] Build-related changes
-- [ ] Other: _description_ 
+- [ ] Other: _Description_
 
 ## Testing
 

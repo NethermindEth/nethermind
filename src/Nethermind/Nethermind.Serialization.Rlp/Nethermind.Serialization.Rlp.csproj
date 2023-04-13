@@ -1,13 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net7.0</TargetFramework>
-        <Nullable>annotations</Nullable>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nethermind.DotNetty.Buffers" />
+  </ItemGroup>
 
 </Project>

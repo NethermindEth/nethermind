@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
             for (int index = 0; index < _txTracers.Count; index++)
             {
@@ -113,7 +113,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
             for (int index = 0; index < _txTracers.Count; index++)
             {

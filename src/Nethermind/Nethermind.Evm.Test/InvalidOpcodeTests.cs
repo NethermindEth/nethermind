@@ -110,7 +110,8 @@ namespace Nethermind.Evm.Test
                 new Instruction[]
                 {
                     Instruction.TSTORE,
-                    Instruction.TLOAD
+                    Instruction.TLOAD,
+                    Instruction.DATAHASH,
                 }
             ).ToArray();
 
@@ -167,8 +168,8 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.MuirGlacierBlockNumber)]
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp)]
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber + 2, MainnetSpecProvider.CancunBlockTimestamp)]
         [TestCase(long.MaxValue, ulong.MaxValue)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {

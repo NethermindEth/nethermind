@@ -32,7 +32,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Sign_and_recover()
         {
-            EthereumEcdsa ethereumEcdsa = new(ChainId.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Olympic, LimboLogs.Instance);
 
             Keccak message = Keccak.Compute("Test message");
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
@@ -43,7 +43,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Decompress()
         {
-            EthereumEcdsa ethereumEcdsa = new(ChainId.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Olympic, LimboLogs.Instance);
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
             CompressedPublicKey compressedPublicKey = privateKey.CompressedPublicKey;
             PublicKey expected = privateKey.PublicKey;
