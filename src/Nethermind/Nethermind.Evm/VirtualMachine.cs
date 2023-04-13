@@ -3128,7 +3128,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.JUMPF:
                         {
-                            if (!spec.JumpfOpcodeEnabled || env.CodeInfo.EofVersion() == 0)
+                            if (!spec.IsEofEvmModeOn || !spec.JumpfOpcodeEnabled || env.CodeInfo.EofVersion() == 0)
                             {
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
                                 return CallResult.InvalidInstructionException;
