@@ -2307,7 +2307,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.DUPN:
                         {
-                            if (spec.IncludeGeneralSwapsAndDup)
+                            if (spec.IncludeGeneralSwapsAndDup && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
                                 {
@@ -2349,9 +2349,9 @@ namespace Nethermind.Evm
                         }
                     case Instruction.SWAPN:
                         {
-                            if (spec.IncludeGeneralSwapsAndDup)
+                            if (spec.IncludeGeneralSwapsAndDup && env.CodeInfo.IsEof())
                             {
-                                if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                                if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
                                 {
                                     EndInstructionTraceError(EvmExceptionType.OutOfGas);
                                     return CallResult.OutOfGasException;
