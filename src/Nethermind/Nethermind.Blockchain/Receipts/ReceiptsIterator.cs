@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 #pragma warning disable 618
@@ -19,24 +20,20 @@ namespace Nethermind.Blockchain.Receipts
         private readonly TxReceipt[]? _receipts;
         private int _position;
         private readonly IReceiptsRecovery.IRecoveryContext? _recoveryContext;
-        private readonly bool _compactEncoding;
+        private IReceiptRefDecoder _receiptRefDecoder;
 
-        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb, IReceiptsRecovery.IRecoveryContext? receiptsRecoveryContext)
+        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb, IReceiptsRecovery.IRecoveryContext? receiptsRecoveryContext, IReceiptRefDecoder receiptRefDecoder)
         {
             _decoderContext = receiptsData.AsRlpValueContext();
             _blocksDb = blocksDb;
             _receipts = null;
             _position = 0;
             _recoveryContext = receiptsRecoveryContext;
+            _receiptRefDecoder = receiptRefDecoder;
 
             if (_decoderContext.Length > 0 && _decoderContext.PeekByte() == ReceiptArrayStorageDecoder.CompactEncoding)
             {
-                _compactEncoding = true;
                 _decoderContext.ReadByte();
-            }
-            else
-            {
-                _compactEncoding = false;
             }
 
             _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
@@ -61,14 +58,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (_decoderContext.Position < _length)
                 {
-                    if (_compactEncoding)
-                    {
-                        CompactReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
-                    }
-                    else
-                    {
-                        ReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
-                    }
+                    _receiptRefDecoder.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
                     _recoveryContext?.RecoverReceiptData(ref current);
                     return true;
                 }
@@ -106,5 +96,17 @@ namespace Nethermind.Blockchain.Receipts
                 _blocksDb?.DangerousReleaseMemory(_decoderContext.Data);
             }
         }
+
+        public LogEntriesIterator IterateLogs(TxReceiptStructRef receipt)
+        {
+            return receipt.Logs is null ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder) : new LogEntriesIterator(receipt.Logs);
+        }
+
+        public Keccak[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        {
+            return _receiptRefDecoder.DecodeTopics(valueDecoderContext);
+        }
+
+        public bool CanDecodeBloom => _receiptRefDecoder == null || _receiptRefDecoder.CanDecodeBloom;
     }
 }

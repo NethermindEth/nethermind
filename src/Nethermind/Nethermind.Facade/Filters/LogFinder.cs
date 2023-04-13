@@ -221,8 +221,8 @@ namespace Nethermind.Blockchain.Find
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    LogEntriesIterator logsIterator = receipt.Logs is null ? new LogEntriesIterator(receipt.LogsRlp) : new LogEntriesIterator(receipt.Logs);
-                    if (filter.Matches(ref receipt.Bloom))
+                    LogEntriesIterator logsIterator = iterator.IterateLogs(receipt);
+                    if (!iterator.CanDecodeBloom || filter.Matches(ref receipt.Bloom))
                     {
                         while (logsIterator.TryGetNext(out var log))
                         {
@@ -235,8 +235,7 @@ namespace Nethermind.Blockchain.Find
 
                                 if (topics is null)
                                 {
-                                    var topicsValueDecoderContext = new Rlp.ValueDecoderContext(log.TopicsRlp);
-                                    topics = KeccakDecoder.Instance.DecodeArray(ref topicsValueDecoderContext);
+                                    topics = iterator.DecodeTopics(new Rlp.ValueDecoderContext(log.TopicsRlp));
                                 }
 
                                 logList.Add(new FilterLog(

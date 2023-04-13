@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class ReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>
+    public class ReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
         private readonly bool _supportTxHash;
         private const byte MarkTxHashByte = 255;
@@ -394,5 +394,18 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
         }
+
+        public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors behaviour,
+            out LogEntryStructRef current)
+        {
+            LogEntryDecoder.DecodeStructRef(ref decoderContext, behaviour, out current);
+        }
+
+        public Keccak[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        {
+            return KeccakDecoder.Instance.DecodeArray(ref valueDecoderContext);
+        }
+
+        public bool CanDecodeBloom => true;
     }
 }

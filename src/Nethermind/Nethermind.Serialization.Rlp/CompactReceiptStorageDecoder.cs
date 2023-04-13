@@ -12,7 +12,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class CompactReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>
+    public class CompactReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
 
@@ -141,17 +141,25 @@ namespace Nethermind.Serialization.Rlp
             item.Sender = (decoderContext.DecodeAddress() ?? Address.Zero).ToStructRef();
             item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
 
-            int sequenceLength = decoderContext.ReadSequenceLength();
-            int lastCheck = sequenceLength + decoderContext.Position;
-            using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
-            while (decoderContext.Position < lastCheck)
-            {
-                logEntries.Add(CompactLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
-            }
-            item.Logs = logEntries.ToArray();
-
-            item.Bloom = new Bloom(item.Logs).ToStructRef();
+            (int PrefixLength, int ContentLength) peekPrefixAndContentLength =
+                decoderContext.PeekPrefixAndContentLength();
+            int logsBytes = peekPrefixAndContentLength.ContentLength + peekPrefixAndContentLength.PrefixLength;
+            item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
+            decoderContext.SkipItem();
         }
+
+        public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors none,
+            out LogEntryStructRef current)
+        {
+            CompactLogEntryDecoder.Instance.DecodeLogEntryStructRef(ref decoderContext, none, out current);
+        }
+
+        public Keccak[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        {
+            return CompactLogEntryDecoder.Instance.DecodeTopics(valueDecoderContext);
+        }
+
+        public bool CanDecodeBloom => false;
 
         public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

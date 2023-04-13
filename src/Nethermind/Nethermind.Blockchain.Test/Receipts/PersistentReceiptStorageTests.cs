@@ -126,16 +126,8 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.ClearCache();
             _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
             iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
-            if (_useCompactReceipts)
-            {
-                receiptStructRef.LogsRlp.IsNullOrEmpty().Should().BeTrue();
-                receiptStructRef.Logs.Should().NotBeNullOrEmpty();
-            }
-            else
-            {
-                receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
-                receiptStructRef.Logs.Should().BeNullOrEmpty();
-            }
+            receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
+            receiptStructRef.Logs.Should().BeNullOrEmpty();
 
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }

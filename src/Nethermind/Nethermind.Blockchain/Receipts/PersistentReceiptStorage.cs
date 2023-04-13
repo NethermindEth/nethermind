@@ -147,7 +147,9 @@ namespace Nethermind.Blockchain.Receipts
                 recoveryContext = _receiptsRecovery.CreateRecoveryContext(block!);
             }
 
-            iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb, recoveryContext) : new ReceiptsIterator();
+            IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
+
+            iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb, recoveryContext, refDecoder) : new ReceiptsIterator();
             return result;
         }
 
