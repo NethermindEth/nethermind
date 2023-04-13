@@ -55,7 +55,6 @@ namespace Nethermind.AccountAbstraction.Bundler
                     SenderAddress = tx.SenderAddress,
                     Signature = tx.Signature,
                     Hash = tx.Hash,
-                    DeliveredBy = tx.DeliveredBy,
                     Timestamp = tx.Timestamp,
                     AccessList = tx.AccessList,
                 })

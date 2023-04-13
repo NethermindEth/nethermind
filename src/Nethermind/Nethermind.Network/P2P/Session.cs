@@ -200,7 +200,7 @@ namespace Nethermind.Network.P2P
             }
         }
 
-        public void DeliverMessage<T>(T message) where T : P2PMessage
+        public int DeliverMessage<T>(T message) where T : P2PMessage
         {
             lock (_sessionStateLock)
             {
@@ -211,15 +211,16 @@ namespace Nethermind.Network.P2P
 
                 if (IsClosing)
                 {
-                    return;
+                    return 1;
                 }
             }
 
             if (_logger.IsTrace) _logger.Trace($"P2P to deliver {message.Protocol}.{message.PacketType} on {this}");
 
             message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
-            var size = _packetSender.Enqueue(message);
+            int size = _packetSender.Enqueue(message);
             Interlocked.Add(ref Metrics.P2PBytesSent, size);
+            return size;
         }
 
         public void ReceiveMessage(Packet packet)

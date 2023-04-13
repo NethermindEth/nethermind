@@ -24,6 +24,8 @@ namespace Nethermind.Trie
 
         public TrieStats Stats { get; } = new();
 
+        public bool IsFullDbScan => true;
+
         public bool ShouldVisit(Keccak nextNode)
         {
             return true;

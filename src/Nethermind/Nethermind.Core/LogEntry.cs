@@ -37,7 +37,7 @@ namespace Nethermind.Core
             LoggersAddress = logEntry.LoggersAddress.ToStructRef();
             Data = logEntry.Data;
             Topics = logEntry.Topics;
-            TopicsRlp = Span<byte>.Empty;
+            TopicsRlp = default;
         }
 
         public Keccak[]? Topics { get; }

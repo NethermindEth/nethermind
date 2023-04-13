@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
@@ -31,8 +32,9 @@ namespace Nethermind.Synchronization.FastBlocks
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
 
-            Keccak[]? hashes = batch.Infos.Where(i => i is not null).Select(i => i!.BlockHash).ToArray();
-            if (hashes.Length == 0)
+            using ArrayPoolList<Keccak> hashes = new(batch.Infos.Length);
+            hashes.AddRange(batch.Infos.Where(i => i is not null).Select(i => i!.BlockHash));
+            if (hashes.Count == 0)
             {
                 if (Logger.IsDebug) Logger.Debug($"{batch} - attempted send a request with no hash.");
                 return;

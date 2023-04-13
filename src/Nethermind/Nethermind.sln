@@ -44,7 +44,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83BB-6092-45A4-B751-D05D4A6ED995}"
 	ProjectSection(SolutionItems) = preProject
 		Chains\AuRaTest.json = Chains\AuRaTest.json
-		Chains\baseline.json = Chains\baseline.json
 		Chains\energyweb.json = Chains\energyweb.json
 		Chains\foundation.json = Chains\foundation.json
 		Chains\genesis.json = Chains\genesis.json
@@ -229,7 +228,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UPnP", "UPnP", "{2EDE2554-5
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.UPnP.Plugin", "Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj", "{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.EofParser", "Nethermind.EofParser\Nethermind.EofParser.csproj", "{8996B349-49A8-45B4-BF8A-3DD1D5C8C93A}"
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{0E0F75A7-A03F-4D66-910B-17DB659A33E3}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ssz.Test", "Nethermind.Serialization.Ssz.Test\Nethermind.Serialization.Ssz.Test.csproj", "{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120}"
