@@ -845,6 +845,8 @@ namespace Nethermind.Synchronization.FastSync
         {
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
             TrieNode trieNode = new TrieNode(NodeType.Unknown, currentStateSyncItem.PathNibbles, currentStateSyncItem.Hash, currentResponseItem);
+
+            // check if this is a storage node - then it needs a storage prefix
             if (currentStateSyncItem.AccountPathNibbles is not null && currentStateSyncItem.AccountPathNibbles.Length != 0)
             {
                 Span<byte> storagePrefix = new byte[66];
