@@ -505,7 +505,7 @@ internal static class EvmObjectFormat
             {
                 var opcode = (Instruction)code[pos];
 
-                if (reachedOpcode[i] == 0)
+                if (reachedOpcode[pos] == 0)
                 {
                     return false;
                 }
@@ -519,12 +519,12 @@ internal static class EvmObjectFormat
                 {
                     byte count = code[pos];
 
-                    i += ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH;
+                    pos += ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH;
                 }
                 else if (opcode is >= Instruction.PUSH0 and <= Instruction.PUSH32)
                 {
                     int len = opcode - Instruction.PUSH0;
-                    i += len;
+                    pos += len;
                 }
             }
             return true;
