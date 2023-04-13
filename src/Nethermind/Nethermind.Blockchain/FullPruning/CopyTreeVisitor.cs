@@ -37,6 +37,7 @@ namespace Nethermind.Blockchain.FullPruning
             _stopwatch = new Stopwatch();
         }
 
+        public bool IsFullDbScan => true;
         public bool ShouldVisit(Keccak nextNode) => !_cancellationToken.IsCancellationRequested;
 
         public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)

@@ -65,7 +65,7 @@ namespace Nethermind.Evm
         private readonly Stack<EvmState> _stateStack = new();
         private IStorageProvider _storage;
         private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
-        private Dictionary<Address, CodeInfo>? _precompiles;
+        private Dictionary<Address, ICodeInfo>? _precompiles;
         private byte[] _returnDataBuffer = Array.Empty<byte>();
         private ITxTracer _txTracer = NullTxTracer.Instance;
 
@@ -421,31 +421,31 @@ namespace Nethermind.Evm
 
         private void InitializePrecompiledContracts()
         {
-            _precompiles = new Dictionary<Address, CodeInfo>
+            _precompiles = new Dictionary<Address, ICodeInfo>
             {
-                [EcRecoverPrecompile.Instance.Address] = new(EcRecoverPrecompile.Instance),
-                [Sha256Precompile.Instance.Address] = new(Sha256Precompile.Instance),
-                [Ripemd160Precompile.Instance.Address] = new(Ripemd160Precompile.Instance),
-                [IdentityPrecompile.Instance.Address] = new(IdentityPrecompile.Instance),
+                [EcRecoverPrecompile.Instance.Address] = new CodeInfo(EcRecoverPrecompile.Instance),
+                [Sha256Precompile.Instance.Address] = new CodeInfo(Sha256Precompile.Instance),
+                [Ripemd160Precompile.Instance.Address] = new CodeInfo(Ripemd160Precompile.Instance),
+                [IdentityPrecompile.Instance.Address] = new CodeInfo(IdentityPrecompile.Instance),
 
-                [Bn256AddPrecompile.Instance.Address] = new(Bn256AddPrecompile.Instance),
-                [Bn256MulPrecompile.Instance.Address] = new(Bn256MulPrecompile.Instance),
-                [Bn256PairingPrecompile.Instance.Address] = new(Bn256PairingPrecompile.Instance),
-                [ModExpPrecompile.Instance.Address] = new(ModExpPrecompile.Instance),
+                [Bn256AddPrecompile.Instance.Address] = new CodeInfo(Bn256AddPrecompile.Instance),
+                [Bn256MulPrecompile.Instance.Address] = new CodeInfo(Bn256MulPrecompile.Instance),
+                [Bn256PairingPrecompile.Instance.Address] = new CodeInfo(Bn256PairingPrecompile.Instance),
+                [ModExpPrecompile.Instance.Address] = new CodeInfo(ModExpPrecompile.Instance),
 
-                [Blake2FPrecompile.Instance.Address] = new(Blake2FPrecompile.Instance),
+                [Blake2FPrecompile.Instance.Address] = new CodeInfo(Blake2FPrecompile.Instance),
 
-                [G1AddPrecompile.Instance.Address] = new(G1AddPrecompile.Instance),
-                [G1MulPrecompile.Instance.Address] = new(G1MulPrecompile.Instance),
-                [G1MultiExpPrecompile.Instance.Address] = new(G1MultiExpPrecompile.Instance),
-                [G2AddPrecompile.Instance.Address] = new(G2AddPrecompile.Instance),
-                [G2MulPrecompile.Instance.Address] = new(G2MulPrecompile.Instance),
-                [G2MultiExpPrecompile.Instance.Address] = new(G2MultiExpPrecompile.Instance),
-                [PairingPrecompile.Instance.Address] = new(PairingPrecompile.Instance),
-                [MapToG1Precompile.Instance.Address] = new(MapToG1Precompile.Instance),
-                [MapToG2Precompile.Instance.Address] = new(MapToG2Precompile.Instance),
+                [G1AddPrecompile.Instance.Address] = new CodeInfo(G1AddPrecompile.Instance),
+                [G1MulPrecompile.Instance.Address] = new CodeInfo(G1MulPrecompile.Instance),
+                [G1MultiExpPrecompile.Instance.Address] = new CodeInfo(G1MultiExpPrecompile.Instance),
+                [G2AddPrecompile.Instance.Address] = new CodeInfo(G2AddPrecompile.Instance),
+                [G2MulPrecompile.Instance.Address] = new CodeInfo(G2MulPrecompile.Instance),
+                [G2MultiExpPrecompile.Instance.Address] = new CodeInfo(G2MultiExpPrecompile.Instance),
+                [PairingPrecompile.Instance.Address] = new CodeInfo(PairingPrecompile.Instance),
+                [MapToG1Precompile.Instance.Address] = new CodeInfo(MapToG1Precompile.Instance),
+                [MapToG2Precompile.Instance.Address] = new CodeInfo(MapToG2Precompile.Instance),
 
-                [PointEvaluationPrecompile.Instance.Address] = new(PointEvaluationPrecompile.Instance),
+                [PointEvaluationPrecompile.Instance.Address] = new CodeInfo(PointEvaluationPrecompile.Instance),
             };
         }
 
@@ -626,11 +626,10 @@ namespace Nethermind.Evm
                 return CallResult.Empty(0);
             }
 
-            if (EvmObjectFormat.IsEof(vmState.Env.CodeInfo.MachineCode) && vmState.Env.CodeInfo.EofVersion() == 0)
+            if (vmState.Env.CodeInfo.MachineCode.AsSpan().StartsWith(EvmObjectFormat.MAGIC) && vmState.Env.CodeInfo is CodeInfo)
             {
                 return CallResult.InvalidEofCodeException;
             }
-
 
             vmState.InitStacks();
             EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
@@ -2464,14 +2463,7 @@ namespace Nethermind.Evm
                             }
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
-                            // if container is EOF init code must be EOF
 
-                            if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
 
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                             if (value > balance)
@@ -2489,6 +2481,7 @@ namespace Nethermind.Evm
                                 stack.PushZero();
                                 break;
                             }
+
 
                             EndInstructionTrace();
                             // todo: === below is a new call - refactor / move
@@ -2512,6 +2505,14 @@ namespace Nethermind.Evm
 
                             _state.IncrementNonce(env.ExecutingAccount);
 
+                            // if container is EOF init code must be EOF
+                            if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
+                            {
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
+                            }
+
                             Snapshot snapshot = _worldState.TakeSnapshot();
 
                             bool accountExists = _state.AccountExists(contractAddress);
@@ -2534,16 +2535,17 @@ namespace Nethermind.Evm
                             }
 
                             _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
-                            ExecutionEnvironment callEnv = new();
-                            callEnv.TxExecutionContext = env.TxExecutionContext;
-                            callEnv.CallDepth = env.CallDepth + 1;
-                            callEnv.Caller = env.ExecutingAccount;
-                            callEnv.ExecutingAccount = contractAddress;
-                            callEnv.CodeSource = null;
-                            callEnv.CodeInfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec);
-                            callEnv.InputData = ReadOnlyMemory<byte>.Empty;
-                            callEnv.TransferValue = value;
-                            callEnv.Value = value;
+                            ExecutionEnvironment callEnv = new(
+                                txExecutionContext: env.TxExecutionContext,
+                                callDepth: env.CallDepth + 1,
+                                caller: env.ExecutingAccount,
+                                executingAccount: contractAddress,
+                                codeSource: null,
+                                codeInfo: CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec),
+                                inputData: ReadOnlyMemory<byte>.Empty,
+                                transferValue: value,
+                                value: value
+                            );
 
                             EvmState callState = new(
                                 callGas,
@@ -2714,16 +2716,17 @@ namespace Nethermind.Evm
                             Snapshot snapshot = _worldState.TakeSnapshot();
                             _state.SubtractFromBalance(caller, transferValue, spec);
 
-                            ExecutionEnvironment callEnv = new();
-                            callEnv.TxExecutionContext = env.TxExecutionContext;
-                            callEnv.CallDepth = env.CallDepth + 1;
-                            callEnv.Caller = caller;
-                            callEnv.CodeSource = codeSource;
-                            callEnv.ExecutingAccount = target;
-                            callEnv.TransferValue = transferValue;
-                            callEnv.Value = callValue;
-                            callEnv.InputData = callData;
-                            callEnv.CodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+                            ExecutionEnvironment callEnv = new(
+                                txExecutionContext: env.TxExecutionContext,
+                                callDepth: env.CallDepth + 1,
+                                caller: caller,
+                                codeSource: codeSource,
+                                executingAccount: target,
+                                transferValue: transferValue,
+                                value: callValue,
+                                inputData: callData,
+                                codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+                            );
 
                             if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
                             if (outputLength == 0)

@@ -45,17 +45,22 @@ namespace Nethermind.Network
 
         private NetworkNode[] GenerateNodes()
         {
-            NetworkNode[] nodes = Volatile.Read(ref _nodes);
+            NetworkNode[] nodes;
             lock (_lock)
             {
-                if (_nodes != nodes)
+                nodes = _nodes;
+                if (nodes is not null)
                 {
                     // Already updated
-                    return _nodes;
+                    return nodes;
                 }
 
-                _nodePublicKeys.Clear();
-                _nodesList.Clear();
+                List<NetworkNode> nodeList = _nodesList;
+                if (nodeList.Count > 0)
+                {
+                    return (_nodes = nodeList.ToArray());
+                }
+
                 foreach (byte[]? nodeRlp in _fullDb.Values)
                 {
                     if (nodeRlp is null)
@@ -66,7 +71,7 @@ namespace Nethermind.Network
                     try
                     {
                         NetworkNode node = GetNode(nodeRlp);
-                        _nodesList.Add(node);
+                        nodeList.Add(node);
                         _nodePublicKeys.Add(node.NodeId);
                     }
                     catch (Exception e)
@@ -75,10 +80,15 @@ namespace Nethermind.Network
                     }
                 }
 
-                nodes = _nodes = _nodesList.ToArray();
+                if (nodeList.Count == 0)
+                {
+                    return Array.Empty<NetworkNode>();
+                }
+                else
+                {
+                    return (_nodes = nodeList.ToArray());
+                }
             }
-
-            return nodes;
         }
 
         public void UpdateNode(NetworkNode node)
@@ -92,8 +102,8 @@ namespace Nethermind.Network
                 {
                     _nodePublicKeys.Add(node.NodeId);
                     _nodesList.Add(node);
-                    // New node, generate the cache
-                    _nodes = _nodesList.ToArray();
+                    // New node, clear the cache
+                    _nodes = null;
                 }
                 else
                 {
@@ -136,8 +146,8 @@ namespace Nethermind.Network
                     {
                         _nodesList.RemoveAt(i);
                         _nodePublicKeys.Remove(nodeId);
-                        // Node removed, generate the cache
-                        _nodes = _nodesList.ToArray();
+                        // New node, clear the cache
+                        _nodes = null;
                         return;
                     }
                 }

@@ -26,7 +26,7 @@ namespace Nethermind.Db.Test
             ILogger logger = Substitute.For<ILogger>();
 
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_AllData.txt");
-            new DbMetricsUpdater("Test", null, null, null, logger).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater("Test", null, null, null, null, logger).ProcessCompactionStats(testDump);
 
             Assert.AreEqual(11, Metrics.DbStats.Count);
             Assert.AreEqual(2, Metrics.DbStats["TestDbLevel0Files"]);
@@ -48,7 +48,7 @@ namespace Nethermind.Db.Test
             ILogger logger = Substitute.For<ILogger>();
 
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingLevels.txt");
-            new DbMetricsUpdater("Test", null, null, null, logger).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater("Test", null, null, null, null, logger).ProcessCompactionStats(testDump);
 
             Assert.AreEqual(5, Metrics.DbStats.Count);
             Assert.AreEqual(10, Metrics.DbStats["TestDbIntervalCompactionGBWrite"]);
@@ -64,7 +64,7 @@ namespace Nethermind.Db.Test
             ILogger logger = Substitute.For<ILogger>();
 
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingIntervalCompaction.txt");
-            new DbMetricsUpdater("Test", null, null, null, logger).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater("Test", null, null, null, null, logger).ProcessCompactionStats(testDump);
 
             Assert.AreEqual(6, Metrics.DbStats.Count);
             Assert.AreEqual(2, Metrics.DbStats["TestDbLevel0Files"]);
@@ -83,7 +83,7 @@ namespace Nethermind.Db.Test
             ILogger logger = Substitute.For<ILogger>();
 
             string testDump = string.Empty;
-            new DbMetricsUpdater("Test", null, null, null, logger).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater("Test", null, null, null, null, logger).ProcessCompactionStats(testDump);
 
             Assert.AreEqual(0, Metrics.DbStats.Count);
 
@@ -96,7 +96,7 @@ namespace Nethermind.Db.Test
             ILogger logger = Substitute.For<ILogger>();
 
             string testDump = null;
-            new DbMetricsUpdater("Test", null, null, null, logger).ProcessCompactionStats(testDump);
+            new DbMetricsUpdater("Test", null, null, null, null, logger).ProcessCompactionStats(testDump);
 
             Assert.AreEqual(0, Metrics.DbStats.Count);
 

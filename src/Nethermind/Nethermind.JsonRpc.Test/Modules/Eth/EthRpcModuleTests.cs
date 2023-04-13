@@ -246,6 +246,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_filter_changes_missing()
+    {
+        using Context ctx = await Context.Create();
+        string serialized2 = ctx.Test.TestEthRpc("eth_getFilterChanges", "0");
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Filter not found\"},\"id\":67}", serialized2);
+    }
+
+    [Test]
     public async Task Eth_uninstall_filter()
     {
         using Context ctx = await Context.Create();
@@ -1074,7 +1082,7 @@ public partial class EthRpcModuleTests
 
         string serialized = ctx.Test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(txForRpc));
 
-        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"InsufficientFunds, Account balance: 0, cumulative cost: 31000\"},\"id\":67}", serialized);
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"InsufficientFunds, Balance is zero, cannot pay gas\"},\"id\":67}", serialized);
     }
 
     public enum AccessListProvided

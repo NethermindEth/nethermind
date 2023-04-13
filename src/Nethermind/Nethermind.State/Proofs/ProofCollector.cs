@@ -31,6 +31,8 @@ namespace Nethermind.State.Proofs
 
         public byte[][] BuildResult() => _proofBits.ToArray();
 
+        public bool IsFullDbScan => false;
+
         public bool ShouldVisit(Keccak nextNode) => _visitingFilter.Contains(nextNode);
 
         public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
