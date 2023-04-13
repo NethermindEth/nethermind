@@ -259,17 +259,16 @@ namespace Nethermind.Synchronization.Test
             IDb codeDb = dbProvider.CodeDb;
             IDb stateDb = dbProvider.StateDb;
 
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             TrieStoreByPath trieStoreByPath = new(stateDb, LimboLogs.Instance);
 
             StateReader stateReader = new(trieStoreByPath, codeDb, logManager);
-            StateProvider stateProvider = new(trieStore, codeDb, logManager);
+            StateProvider stateProvider = new(trieStoreByPath, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.RecalculateStateRoot();
 
-            StorageProvider storageProvider = new(trieStore, stateProvider, logManager);
+            StorageProvider storageProvider = new(trieStoreByPath, stateProvider, logManager);
             InMemoryReceiptStorage receiptStorage = new();
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, logManager);
@@ -317,8 +316,8 @@ namespace Nethermind.Synchronization.Test
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
             SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
-            StateProvider devState = new(trieStore, codeDb, logManager);
-            StorageProvider devStorage = new(trieStore, devState, logManager);
+            StateProvider devState = new(trieStoreByPath, codeDb, logManager);
+            StorageProvider devStorage = new(trieStoreByPath, devState, logManager);
             VirtualMachine devEvm = new(blockhashProvider, specProvider, logManager);
             TransactionProcessor devTxProcessor = new(specProvider, devState, devStorage, devEvm, logManager);
 
@@ -385,7 +384,7 @@ namespace Nethermind.Synchronization.Test
                 syncReport,
                 logManager);
             SyncServer syncServer = new(
-                trieStore,
+                trieStoreByPath,
                 codeDb,
                 tree,
                 receiptStorage,
