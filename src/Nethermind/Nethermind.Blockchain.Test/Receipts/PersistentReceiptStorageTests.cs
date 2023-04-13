@@ -241,19 +241,19 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test]
-        public void When_NewHeadBlock_ResetFinalizedBlockTxIndex()
+        public void When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock()
         {
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock();
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(block.Hash.Bytes);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
 
-            Block newHead = Build.A.Block.WithNumber(Reorganization.MaxDepth + 1).TestObject;
+            Block newHead = Build.A.Block.WithNumber(1).TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead, block));
 
             Assert.That(
                 () => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes],
-                Is.EqualTo(Rlp.Encode(block.Number).Bytes).After(1000, 100)
+                Is.Null.After(1000, 100)
                 );
         }
 
@@ -263,7 +263,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptConfig.TxLookupLimit = 1000;
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock();
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(block.Hash.Bytes);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
 
             Block newHead = Build.A.Block.WithNumber(_receiptConfig.TxLookupLimit.Value + 1).TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);

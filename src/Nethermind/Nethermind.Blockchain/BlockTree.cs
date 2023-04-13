@@ -2065,13 +2065,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public bool IsFinalized(BlockHeader header)
-        {
-            if (header.Number < _syncConfig.PivotNumberParsed) return true;
-            if (header.Number < Head?.Number - Reorganization.MaxDepth) return true;
-            return false;
-        }
-
         public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockHash)
         {
             FinalizedHash = finalizedBlockHash;

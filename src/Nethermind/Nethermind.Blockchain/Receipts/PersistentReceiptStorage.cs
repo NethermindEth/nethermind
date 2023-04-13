@@ -61,20 +61,15 @@ namespace Nethermind.Blockchain.Receipts
 
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
+            if (e.PreviousBlock != null)
+            {
+                RemoveBlockTx(e.PreviousBlock);
+            }
+
             // Dont block main loop
             Task.Run(() =>
             {
                 Block newMain = e.Block;
-
-                // Move finalized block's tx index to use block number
-                if (_receiptConfig.CompactTxIndex)
-                {
-                    Block newFinalized = _blockTree.FindBlock(newMain.Number - Reorganization.MaxDepth);
-                    if (newFinalized != null)
-                    {
-                        EnsureCanonical(newFinalized);
-                    }
-                }
 
                 // Delete old tx index
                 if (_receiptConfig.TxLookupLimit > 0)
@@ -269,26 +264,34 @@ namespace Nethermind.Blockchain.Receipts
 
         public void EnsureCanonical(Block block)
         {
-            TxReceipt[] receipts = Get(block);
             using IBatch batch = _transactionDb.StartBatch();
 
             long headNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
 
             if (_receiptConfig.TxLookupLimit == -1) return;
             if (_receiptConfig.TxLookupLimit != 0 && block.Number <= headNumber - _receiptConfig.TxLookupLimit) return;
-            if (_receiptConfig.CompactTxIndex && block.Number <= headNumber - Reorganization.MaxDepth)
+            if (_receiptConfig.CompactTxIndex)
             {
-                foreach (TxReceipt txReceipt in receipts)
+                foreach (Transaction tx in block.Transactions)
                 {
-                    batch[txReceipt.TxHash.Bytes] = Rlp.Encode(block.Number).Bytes;
+                    batch[tx.Hash.Bytes] = Rlp.Encode(block.Number).Bytes;
                 }
             }
             else
             {
-                foreach (TxReceipt txReceipt in receipts)
+                foreach (Transaction tx in block.Transactions)
                 {
-                    batch[txReceipt.TxHash.Bytes] = block.Hash.Bytes;
+                    batch[tx.Hash.Bytes] = block.Hash.Bytes;
                 }
+            }
+        }
+
+        private void RemoveBlockTx(Block block)
+        {
+            using IBatch batch = _transactionDb.StartBatch();
+            foreach (Transaction tx in block.Transactions)
+            {
+                batch[tx.Hash.Bytes] = null;
             }
         }
     }
