@@ -2941,7 +2941,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RJUMP | Instruction.BEGINSUB:
                         {
-                            if (spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
+                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
                             {
                                 if (!UpdateGas(GasCostOf.RJump, ref gasAvailable))
                                 {
@@ -2974,7 +2974,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RJUMPI | Instruction.RETURNSUB:
                         {
-                            if (spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
+                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
                             {
                                 if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable))
                                 {
@@ -3016,7 +3016,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RJUMPV | Instruction.JUMPSUB:
                         {
-                            if (spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
+                            if (spec.IsEofEvmModeOn  && spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
                             {
                                 if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable))
                                 {
@@ -3069,7 +3069,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.CALLF:
                         {
-                            if (!spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
+                            if (!spec.IsEofEvmModeOn || !spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
                             {
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
                                 return CallResult.InvalidInstructionException;
@@ -3103,7 +3103,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RETF:
                         {
-                            if (!spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
+                            if (!spec.IsEofEvmModeOn && !spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
                             {
                                 EndInstructionTraceError(EvmExceptionType.BadInstruction);
                                 return CallResult.InvalidInstructionException;
