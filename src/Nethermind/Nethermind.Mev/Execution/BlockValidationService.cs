@@ -17,59 +17,62 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Blockchain.Receipts;
 
 namespace Nethermind.Mev.Execution;
 
 public class BlockValidationService
 {
     private readonly IBlockFinder _blockFinder;
-    private readonly IBlockProcessor _blockProcessor;
+    private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
+    private readonly BlockProducerTransactionsExecutorFactory _transactionsExecutorFactory;
+    private readonly IBlockValidator _blockValidator;
+    private readonly IRewardCalculatorSource _rewardCalculatorSource;
+    private readonly IReceiptStorage _receiptStorage;
     private readonly ISpecProvider _specProvider;
     private readonly IGasLimitCalculator _gasLimitCalculator;
     private readonly IHeaderValidator _headerValidator;
+    private readonly ILogManager _logManager;
     private readonly ILogger _logger;
 
     public BlockValidationService(
-        IBlockProcessor blockProcessor,
-        ITransactionProcessor transactionProcessor,
-        IStateProvider stateProvider,
         IBlockFinder blockFinder,
         ISpecProvider specProvider,
         IGasLimitCalculator gasLimitCalculator,
         IHeaderValidator headerValidator,
+        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessorSource,
+        IReceiptStorage receiptStorage,
+        IRewardCalculatorSource rewardCalculatorSource,
+        IBlockValidator blockValidator,
         ILogManager logManager)
     {
-        _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
         _logger = logManager?.GetClassLogger<BlockValidationService>() ?? throw new ArgumentNullException(nameof(logManager));
         _blockFinder = blockFinder;
         _specProvider = specProvider;
         _gasLimitCalculator = gasLimitCalculator;
         _headerValidator = headerValidator;
+        _logManager = logManager;
+        _readOnlyTxProcessingEnvFactory = readOnlyTxProcessorSource;
+        _receiptStorage = receiptStorage;
+        _rewardCalculatorSource = rewardCalculatorSource;
+        _blockValidator = blockValidator;
+        _transactionsExecutorFactory =  new(specProvider!, logManager);;
     }
 
-    public void ValidateBuilderSubmission(BuilderBlockValidationRequest request, bool v2 = false)
+    public void ValidateBuilderSubmission(Block builderBlock, BidTrace message, uint registeredGasLimit,
+        Keccak? withdrawalsRoot = null)
     {
-        if (request.Message is null)
-        {
-            throw new InvalidOperationException("Message is null");
-        }
-
-        if (request.ExecutionPayload is null)
-        {
-            throw new InvalidOperationException("Execution Payload is null");
-        }
-
-        if (!request.ExecutionPayload.TryGetBlock(out Block? builderBlock))
-        {
-            throw new InvalidOperationException("Execution Payload failed to be converted to Block");
-        }
-
         IReleaseSpec spec = _specProvider.GetSpec(builderBlock.Header);
 
-        if (v2)
-            VerifyWithdrawals(builderBlock.Withdrawals, request.WithdrawalsRoot, spec.WithdrawalsEnabled);
-        VerifyBlockHeader(builderBlock, request.Message);
-        ValidatePayload(builderBlock, request.Message.ProposerFeeRecipient, request.Message.Value, request.RegisteredGasLimit);
+        if (withdrawalsRoot is not null || builderBlock.Withdrawals is not null)
+        {
+            VerifyWithdrawals(builderBlock.Withdrawals, withdrawalsRoot, spec.WithdrawalsEnabled);
+        }
+        VerifyBlockHeader(builderBlock, message);
+        ValidatePayload(builderBlock, message.ProposerFeeRecipient, message.Value, registeredGasLimit);
 
         if (_logger.IsInfo) _logger.Info($"Validated block: hash {builderBlock.Hash}, number {builderBlock.Number}, parentHash {builderBlock.ParentHash}");
     }
@@ -128,7 +131,23 @@ public class BlockValidationService
             block
         };
         BlockReceiptsTracer tracer = new();
-        Block[] processed = _blockProcessor.Process(parentBlock.StateRoot, blocks, ProcessingOptions.ReadOnlyChain & ProcessingOptions.DoNotUpdateHead, tracer);
+
+        ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
+
+        BlockProcessor blockProcessor =
+            new(_specProvider,
+            _blockValidator,
+            _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
+            _transactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
+            readOnlyTxProcessingEnv.StateProvider,
+            readOnlyTxProcessingEnv.StorageProvider,
+            _receiptStorage,
+            NullWitnessCollector.Instance,
+            _logManager,
+            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, _logManager)));
+
+
+        Block[] processed = blockProcessor.Process(parentBlock.StateRoot, blocks, ProcessingOptions.ReadOnlyChain & ProcessingOptions.DoNotUpdateHead, tracer);
 
         block = processed[0];
         IReadOnlyList<TxReceipt> receipts = tracer.TxReceipts;

@@ -19,14 +19,9 @@ namespace Nethermind.Consensus
             _blocksConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
         }
 
-        public long GetGasLimit(BlockHeader parentHeader)
+        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit = null)
         {
-            long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
-            return GetGasLimit(parentHeader, targetGasLimit);
-        }
-
-        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit)
-        {
+            targetGasLimit ??= _blocksConfig.TargetBlockGasLimit;
             long parentGasLimit = parentHeader.GasLimit;
             long gasLimit = parentGasLimit;
 

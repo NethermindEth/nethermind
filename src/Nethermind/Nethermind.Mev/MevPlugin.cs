@@ -8,17 +8,25 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
+using Nethermind.State;
 
 namespace Nethermind.Mev
 {
@@ -112,13 +120,22 @@ namespace Nethermind.Mev
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 rpcConfig.EnableModules(ModuleType.Mev);
 
-                BlockValidationService blockValidationService = new(getFromApi.MainBlockProcessor!,
-                    getFromApi.TransactionProcessor!,
-                    getFromApi.StateProvider!,
-                    getFromApi.BlockTree!.AsReadOnly(),
+                ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory =
+                    new (getFromApi.DbProvider!.AsReadOnly(true),
+                    getFromApi.ReadOnlyTrieStore,
+                    getFromApi.BlockTree,
+                    getFromApi.SpecProvider,
+                    getFromApi.LogManager);
+
+                BlockValidationService blockValidationService =
+                    new(getFromApi.BlockTree!.AsReadOnly(),
                     getFromApi.SpecProvider!,
                     getFromApi.GasLimitCalculator,
                     getFromApi.HeaderValidator!,
+                    readOnlyTxProcessingEnvFactory,
+                    getFromApi.ReceiptStorage!,
+                    getFromApi.RewardCalculatorSource!,
+                    getFromApi.BlockValidator!,
                     getFromApi.LogManager);
 
                 MevModuleFactory mevModuleFactory = new(rpcConfig,

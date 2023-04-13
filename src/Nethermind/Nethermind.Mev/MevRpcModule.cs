@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,15 +63,41 @@ namespace Nethermind.Mev
         [JsonRpcMethod(Description = "Validates a builder submission v1", IsImplemented = true)]
         public ResultWrapper<bool> mev_validateBuilderSubmissionV1(BuilderBlockValidationRequest request)
         {
-            _blockValidationService.ValidateBuilderSubmission(request);
+            Block builderBlock = ValidateRequestAndGetBlock(request);
+
+            _blockValidationService.ValidateBuilderSubmission(builderBlock, request.Message!,
+                request.RegisteredGasLimit);
             return ResultWrapper<bool>.Success(true);
         }
 
         [JsonRpcMethod(Description = "Validates a builder submission v2", IsImplemented = true)]
         public ResultWrapper<bool> mev_validateBuilderSubmissionV2(BuilderBlockValidationRequest request)
         {
-            _blockValidationService.ValidateBuilderSubmission(request, true);
+            Block builderBlock = ValidateRequestAndGetBlock(request);
+
+            _blockValidationService.ValidateBuilderSubmission(builderBlock, request.Message!,
+                request.RegisteredGasLimit, request.WithdrawalsRoot);
             return ResultWrapper<bool>.Success(true);
+        }
+
+        private static Block ValidateRequestAndGetBlock(BuilderBlockValidationRequest request)
+        {
+            if (request.Message is null)
+            {
+                throw new InvalidOperationException("Message is null");
+            }
+
+            if (request.ExecutionPayload is null)
+            {
+                throw new InvalidOperationException("Execution Payload is null");
+            }
+
+            if (!request.ExecutionPayload.TryGetBlock(out Block? builderBlock))
+            {
+                throw new InvalidOperationException("Execution Payload failed to be converted to Block");
+            }
+
+            return builderBlock;
         }
 
         public ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc)

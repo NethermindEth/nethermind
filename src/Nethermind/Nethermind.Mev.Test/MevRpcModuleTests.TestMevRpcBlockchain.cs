@@ -23,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -230,14 +231,21 @@ namespace Nethermind.Mev.Test
                 UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
-
-                BlockValidationService blockValidationService = new(chain.BlockProcessor!,
-                    TxProcessor,
-                    State,
-                    BlockFinder,
+                ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory =
+                    new (DbProvider.AsReadOnly(true),
+                    ReadOnlyTrieStore,
+                    BlockTree,
+                    SpecProvider,
+                    LogManager);
+                BlockValidationService blockValidationService =
+                    new(BlockTree.AsReadOnly(),
                     SpecProvider,
                     GasLimitCalculator,
                     HeaderValidator,
+                    readOnlyTxProcessingEnvFactory,
+                    ReceiptStorage,
+                    NoBlockRewards.Instance,
+                    BlockValidator,
                     LogManager);
                 MevRpcModule = new MevRpcModule(new JsonRpcConfig(),
                     BundlePool,

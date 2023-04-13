@@ -24,7 +24,7 @@ namespace Nethermind.Consensus
             return gasLimit;
         }
 
-        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit)
+        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit = null)
         {
             throw new System.NotImplementedException();
         }
