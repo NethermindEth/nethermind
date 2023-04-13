@@ -61,6 +61,17 @@ namespace Nethermind.Core.Test.Builders
                 return stateTree;
             }
 
+            public static StateTreeByPath GetStateTreeByPath(ITrieStore? store)
+            {
+                store ??= new TrieStoreByPath(new MemDb(), LimboLogs.Instance);
+
+                var stateTree = new StateTreeByPath(store, LimboLogs.Instance);
+
+                FillStateTreeWithTestAccounts(stateTree);
+
+                return stateTree;
+            }
+
             public static void FillStateTreeWithTestAccounts(StateTree stateTree)
             {
                 stateTree.Set(AccountsWithPaths[0].Path, AccountsWithPaths[0].Account);
@@ -101,6 +112,30 @@ namespace Nethermind.Core.Test.Builders
                 var account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
 
                 var stateTree = new StateTree(store, LimboLogs.Instance);
+                stateTree.Set(AccountAddress0, account);
+                stateTree.Commit(0);
+
+                return (stateTree, storageTree);
+            }
+
+            public static (StateTreeByPath stateTree, StorageTree storageTree) GetTreesByPath(ITrieStore? store)
+            {
+                store ??= new TrieStoreByPath(new MemDb(), LimboLogs.Instance);
+
+                var storageTree = new StorageTree(store, LimboLogs.Instance, AccountAddress0);
+
+                storageTree.Set(SlotsWithPaths[0].Path, SlotsWithPaths[0].SlotRlpValue, false);
+                storageTree.Set(SlotsWithPaths[1].Path, SlotsWithPaths[1].SlotRlpValue, false);
+                storageTree.Set(SlotsWithPaths[2].Path, SlotsWithPaths[2].SlotRlpValue, false);
+                storageTree.Set(SlotsWithPaths[3].Path, SlotsWithPaths[3].SlotRlpValue, false);
+                storageTree.Set(SlotsWithPaths[4].Path, SlotsWithPaths[4].SlotRlpValue, false);
+                storageTree.Set(SlotsWithPaths[5].Path, SlotsWithPaths[5].SlotRlpValue, false);
+
+                storageTree.Commit(0);
+
+                var account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
+
+                var stateTree = new StateTreeByPath(store, LimboLogs.Instance);
                 stateTree.Set(AccountAddress0, account);
                 stateTree.Commit(0);
 

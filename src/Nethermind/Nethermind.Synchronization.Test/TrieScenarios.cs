@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -42,7 +41,7 @@ namespace Nethermind.Synchronization.Test
                 // _logManager = new OneLoggerLogManager(_logger);
 
                 // this setup is just for finding the storage root
-                StorageTree remoteStorageTree = SetStorage(new TrieStoreByPath(new MemDb(), LimboLogs.Instance), TestItem.AddressA);
+                StorageTree remoteStorageTree = SetStorage(new TrieStore(new MemDb(), LimboLogs.Instance));
                 Keccak storageRoot = remoteStorageTree.RootHash;
 
                 Empty = Build.An.Account.WithBalance(0).TestObject;
@@ -57,14 +56,14 @@ namespace Nethermind.Synchronization.Test
             }
         }
 
-        private static (string Name, Action<StateTreeByPath, ITrieStore, IDb> Action)[] _scenarios;
+        private static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] _scenarios;
 
-        public static (string Name, Action<StateTreeByPath, ITrieStore, IDb> Action)[] Scenarios
+        public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios
             => LazyInitializer.EnsureInitialized(ref _scenarios, InitScenarios);
 
-        private static (string Name, Action<StateTreeByPath, ITrieStore, IDb> Action)[] InitScenarios()
+        private static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] InitScenarios()
         {
-            return new (string, Action<StateTreeByPath, ITrieStore, IDb>)[]
+            return new (string, Action<StateTree, ITrieStore, IDb>)[]
             {
                 ("empty", (tree, stateDb, codeDb) =>
                 {
@@ -73,17 +72,18 @@ namespace Nethermind.Synchronization.Test
                 }),
                 ("set_3_via_address", (tree, stateDb, codeDb) =>
                 {
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    SetupAccountWithStorage(stateDb, tree, TestItem.AddressA, Account0);
-                    SetupAccountWithStorage(stateDb, tree, TestItem.AddressB, Account0);
-                    SetupAccountWithStorage(stateDb, tree, TestItem.AddressC, Account0);
+                    tree.Set(TestItem.AddressA, Account0);
+                    tree.Set(TestItem.AddressB, Account0);
+                    tree.Set(TestItem.AddressC, Account0);
                     tree.Commit(0);
                 }),
                 ("storage_hash_and_code_hash_same", (tree, stateDb, codeDb) =>
                 {
                     var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
                     Keccak codeHash = Keccak.Compute(code);
-                    StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance, new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+                    StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
                     remoteStorageTree.Set((UInt256) 1, new byte[] {1});
                     remoteStorageTree.Commit(0);
                     remoteStorageTree.UpdateRootHash();
@@ -95,7 +95,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
                     Keccak codeHash = Keccak.Compute(code);
-                    StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance, new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+                    StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
                     remoteStorageTree.Set((UInt256) 1, new byte[] {1});
                     remoteStorageTree.Commit(0);
                     remoteStorageTree.UpdateRootHash();
@@ -108,7 +108,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
                     Keccak codeHash = Keccak.Compute(code);
-                    StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance, new Keccak("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+                    StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
                     remoteStorageTree.Set((UInt256) 1, new byte[] {1});
                     remoteStorageTree.Commit(0);
                     remoteStorageTree.UpdateRootHash();
@@ -126,43 +126,43 @@ namespace Nethermind.Synchronization.Test
                 }),
                 ("set_3_delete_1", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
                     tree.Commit(0);
                 }),
                 ("set_3_delete_2", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
                     tree.Commit(0);
                 }),
                 ("set_3_delete_all", (tree, stateDb, codeDb) =>
                 {
-//
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
-                    tree.Set( new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
-                    tree.Set( new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
-                    tree.Set( new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
+//                    SetStorage(stateDb);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
                     tree.Commit(0);
                 }),
                 ("extension_read_full_match", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
                     Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
@@ -170,11 +170,11 @@ namespace Nethermind.Synchronization.Test
                 }),
                 ("extension_read_missing", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
                     Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
@@ -182,13 +182,13 @@ namespace Nethermind.Synchronization.Test
                 }),
                 ("extension_new_branch", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
                     codeDb[Keccak.Compute(Code2).Bytes] = Code2;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"), Account2);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"), Account2);
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
                     tree.Commit(0);
@@ -204,55 +204,55 @@ namespace Nethermind.Synchronization.Test
                 }),
                 ("extension_delete_missing", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
-                    tree.Set( new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddd"), null);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddd"), null);
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
                     tree.Commit(0);
                 }),
                 ("extenson_create_new_extension", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
                     codeDb[Keccak.Compute(Code2).Bytes] = Code2;
                     codeDb[Keccak.Compute(Code3).Bytes] = Code3;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab00000000"), Account2);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab11111111"), Account3);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab00000000"), Account2);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab11111111"), Account3);
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
                     tree.Commit(0);
                 }),
                 ("leaf_new_value", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account1);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account1);
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
                     tree.Commit(0);
                 }),
                 ("leaf_no_change", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
                     tree.Commit(0);
                 }),
                 ("leaf_delete", (tree, stateDb, codeDb) =>
                 {
-//
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+//                    SetStorage(stateDb);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), null);
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
@@ -260,9 +260,9 @@ namespace Nethermind.Synchronization.Test
                 }),
                 ("leaf_delete_missing", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     tree.Set(new Keccak("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd"), null);
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
@@ -270,20 +270,20 @@ namespace Nethermind.Synchronization.Test
                 }),
                 ("leaf_update_extension", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000"), Account1);
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
                     tree.Commit(0);
                 }),
                 ("leaf_read", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     Account account = tree.Get(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"));
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
@@ -291,9 +291,9 @@ namespace Nethermind.Synchronization.Test
                 }),
                 ("leaf_update_missing", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
+                    tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     Account account = tree.Get(new Keccak("111111111111111111111111111111111111111111111111111111111ddddddd"));
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
@@ -301,24 +301,24 @@ namespace Nethermind.Synchronization.Test
                 }),
                 ("branch_update_missing", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
                     codeDb[Keccak.Compute(Code2).Bytes] = Code2;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), Account2);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), Account2);
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
                     tree.Commit(0);
                 }),
                 ("branch_read_missing", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
                     Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
@@ -326,11 +326,11 @@ namespace Nethermind.Synchronization.Test
                 }),
                 ("branch_delete_missing", (tree, stateDb, codeDb) =>
                 {
-
+                    SetStorage(stateDb);
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
-                    SetupAccountWithStorage(stateDb, tree, new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), Account0);
+                    tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), Account1);
                     tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), null);
                     tree.UpdateRootHash();
                     Keccak rootHash = tree.RootHash;
@@ -339,26 +339,9 @@ namespace Nethermind.Synchronization.Test
             };
         }
 
-
-        private static void SetupAccountWithStorage(ITrieStore store, StateTreeByPath tree, Address address, Account account)
+        private static StorageTree SetStorage(ITrieStore trieStore)
         {
-           SetupAccountWithStorage(store, tree, Keccak.Compute(address.Bytes), account);
-        }
-
-        private static void SetupAccountWithStorage(ITrieStore store, StateTreeByPath tree, Keccak address, Account account)
-        {
-            SetStorage(store, address);
-            tree.Set(address, account);
-        }
-
-        private static StorageTree SetStorage(ITrieStore trieStore, Address address)
-        {
-            return SetStorage(trieStore, Keccak.Compute(address.Bytes));
-        }
-
-        private static StorageTree SetStorage(ITrieStore trieStore, Keccak address)
-        {
-            StorageTree remoteStorageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance, address);
+            StorageTree remoteStorageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
 
             remoteStorageTree.Set((UInt256)1, new byte[] { 1 });
             remoteStorageTree.Set((UInt256)2, new byte[] { 2 });
