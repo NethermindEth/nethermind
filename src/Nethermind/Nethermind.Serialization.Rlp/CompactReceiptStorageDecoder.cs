@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -14,10 +13,12 @@ namespace Nethermind.Serialization.Rlp
 {
     public class CompactReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
-        public static readonly CompactReceiptStorageDecoder Instance = new();
+        public static readonly CompactReceiptStorageDecoder Instance = new(false);
+        private bool _encodeBloom;
 
-        public CompactReceiptStorageDecoder()
+        public CompactReceiptStorageDecoder(bool encodeBloom = false)
         {
+            _encodeBloom = encodeBloom;
         }
 
         public TxReceipt? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -61,7 +62,26 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(lastCheck);
             }
 
-            txReceipt.Bloom = new Bloom(txReceipt.Logs);
+            if (_encodeBloom)
+            {
+                sequenceLength = rlpStream.ReadSequenceLength();
+                lastCheck = sequenceLength + rlpStream.Position;
+                txReceipt.Bloom = new Bloom();
+                Span<byte> theByte = txReceipt.Bloom.Bytes;
+
+                int position = 0;
+                while (rlpStream.Position < lastCheck)
+                {
+                    position += rlpStream.DecodeInt();
+                    int bytePos = position / 8;
+                    int byteIndex = position % 8;
+                    theByte[bytePos] = (byte)(theByte[bytePos] | (1 << (7 - byteIndex)));
+                }
+            }
+            else
+            {
+                txReceipt.Bloom = new Bloom(txReceipt.Logs);
+            }
 
             return txReceipt;
         }
@@ -109,7 +129,26 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
-            txReceipt.Bloom = new Bloom(txReceipt.Logs);
+            if (_encodeBloom)
+            {
+                sequenceLength = decoderContext.ReadSequenceLength();
+                lastCheck = sequenceLength + decoderContext.Position;
+                txReceipt.Bloom = new Bloom();
+                Span<byte> theByte = txReceipt.Bloom.Bytes;
+
+                int position = 0;
+                while (decoderContext.Position < lastCheck)
+                {
+                    position += decoderContext.DecodeInt();
+                    int bytePos = position / 8;
+                    int byteIndex = position % 8;
+                    theByte[bytePos] = (byte)(theByte[bytePos] | (1 << (7 - byteIndex)));
+                }
+            }
+            else
+            {
+                txReceipt.Bloom = new Bloom(txReceipt.Logs);
+            }
 
             return txReceipt;
         }
@@ -146,6 +185,23 @@ namespace Nethermind.Serialization.Rlp
             int logsBytes = peekPrefixAndContentLength.ContentLength + peekPrefixAndContentLength.PrefixLength;
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
+
+            if (_encodeBloom)
+            {
+                int sequenceLength = decoderContext.ReadSequenceLength();
+                int lastCheck = sequenceLength + decoderContext.Position;
+                item.Bloom = new BloomStructRef(new byte[256]);
+                Span<byte> theByte = item.Bloom.Bytes;
+
+                int position = 0;
+                while (decoderContext.Position < lastCheck)
+                {
+                    position += decoderContext.DecodeInt();
+                    int bytePos = position / 8;
+                    int byteIndex = position % 8;
+                    theByte[bytePos] = (byte)(theByte[bytePos] | (1 << (7 - byteIndex)));
+                }
+            }
         }
 
         public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors none,
@@ -201,6 +257,40 @@ namespace Nethermind.Serialization.Rlp
             {
                 CompactLogEntryDecoder.Instance.Encode(rlpStream, logs[i]);
             }
+
+            if (_encodeBloom)
+            {
+                EncodeBloom(rlpStream, item.Bloom);
+            }
+        }
+
+        private void EncodeBloom(RlpStream rlpStream, Bloom? bloom)
+        {
+            if (bloom == null)
+            {
+                rlpStream.Write(Rlp.OfEmptySequence.Bytes);
+                return;
+            }
+
+            int bloomLength = BloomLength(bloom);
+            rlpStream.StartSequence(bloomLength);
+
+            byte[] bytes = bloom.Bytes;
+
+            int prevPointer = 0;
+
+            for (int i = 0; i < bytes.Length; i+=4)
+            {
+                uint data = (uint) (bytes[i] << 24 | bytes[i + 1] << 16 | bytes[i + 2] << 8 | bytes[i + 3] << 0);
+                int byteOffset = i * 8;
+                while (data != 0)
+                {
+                    int idx = NextLowestSetBit(ref data);
+                    int newPointer = byteOffset + idx;
+                    rlpStream.Encode(newPointer - prevPointer);
+                    prevPointer = newPointer;
+                }
+            }
         }
 
         private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
@@ -228,6 +318,11 @@ namespace Nethermind.Serialization.Rlp
             logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
 
+            if (_encodeBloom)
+            {
+                contentLength += Rlp.LengthOfSequence(BloomLength(item.Bloom));
+            }
+
             return (contentLength, logsLength);
         }
 
@@ -247,6 +342,52 @@ namespace Nethermind.Serialization.Rlp
         {
             (int Total, int Logs) length = GetContentLength(item, rlpBehaviors);
             return Rlp.LengthOfSequence(length.Total);
+        }
+
+        private int BloomLength(Bloom? bloom)
+        {
+            if (bloom == null)
+            {
+                return 1;
+            }
+
+            byte[] bytes = bloom.Bytes;
+            int contentLength = 0;
+            int prevPointer = 0;
+
+            for (int i = 0; i < bytes.Length; i+=4)
+            {
+                // Its big endien here?
+                uint data = (uint) (bytes[i] << 24 | bytes[i + 1] << 16 | bytes[i + 2] << 8 | bytes[i + 3] << 0);
+                int byteOffset = i * 8;
+                while (data != 0)
+                {
+                    int idx = NextLowestSetBit(ref data);
+                    int newPointer = byteOffset + idx;
+                    contentLength += Rlp.LengthOf(newPointer - prevPointer);
+                    prevPointer = newPointer;
+                }
+            }
+
+            return contentLength;
+        }
+
+        private int NextLowestSetBit(ref uint data)
+        {
+            // Get the lowest set bit and its index from data
+            // TODO: bit manipulation and lookup
+            int index = 0;
+            uint data2 = data;
+            uint leftMost = (uint) 1 << 31;
+            while ((data2 & leftMost) == 0)
+            {
+                data2 <<= 1;
+                index++;
+            }
+
+            data = (uint)(data & ~(leftMost >> index));
+
+            return index;
         }
     }
 }
