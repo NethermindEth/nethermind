@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -15,13 +14,12 @@ using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network
 {
     public class PeerPool : IPeerPool
     {
-        private Timer _peerPersistenceTimer;
+        private PeriodicTimer _peerPersistenceTimer;
         private Task? _storageCommitTask;
 
         private readonly INodeSource _nodeSource;
@@ -176,55 +174,34 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebug) _logger.Debug("Starting peer persistence timer");
 
-            _peerPersistenceTimer = new Timer(_networkConfig.PeersPersistenceInterval)
-            {
-                AutoReset = false
-            };
+            _peerPersistenceTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(_networkConfig.PeersPersistenceInterval));
 
-            _peerPersistenceTimer.Elapsed += (sender, e) =>
-            {
-                try
-                {
-                    _peerPersistenceTimer.Enabled = false;
-                    _storageCommitTask = RunPeerCommit().ContinueWith(x =>
-                    {
-                        if (x.IsFaulted && _logger.IsError)
-                        {
-                            _logger.Error($"Error during peer storage commit: {x.Exception}");
-                        }
-                        _peerPersistenceTimer.Enabled = true;
-                    });
-                }
-                catch (Exception exception)
-                {
-                    if (_logger.IsDebug) _logger.Error("Peer persistence timer failed", exception);
-                    _peerPersistenceTimer.Enabled = true;
-                }
-            };
-
-            _peerPersistenceTimer.Start();
+            _storageCommitTask = RunPeerCommit();
         }
 
         private async Task RunPeerCommit()
         {
-            // Return the Task immediately so it can be set in the _storageCommitTask field
-            await Task.Yield();
-            try
+            var token = _cancellationTokenSource.Token;
+            while (!token.IsCancellationRequested
+                && await _peerPersistenceTimer.WaitForNextTickAsync(token))
             {
-                UpdateReputationAndMaxPeersCount();
-
-                if (!_peerStorage.AnyPendingChange())
+                try
                 {
-                    if (_logger.IsTrace) _logger.Trace("No changes in peer storage, skipping commit.");
-                    return;
-                }
+                    UpdateReputationAndMaxPeersCount();
 
-                _peerStorage.Commit();
-                _peerStorage.StartBatch();
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error during peer storage commit: {ex}");
+                    if (!_peerStorage.AnyPendingChange())
+                    {
+                        if (_logger.IsTrace) _logger.Trace("No changes in peer storage, skipping commit.");
+                        return;
+                    }
+
+                    _peerStorage.Commit();
+                    _peerStorage.StartBatch();
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Error during peer storage commit: {ex}");
+                }
             }
         }
 
@@ -278,7 +255,7 @@ namespace Nethermind.Network
             try
             {
                 if (_logger.IsDebug) _logger.Debug("Stopping peer timers");
-                _peerPersistenceTimer?.Stop();
+
                 _peerPersistenceTimer?.Dispose();
             }
             catch (Exception e)
@@ -309,7 +286,7 @@ namespace Nethermind.Network
             {
                 storageCloseTask = _storageCommitTask.ContinueWith(x =>
                 {
-                    if (x.IsFaulted)
+                    if (x.IsFaulted && x.Exception is not null && x.Exception.InnerException is not TaskCanceledException && x.Exception.InnerExceptions.All(ex => ex is not TaskCanceledException))
                     {
                         if (_logger.IsError) _logger.Error("Error during peer persistence stop.", x.Exception);
                     }
