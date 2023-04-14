@@ -21,7 +21,7 @@ namespace Nethermind.Db
 
         public string Name { get; } = "NullDb";
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get => null;
             set => throw new NotSupportedException();
@@ -29,12 +29,12 @@ namespace Nethermind.Db
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, null)).ToArray();
 
-        public void Remove(byte[] key)
+        public void Remove(ReadOnlySpan<byte> key)
         {
             throw new NotSupportedException();
         }
 
-        public bool KeyExists(byte[] key)
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
             return false;
         }

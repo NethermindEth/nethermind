@@ -62,7 +62,12 @@ namespace Ethereum.Blockchain.Block.Test
                 }
             }
 
-            return prefix + expectedTypeName;
+            if (char.IsDigit(expectedTypeName.FirstOrDefault()))
+            {
+                prefix += "eip";
+            }
+
+            return prefix + expectedTypeName.Replace("-", "");
         }
     }
 }

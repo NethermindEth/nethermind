@@ -385,8 +385,13 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
             }
         }
 
+        // Ensure the timestamp has the correct delay
+        header.Timestamp = Math.Max(parentBlock.Timestamp + _config.BlockPeriod, _timestamper.UnixTime.Seconds);
+
+        var spec = _specProvider.GetSpec(header);
+
+        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
         // Set the correct difficulty
-        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, _specProvider.GetSpec(header));
         header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
         header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
         if (_logger.IsDebug)
@@ -414,17 +419,17 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 
         // Mix digest is reserved for now, set to empty
         header.MixHash = Keccak.Zero;
-        // Ensure the timestamp has the correct delay
-        header.Timestamp = parentBlock.Timestamp + _config.BlockPeriod;
-        if (header.Timestamp < _timestamper.UnixTime.Seconds)
-        {
-            header.Timestamp = _timestamper.UnixTime.Seconds;
-        }
+        header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
 
         _stateProvider.StateRoot = parentHeader.StateRoot!;
 
         IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
-        Block block = new BlockToProduce(header, selectedTxs, Array.Empty<BlockHeader>());
+        Block block = new BlockToProduce(
+            header,
+            selectedTxs,
+            Array.Empty<BlockHeader>(),
+            spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null
+            );
         header.TxRoot = new TxTrie(block.Transactions).RootHash;
         block.Header.Author = _sealer.Address;
         return block;

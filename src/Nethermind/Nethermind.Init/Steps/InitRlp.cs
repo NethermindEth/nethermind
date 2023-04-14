@@ -34,6 +34,8 @@ namespace Nethermind.Init.Steps
             }
 
             HeaderDecoder.Eip1559TransitionBlock = _api.SpecProvider.GenesisSpec.Eip1559TransitionBlock;
+            HeaderDecoder.WithdrawalTimestamp = _api.SpecProvider.GenesisSpec.WithdrawalTimestamp;
+            HeaderDecoder.Eip4844TransitionTimestamp = _api.SpecProvider.GenesisSpec.Eip4844TransitionTimestamp;
 
             return Task.CompletedTask;
         }

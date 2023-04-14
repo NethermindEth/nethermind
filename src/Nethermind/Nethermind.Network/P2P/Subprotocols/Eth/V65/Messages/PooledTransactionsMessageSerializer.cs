@@ -4,6 +4,7 @@
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 {

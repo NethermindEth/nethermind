@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private class Context
         {
-            public async Task Build(ISpecProvider? specProvider = null, Boolean isAura = false)
+            public async Task Build(ISpecProvider? specProvider = null, bool isAura = false)
             {
                 JsonRpcConfig = new JsonRpcConfig();
                 Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
@@ -618,7 +618,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 Eip1559TransitionBlock = 1
             };
-            TestSpecProvider specProvider = new(releaseSpec) { ChainId = ChainId.Mainnet };
+            TestSpecProvider specProvider = new(releaseSpec);
             await context.Build(specProvider, isAura: true);
             TestRpcBlockchain blockchain = context.Blockchain;
             UInt256 currentNonceAddressC = blockchain.State.GetAccount(TestItem.AddressC).Nonce;

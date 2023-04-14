@@ -208,7 +208,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(0, false)]
         public async Task Can_sync_with_peer_when_it_times_out_on_full_batch(int ignoredBlocks, bool mergeDownloader)
         {
-            Context ctx = mergeDownloader ? new MergeContext() : new Context();
+            Context ctx = mergeDownloader ? new PostMergeContext() : new Context();
             SyncBatchSize syncBatchSize = new SyncBatchSize(LimboLogs.Instance);
             syncBatchSize.ExpandUntilMax();
             ctx.SyncBatchSize = syncBatchSize;
@@ -246,7 +246,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(32, 16, 100, false)]
         public async Task Can_sync_partially_when_only_some_bodies_is_available(int blockCount, int availableBlock, int minResponseLength, bool mergeDownloader)
         {
-            Context ctx = mergeDownloader ? new MergeContext() : new Context();
+            Context ctx = mergeDownloader ? new PostMergeContext() : new Context();
             BlockDownloader downloader = ctx.BlockDownloader;
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -472,6 +472,13 @@ namespace Nethermind.Synchronization.Test
                 Thread.Sleep(1000);
                 return true;
             }
+
+            public bool ValidateWithdrawals(Block block, out string? error)
+            {
+                Thread.Sleep(1000);
+                error = string.Empty;
+                return true;
+            }
         }
 
         [Test, MaxTime(7000)]
@@ -580,6 +587,8 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; } = UInt256.MaxValue;
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
+            public byte ProtocolVersion { get; }
+            public string ProtocolCode { get; }
 
             public void Disconnect(InitiateDisconnectReason reason, string details)
             {
@@ -913,7 +922,7 @@ namespace Nethermind.Synchronization.Test
             {
                 get
                 {
-                    if (_blockTree == null)
+                    if (_blockTree is null)
                     {
                         _blockTree = new BlockTree(new MemDb(), new MemDb(), _blockInfoDb, new ChainLevelInfoRepository(_blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
                         _blockTree.SuggestBlock(genesis);
@@ -958,11 +967,16 @@ namespace Nethermind.Synchronization.Test
             protected virtual IBetterPeerStrategy BetterPeerStrategy =>
                 _betterPeerStrategy ??= new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
 
-            private ISyncModeSelector SyncModeSelector => _syncModeSelector ??=
+            public ISyncModeSelector SyncModeSelector => _syncModeSelector ??=
                 new MultiSyncModeSelector(SyncProgressResolver, PeerPool, syncConfig, No.BeaconSync, BetterPeerStrategy, LimboLogs.Instance);
 
-            private FullSyncFeed _feed;
-            public ActivatedSyncFeed<BlocksRequest> Feed => _feed ??= new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
+            private ActivatedSyncFeed<BlocksRequest?>? _feed;
+
+            public ActivatedSyncFeed<BlocksRequest?> Feed
+            {
+                get => _feed ??= new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
+                set => _feed = value;
+            }
 
             private ISealValidator? _sealValidator;
             public ISealValidator SealValidator
@@ -1009,6 +1023,7 @@ namespace Nethermind.Synchronization.Test
         private class SyncPeerMock : ISyncPeer
         {
             private readonly bool _withReceipts;
+            private readonly bool _withWithdrawals;
             private readonly BlockHeadersMessageSerializer _headersSerializer = new();
             private readonly BlockBodiesMessageSerializer _bodiesSerializer = new();
             private readonly ReceiptsMessageSerializer _receiptsSerializer = new(RopstenSpecProvider.Instance);
@@ -1019,16 +1034,18 @@ namespace Nethermind.Synchronization.Test
 
             public Response Flags { get; set; }
 
-            public SyncPeerMock(long chainLength, bool withReceipts, Response flags)
+            public SyncPeerMock(long chainLength, bool withReceipts, Response flags, bool withWithdrawals = false)
             {
                 _withReceipts = withReceipts;
+                _withWithdrawals = withWithdrawals;
                 Flags = flags;
                 BuildTree(chainLength, withReceipts);
             }
 
-            public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty)
+            public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty, bool withWithdrawals = false)
             {
                 _withReceipts = withReceipts;
+                _withWithdrawals = withWithdrawals;
                 Flags = flags;
                 BlockTree = blockTree;
                 HeadNumber = BlockTree.Head.Number;
@@ -1039,13 +1056,13 @@ namespace Nethermind.Synchronization.Test
             private void BuildTree(long chainLength, bool withReceipts)
             {
                 _receiptStorage = new InMemoryReceiptStorage();
-                BlockTreeBuilder builder = Build.A.BlockTree();
+                BlockTreeBuilder builder = Build.A.BlockTree(MainnetSpecProvider.Instance);
                 if (withReceipts)
                 {
-                    builder = builder.WithTransactions(_receiptStorage, MainnetSpecProvider.Instance);
+                    builder = builder.WithTransactions(_receiptStorage);
                 }
 
-                builder = builder.OfChainLength((int)chainLength);
+                builder = builder.OfChainLength((int)chainLength, 0, 0, _withWithdrawals);
                 BlockTree = builder.TestObject;
 
                 HeadNumber = BlockTree.Head.Number;
@@ -1065,6 +1082,8 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; }
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
+            public byte ProtocolVersion { get; }
+            public string ProtocolCode { get; }
 
             public void Disconnect(InitiateDisconnectReason reason, string details)
             {

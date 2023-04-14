@@ -26,35 +26,39 @@ namespace Nethermind.Specs
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
+        public ulong TimestampFork => ShanghaiTimestamp;
         public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
 
-        private IReleaseSpec IstanbulNoBomb { get; } = Istanbul.Instance;
-
-        private IReleaseSpec BerlinNoBomb { get; } = Berlin.Instance;
-
-        private IReleaseSpec LondonNoBomb { get; } = London.Instance;
-
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
-            forkActivation.BlockNumber switch
+        public IReleaseSpec GetSpec(ForkActivation forkActivation)
+        {
+            return forkActivation.BlockNumber switch
             {
                 < IstanbulBlockNumber => GenesisSpec,
-                < BerlinBlockNumber => IstanbulNoBomb,
-                < LondonBlockNumber => BerlinNoBomb,
-                _ => LondonNoBomb
+                < BerlinBlockNumber => Istanbul.Instance,
+                < LondonBlockNumber => Berlin.Instance,
+                _ => forkActivation.Timestamp switch
+                {
+                    null or < ShanghaiTimestamp => London.Instance,
+                    _ => Shanghai.Instance
+                }
             };
+        }
 
         public long? DaoBlockNumber => null;
         public const long IstanbulBlockNumber = 1_561_651;
         public const long BerlinBlockNumber = 4_460_644;
         public const long LondonBlockNumber = 5_062_605;
-        public ulong ChainId => Core.ChainId.Goerli;
+        public const ulong ShanghaiTimestamp = 1678832736;
+        public ulong NetworkId => BlockchainIds.Goerli;
+        public ulong ChainId => NetworkId;
 
         public ForkActivation[] TransitionActivations { get; } =
         {
             (ForkActivation)IstanbulBlockNumber,
             (ForkActivation)BerlinBlockNumber,
-            (ForkActivation)LondonBlockNumber
+            (ForkActivation)LondonBlockNumber,
+            (LondonBlockNumber, ShanghaiTimestamp)
         };
     }
 }

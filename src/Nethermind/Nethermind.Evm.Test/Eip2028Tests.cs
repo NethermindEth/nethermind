@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Test
         private class AfterIstanbul : Eip2028Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(32000, ((ForkActivation)0, Istanbul.Instance));
+            protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
 
             [Test]
             public void non_zero_transaction_data_cost_should_be_16()

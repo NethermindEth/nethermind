@@ -178,27 +178,6 @@ namespace Nethermind.Core.Extensions
             return bytes.ToHexString(true, skipLeadingZeros, false);
         }
 
-        [Obsolete]
-        public static string ToHexStringOld(this in UInt256 value, bool skipLeadingZeros)
-        {
-            if (skipLeadingZeros)
-            {
-                if (value == UInt256.Zero)
-                {
-                    return "0x";
-                }
-
-                if (value == UInt256.One)
-                {
-                    return "0x1";
-                }
-            }
-
-            byte[] bytes = new byte[32];
-            value.ToBigEndian(bytes);
-            return bytes.ToHexStringOld(true, skipLeadingZeros, false);
-        }
-
         public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes)
         {
             if (bytes is null)

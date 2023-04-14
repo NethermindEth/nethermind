@@ -41,7 +41,7 @@ namespace Nethermind.Init.Steps
 
             //Loop over config properties checking mismaches and changing defaults
             //So that on given and current inner configs we would only have same values
-            if (propertyInfos == null) return;
+            if (propertyInfos is null) return;
 
             foreach (PropertyInfo? propertyInfo in propertyInfos)
             {

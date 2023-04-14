@@ -13,7 +13,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core.Authentication;
 
-public class JwtAuthentication : IRpcAuthentication
+public partial class JwtAuthentication : IRpcAuthentication
 {
     private readonly SecurityKey _securityKey;
     private readonly ILogger _logger;
@@ -61,11 +61,10 @@ public class JwtAuthentication : IRpcAuthentication
                 {
                     logger.Error($"Cannot write authentication secret to '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
                 }
-
                 throw;
             }
 
-            if (logger.IsInfo) logger.Info($"Authentication secret has been written to '{fileInfo.FullName}'.");
+            if (logger.IsWarn) logger.Warn($"The authentication secret hasn't been found in '{fileInfo.FullName}'so it has been automatically created.");
 
             return new(secret, timestamper, logger);
         }
@@ -85,18 +84,16 @@ public class JwtAuthentication : IRpcAuthentication
                 {
                     logger.Error($"Cannot read authentication secret from '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
                 }
-
                 throw;
             }
 
             hexSecret = hexSecret.Trim();
-            if (!Regex.IsMatch(hexSecret, @"^(0x)?[0-9a-fA-F]{64}$"))
+            if (!SecretRegex().IsMatch(hexSecret))
             {
                 if (logger.IsError)
                 {
                     logger.Error($"The specified authentication secret is not a 64-digit hex number. Delete the '{fileInfo.FullName}' to generate a new secret or set the 'JsonRpc.JwtSecretFile' parameter.");
                 }
-
                 throw new FormatException("The specified authentication secret must be a 64-digit hex number.");
             }
 
@@ -173,8 +170,11 @@ public class JwtAuthentication : IRpcAuthentication
         SecurityToken securityToken,
         TokenValidationParameters validationParameters)
     {
-        if (expires == null) return true;
+        if (!expires.HasValue) return true;
         long exp = ((DateTimeOffset)expires).ToUnixTimeSeconds();
         return _timestamper.UnixTime.SecondsLong < exp;
     }
+
+    [GeneratedRegex("^(0x)?[0-9a-fA-F]{64}$")]
+    private static partial Regex SecretRegex();
 }

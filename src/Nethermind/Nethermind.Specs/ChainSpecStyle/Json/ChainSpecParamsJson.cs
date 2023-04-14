@@ -14,7 +14,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
     [SuppressMessage("ReSharper", "InconsistentNaming")]
     internal class ChainSpecParamsJson
     {
-        public ulong ChainId { get; set; }
+        public ulong? ChainId { get; set; }
         public ulong? NetworkId { get; set; }
 
         [JsonProperty(PropertyName = "registrar")]
@@ -100,7 +100,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         public long? Eip3541Transition { get; set; }
 
-        // We explicitly want this to be enabled by default on all the networks 
+        // We explicitly want this to be enabled by default on all the networks
         // we can disable it if needed, but its expected not to cause issues
         public long? Eip3607Transition { get; set; } = 0;
 
@@ -141,5 +141,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong? Eip3670TransitionTimestamp { get; set; }
         public ulong? Eip4200TransitionTimestamp { get; set; }
         public ulong? Eip4750TransitionTimestamp { get; set; }
+        public ulong? Eip4895TransitionTimestamp { get; set; }
+
+        public ulong? Eip4844TransitionTimestamp { get; set; }
     }
 }

@@ -34,6 +34,7 @@ using Nethermind.Wallet;
 using NSubstitute;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Benchmark

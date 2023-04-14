@@ -28,11 +28,12 @@ namespace Nethermind.Facade.Proxy.Models
         public UInt256 TotalDifficulty { get; set; }
         public List<T> Transactions { get; set; }
         public Keccak TransactionsRoot { get; set; }
+        public UInt256? ExcessDataGas { get; set; }
 
         public Block ToBlock()
         {
             Block block = new(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, (long)Number,
-                (long)GasLimit, Timestamp, ExtraData));
+                (long)GasLimit, Timestamp, ExtraData, ExcessDataGas));
 
             block.Header.StateRoot = StateRoot;
             block.Header.GasUsed = (long)GasUsed;

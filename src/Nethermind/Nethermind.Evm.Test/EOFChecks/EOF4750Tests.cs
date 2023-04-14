@@ -16,12 +16,12 @@ using TestCase = Nethermind.Evm.Test.EofTestsBase.TestCase;
 namespace Nethermind.Evm.Test
 {
     /// <summary>
-    /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649a
+    /// https://gist.github.com/holiman/174548cad102096858583c6fbbb0649as
     /// </summary>
     public class EOF4750Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
-        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance));
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Cancun.Instance));
 
         public static IEnumerable<TestCase> Eip4750TxTestCases
         {
@@ -260,7 +260,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void EOF_Opcode_Deprecation_checks()
         {
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+            var TargetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance);
 
             Instruction[] StaticRelativeJumpsOpcode =
             {
@@ -278,7 +278,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void EOF_Static_jumps_activation_tests()
         {
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+            var TargetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance);
 
             Instruction[] StaticRelativeJumpsOpcode =
             {
@@ -303,7 +303,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void EOF_validation_tests([ValueSource(nameof(Eip4750TxTestCases))] TestCase testcase)
         {
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+            var TargetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance);
 
             Instance.EOF_contract_header_parsing_tests(testcase, TargetReleaseSpec);
         }

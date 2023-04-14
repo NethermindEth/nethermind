@@ -28,7 +28,7 @@ public class TransactionForRpc
         GasPrice = transaction.GasPrice;
         Gas = transaction.GasLimit;
         Input = Data = transaction.Data;
-        if (transaction.IsEip1559)
+        if (transaction.Supports1559)
         {
             GasPrice = baseFee is not null
                 ? transaction.CalculateEffectiveGasPrice(true, baseFee.Value)
@@ -44,7 +44,7 @@ public class TransactionForRpc
         if (signature is not null)
         {
 
-            YParity = (transaction.IsEip1559 || transaction.IsEip2930) ? signature.RecoveryId : null;
+            YParity = transaction.SupportsAccessList ? signature.RecoveryId : null;
             R = new UInt256(signature.R, true);
             S = new UInt256(signature.S, true);
             V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
@@ -91,6 +91,8 @@ public class TransactionForRpc
 
     public AccessListItemForRpc[]? AccessList { get; set; }
 
+    public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+
     public UInt256? V { get; set; }
 
     public UInt256? S { get; set; }
@@ -120,9 +122,14 @@ public class TransactionForRpc
             Hash = Hash
         };
 
-        if (tx.IsEip1559)
+        if (tx.Supports1559)
         {
             tx.GasPrice = MaxPriorityFeePerGas ?? 0;
+        }
+
+        if (tx.SupportsBlobs)
+        {
+            tx.MaxFeePerDataGas = MaxFeePerDataGas;
         }
 
         return tx;
@@ -143,13 +150,19 @@ public class TransactionForRpc
             Data = Data ?? Input,
             Type = Type,
             AccessList = TryGetAccessList(),
-            ChainId = chainId
+            ChainId = chainId,
+            MaxFeePerDataGas = MaxFeePerDataGas,
         };
 
-        if (tx.IsEip1559)
+        if (tx.Supports1559)
         {
             tx.GasPrice = MaxPriorityFeePerGas ?? 0;
             tx.DecodedMaxFeePerGas = MaxFeePerGas ?? 0;
+        }
+
+        if (tx.SupportsBlobs)
+        {
+            tx.MaxFeePerDataGas = MaxFeePerDataGas;
         }
 
         return tx;

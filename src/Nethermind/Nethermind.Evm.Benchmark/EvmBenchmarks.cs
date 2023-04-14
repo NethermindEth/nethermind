@@ -55,15 +55,16 @@ namespace Nethermind.Evm.Benchmark
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
             _environment = new ExecutionEnvironment
-            {
-                ExecutingAccount = Address.Zero,
-                CodeSource = Address.Zero,
-                Caller = Address.Zero,
-                CodeInfo = new CodeInfo(ByteCode),
-                Value = 0,
-                TransferValue = 0,
-                TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0)
-            };
+            (
+                executingAccount: Address.Zero,
+                codeSource: Address.Zero,
+                caller: Address.Zero,
+                codeInfo: new CodeInfo(ByteCode),
+                value: 0,
+                transferValue: 0,
+                txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null),
+                inputData: default
+            );
 
             _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.Transaction, true, _worldState.TakeSnapshot(), false);
         }

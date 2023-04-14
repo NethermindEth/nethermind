@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Sets_tx_type()
         {
-            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithChainId(1).WithType(TxType.AccessList).TestObject).TestObject;
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithChainId(TestBlockchainIds.ChainId).WithType(TxType.AccessList).TestObject).TestObject;
 
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(NullBlockTracer.Instance);

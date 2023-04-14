@@ -5,6 +5,8 @@ namespace Nethermind.JsonRpc
 {
     public readonly struct RpcReport
     {
+        public static readonly RpcReport Error = new RpcReport("# error #", 0, false);
+
         public RpcReport(string method, long handlingTimeMicroseconds, bool success)
         {
             Method = method;

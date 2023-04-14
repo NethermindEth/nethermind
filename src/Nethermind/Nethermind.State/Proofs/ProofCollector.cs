@@ -31,6 +31,8 @@ namespace Nethermind.State.Proofs
 
         public byte[][] BuildResult() => _proofBits.ToArray();
 
+        public bool IsFullDbScan => false;
+
         public bool ShouldVisit(Keccak nextNode) => _visitingFilter.Contains(nextNode);
 
         public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
@@ -58,7 +60,7 @@ namespace Nethermind.State.Proofs
             Keccak childHash = node.GetChildHash(0);
             _visitingFilter.Add(childHash); // always accept so can optimize
 
-            _pathIndex += node.Path.Length;
+            _pathIndex += node.Key.Length;
         }
 
         protected virtual void AddProofBits(TrieNode node)

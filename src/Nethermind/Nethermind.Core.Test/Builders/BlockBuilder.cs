@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -52,6 +53,12 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithTimestamp(ulong timestamp)
         {
             TestObjectInternal.Header.Timestamp = timestamp;
+            return this;
+        }
+
+        public BlockBuilder WithExcessDataGas(UInt256 excessDataGas)
+        {
+            TestObjectInternal.Header.ExcessDataGas = excessDataGas;
             return this;
         }
 
@@ -185,6 +192,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithWithdrawalsRoot(Keccak? withdrawalsRoot)
+        {
+            TestObjectInternal.Header.WithdrawalsRoot = withdrawalsRoot;
+
+            return this;
+        }
+
         public BlockBuilder WithBloom(Bloom bloom)
         {
             TestObjectInternal.Header.Bloom = bloom;
@@ -221,6 +235,28 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithGasUsed(long gasUsed)
         {
             TestObjectInternal.Header.GasUsed = gasUsed;
+            return this;
+        }
+
+        public BlockBuilder WithWithdrawals(int count)
+        {
+            var withdrawals = new Withdrawal[count];
+
+            for (var i = 0; i < count; i++)
+                withdrawals[i] = new();
+
+            return WithWithdrawals(withdrawals);
+        }
+
+        public BlockBuilder WithWithdrawals(params Withdrawal[]? withdrawals)
+        {
+            TestObjectInternal = TestObjectInternal
+                .WithReplacedBody(TestObjectInternal.Body.WithChangedWithdrawals(withdrawals));
+
+            TestObjectInternal.Header.WithdrawalsRoot = withdrawals is null
+                ? null
+                : new WithdrawalTrie(withdrawals).RootHash;
+
             return this;
         }
     }

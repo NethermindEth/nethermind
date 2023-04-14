@@ -21,7 +21,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
-            statusMessage.ChainId = 1;
+            statusMessage.NetworkId = 1;
 
             StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage, "f8483f0183020080a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6a0044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d");
@@ -43,8 +43,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
-            statusMessage.ChainId = 1;
-            statusMessage.ForkId = new ForkId(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, 0);
+            statusMessage.NetworkId = 1;
+            statusMessage.ForkId = new ForkId(12345678, 0);
 
             StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage);
@@ -58,8 +58,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
-            statusMessage.ChainId = 1;
-            statusMessage.ForkId = new ForkId(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, long.MaxValue);
+            statusMessage.NetworkId = 1;
+            statusMessage.ForkId = new ForkId(12345678, long.MaxValue);
 
             StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage);
@@ -73,7 +73,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             next ??= BinaryPrimitives.ReadUInt32BigEndian(Bytes.FromHexString("baddcafe"));
             StatusMessageSerializer serializer = new();
             StatusMessage message = new();
-            message.ForkId = new ForkId(Bytes.FromHexString(forkHash), next.Value);
+            message.ForkId = new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(forkHash)), next.Value);
             serializer.Serialize(message).ToHexString().Should().EndWith(expected);
         }
 

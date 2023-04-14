@@ -36,6 +36,8 @@ namespace Nethermind.Store.Test.Proofs
             Assert.AreEqual(TestItem.AddressA, proof.Address);
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
             Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);
+            Assert.AreEqual(ValueKeccak.OfAnEmptyString, proof.CodeHash);
+            Assert.AreEqual(ValueKeccak.EmptyTreeHash, proof.StorageRoot);
             Assert.AreEqual(UInt256.Zero, proof.Balance);
             Assert.AreEqual(new byte[] { 0 }, proof.StorageProofs[0].Value);
             Assert.AreEqual(new byte[] { 0 }, proof.StorageProofs[1].Value);

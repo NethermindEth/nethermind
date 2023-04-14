@@ -2,26 +2,23 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
-using DotNetty.Transport.Channels;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
-using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
@@ -67,7 +64,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             ManualResetEvent guard = new(false);
             Keccak lastTransaction = TestItem.Keccaks[txIndex - 1];
-            context.DbProvider.ReceiptsDb.When(x => x.Remove(lastTransaction.Bytes)).Do(c => guard.Set());
+
+            TestReceiptColumenDb receiptColumenDb = new();
+            context.DbProvider.ReceiptsDb.Returns(receiptColumenDb);
+            receiptColumenDb.RemoveFunc = (key) =>
+            {
+                if (key.Equals(lastTransaction.Bytes)) guard.Set();
+            };
+
             ReceiptMigration migration = new(context);
             if (migratedBlockNumber.HasValue)
             {
@@ -81,7 +85,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             guard.WaitOne(TimeSpan.FromSeconds(1));
             int txCount = ((migratedBlockNumber ?? chainLength) - 1 - 1) * 2;
-            context.DbProvider.ReceiptsDb.Received(Quantity.Exactly(txCount)).Remove(Arg.Any<byte[]>());
+
+            receiptColumenDb.KeyWasRemoved(_ => true, txCount);
             outMemoryReceiptStorage.Count.Should().Be(txCount);
         }
 
@@ -128,6 +133,16 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
 
             public event EventHandler<ReceiptsEventArgs> ReceiptsInserted { add { } remove { } }
+        }
+
+        class TestReceiptColumenDb : TestMemDb, IColumnsDb<ReceiptsColumns>
+        {
+            public IDbWithSpan GetColumnDb(ReceiptsColumns key)
+            {
+                return this;
+            }
+
+            public IEnumerable<ReceiptsColumns> ColumnKeys { get; }
         }
     }
 }

@@ -1,18 +1,25 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Net;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -93,7 +100,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
             }
 
             _handler.SendNewTransactions(txs, false);
@@ -101,23 +108,65 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage>(m => m.Hashes.Count == txCount));
         }
 
-        [TestCase(3201)]
+        [TestCase(NewPooledTransactionHashesMessage.MaxCount - 1)]
+        [TestCase(NewPooledTransactionHashesMessage.MaxCount)]
         [TestCase(10000)]
         [TestCase(20000)]
         public void should_send_more_than_MaxCount_hashes_in_more_than_one_NewPooledTransactionHashesMessage(int txCount)
         {
-            int messagesCount = txCount / NewPooledTransactionHashesMessage.MaxCount + 1;
             int nonFullMsgTxsCount = txCount % NewPooledTransactionHashesMessage.MaxCount;
+            int messagesCount = txCount / NewPooledTransactionHashesMessage.MaxCount + (nonFullMsgTxsCount > 0 ? 1 : 0);
             Transaction[] txs = new Transaction[txCount];
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
             }
 
             _handler.SendNewTransactions(txs, false);
 
             _session.Received(messagesCount).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage>(m => m.Hashes.Count == NewPooledTransactionHashesMessage.MaxCount || m.Hashes.Count == nonFullMsgTxsCount));
+        }
+
+        [Test]
+        public void should_send_requested_PooledTransactions_up_to_MaxPacketSize()
+        {
+            Transaction tx = Build.A.Transaction.WithData(new byte[1024]).SignedAndResolved().TestObject;
+            int sizeOfOneTx = tx.GetLength(new TxDecoder());
+            int numberOfTxsInOneMsg = TransactionsMessage.MaxPacketSize / sizeOfOneTx;
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Keccak>(), out Arg.Any<Transaction>())
+                .Returns(x =>
+                {
+                    x[1] = tx;
+                    return true;
+                });
+            GetPooledTransactionsMessage request = new(TestItem.Keccaks);
+            PooledTransactionsMessage response = _handler.FulfillPooledTransactionsRequest(request, new List<Transaction>());
+            response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
+        }
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(32)]
+        [TestCase(4096)]
+        [TestCase(100000)]
+        [TestCase(102400)]
+        [TestCase(222222)]
+        public void should_send_single_requested_PooledTransaction_even_if_exceed_MaxPacketSize(int dataSize)
+        {
+            Transaction tx = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved().TestObject;
+            int sizeOfOneTx = tx.GetLength(new TxDecoder());
+            int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Keccak>(), out Arg.Any<Transaction>())
+                .Returns(x =>
+                {
+                    x[1] = tx;
+                    return true;
+                });
+            GetPooledTransactionsMessage request = new(new Keccak[2048]);
+            PooledTransactionsMessage response = _handler.FulfillPooledTransactionsRequest(request, new List<Transaction>());
+            response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
     }
 }

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
@@ -36,7 +39,7 @@ namespace Nethermind.Merge.AuRa
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator =
                 new(_specProvider, _blocksConfig);
 
-            return new AuRaPostMergeBlockProducer(
+            return new PostMergeBlockProducer(
                 txSource ?? producerEnv.TxSource,
                 producerEnv.ChainProcessor,
                 producerEnv.BlockTree,

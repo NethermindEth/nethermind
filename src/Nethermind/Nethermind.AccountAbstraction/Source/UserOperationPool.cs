@@ -188,9 +188,9 @@ namespace Nethermind.AccountAbstraction.Source
 
         private void ReAddReorganizedUserOperations(Block? previousBlock)
         {
-            if (previousBlock is not null && _removedUserOperations.ContainsKey(previousBlock.Number))
+            if (previousBlock is not null && _removedUserOperations.TryGetValue(previousBlock.Number, out HashSet<UserOperation>? value))
             {
-                foreach (UserOperation op in _removedUserOperations[previousBlock.Number])
+                foreach (UserOperation op in value)
                 {
                     ResultWrapper<Keccak> result = AddUserOperation(op);
                     if (result.Result == Result.Success)
@@ -307,9 +307,9 @@ namespace Nethermind.AccountAbstraction.Source
             _removedUserOperations.TryRemove(block.Number - Reorganization.MaxDepth, out _);
 
             // remove any user operations that were only allowed to stay for 10 blocks due to throttled paymasters
-            if (_userOperationsToDelete.ContainsKey(block.Number))
+            if (_userOperationsToDelete.TryGetValue(block.Number, out HashSet<Keccak>? value))
             {
-                foreach (var userOperationHash in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperationHash);
+                foreach (var userOperationHash in value) RemoveUserOperation(userOperationHash);
             }
 
             BlockParameter currentBlockParameter = new BlockParameter(block.Number);

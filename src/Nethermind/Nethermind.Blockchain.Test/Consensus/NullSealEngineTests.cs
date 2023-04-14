@@ -13,14 +13,14 @@ namespace Nethermind.Blockchain.Test.Consensus
     [TestFixture]
     public class NullSealEngineTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Default_hints()
         {
             ISealValidator sealValidator = NullSealEngine.Instance;
             sealValidator.HintValidationRange(Guid.Empty, 0, 0);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Test()
         {
             NullSealEngine engine = NullSealEngine.Instance;

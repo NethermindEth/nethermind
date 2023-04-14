@@ -65,9 +65,10 @@ namespace Nethermind.Evm
         NUMBER = 0x43,
         PREVRANDAO = 0x44,
         GASLIMIT = 0x45,
-        CHAINID = 0x46, // ChainIdOpcodeEnabled
-        SELFBALANCE = 0x47, // SelfBalanceOpcodeEnabled
-        BASEFEE = 0x48, // BaseFeeEnabled
+        CHAINID = 0x46,
+        SELFBALANCE = 0x47,
+        BASEFEE = 0x48,
+        DATAHASH = 0x49,
 
         POP = 0x50,
         MLOAD = 0x51,

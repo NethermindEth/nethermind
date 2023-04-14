@@ -1,3 +1,0 @@
-#!/bin/sh
-
-dotnet format whitespace src/Nethermind/ --folder

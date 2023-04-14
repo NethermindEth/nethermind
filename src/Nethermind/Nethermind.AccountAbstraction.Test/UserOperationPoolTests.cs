@@ -428,7 +428,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _simulator,
                 userOperationSortedPool,
                 userOperationBroadcaster,
-                1);
+                TestBlockchainIds.ChainId);
         }
     }
 }

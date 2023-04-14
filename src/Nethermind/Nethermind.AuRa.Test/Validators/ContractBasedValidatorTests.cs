@@ -31,6 +31,7 @@ using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.AuRa.Test.Validators
 {
@@ -333,7 +334,7 @@ namespace Nethermind.AuRa.Test.Validators
                                         InitializeBlock = 3,
                                         FinalizeBlock = 3
                                     },
-                                    new() 
+                                    new()
                                         // this will not get finalized because of reorganisation
                                     {
                                         Addresses = GenerateValidators(2),
@@ -346,7 +347,7 @@ namespace Nethermind.AuRa.Test.Validators
                         {
                             7, new ConsecutiveInitiateChangeTestParameters.ChainInfo()
                             {
-                                BlockNumber = 5, //reorganisation to block 5 in order to invalidate last initiate change 
+                                BlockNumber = 5, //reorganisation to block 5 in order to invalidate last initiate change
                                 ExpectedFinalizationCount = 0,
                                 NumberOfSteps = 10,
                             }
@@ -447,7 +448,7 @@ namespace Nethermind.AuRa.Test.Validators
                         {
                             7, new ConsecutiveInitiateChangeTestParameters.ChainInfo()
                             {
-                                BlockNumber = 6, //reorganisation to block 6 in order to keep last initiate change 
+                                BlockNumber = 6, //reorganisation to block 6 in order to keep last initiate change
                                 ExpectedFinalizationCount = 2,
                                 NumberOfSteps = 10,
                                 Validators = new List<ConsecutiveInitiateChangeTestParameters.ValidatorsInfo>()
@@ -492,8 +493,8 @@ namespace Nethermind.AuRa.Test.Validators
                     blockNumber = test.Current.BlockNumber + i;
                 }
 
-                if (hashSeeds.ContainsKey(blockNumber))
-                    hashSeeds[blockNumber]++;
+                if (hashSeeds.TryGetValue(blockNumber, out int value))
+                    value++;
                 else
                     hashSeeds[blockNumber] = 0;
 
@@ -510,7 +511,7 @@ namespace Nethermind.AuRa.Test.Validators
 
                 _block.Header.Bloom = new Bloom(txReceipts.SelectMany(r => r.Logs).ToArray());
 
-                _blockTree.FindBlock(_block.Header.Hash, Arg.Any<BlockTreeLookupOptions>()).Returns(new Block(_block.Header.Clone(), BlockBody.Empty));
+                _blockTree.FindBlock(_block.Header.Hash, Arg.Any<BlockTreeLookupOptions>()).Returns(new Block(_block.Header.Clone()));
 
                 Action preProcess = () => validator.OnBlockProcessingStart(_block);
                 preProcess.Should().NotThrow<InvalidOperationException>(test.TestName);
@@ -551,8 +552,8 @@ namespace Nethermind.AuRa.Test.Validators
 
             Address validators = TestItem.Addresses[initialValidatorsIndex * 10];
             InMemoryReceiptStorage inMemoryReceiptStorage = new();
-            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().WithTransactions(inMemoryReceiptStorage,
-                    RopstenSpecProvider.Instance, delegate (Block block, Transaction transaction)
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(RopstenSpecProvider.Instance)
+                .WithTransactions(inMemoryReceiptStorage, delegate (Block block, Transaction transaction)
                     {
                         byte i = 0;
                         return new[]
@@ -563,7 +564,7 @@ namespace Nethermind.AuRa.Test.Validators
                                 .TestObject
                         };
                     })
-                .OfChainLength(9, 0, 0, validators);
+                .OfChainLength(9, 0, 0, false, validators);
 
             BlockTree blockTree = blockTreeBuilder.TestObject;
             SetupInitialValidators(blockTree.Head?.Header, blockTree.FindHeader(blockTree.Head?.ParentHash, BlockTreeLookupOptions.None), validators);

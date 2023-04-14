@@ -12,7 +12,7 @@ using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class ZeroProtocolHandlerBase : ProtocolHandlerBase
+    public abstract class ZeroProtocolHandlerBase : ProtocolHandlerBase, IZeroProtocolHandler
     {
         protected ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
             : base(session, nodeStats, serializer, logManager)

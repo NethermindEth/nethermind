@@ -160,9 +160,6 @@ namespace Nethermind.Network.Rlpx
             _initCompletionSource?.SetResult(input);
             _session.Handshake(_handshake.RemoteNodeId);
 
-            FrameCipher frameCipher = new(_handshake.Secrets.AesSecret);
-            FrameMacProcessor macProcessor = new(_session.RemoteNodeId, _handshake.Secrets);
-
             if (_role == HandshakeRole.Recipient)
             {
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(OneTimeLengthFieldBasedFrameDecoder)}  for {RemoteId} @ {context.Channel.RemoteAddress}");
@@ -171,9 +168,15 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ReadTimeoutHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ReadTimeoutHandler(TimeSpan.FromSeconds(30))); // read timeout instead of session monitoring
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-            context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor, _logManager));
-            if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-            context.Channel.Pipeline.AddLast(new ZeroFrameEncoder(frameCipher, macProcessor, _logManager));
+
+            using (FrameMacProcessor macProcessor = new(_session.RemoteNodeId, _handshake.Secrets))
+            {
+                FrameCipher frameCipher = new(_handshake.Secrets.AesSecret);
+                context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor, _logManager));
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(new ZeroFrameEncoder(frameCipher, macProcessor, _logManager));
+            }
+
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ZeroFrameMerger(_logManager));
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");

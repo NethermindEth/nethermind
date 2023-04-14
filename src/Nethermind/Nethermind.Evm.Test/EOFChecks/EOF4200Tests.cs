@@ -20,7 +20,7 @@ namespace Nethermind.Evm.Test
     public class EOF4200Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
-        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Cancun.Instance)
         {
             IsEip4200Enabled = true,
             IsEip4750Enabled = false
@@ -404,7 +404,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void EOF_Static_jumps_activation_tests()
         {
-            var targetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+            var targetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance);
 
             Instruction[] StaticRelativeJumpsOpcode =
             {
@@ -430,7 +430,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void EOF_validation_tests([ValueSource(nameof(Eip4200TxTestCases))] TestCase testcase)
         {
-            var targetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+            var targetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance);
 
             Instance.EOF_contract_header_parsing_tests(testcase, targetReleaseSpec);
         }
@@ -438,7 +438,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Eip3670_contract_deployment_tests([ValueSource(nameof(Eip4200TxTestCases))] TestCase testcase)
         {
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance);
+            var TargetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance);
 
             Instance.EOF_contract_deployment_tests(testcase, TargetReleaseSpec);
         }

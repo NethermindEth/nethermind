@@ -26,17 +26,18 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
         private readonly IRpcAuthentication _rpcAuthentication;
+        private readonly long? _maxBatchResponseBodySize;
 
         public string Name { get; } = "json-rpc";
 
-        public JsonRpcWebSocketsModule(
-            JsonRpcProcessor jsonRpcProcessor,
+        public JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
             IJsonRpcService jsonRpcService,
             IJsonRpcLocalStats jsonRpcLocalStats,
             ILogManager logManager,
             IJsonSerializer jsonSerializer,
             IJsonRpcUrlCollection jsonRpcUrlCollection,
-            IRpcAuthentication rpcAuthentication)
+            IRpcAuthentication rpcAuthentication,
+            long? maxBatchResponseBodySize)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
@@ -45,6 +46,7 @@ namespace Nethermind.JsonRpc.WebSockets
             _jsonSerializer = jsonSerializer;
             _jsonRpcUrlCollection = jsonRpcUrlCollection;
             _rpcAuthentication = rpcAuthentication;
+            _maxBatchResponseBodySize = maxBatchResponseBodySize;
         }
 
         public ISocketsClient CreateClient(WebSocket webSocket, string clientName, HttpContext context)
@@ -61,7 +63,7 @@ namespace Nethermind.JsonRpc.WebSockets
                 throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
             }
 
-            JsonRpcSocketsClient? socketsClient = new JsonRpcSocketsClient(
+            JsonRpcSocketsClient? socketsClient = new(
                 clientName,
                 new WebSocketHandler(webSocket, _logManager),
                 RpcEndpoint.Ws,
@@ -69,7 +71,8 @@ namespace Nethermind.JsonRpc.WebSockets
                 _jsonRpcService,
                 _jsonRpcLocalStats,
                 _jsonSerializer,
-                jsonRpcUrl);
+                jsonRpcUrl,
+                _maxBatchResponseBodySize);
 
             _clients.TryAdd(socketsClient.Id, socketsClient);
 

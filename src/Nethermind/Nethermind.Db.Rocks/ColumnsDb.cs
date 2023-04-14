@@ -13,10 +13,10 @@ namespace Nethermind.Db.Rocks;
 
 public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 {
-    private readonly IDictionary<T, IDbWithSpan> _columnDbs = new Dictionary<T, IDbWithSpan>();
+    private readonly IDictionary<T, ColumnDb> _columnDbs = new Dictionary<T, ColumnDb>();
 
     public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys)
-        : base(basePath, settings, dbConfig, logManager, GetColumnFamilies(dbConfig, settings.DbName, GetEnumKeys(keys)))
+        : base(basePath, settings, dbConfig, logManager, GetEnumKeys(keys).Select((key) => key.ToString()).ToList())
     {
         keys = GetEnumKeys(keys);
 
@@ -36,30 +36,10 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return keys;
     }
 
-    private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, string name, IReadOnlyList<T> keys)
+    protected override void BuildOptions<O>(PerTableDbConfig dbConfig, Options<O> options)
     {
-        InitCache(dbConfig);
-
-        ColumnFamilies result = new();
-        ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize), name);
-        foreach (T key in keys)
-        {
-            ColumnFamilyOptions columnFamilyOptions = new();
-            columnFamilyOptions.OptimizeForPointLookup(blockCacheSize);
-            columnFamilyOptions.SetBlockBasedTableFactory(
-                new BlockBasedTableOptions()
-                    .SetFilterPolicy(BloomFilterPolicy.Create())
-                    .SetBlockCache(_cache));
-            result.Add(key.ToString(), columnFamilyOptions);
-        }
-        return result;
-    }
-
-    protected override DbOptions BuildOptions(IDbConfig dbConfig)
-    {
-        DbOptions options = base.BuildOptions(dbConfig);
+        base.BuildOptions(dbConfig, options);
         options.SetCreateMissingColumnFamilies();
-        return options;
     }
 
     public IDbWithSpan GetColumnDb(T key) => _columnDbs[key];
@@ -69,5 +49,16 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
     {
         return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
+    }
+
+    protected override void ApplyOptions(IDictionary<string, string> options)
+    {
+        string[] keys = options.Select<KeyValuePair<string, string>, string>(e => e.Key).ToArray();
+        string[] values = options.Select<KeyValuePair<string, string>, string>(e => e.Value).ToArray();
+        foreach (KeyValuePair<T, ColumnDb> cols in _columnDbs)
+        {
+            _rocksDbNative.rocksdb_set_options_cf(_db.Handle, cols.Value._columnFamily.Handle, keys.Length, keys, values);
+        }
+        base.ApplyOptions(options);
     }
 }

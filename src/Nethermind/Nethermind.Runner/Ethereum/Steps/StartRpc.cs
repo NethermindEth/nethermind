@@ -64,7 +64,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                         _api.LogManager,
                         jsonSerializer,
                         jsonRpcUrlCollection,
-                        auth);
+                        auth,
+                        jsonRpcConfig.MaxBatchResponseBodySize);
 
                     _api.WebSocketsManager!.AddModule(webSocketsModule, true);
                 }

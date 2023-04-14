@@ -8,7 +8,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public static class SyncPeerExtensions
+    public static partial class SyncPeerExtensions
     {
         // Check if OpenEthereum supports GetNodeData
         private static readonly Version _openEthereumSecondRemoveGetNodeDataVersion = new(3, 3, 3);
@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.Peers
             return true;
         }
 
-        private static readonly Regex _openEthereumVersionRegex = new(@"OpenEthereum\/([a-zA-z-0-9]*\/)*v(?<version>(?<mainVersion>[0-9]\.[0-9]\.[0-9])-?(rc\.(?<rc>[0-9]*))?)", RegexOptions.Compiled);
+        private static readonly Regex _openEthereumVersionRegex = OpenEthereumRegex();
 
         public static Version? GetOpenEthereumVersion(this ISyncPeer peer, out int releaseCandidate)
         {
@@ -57,5 +57,8 @@ namespace Nethermind.Synchronization.Peers
             releaseCandidate = 0;
             return null;
         }
+
+        [GeneratedRegex("OpenEthereum\\/([a-zA-z-0-9]*\\/)*v(?<version>(?<mainVersion>[0-9]\\.[0-9]\\.[0-9])-?(rc\\.(?<rc>[0-9]*))?)")]
+        private static partial Regex OpenEthereumRegex();
     }
 }

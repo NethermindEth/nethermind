@@ -49,7 +49,7 @@ namespace Nethermind.Synchronization
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
-        private readonly LruCache<Keccak, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
+        private readonly LruCache<KeccakKey, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
         private readonly long _pivotNumber;
         private readonly Keccak _pivotHash;
@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
         }
 
-        public ulong ChainId => _blockTree.ChainId;
+        public ulong NetworkId => _blockTree.NetworkId;
         public BlockHeader Genesis => _blockTree.Genesis;
 
         public BlockHeader? Head
@@ -326,13 +326,13 @@ namespace Nethermind.Synchronization
             if (block.Author is not null)
             {
                 sb.Append(" sealer ");
-                if (KnownAddresses.GoerliValidators.ContainsKey(block.Author))
+                if (KnownAddresses.GoerliValidators.TryGetValue(block.Author, out string value))
                 {
-                    sb.Append(KnownAddresses.GoerliValidators[block.Author]);
+                    sb.Append(value);
                 }
-                else if (KnownAddresses.RinkebyValidators.ContainsKey(block.Author))
+                else if (KnownAddresses.RinkebyValidators.TryGetValue(block.Author, out value))
                 {
-                    sb.Append(KnownAddresses.GoerliValidators[block.Author]);
+                    sb.Append(value);
                 }
                 else
                 {
@@ -342,9 +342,9 @@ namespace Nethermind.Synchronization
             else if (block.Beneficiary is not null)
             {
                 sb.Append(" miner ");
-                if (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary))
+                if (KnownAddresses.KnownMiners.TryGetValue(block.Beneficiary, out string value))
                 {
-                    sb.Append(KnownAddresses.KnownMiners[block.Beneficiary]);
+                    sb.Append(value);
                 }
                 else
                 {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters
 {
@@ -11,19 +12,24 @@ namespace Nethermind.TxPool.Filters
     /// It uses a limited capacity hash cache underneath so there is no strict promise on filtering
     /// transactions.
     /// </summary>
-    internal class AlreadyKnownTxFilter : IIncomingTxFilter
+    internal sealed class AlreadyKnownTxFilter : IIncomingTxFilter
     {
         private readonly HashCache _hashCache;
+        private readonly ILogger _logger;
 
-        public AlreadyKnownTxFilter(HashCache hashCache)
+        public AlreadyKnownTxFilter(
+            HashCache hashCache,
+            ILogger logger)
         {
             _hashCache = hashCache;
+            _logger = logger;
         }
 
         public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             if (_hashCache.Get(tx.Hash!))
             {
+                if (_logger.IsTrace) _logger.Trace($"Found tx in _hashCache. TxHash: {tx?.Hash}, Tx: {tx}");
                 Metrics.PendingTransactionsKnown++;
                 return AcceptTxResult.AlreadyKnown;
             }

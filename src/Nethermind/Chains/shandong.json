@@ -60,6 +60,7 @@
     "eip4750TransitionTimestamp": "0x0",
     "eip3855TransitionTimestamp": "0x0",
     "eip3860TransitionTimestamp": "0x0",
+    "eip4895TransitionTimestamp": "0x0",
     "terminalTotalDifficulty": "0x0"
   },
   "genesis": {

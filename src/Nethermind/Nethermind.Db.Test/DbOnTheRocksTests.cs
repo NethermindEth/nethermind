@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -21,7 +22,7 @@ using RocksDbSharp;
 namespace Nethermind.Db.Test
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.None)]
     public class DbOnTheRocksTests
     {
         [Test]
@@ -31,6 +32,19 @@ namespace Nethermind.Db.Test
             DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
             db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
             Assert.AreEqual(new byte[] { 4, 5, 6 }, db[new byte[] { 1, 2, 3 }]);
+        }
+
+        [Test]
+        public void Smoke_test_span()
+        {
+            IDbConfig config = new DbConfig();
+            DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
+            byte[] key = new byte[] { 1, 2, 3 };
+            byte[] value = new byte[] { 4, 5, 6 };
+            db.PutSpan(key, value);
+            Span<byte> readSpan = db.GetSpan(key);
+            Assert.AreEqual(new byte[] { 4, 5, 6 }, readSpan.ToArray());
+            db.DangerousReleaseMemory(readSpan);
         }
 
         [Test]
@@ -165,6 +179,35 @@ namespace Nethermind.Db.Test
                 WriteBufferSize = (ulong)1.KiB()
             };
         }
+
+        [Test]
+        public void Test_columndb_put_and_get_span_correctly_store_value()
+        {
+            string path = Path.Join(Path.GetTempPath(), "test");
+            Directory.CreateDirectory(path);
+            try
+            {
+                IDbConfig config = new DbConfig();
+                using ColumnsDb<ReceiptsColumns> columnDb = new(path, GetRocksDbSettings("blocks", "Blocks"), config,
+                    LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
+
+                using IDbWithSpan db = columnDb.GetColumnDb(ReceiptsColumns.Blocks);
+
+                Keccak key = Keccak.Compute("something");
+                Keccak value = Keccak.Compute("something");
+
+                db.KeyExists(key.Bytes).Should().BeFalse();
+                db.PutSpan(key.Bytes, value.Bytes);
+                db.KeyExists(key.Bytes).Should().BeTrue();
+                Span<byte> data = db.GetSpan(key.Bytes);
+                data.SequenceEqual(value.Bytes);
+                db.DangerousReleaseMemory(data);
+            }
+            finally
+            {
+                Directory.Delete(path, true);
+            }
+        }
     }
 
     class CorruptedDbOnTheRocks : DbOnTheRocks
@@ -174,7 +217,7 @@ namespace Nethermind.Db.Test
             RocksDbSettings rocksDbSettings,
             IDbConfig dbConfig,
             ILogManager logManager,
-            ColumnFamilies? columnFamilies = null,
+            IList<string>? columnFamilies = null,
             RocksDbSharp.Native? rocksDbNative = null,
             IFileSystem? fileSystem = null
         ) : base(basePath, rocksDbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)

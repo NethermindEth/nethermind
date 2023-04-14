@@ -20,9 +20,9 @@ namespace Nethermind.Evm.Test
     public class EOF3540Tests
     {
         private EofTestsBase Instance => EofTestsBase.Instance(SpecProvider);
-        private IReleaseSpec ShanghaiSpec = new OverridableReleaseSpec(Shanghai.Instance) { IsEip3670Enabled = false };
+        private IReleaseSpec CancunSpec = new OverridableReleaseSpec(Cancun.Instance) { IsEip3670Enabled = false };
 
-        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Shanghai.Instance)
+        protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Cancun.Instance)
         {
             IsEip3670Enabled = false,
             IsEip4200Enabled = false,
@@ -103,7 +103,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void EOF_parsing_tests([ValueSource(nameof(Eip3540FmtTestCases))] TestCase testcase)
         {
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
+            var TargetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance)
             {
                 IsEip4200Enabled = false,
                 IsEip3670Enabled = false
@@ -115,7 +115,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Eip3540_contract_deployment_tests([ValueSource(nameof(Eip3540TxTestCases))] TestCase testcase)
         {
-            var TargetReleaseSpec = new OverridableReleaseSpec(Shanghai.Instance)
+            var TargetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance)
             {
                 IsEip3670Enabled = false,
                 IsEip4200Enabled = false,

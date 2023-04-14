@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -94,6 +93,24 @@ public class InvalidBlockInterceptorTest
 
         block = new Block(block.Header, block.Body.WithChangedTransactions(
             block.Transactions.Take(9).ToArray()
+        ));
+
+        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+
+        _tracker.DidNotReceive().SetChildParent(block.Hash, block.ParentHash);
+        _tracker.DidNotReceive().OnInvalidBlock(block.Hash, block.ParentHash);
+    }
+
+    [Test]
+    public void TestBlockWithIncorrectWithdrawalsShouldNotGetTracked()
+    {
+        Block block = Build.A.Block
+            .WithWithdrawals(10)
+            .TestObject;
+
+        block = new Block(block.Header, block.Body.WithChangedWithdrawals(
+            block.Withdrawals.Take(8).ToArray()
         ));
 
         _baseValidator.ValidateSuggestedBlock(block).Returns(false);

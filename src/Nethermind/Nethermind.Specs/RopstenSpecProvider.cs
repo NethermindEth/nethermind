@@ -22,6 +22,7 @@ namespace Nethermind.Specs
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
+        public ulong TimestampFork => ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
@@ -49,7 +50,8 @@ namespace Nethermind.Specs
         public const long BerlinBlockNumber = 9_812_189;
         public const long LondonBlockNumber = 10_499_401;
 
-        public ulong ChainId => Core.ChainId.Ropsten;
+        public ulong NetworkId => Core.BlockchainIds.Ropsten;
+        public ulong ChainId => NetworkId;
         public ForkActivation[] TransitionActivations => new ForkActivation[]
         {
             (ForkActivation)SpuriousDragonBlockNumber,

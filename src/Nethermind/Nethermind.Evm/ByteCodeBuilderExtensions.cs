@@ -7,8 +7,6 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
@@ -104,6 +102,8 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.SELFBALANCE);
         public static Prepare BASEFEE(this Prepare @this)
             => @this.Op(Instruction.BASEFEE);
+        public static Prepare DATAHASH(this Prepare @this)
+            => @this.Op(Instruction.DATAHASH);
         public static Prepare POP(this Prepare @this)
             => @this.Op(Instruction.POP);
         public static Prepare PC(this Prepare @this)
