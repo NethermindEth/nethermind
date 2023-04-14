@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Test
                                 new FunctionCase(
                                     23, 24, 24,
                                     Prepare.EvmCode
-                                        .DUPx(22)
+                                        .DUPn(22)
                                         .RETF()
                                         .Done
                                 )
@@ -92,7 +92,7 @@ namespace Nethermind.Evm.Test
                                 new FunctionCase(
                                     0, 23, 24,
                                     Prepare.EvmCode
-                                        .SWAPx(20)
+                                        .SWAPn(20)
                                         .RETF()
                                         .Done
                                 )
@@ -117,7 +117,7 @@ namespace Nethermind.Evm.Test
                                     0, 23, 24,
                                     Prepare.EvmCode
                                         .PushSequence(Enumerable.Range(0, 18).Select(i => (UInt256?)i).ToArray())
-                                        .DUPx(20)
+                                        .DUPn(20)
                                         .RETF()
                                         .Done
                                 )
