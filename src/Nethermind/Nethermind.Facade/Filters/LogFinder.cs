@@ -230,6 +230,7 @@ namespace Nethermind.Blockchain.Find
 
                             if (filter.Accepts(ref log))
                             {
+                                // On CL workload, recovery happens about 70% of the time.
                                 iterator.RecoverIfNeeded(ref receipt);
 
                                 logList ??= new List<FilterLog>();

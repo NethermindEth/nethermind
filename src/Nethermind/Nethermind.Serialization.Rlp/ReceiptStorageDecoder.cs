@@ -358,13 +358,16 @@ namespace Nethermind.Serialization.Rlp
                     firstItem.Length == 0 ? new KeccakStructRef() : new KeccakStructRef(firstItem);
             }
 
-            if (isStorage) decoderContext.DecodeKeccakStructRef(out item.BlockHash);
-            if (isStorage) item.BlockNumber = (long)decoderContext.DecodeUInt256();
-            if (isStorage) item.Index = decoderContext.DecodeInt();
-            if (isStorage) decoderContext.DecodeAddressStructRef(out item.Sender);
-            if (isStorage) decoderContext.DecodeAddressStructRef(out item.Recipient);
-            if (isStorage) decoderContext.DecodeAddressStructRef(out item.ContractAddress);
-            if (isStorage) item.GasUsed = (long)decoderContext.DecodeUBigInt();
+            if (isStorage)
+            {
+                decoderContext.DecodeKeccakStructRef(out item.BlockHash);
+                item.BlockNumber = (long)decoderContext.DecodeUInt256();
+                item.Index = decoderContext.DecodeInt();
+                decoderContext.DecodeAddressStructRef(out item.Sender);
+                decoderContext.DecodeAddressStructRef(out item.Recipient);
+                decoderContext.DecodeAddressStructRef(out item.ContractAddress);
+                item.GasUsed = (long)decoderContext.DecodeUBigInt();
+            }
             item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
             decoderContext.DecodeBloomStructRef(out item.Bloom);
 
