@@ -36,10 +36,12 @@ namespace Nethermind.Trie
             if (trieVisitContext.IsStorage)
             {
                 Interlocked.Increment(ref Stats._missingStorage);
+                _logger.Info($"STORAGE MISSING: {nodeHash}");
             }
             else
             {
                 Interlocked.Increment(ref Stats._missingState);
+                _logger.Info($"STATE MISSING: {nodeHash}");
             }
 
             IncrementLevel(trieVisitContext);
