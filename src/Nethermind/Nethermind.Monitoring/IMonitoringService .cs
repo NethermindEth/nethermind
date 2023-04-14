@@ -10,5 +10,6 @@ namespace Nethermind.Monitoring
     {
         Task StartAsync();
         Task StopAsync();
+        void AddMetricsUpdateCallback(Action callback);
     }
 }

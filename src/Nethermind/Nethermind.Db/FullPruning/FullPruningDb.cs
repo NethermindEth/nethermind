@@ -96,6 +96,8 @@ namespace Nethermind.Db.FullPruning
             _pruningContext?.CloningDb.Dispose();
         }
 
+        public long GetSize() => _pruningContext?.CloningDb.GetSize() ?? 0;
+
         public string Name => _settings.DbName;
 
         public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => _currentDb[keys];

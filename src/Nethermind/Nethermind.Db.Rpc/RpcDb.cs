@@ -36,6 +36,8 @@ namespace Nethermind.Db.Rpc
             _recordDb.Dispose();
         }
 
+        public long GetSize() => 0;
+
         public string Name { get; } = "RpcDb";
 
         public byte[] this[ReadOnlySpan<byte> key]

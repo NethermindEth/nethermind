@@ -122,6 +122,26 @@ namespace Nethermind.Db
         [Description("Indicator if StadeDb is being pruned.")]
         public static int StateDbPruning { get; set; }
 
+        [GaugeMetric]
+        [Description("Size of state DB in bytes")]
+        public static long StateDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of receipts DB in bytes")]
+        public static long ReceiptsDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of headers DB in bytes")]
+        public static long HeadersDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of blocks DB in bytes")]
+        public static long BlocksDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of all dbs")]
+        public static long DbSize { get; set; }
+
         [Description("Metrics extracted from RocksDB Compacion Stats and DB Statistics")]
         public static IDictionary<string, long> DbStats { get; set; } = new ConcurrentDictionary<string, long>();
     }

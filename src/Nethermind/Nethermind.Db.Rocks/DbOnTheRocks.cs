@@ -230,6 +230,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             Metrics.OtherDbWrites++;
     }
 
+    public long GetSize() => long.Parse(_db.GetProperty("rocksdb.total-sst-files-size"));
+
     protected virtual void BuildOptions<T>(PerTableDbConfig dbConfig, Options<T> options) where T : Options<T>
     {
         _maxThisDbSize = 0;

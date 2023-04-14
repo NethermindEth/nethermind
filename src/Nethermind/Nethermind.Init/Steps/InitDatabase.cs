@@ -3,9 +3,11 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
@@ -21,7 +23,7 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies(typeof(ApplyMemoryHint))]
     public class InitDatabase : IStep
     {
-        private readonly IBasicApi _api;
+        private readonly INethermindApi _api;
 
         public InitDatabase(INethermindApi api)
         {
@@ -49,6 +51,18 @@ namespace Nethermind.Init.Steps
                 InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.FileSystem, pruningConfig.Mode.IsFull());
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb);
+
+                void UpdateMetrics()
+                {
+                    Db.Metrics.StateDbSize = _api.DbProvider!.StateDb.GetSize();
+                    Db.Metrics.ReceiptsDbSize = _api.DbProvider!.ReceiptsDb.GetSize();
+                    Db.Metrics.HeadersDbSize = _api.DbProvider!.HeadersDb.GetSize();
+                    Db.Metrics.BlocksDbSize = _api.DbProvider!.BlocksDb.GetSize();
+
+                    Db.Metrics.DbSize = _api.DbProvider!.RegisteredDbs.Values.Aggregate(0L, (sum, db) => sum + db.GetSize());
+                }
+
+                _api.MonitoringService.AddMetricsUpdateCallback(UpdateMetrics);
             }
             catch (TypeInitializationException e)
             {

@@ -39,6 +39,8 @@ namespace Nethermind.Db
             return false;
         }
 
+        public long GetSize() => 0;
+
         public IDb Innermost => this;
         public void Flush() { }
         public void Clear() { }

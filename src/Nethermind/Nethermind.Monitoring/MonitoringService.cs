@@ -7,8 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
-using System.Net.Http;
-using System.IO;
 using System.Net.Sockets;
 using Prometheus;
 
@@ -87,6 +85,11 @@ namespace Nethermind.Monitoring
             }
             await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
+        }
+
+        public void AddMetricsUpdateCallback(Action callback)
+        {
+            _metricsController.AddMetricsUpdateCallback(callback);
         }
 
         public Task StopAsync()
