@@ -386,11 +386,11 @@ namespace Nethermind.Evm.TransactionProcessing
                             unspentGas -= codeDepositGasCost;
                         }
 
-                        if (CodeDepositHandler.CodeIsInvalid(substate.Output.Span, spec, substate.FromVersion))
-                        {
-                            _stateProvider.IncrementNonce(caller);
-                            throw new InvalidCodeException();
-                        }
+                        // if (CodeDepositHandler.CodeIsInvalid(substate.Output.Span, spec, substate.FromVersion))
+                        // {
+                        //     _stateProvider.IncrementNonce(caller);
+                        //     throw new InvalidCodeException();
+                        // }
                     }
 
                     foreach (Address toBeDestroyed in substate.DestroyList)

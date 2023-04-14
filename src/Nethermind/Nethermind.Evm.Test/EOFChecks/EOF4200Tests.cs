@@ -37,13 +37,15 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                         .RJUMP(0)
-                                        .MSTORE8(0, new byte[] { 1 })
-                                        .RETURN(0, 1)
-                                        .Done
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMP(-13)
+                                .STOP()
+                                .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null),
@@ -55,17 +57,17 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
-                                        .RJUMP(1)
-                                        .INVALID()
-                                        .JUMPDEST()
-                                        .MSTORE8(0, new byte[] { 1 })
-                                        .RETURN(0, 1)
-                                        .RJUMP(-13)
-                                        .STOP()
-                                        .Done
+                        Prepare.EvmCode
+                                .RJUMP(1)
+                                .INVALID()
+                                .JUMPDEST()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMP(-13)
+                                .STOP()
+                                .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Failure, "Static Jump Opcode RJUMP not valid in Non-Eof bytecodes")
@@ -78,13 +80,18 @@ namespace Nethermind.Evm.Test
                                 new FunctionCase(
                                     0, 0, 2,
                                     Prepare.EvmCode // p 1 rji 0 1 00 p 0 p 1 ms rj 00 13
-                                        .RJUMPI(1, new byte[] { 1 })
-                                        .STOP()
+                                .RJUMPI(1, new byte[] { 1 })
+                                .INVALID()
+                                .JUMPDEST()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMP(-13)
+                                .STOP()
                                         .MSTORE8(0, new byte[] { 1 })
                                         .RJUMP(-9)
-                                        .Done
+                                .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
@@ -96,17 +103,17 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
-                                        .RJUMPI(1, new byte[] { 1 })
-                                        .INVALID()
-                                        .JUMPDEST()
-                                        .MSTORE8(0, new byte[] { 1 })
-                                        .RETURN(0, 1)
-                                        .RJUMP(-13)
-                                        .STOP()
-                                        .Done
+                        Prepare.EvmCode
+                                .RJUMPI(1, new byte[] { 1 })
+                                .INVALID()
+                                .JUMPDEST()
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .RJUMP(-13)
+                                .STOP()
+                                .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Failure, "Static Jump Opcode RJUMPI not valid in Non-Eof bytecodes")
@@ -118,17 +125,17 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 4,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                         .RJUMPV(new short[] { 0, 1, 2 }, 1)
                                         .NOP()
                                         .NOP()
-                                        .PushData(2)
-                                        .PushData(3)
-                                        .MSTORE8(0, new byte[] { 1 })
-                                        .RETURN(0, 1)
-                                        .Done
+                                .PushData(2)
+                                .PushData(3)
+                                .MSTORE8(0, new byte[] { 1 })
+                                .RETURN(0, 1)
+                                .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
@@ -158,14 +165,14 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase( // rj 06 00 ps 02 ps 1 ms ms rj -5 
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMP(1)
                                 .STOP()
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RJUMP(-9)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
@@ -177,13 +184,13 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMP(0)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
@@ -196,7 +203,7 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMPI(10, new byte[] { 1 })
                                 .MSTORE8(0, new byte[] { 2 })
                                 .RETURN(0, 1)
@@ -204,7 +211,7 @@ namespace Nethermind.Evm.Test
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
@@ -216,7 +223,7 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMPI(10, new byte[] { 0 })
                                 .MSTORE8(0, new byte[] { 2 })
                                 .RETURN(0, 1)
@@ -224,7 +231,7 @@ namespace Nethermind.Evm.Test
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
@@ -236,7 +243,7 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 3,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMP(11)
                                 .COINBASE()
                                 .MSTORE8(0, new byte[] { 1 })
@@ -246,7 +253,7 @@ namespace Nethermind.Evm.Test
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
@@ -258,7 +265,7 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 3,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMP(11)
                                 .COINBASE()
                                 .MSTORE8(0, new byte[] { 1 })
@@ -268,7 +275,7 @@ namespace Nethermind.Evm.Test
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
@@ -280,13 +287,13 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMPI(0, new byte[] { 0 })
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
@@ -298,12 +305,12 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMPI(0, new byte[] { 1 })
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1).Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
@@ -315,7 +322,7 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 1, 7 }, 0)
                                 .NOP()
                                 .ADD(2, 3)
@@ -324,7 +331,7 @@ namespace Nethermind.Evm.Test
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
@@ -336,14 +343,14 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 0, 5 }, 4)
                                 .ADD(2, 3)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Failure, "Jumpv with Jumptable ")
@@ -355,13 +362,13 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { }, 0)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Failure, "Jumpv with Empty Jumptable")
@@ -373,13 +380,13 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 1 }, 0)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Failure, "Jumpv to Push Immediate")
@@ -391,13 +398,13 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMPI(1, new byte[] { 1 })
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Failure, "JumpI to Push Immediate")
@@ -409,13 +416,13 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 2,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMP(1)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Failure, "Jump to Push Immediate")
@@ -427,11 +434,11 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 1,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 1 }, 0)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Failure, "Jumpv cant be last Instruction")
@@ -443,12 +450,12 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 1,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMPV(new short[] { 5 }, 0)
                                 .STOP()
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Failure, "Jumpv Destination Outside of Bounds")
@@ -461,12 +468,12 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 0,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .RJUMP(100)
                                 .STOP()
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Failure, "Jump Destination Outside of Bounds")
@@ -479,11 +486,11 @@ namespace Nethermind.Evm.Test
                             Functions: new[] {
                                 new FunctionCase(
                                     0, 0, 0,
-                                    Prepare.EvmCode
+                        Prepare.EvmCode
                                 .Op(Instruction.RJUMP)
                                 .Done
                                 )
-                            },
+                    },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Failure, "Jump truncated bytecode")
@@ -521,7 +528,7 @@ namespace Nethermind.Evm.Test
         public void EOF_validation_tests([ValueSource(nameof(Eip4200TxTestCases))] TestCase testcase)
         {
             var TargetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance)
-            {
+        {
                 IsEip4750Enabled = false,
                 IsEip5450Enabled = false,
             };

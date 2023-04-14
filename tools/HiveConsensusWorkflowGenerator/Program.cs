@@ -127,7 +127,7 @@ public static class Program
 
             if (directory.Value > TargetSize)
             {
-                yield return new List<string>(){ dirName };
+                yield return new List<string>() { dirName };
                 continue;
             }
 
