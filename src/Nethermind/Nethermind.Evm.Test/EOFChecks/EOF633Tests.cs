@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test
                                 new FunctionCase(
                                     23, 23, 23,
                                     Prepare.EvmCode
-                                        .SWAPx(23)
+                                        .SWAPn(22)
                                         .RETF()
                                         .Done
                                 )
@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Test
                                 new FunctionCase(
                                     23, 24, 24,
                                     Prepare.EvmCode
-                                        .DUPx(23)
+                                        .DUPx(22)
                                         .RETF()
                                         .Done
                                 )

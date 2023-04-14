@@ -2316,7 +2316,7 @@ namespace Nethermind.Evm
                                 }
 
                                 byte imm = codeSection[programCounter];
-                                stack.Dup(imm + 17);
+                                stack.Dup(imm + 1);
                                 break;
                             }
                             else return CallResult.InvalidInstructionException;
@@ -2358,7 +2358,7 @@ namespace Nethermind.Evm
                                 }
 
                                 byte imm = codeSection[programCounter];
-                                stack.Swap(imm + 17);
+                                stack.Swap(imm + 1);
                                 break;
                             }
                             else return CallResult.InvalidInstructionException;

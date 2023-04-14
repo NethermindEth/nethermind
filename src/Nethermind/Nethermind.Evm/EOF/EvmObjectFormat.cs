@@ -558,12 +558,12 @@ internal static class EvmObjectFormat
                             break;
                         case Instruction.DUPN:
                             byte imm = code[posPostOpcode];
-                            inputs = 17 + imm;
+                            inputs = imm + 1;
                             outputs = inputs + 1;
                             break;
                         case Instruction.SWAPN:
                             imm = code[posPostOpcode];
-                            outputs = inputs = 17 + imm;
+                            outputs = inputs = 1 + imm;
                             break;
                     }
 
