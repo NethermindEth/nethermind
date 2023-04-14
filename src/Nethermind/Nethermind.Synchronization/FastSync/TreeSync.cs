@@ -846,7 +846,7 @@ namespace Nethermind.Synchronization.FastSync
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
             TrieNode trieNode = new TrieNode(NodeType.Unknown, currentStateSyncItem.PathNibbles, currentStateSyncItem.Hash, currentResponseItem);
 
-            _logger.Info($"Node Trace: {trieNode}");
+            // _logger.Info($"Node Trace: {trieNode}");
             // check if this is a storage node - then it needs a storage prefix
             if (currentStateSyncItem.AccountPathNibbles is not null && currentStateSyncItem.AccountPathNibbles.Length != 0)
             {
@@ -857,8 +857,8 @@ namespace Nethermind.Synchronization.FastSync
                 trieNode.StoreNibblePathPrefix = storagePrefix.ToArray();
             }
             trieNode.ResolveNode(NullTrieNodeResolver.Instance); // TODO: will this work now?
-            _logger.Info($"Decode Node: {trieNode}");
-            _logger.Info($"{trieNode.PathToNode?.ToHexString()} {trieNode.Key?.ToHexString()} {trieNode.StoreNibblePathPrefix.ToHexString()} {trieNode.Keccak}");
+            // _logger.Info($"Decode Node: {trieNode}");
+            // _logger.Info($"{trieNode.PathToNode?.ToHexString()} {trieNode.Key?.ToHexString()} {trieNode.StoreNibblePathPrefix.ToHexString()} {trieNode.Keccak}");
 
             switch (trieNode.NodeType)
             {
