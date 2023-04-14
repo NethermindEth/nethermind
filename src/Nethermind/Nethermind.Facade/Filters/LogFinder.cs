@@ -230,6 +230,8 @@ namespace Nethermind.Blockchain.Find
 
                             if (filter.Accepts(ref log))
                             {
+                                iterator.RecoverIfNeeded(ref receipt);
+
                                 logList ??= new List<FilterLog>();
                                 Keccak[] topics = log.Topics;
 
