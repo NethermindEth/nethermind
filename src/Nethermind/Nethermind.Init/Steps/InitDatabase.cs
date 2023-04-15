@@ -62,7 +62,7 @@ namespace Nethermind.Init.Steps
                     Db.Metrics.DbSize = _api.DbProvider!.RegisteredDbs.Values.Aggregate(0L, (sum, db) => sum + db.GetSize());
                 }
 
-                _api.MonitoringService.AddMetricsUpdateCallback(UpdateMetrics);
+                _api.MonitoringService.AddMetricsUpdateAction(UpdateMetrics);
             }
             catch (TypeInitializationException e)
             {

@@ -9,6 +9,10 @@ namespace Nethermind.Synchronization
     public static class Metrics
     {
         [GaugeMetric]
+        [Description("Is node syncing")]
+        public static bool Syncing;
+
+        [GaugeMetric]
         [Description("Headers downloaded in fast blocks stage")]
         public static decimal FastHeaders;
 

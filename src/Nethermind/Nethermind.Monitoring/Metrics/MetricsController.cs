@@ -163,7 +163,7 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        public void AddMetricsUpdateCallback(Action callback)
+        public void AddMetricsUpdateAction(Action callback)
         {
             _callbacks.Add(callback);
         }

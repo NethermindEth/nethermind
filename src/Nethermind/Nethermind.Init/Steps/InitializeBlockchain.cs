@@ -274,6 +274,8 @@ namespace Nethermind.Init.Steps
             setApi.BlockchainProcessor = blockchainProcessor;
             setApi.EthSyncingInfo = new EthSyncingInfo(getApi.BlockTree, getApi.ReceiptStorage!, syncConfig, getApi.LogManager);
 
+            _api.MonitoringService.AddMetricsUpdateAction(() => Synchronization.Metrics.Syncing = _api.EthSyncingInfo?.IsSyncing() ?? false);
+
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();

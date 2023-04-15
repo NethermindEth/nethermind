@@ -10,6 +10,6 @@ namespace Nethermind.Monitoring.Metrics
         void RegisterMetrics(Type type);
         void StartUpdating();
         void StopUpdating();
-        void AddMetricsUpdateCallback(Action callback);
+        void AddMetricsUpdateAction(Action callback);
     }
 }

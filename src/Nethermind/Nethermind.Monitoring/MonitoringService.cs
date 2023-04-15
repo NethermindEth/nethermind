@@ -87,9 +87,9 @@ namespace Nethermind.Monitoring
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
         }
 
-        public void AddMetricsUpdateCallback(Action callback)
+        public void AddMetricsUpdateAction(Action callback)
         {
-            _metricsController.AddMetricsUpdateCallback(callback);
+            _metricsController.AddMetricsUpdateAction(callback);
         }
 
         public Task StopAsync()
