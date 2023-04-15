@@ -9,10 +9,6 @@ namespace Nethermind.Synchronization
     public static class Metrics
     {
         [GaugeMetric]
-        [Description("Is node syncing")]
-        public static bool Syncing;
-
-        [GaugeMetric]
         [Description("Headers downloaded in fast blocks stage")]
         public static decimal FastHeaders;
 
@@ -79,5 +75,9 @@ namespace Nethermind.Synchronization
         [GaugeMetric]
         [Description("Requests sent for processing by the witness block sync")]
         public static long WitnessBlockRequests;
+
+        [GaugeMetric]
+        [Description("Sync time in seconds")]
+        public static long SyncTime;
     }
 }

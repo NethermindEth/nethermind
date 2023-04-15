@@ -30,6 +30,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Monitoring;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -156,7 +157,8 @@ public partial class EngineModuleTests
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager);
+            IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
+            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, monitoringService, LogManager);
             PostMergeBlockProducerFactory? blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,

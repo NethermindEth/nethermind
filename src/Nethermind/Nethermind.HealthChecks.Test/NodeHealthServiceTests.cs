@@ -23,6 +23,7 @@ using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Extensions;
+using Nethermind.Monitoring;
 
 namespace Nethermind.HealthChecks.Test
 {
@@ -40,6 +41,7 @@ namespace Nethermind.HealthChecks.Test
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
             ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
+            IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
             INethermindApi api = Substitute.For<INethermindApi>();
             api.SpecProvider = Substitute.For<ISpecProvider>();
             blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
@@ -62,7 +64,7 @@ namespace Nethermind.HealthChecks.Test
                 blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
             }
 
-            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig, LimboLogs.Instance);
+            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig, monitoringService, LimboLogs.Instance);
             NodeHealthService nodeHealthService =
                 new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
                     healthHintService, ethSyncingInfo, new EngineRpcCapabilitiesProvider(api.SpecProvider), api, new[] { drive }, test.IsMining);
@@ -83,6 +85,7 @@ namespace Nethermind.HealthChecks.Test
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
+            IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
             INethermindApi api = Substitute.For<INethermindApi>();
 
             ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
@@ -126,7 +129,7 @@ namespace Nethermind.HealthChecks.Test
 
             CustomRpcCapabilitiesProvider customProvider =
                 new(test.EnabledCapabilities, test.DisabledCapabilities);
-            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, new InMemoryReceiptStorage(), new SyncConfig(), new TestLogManager());
+            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, new InMemoryReceiptStorage(), new SyncConfig(), monitoringService, new TestLogManager());
             NodeHealthService nodeHealthService =
                 new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
                     healthHintService, ethSyncingInfo, customProvider, api, new[] { drive }, false);

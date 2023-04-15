@@ -30,6 +30,8 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
 using Nethermind.Config;
+using Nethermind.Monitoring;
+using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -144,7 +146,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance,
                 SpecProvider,
                 GasPriceOracle,
-                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager),
+                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, Substitute.For<IMonitoringService>(), LogManager),
                 FeeHistoryOracle);
 
             return this;

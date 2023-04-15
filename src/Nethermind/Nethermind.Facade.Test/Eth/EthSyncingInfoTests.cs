@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
+using Nethermind.Monitoring;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -21,10 +22,11 @@ namespace Nethermind.Facade.Test.Eth
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
             ISyncConfig syncConfig = new SyncConfig();
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, monitoringService, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.AreEqual(false, syncingResult.IsSyncing);
             Assert.AreEqual(0, syncingResult.CurrentBlock);
@@ -38,9 +40,10 @@ namespace Nethermind.Facade.Test.Eth
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
             ISyncConfig syncConfig = new SyncConfig();
+            IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178010L).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, monitoringService, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.AreEqual(true, syncingResult.IsSyncing);
             Assert.AreEqual(6178000L, syncingResult.CurrentBlock);
@@ -54,9 +57,10 @@ namespace Nethermind.Facade.Test.Eth
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestHeader).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject).TestObject);
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, new SyncConfig(), LimboLogs.Instance);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, new SyncConfig(), monitoringService, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.AreEqual(expectedResult, syncingResult.IsSyncing);
         }
@@ -94,6 +98,7 @@ namespace Nethermind.Facade.Test.Eth
             const long highestBlock = 1100;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
             ISyncConfig syncConfig = new SyncConfig
             {
                 FastSync = true,
@@ -113,7 +118,7 @@ namespace Nethermind.Facade.Test.Eth
 
             receiptStorage.LowestInsertedReceiptBlockNumber.Returns(receiptsTail);
 
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, monitoringService, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.AreEqual(CreateSyncingResult(expectedResult, currentHead, highestBlock), syncingResult);
         }

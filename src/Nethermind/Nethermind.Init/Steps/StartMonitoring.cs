@@ -3,10 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -53,6 +52,7 @@ public class StartMonitoring : IStep
 
         if (metricsConfig.Enabled)
         {
+            Console.WriteLine($"Monitoring initialized");
             _api.MonitoringService = new MonitoringService(controller, metricsConfig, _api.LogManager);
 
             await _api.MonitoringService.StartAsync().ContinueWith(x =>
@@ -60,6 +60,8 @@ public class StartMonitoring : IStep
                 if (x.IsFaulted && logger.IsError)
                     logger.Error("Error during starting a monitoring.", x.Exception);
             }, cancellationToken);
+
+            AddMetricsUpdateActions();
 
             _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
         }
@@ -75,6 +77,19 @@ public class StartMonitoring : IStep
                 ? "System.Diagnostics.Metrics enabled and will be collectable with dotnet-counters"
                 : "System.Diagnostics.Metrics disabled");
         }
+    }
+
+    private void AddMetricsUpdateActions()
+    {
+        _api.MonitoringService.AddMetricsUpdateAction(() =>
+        {
+            Db.Metrics.StateDbSize = _api.DbProvider!.StateDb.GetSize();
+            Db.Metrics.ReceiptsDbSize = _api.DbProvider!.ReceiptsDb.GetSize();
+            Db.Metrics.HeadersDbSize = _api.DbProvider!.HeadersDb.GetSize();
+            Db.Metrics.BlocksDbSize = _api.DbProvider!.BlocksDb.GetSize();
+
+            Db.Metrics.DbSize = _api.DbProvider!.RegisteredDbs.Values.Aggregate(0L, (sum, db) => sum + db.GetSize());
+        });
     }
 
     private static void PrepareProductInfoMetrics()

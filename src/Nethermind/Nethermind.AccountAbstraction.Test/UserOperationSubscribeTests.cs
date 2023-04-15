@@ -25,6 +25,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.Monitoring;
 using Nethermind.TxPool;
 using Newtonsoft.Json;
 
@@ -67,6 +68,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             JsonSerializer jsonSerializer = new();
             jsonSerializer.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
+            IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
 
             SubscriptionFactory subscriptionFactory = new(
                 _logManager,
@@ -74,7 +76,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _txPool,
                 _receiptCanonicalityMonitor,
                 _filterStore,
-                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, _logManager),
+                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, monitoringService, _logManager),
                 _specProvider,
                 jsonSerializer);
 
