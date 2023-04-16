@@ -54,7 +54,7 @@ namespace Nethermind.Trie
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
             _logger = logManager.GetClassLogger();
-            foreach (var node in missingNodes)
+            foreach (string? node in missingNodes)
             {
                 missingNodes.Add(node);
             }
@@ -64,7 +64,7 @@ namespace Nethermind.Trie
 
         public bool ShouldVisit(Keccak nextNode)
         {
-            if (missingNodes.Contains(nextNode.Bytes.ToHexString()))
+            if (nextNode is not null && missingNodes.Contains(nextNode.Bytes.ToHexString()))
             {
                 _logger.Info($"Missing Nodes Encountered: {nextNode}");
             }
