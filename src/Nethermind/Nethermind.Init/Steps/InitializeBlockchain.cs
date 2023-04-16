@@ -167,15 +167,15 @@ namespace Nethermind.Init.Steps
 
             stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
-            //
-            // _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-            // TrieStoreByPath noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
-            // IStateProvider diagStateProvider = new StateProvider(noPruningStore, codeDb, getApi.LogManager)
-            // {
-            //     StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
-            // };
-            // TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
-            // _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+
+            _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+            TrieStoreByPath noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
+            IStateProvider diagStateProvider = new StateProvider(noPruningStore, codeDb, getApi.LogManager)
+            {
+                StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
+            };
+            TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+            _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
 
 
             // Init state if we need system calls before actual processing starts
