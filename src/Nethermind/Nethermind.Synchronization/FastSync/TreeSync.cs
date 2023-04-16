@@ -523,10 +523,13 @@ namespace Nethermind.Synchronization.FastSync
 
                 LruKeyCache<Keccak> alreadySavedCache =
                     syncItem.NodeDataType == NodeDataType.Code ? _alreadySavedCode : _alreadySavedNode;
-                if (alreadySavedCache.Get(syncItem.Hash))
+
+                Keccak hashToCheckInCache = syncItem.Hash;
+
+                if (alreadySavedCache.Get(hashToCheckInCache))
                 {
                     Interlocked.Increment(ref _data.CheckWasCached);
-                    if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
+                    if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {hashToCheckInCache}");
                     _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
                     return AddNodeResult.AlreadySaved;
                 }
@@ -585,11 +588,11 @@ namespace Nethermind.Synchronization.FastSync
                 bool isAlreadyRequested;
                 lock (_dependencies)
                 {
-                    isAlreadyRequested = _dependencies.ContainsKey(syncItem.Hash);
+                    isAlreadyRequested = _dependencies.ContainsKey(hashToCheckInCache);
                     if (dependentItem is not null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Adding dependency {syncItem.Hash} -> {dependentItem.SyncItem.Hash}");
-                        AddDependency(syncItem.Hash, dependentItem);
+                        AddDependency(hashToCheckInCache, dependentItem);
                     }
                 }
 
