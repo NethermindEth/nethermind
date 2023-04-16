@@ -67,9 +67,9 @@ namespace Nethermind.Synchronization.FastSync
         // concurrent request handling with the read lock.
         private readonly ReaderWriterLockSlim _syncStateLock = new();
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new();
-        private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new();
-        private LruKeyCache<Keccak> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
-        private LruKeyCache<Keccak> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
+        private Dictionary<StateSyncItem, HashSet<DependentItem>> _dependencies = new(StateSyncItemComparer.Instance);
+        // private LruKeyCache<Keccak> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
+        // private LruKeyCache<Keccak> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
         private readonly HashSet<Keccak> _codesSameAsNodes = new();
         private readonly ConcurrentDictionary<Keccak, List<byte>> _additionalLeafNibbles;
 
@@ -521,18 +521,28 @@ namespace Nethermind.Synchronization.FastSync
                     _branchProgress.ReportSynced(syncItem, NodeProgressState.Requested);
                 }
 
-                LruKeyCache<Keccak> alreadySavedCache =
-                    syncItem.NodeDataType == NodeDataType.Code ? _alreadySavedCode : _alreadySavedNode;
+                // LruKeyCache<Keccak> alreadySavedCache =
+                //     syncItem.NodeDataType == NodeDataType.Code ? _alreadySavedCode : _alreadySavedNode;
 
-                Keccak hashToCheckInCache = syncItem.Hash;
+                // Keccak hashToCheckInCache = syncItem.Hash;
 
-                if (alreadySavedCache.Get(hashToCheckInCache))
-                {
-                    Interlocked.Increment(ref _data.CheckWasCached);
-                    if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {hashToCheckInCache}");
-                    _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
-                    return AddNodeResult.AlreadySaved;
-                }
+                // Keccak hashToCheckInCache;
+                // if (syncItem.NodeDataType != NodeDataType.Code && _stateStore.Capability == TrieNodeResolverCapability.Path)
+                // {
+                //     hashToCheckInCache = Keccak.Compute(syncItem.Hash.Bytes.Concat(syncItem.PathNibbles).ToArray());
+                // }
+                // else
+                // {
+                //     hashToCheckInCache = syncItem.Hash;
+                // }
+
+                // if (alreadySavedCache.Get(hashToCheckInCache))
+                // {
+                //     Interlocked.Increment(ref _data.CheckWasCached);
+                //     _logger.Info($"Node already in the DB - skipping {syncItem.Hash}");
+                //     _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
+                //     return AddNodeResult.AlreadySaved;
+                // }
 
                 ReaderWriterLockSlim lockToTake = syncItem.NodeDataType == NodeDataType.Code ? _codeDbLock : _stateDbLock;
                 lockToTake.EnterReadLock();
@@ -571,8 +581,8 @@ namespace Nethermind.Synchronization.FastSync
 
                     if (keyExists)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
-                        alreadySavedCache.Set(syncItem.Hash);
+                        _logger.Info($"Node already in the DB - skipping {syncItem.Hash}");
+                        // alreadySavedCache.Set(syncItem.Hash);
                         Interlocked.Increment(ref _data.StateWasThere);
                         _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
                         return AddNodeResult.AlreadySaved;
@@ -588,11 +598,11 @@ namespace Nethermind.Synchronization.FastSync
                 bool isAlreadyRequested;
                 lock (_dependencies)
                 {
-                    isAlreadyRequested = _dependencies.ContainsKey(hashToCheckInCache);
+                    isAlreadyRequested = _dependencies.ContainsKey(syncItem);
                     if (dependentItem is not null)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Adding dependency {syncItem.Hash} -> {dependentItem.SyncItem.Hash}");
-                        AddDependency(hashToCheckInCache, dependentItem);
+                        _logger.Info($"Adding dependency Hash: {syncItem.Hash} PathNibbles: {syncItem.PathNibbles.ToHexString()} AccountPath: {syncItem.AccountPathNibbles.ToHexString()} -> {dependentItem.SyncItem.Hash} PathNibbles: {dependentItem.SyncItem.PathNibbles.ToHexString()} AccountPath: {dependentItem.SyncItem.AccountPathNibbles.ToHexString()}");
+                        AddDependency(syncItem, dependentItem);
                     }
                 }
 
@@ -602,29 +612,29 @@ namespace Nethermind.Synchronization.FastSync
                 if (isAlreadyRequested)
                 {
                     Interlocked.Increment(ref _data.CheckWasInDependencies);
-                    if (_logger.IsTrace) _logger.Trace($"Node already requested - skipping {syncItem.Hash}");
+                    _logger.Info($"Node already requested - skipping {syncItem.Hash}");
                     return AddNodeResult.AlreadyRequested;
                 }
             }
 
             _pendingItems.PushToSelectedStream(syncItem, _branchProgress.LastProgress);
-            if (_logger.IsTrace) _logger.Trace($"Added a node {syncItem.Hash} - {reason}");
+            _logger.Info($"Added a node {syncItem.Hash} - {reason}");
             return AddNodeResult.Added;
         }
 
-        private void PossiblySaveDependentNodes(Keccak hash)
+        private void PossiblySaveDependentNodes(StateSyncItem item)
         {
             List<DependentItem> nodesToSave = new();
             lock (_dependencies)
             {
-                if (_dependencies.TryGetValue(hash, out HashSet<DependentItem> value))
+                if (_dependencies.TryGetValue(item, out HashSet<DependentItem> value))
                 {
                     HashSet<DependentItem> dependentItems = value;
 
                     if (_logger.IsTrace)
                     {
                         string nodeNodes = dependentItems.Count == 1 ? "node" : "nodes";
-                        _logger.Trace($"{dependentItems.Count} {nodeNodes} dependent on {hash}");
+                        _logger.Info($"{dependentItems.Count} {nodeNodes} dependent on {item.Hash} {item.PathNibbles.ToHexString()}");
                     }
 
                     foreach (DependentItem dependentItem in dependentItems)
@@ -637,11 +647,11 @@ namespace Nethermind.Synchronization.FastSync
                         }
                     }
 
-                    _dependencies.Remove(hash);
+                    _dependencies.Remove(item);
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"No nodes dependent on {hash}");
+                    _logger.Info($"No nodes dependent on {item}");
                 }
             }
 
@@ -781,7 +791,7 @@ namespace Nethermind.Synchronization.FastSync
             }
 
             _branchProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);
-            PossiblySaveDependentNodes(syncItem.Hash);
+            PossiblySaveDependentNodes(syncItem);
         }
 
         private void VerifyPostSyncCleanUp()
@@ -793,7 +803,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
                 }
 
-                _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
+                _dependencies = new Dictionary<StateSyncItem, HashSet<DependentItem>>(StateSyncItemComparer.Instance);
                 // _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
             }
 
@@ -812,8 +822,8 @@ namespace Nethermind.Synchronization.FastSync
             {
                 _pendingRequests.Clear();
                 _dependencies.Clear();
-                _alreadySavedNode.Clear();
-                _alreadySavedCode.Clear();
+                // _alreadySavedNode.Clear();
+                // _alreadySavedCode.Clear();
                 _codesSameAsNodes.Clear();
             }
             finally
@@ -1067,7 +1077,7 @@ namespace Nethermind.Synchronization.FastSync
         /// </summary>
         /// <param name="dependency">Sync item that this item is dependent on.</param>
         /// <param name="dependentItem">Item that can only be persisted if all its dependenies are persisted</param>
-        private void AddDependency(Keccak dependency, DependentItem dependentItem)
+        private void AddDependency(StateSyncItem dependency, DependentItem dependentItem)
         {
             lock (_dependencies)
             {

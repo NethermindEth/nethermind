@@ -35,7 +35,13 @@ namespace Nethermind.Synchronization.StateSync
             ISyncPeer peer = peerInfo.SyncPeer;
             Task<byte[][]> task = null;
             HashList? hashList = null;
-            if (peer.TryGetSatelliteProtocol("snap", out ISnapSyncPeer handler))
+            if (peerInfo.CanGetNodeData())
+            {
+                hashList = HashList.Rent(batch.RequestedNodes);
+                task = peer.GetNodeData(hashList, cancellationToken);
+            }
+            // GETNODEDATA is not supported so we try with SNAP protocol
+            else if (peer.TryGetSatelliteProtocol("snap", out ISnapSyncPeer handler))
             {
                 if (batch.NodeDataType == NodeDataType.Code)
                 {
