@@ -14,6 +14,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
+using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -86,7 +87,6 @@ namespace Nethermind.Core.Test.Builders
             public static (StateTree stateTree, StorageTree storageTree) GetTrees(ITrieStore? store)
             {
                 store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
-
                 var storageTree = new StorageTree(store, LimboLogs.Instance, accountAddress: null);
 
                 storageTree.Set(SlotsWithPaths[0].Path, SlotsWithPaths[0].SlotRlpValue, false);

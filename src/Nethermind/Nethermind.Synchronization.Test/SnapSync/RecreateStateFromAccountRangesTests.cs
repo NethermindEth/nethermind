@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             _inputTree = TestItem.Tree.GetStateTree(null);
         }
 
-        private byte[][] CreateProofForPath(byte[] path, StateTree tree = null)
+        private byte[][] CreateProofForPath(byte[] path, IStateTree tree = null)
         {
             AccountProofCollector accountProofCollector = new(path);
             if (tree == null)
@@ -358,7 +358,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void CorrectlyDetermineMaxKeccakExist()
         {
-            StateTree tree = new StateTree(new TrieStore(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new StateTreeByPath(new TrieStoreByPath(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
 
             PathWithAccount ac1 = new PathWithAccount(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
             PathWithAccount ac2 = new PathWithAccount(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);

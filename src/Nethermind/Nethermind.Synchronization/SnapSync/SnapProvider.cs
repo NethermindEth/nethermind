@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.SnapSync
             ITrieStore store = _pathBasedTrieStorePool.Get();
             try
             {
-                StateTreeByPath tree = new(store, _logManager);
+                StateTreeByPath tree = new StateTreeByPath(store, _logManager);
 
                 if (hashLimit == null) hashLimit = Keccak.MaxValue;
 
@@ -198,7 +198,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                _trieStorePool.Return(store);
+                _pathBasedTrieStorePool.Return(store);
             }
         }
 

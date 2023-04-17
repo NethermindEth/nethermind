@@ -29,15 +29,15 @@ namespace Nethermind.Synchronization.Test.SnapSync
     public class RecreateStateFromStorageRangesTests
     {
 
-        private TrieStore _store;
-        private StateTree _inputStateTree;
+        private ITrieStore _store;
+        private IStateTree _inputStateTree;
         private StorageTree _inputStorageTree;
 
         [OneTimeSetUp]
         public void Setup()
         {
-            _store = new TrieStore(new MemDb(), LimboLogs.Instance);
-            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
+            _store = new TrieStoreByPath(new MemDb(), LimboLogs.Instance);
+            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTreesByPath(_store);
         }
 
         [Test]

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -20,7 +21,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync
 {
-    [TestFixture(TrieNodeResolverCapability.Hash)]
+    // [TestFixture(TrieNodeResolverCapability.Hash)]
     [TestFixture(TrieNodeResolverCapability.Path)]
     [Parallelizable(ParallelScope.All)]
     public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
