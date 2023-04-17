@@ -189,7 +189,10 @@ namespace Nethermind.Init
             dbConfig.WriteBufferNumber = dbGets.Buffers;
             dbConfig.WriteBufferSize = (ulong)dbGets.SingleBufferMem;
 
-            dbConfig.SharedBlockCacheSize = (ulong)remaining;
+            dbConfig.SharedBlockCacheSize = (ulong)(remaining * 0.1);
+
+            // 90% of the remaining budget is just for state
+            dbConfig.BlockCacheSize = (ulong)(remaining) - dbConfig.SharedBlockCacheSize;
         }
 
         private DbGets GiveItWhatYouCan(DbNeeds dbNeeds, long memoryHint, long remaining)
