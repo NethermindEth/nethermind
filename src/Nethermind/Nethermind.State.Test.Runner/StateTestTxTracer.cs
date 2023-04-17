@@ -48,13 +48,13 @@ namespace Nethermind.State.Test.Runner
             _trace.Result.GasUsed = gasSpent;
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false, IReleaseSpec? spec = null)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             _gasAlreadySetForCurrentOp = false;
             _traceEntry = new StateTestTxTraceEntry();
             _traceEntry.Pc = pc;
             _traceEntry.Operation = (byte)opcode;
-            _traceEntry.OperationName = opcode.GetName(isPostMerge, spec);
+            _traceEntry.OperationName = opcode.GetName(isPostMerge);
             _traceEntry.Gas = gas;
             _traceEntry.Depth = depth;
             _trace.Entries.Add(_traceEntry);
