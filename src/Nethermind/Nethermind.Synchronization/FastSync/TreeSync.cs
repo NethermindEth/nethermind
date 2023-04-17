@@ -581,7 +581,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     if (keyExists)
                     {
-                        _logger.Info($"Node already in the DB - skipping {syncItem.Hash}");
+                        if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
                         // alreadySavedCache.Set(syncItem.Hash);
                         Interlocked.Increment(ref _data.StateWasThere);
                         _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
@@ -601,7 +601,7 @@ namespace Nethermind.Synchronization.FastSync
                     isAlreadyRequested = _dependencies.ContainsKey(syncItem);
                     if (dependentItem is not null)
                     {
-                        _logger.Info($"Adding dependency Hash: {syncItem.Hash} PathNibbles: {syncItem.PathNibbles.ToHexString()} AccountPath: {syncItem.AccountPathNibbles.ToHexString()} -> {dependentItem.SyncItem.Hash} PathNibbles: {dependentItem.SyncItem.PathNibbles.ToHexString()} AccountPath: {dependentItem.SyncItem.AccountPathNibbles.ToHexString()}");
+                        if (_logger.IsTrace) _logger.Trace($"Adding dependency Hash: {syncItem.Hash} PathNibbles: {syncItem.PathNibbles.ToHexString()} AccountPath: {syncItem.AccountPathNibbles.ToHexString()} -> {dependentItem.SyncItem.Hash} PathNibbles: {dependentItem.SyncItem.PathNibbles.ToHexString()} AccountPath: {dependentItem.SyncItem.AccountPathNibbles.ToHexString()}");
                         AddDependency(syncItem, dependentItem);
                     }
                 }
@@ -612,13 +612,13 @@ namespace Nethermind.Synchronization.FastSync
                 if (isAlreadyRequested)
                 {
                     Interlocked.Increment(ref _data.CheckWasInDependencies);
-                    _logger.Info($"Node already requested - skipping {syncItem.Hash}");
+                    if (_logger.IsTrace) _logger.Trace($"Node already requested - skipping {syncItem.Hash}");
                     return AddNodeResult.AlreadyRequested;
                 }
             }
 
             _pendingItems.PushToSelectedStream(syncItem, _branchProgress.LastProgress);
-            _logger.Info($"Added a node {syncItem.Hash} - {reason}");
+            if (_logger.IsTrace) _logger.Trace($"Added a node {syncItem.Hash} - {reason}");
             return AddNodeResult.Added;
         }
 
@@ -634,7 +634,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsTrace)
                     {
                         string nodeNodes = dependentItems.Count == 1 ? "node" : "nodes";
-                        _logger.Info($"{dependentItems.Count} {nodeNodes} dependent on {item.Hash} {item.PathNibbles.ToHexString()}");
+                        if (_logger.IsTrace) _logger.Trace($"{dependentItems.Count} {nodeNodes} dependent on {item.Hash} {item.PathNibbles.ToHexString()}");
                     }
 
                     foreach (DependentItem dependentItem in dependentItems)
@@ -651,7 +651,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 else
                 {
-                    _logger.Info($"No nodes dependent on {item}");
+                    if (_logger.IsTrace) _logger.Trace($"No nodes dependent on {item}");
                 }
             }
 

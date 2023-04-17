@@ -90,8 +90,6 @@ namespace Nethermind.State
         /// <param name="tracer">Storage tracer</param>
         protected override void CommitCore(IStorageTracer tracer)
         {
-            _logger.Info("Committing storage changes");
-
             if (_changes[_currentPosition] is null)
             {
                 throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
