@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -59,7 +60,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [SetUp]
         public void Setup()
         {
-            _logManager = new NUnitLogManager(LogLevel.Trace);
+            _logManager = LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
             TrieScenarios.InitOnce();
         }
@@ -155,10 +156,12 @@ namespace Nethermind.Synchronization.Test.FastSync
         protected class DbContext
         {
             private readonly ILogger _logger;
+            private readonly ILogManager _logManager;
 
             public DbContext(TrieNodeResolverCapability capability, ILogger logger, ILogManager logManager)
             {
                 _logger = logger;
+                _logManager = logManager;
                 RemoteDb = new MemDb();
                 LocalDb = new MemDb();
                 RemoteStateDb = RemoteDb;
@@ -227,6 +230,20 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 //            Assert.AreEqual(dbContext._remoteDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
                 //            Assert.AreEqual(dbContext._remoteDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
+            }
+
+            public void LogRemoteTrieStats(Keccak? rootHash)
+            {
+                TrieStatsCollector collector = new(RemoteCodeDb, _logManager);
+                RemoteStateTree.Accept(collector, rootHash?? RemoteStateTree.RootHash, new VisitingOptions { MaxDegreeOfParallelism = Environment.ProcessorCount });
+                _logger.Info($"REMOTE STATE: Starting from {rootHash?? RemoteStateTree.RootHash} {Environment.NewLine}" + collector.Stats);
+            }
+
+            public void LogLocalTrieStats(Keccak? rootHash)
+            {
+                TrieStatsCollector collector = new(LocalCodeDb, _logManager);
+                RemoteStateTree.Accept(collector, rootHash?? LocalStateTree.RootHash, new VisitingOptions { MaxDegreeOfParallelism = Environment.ProcessorCount });
+                _logger.Info($"LOCAL STATE: Starting from {rootHash?? LocalStateTree.RootHash} {Environment.NewLine}" + collector.Stats);
             }
         }
 
