@@ -86,6 +86,8 @@ namespace Nethermind.Api
         [ConfigItem(Description = "Just scan and sum supply on all accounts")]
         VerifySupply,
         [ConfigItem(Description = "Verifies if full state is stored")]
-        VerifyTrie
+        VerifyTrie,
+        [ConfigItem(Description = "Verifies if full state is stored and stop processing")]
+        VerifyTrieBlocking
     }
 }
