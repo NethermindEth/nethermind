@@ -258,8 +258,6 @@ namespace Nethermind.Init.Steps
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
 
-            InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
-
             return Task.CompletedTask;
         }
 
