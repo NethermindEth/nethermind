@@ -10,7 +10,6 @@ using System.Reflection;
 using System.Threading;
 using ConcurrentCollections;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
@@ -45,7 +44,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     private long _maxThisDbSize;
 
-    protected static IntPtr _cache;
+    protected IntPtr? _cache = null;
 
     private readonly RocksDbSettings _settings;
 
@@ -251,14 +250,16 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         tableOptions.SetWholeKeyFiltering(true);
         _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, 0.02);
 
-        if (sharedCache != null)
+        ulong blockCacheSize = dbConfig.BlockCacheSize;
+        if (sharedCache != null && blockCacheSize == 0)
         {
             tableOptions.SetBlockCache(sharedCache.Value);
         }
-
-        ulong blockCacheSize = dbConfig.BlockCacheSize;
-
-        tableOptions.SetBlockCache(_cache);
+        else
+        {
+            _cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
+            tableOptions.SetBlockCache(_cache.Value);
+        }
 
         options.SetCreateIfMissing();
         options.SetAdviseRandomOnOpen(true);
@@ -756,6 +757,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
 
         _db.Dispose();
+
+        if (_cache.HasValue)
+        {
+            _rocksDbNative.rocksdb_cache_destroy(_cache.Value);
+        }
 
         if (_rateLimiter.HasValue)
         {

@@ -23,7 +23,14 @@ public class RocksDbFactory : IRocksDbFactory
         _logManager = logManager;
         _basePath = basePath;
 
-        _sharedCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.BlockCacheSize));
+        ILogger logger = _logManager.GetClassLogger<RocksDbFactory>();
+
+        if (logger.IsDebug)
+        {
+            logger.Debug($"Shared memory size is {dbConfig.SharedBlockCacheSize}");
+        }
+
+        _sharedCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.SharedBlockCacheSize));
     }
 
     public IDb CreateDb(RocksDbSettings rocksDbSettings) =>

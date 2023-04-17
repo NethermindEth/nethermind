@@ -9,6 +9,9 @@ namespace Nethermind.Db.Rocks.Config;
 [ConfigCategory(HiddenFromDocs = true)]
 public interface IDbConfig : IConfig
 {
+    ulong SharedBlockCacheSize { get; set; }
+    public bool SkipMemoryHintSetting { get; set; }
+
     ulong WriteBufferSize { get; set; }
     uint WriteBufferNumber { get; set; }
     ulong BlockCacheSize { get; set; }

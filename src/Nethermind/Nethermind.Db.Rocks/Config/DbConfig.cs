@@ -10,9 +10,12 @@ public class DbConfig : IDbConfig
 {
     public static DbConfig Default = new DbConfig();
 
+    public ulong SharedBlockCacheSize { get; set; } = (ulong)256.MiB();
+    public bool SkipMemoryHintSetting { get; set; } = false;
+
     public ulong WriteBufferSize { get; set; } = (ulong)16.MiB();
     public uint WriteBufferNumber { get; set; } = 4;
-    public ulong BlockCacheSize { get; set; } = (ulong)64.MiB();
+    public ulong BlockCacheSize { get; set; } = 0;
     public bool CacheIndexAndFilterBlocks { get; set; } = false;
     public int? MaxOpenFiles { get; set; }
     public long? MaxWriteBytesPerSec { get; set; }
@@ -20,7 +23,7 @@ public class DbConfig : IDbConfig
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 4;
-    public ulong ReceiptsDbBlockCacheSize { get; set; } = (ulong)32.MiB();
+    public ulong ReceiptsDbBlockCacheSize { get; set; } = 0;
     public bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? ReceiptsDbMaxOpenFiles { get; set; }
     public long? ReceiptsDbMaxWriteBytesPerSec { get; set; }
@@ -28,7 +31,7 @@ public class DbConfig : IDbConfig
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint BlocksDbWriteBufferNumber { get; set; } = 4;
-    public ulong BlocksDbBlockCacheSize { get; set; } = (ulong)32.MiB();
+    public ulong BlocksDbBlockCacheSize { get; set; } = 0;
     public bool BlocksDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? BlocksDbMaxOpenFiles { get; set; }
     public long? BlocksDbMaxWriteBytesPerSec { get; set; }
@@ -36,7 +39,7 @@ public class DbConfig : IDbConfig
 
     public ulong HeadersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint HeadersDbWriteBufferNumber { get; set; } = 4;
-    public ulong HeadersDbBlockCacheSize { get; set; } = (ulong)32.MiB();
+    public ulong HeadersDbBlockCacheSize { get; set; } = 0;
     public bool HeadersDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? HeadersDbMaxOpenFiles { get; set; }
     public long? HeadersDbMaxWriteBytesPerSec { get; set; }
@@ -44,7 +47,7 @@ public class DbConfig : IDbConfig
 
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint BlockInfosDbWriteBufferNumber { get; set; } = 4;
-    public ulong BlockInfosDbBlockCacheSize { get; set; } = (ulong)32.MiB();
+    public ulong BlockInfosDbBlockCacheSize { get; set; } = 0;
     public bool BlockInfosDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? BlockInfosDbMaxOpenFiles { get; set; }
     public long? BlockInfosDbMaxWriteBytesPerSec { get; set; }
@@ -52,7 +55,7 @@ public class DbConfig : IDbConfig
 
     public ulong PendingTxsDbWriteBufferSize { get; set; } = (ulong)4.MiB();
     public uint PendingTxsDbWriteBufferNumber { get; set; } = 4;
-    public ulong PendingTxsDbBlockCacheSize { get; set; } = (ulong)16.MiB();
+    public ulong PendingTxsDbBlockCacheSize { get; set; } = 0;
     public bool PendingTxsDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? PendingTxsDbMaxOpenFiles { get; set; }
     public long? PendingTxsDbMaxWriteBytesPerSec { get; set; }
@@ -60,7 +63,7 @@ public class DbConfig : IDbConfig
 
     public ulong CodeDbWriteBufferSize { get; set; } = (ulong)2.MiB();
     public uint CodeDbWriteBufferNumber { get; set; } = 4;
-    public ulong CodeDbBlockCacheSize { get; set; } = (ulong)8.MiB();
+    public ulong CodeDbBlockCacheSize { get; set; } = 0;
     public bool CodeDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? CodeDbMaxOpenFiles { get; set; }
     public long? CodeDbMaxWriteBytesPerSec { get; set; }
@@ -68,7 +71,7 @@ public class DbConfig : IDbConfig
 
     public ulong BloomDbWriteBufferSize { get; set; } = (ulong)1.KiB();
     public uint BloomDbWriteBufferNumber { get; set; } = 4;
-    public ulong BloomDbBlockCacheSize { get; set; } = (ulong)1.KiB();
+    public ulong BloomDbBlockCacheSize { get; set; } = 0;
     public bool BloomDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? BloomDbMaxOpenFiles { get; set; }
     public long? BloomDbMaxWriteBytesPerSec { get; set; }
@@ -76,7 +79,7 @@ public class DbConfig : IDbConfig
 
     public ulong WitnessDbWriteBufferSize { get; set; } = (ulong)1.KiB();
     public uint WitnessDbWriteBufferNumber { get; set; } = 4;
-    public ulong WitnessDbBlockCacheSize { get; set; } = (ulong)1.KiB();
+    public ulong WitnessDbBlockCacheSize { get; set; } = 0;
     public bool WitnessDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? WitnessDbMaxOpenFiles { get; set; }
     public long? WitnessDbMaxWriteBytesPerSec { get; set; }
@@ -85,7 +88,7 @@ public class DbConfig : IDbConfig
     // TODO - profile and customize
     public ulong CanonicalHashTrieDbWriteBufferSize { get; set; } = (ulong)2.MB();
     public uint CanonicalHashTrieDbWriteBufferNumber { get; set; } = 4;
-    public ulong CanonicalHashTrieDbBlockCacheSize { get; set; } = (ulong)8.MB();
+    public ulong CanonicalHashTrieDbBlockCacheSize { get; set; } = 0;
     public bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; } = true;
     public int? CanonicalHashTrieDbMaxOpenFiles { get; set; }
     public long? CanonicalHashTrieDbMaxWriteBytesPerSec { get; set; }
@@ -93,7 +96,7 @@ public class DbConfig : IDbConfig
 
     public ulong MetadataDbWriteBufferSize { get; set; } = (ulong)1.KiB();
     public uint MetadataDbWriteBufferNumber { get; set; } = 4;
-    public ulong MetadataDbBlockCacheSize { get; set; } = (ulong)1.KiB();
+    public ulong MetadataDbBlockCacheSize { get; set; } = 0;
     public bool MetadataDbCacheIndexAndFilterBlocks { get; set; } = true;
     public int? MetadataDbMaxOpenFiles { get; set; }
     public long? MetadataDbMaxWriteBytesPerSec { get; set; }
