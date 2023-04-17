@@ -438,7 +438,7 @@ public class DiscoveryApp : IDiscoveryApp
 
         long lastTickMs = Environment.TickCount64;
         long waitTimeTimeMs = 10;
-        while(!cancellationToken.IsCancellationRequested
+        while (!cancellationToken.IsCancellationRequested
             && await timer.WaitForNextTickAsync(cancellationToken))
         {
             long currentTickMs = Environment.TickCount64;
@@ -490,7 +490,7 @@ public class DiscoveryApp : IDiscoveryApp
     private async Task RunDiscoveryPersistenceCommit()
     {
         CancellationToken cancellationToken = _appShutdownSource.Token;
-        PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_discoveryConfig.DiscoveryPersistenceInterval));    
+        PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_discoveryConfig.DiscoveryPersistenceInterval));
 
         while (!cancellationToken.IsCancellationRequested
             && await timer.WaitForNextTickAsync(cancellationToken))
