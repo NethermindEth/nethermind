@@ -1,0 +1,18 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.AuRa.Test/Reward/AuRaRewardCalculatorTests.cs)
+
+The `AuRaRewardCalculatorTests` class is a test suite for the `AuRaRewardCalculator` class, which is responsible for calculating rewards for blocks in the AuRa consensus algorithm. The `AuRaRewardCalculator` class takes in an `AuRaParameters` object, an `IAbiEncoder` object, and an `ITransactionProcessor` object. The `AuRaParameters` object contains the parameters for the AuRa consensus algorithm, including the block reward contract address, the block reward contract transition, and the block reward. The `IAbiEncoder` object is used to encode and decode data in the Ethereum ABI format, and the `ITransactionProcessor` object is used to process transactions.
+
+The `AuRaRewardCalculatorTests` class contains several test methods that test the behavior of the `AuRaRewardCalculator` class. The `SetUp` method initializes several variables used in the tests, including the block reward contract address, the block reward contract transition, and the block reward. The `constructor_throws_ArgumentNullException_on_null_auraParameters`, `constructor_throws_ArgumentNullException_on_null_encoder`, and `constructor_throws_ArgumentNullException_on_null_transactionProcessor` methods test that the `AuRaRewardCalculator` constructor throws an `ArgumentNullException` when passed a null `AuRaParameters`, `IAbiEncoder`, or `ITransactionProcessor` object, respectively. The `constructor_throws_ArgumentException_on_BlockRewardContractTransition_higher_than_BlockRewardContractTransitions` method tests that the `AuRaRewardCalculator` constructor throws an `ArgumentException` when the `BlockRewardContractTransition` parameter is higher than the `BlockRewardContractTransitions` parameter.
+
+The `calculates_rewards_correctly_before_contract_transition`, `calculates_rewards_correctly_for_genesis`, and `calculates_rewards_correctly_after_contract_transition` methods test that the `AuRaRewardCalculator` class calculates rewards correctly for blocks before the contract transition, for the genesis block, and for blocks after the contract transition, respectively. The `calculates_rewards_correctly_after_subsequent_contract_transitions` method tests that the `AuRaRewardCalculator` class calculates rewards correctly for blocks after subsequent contract transitions. The `calculates_rewards_correctly_for_uncles` method tests that the `AuRaRewardCalculator` class calculates rewards correctly for uncles. The `calculates_rewards_correctly_for_external_addresses` method tests that the `AuRaRewardCalculator` class calculates rewards correctly for external addresses.
+
+Overall, the `AuRaRewardCalculatorTests` class tests the behavior of the `AuRaRewardCalculator` class in various scenarios to ensure that it calculates rewards correctly for blocks in the AuRa consensus algorithm.
+## Questions: 
+ 1. What is the purpose of the `AuRaRewardCalculator` class?
+- The `AuRaRewardCalculator` class is used to calculate rewards for blocks in the AuRa consensus algorithm.
+
+2. What is the significance of the `_rewardData` byte array?
+- The `_rewardData` byte array is used to encode the reward data for a block in the `Encode` method of the `_abiEncoder` object.
+
+3. What is the purpose of the `SetupBlockRewards` method?
+- The `SetupBlockRewards` method is used to set up the rewards for a block by executing a transaction with the appropriate reward data and tracing the output to determine the rewards for each address.

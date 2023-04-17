@@ -1,0 +1,22 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Benchmark.Runner/Program.cs)
+
+The code provided is a C# program that runs benchmarks for the Nethermind project. The purpose of this program is to provide a dashboard for viewing the results of the benchmarks. The program uses the BenchmarkDotNet library to run the benchmarks and generate reports.
+
+The `DashboardConfig` class is a configuration class that sets up the options for the benchmarking process. It adds job configurations, column providers, loggers, exporters, and diagnosers. The `ManualConfig` class is a base class for creating custom configurations for BenchmarkDotNet.
+
+The `Program` class is the entry point for the program. It creates two lists of assemblies, `additionalJobAssemblies` and `simpleJobAssemblies`, which contain the assemblies that will be benchmarked. The `additionalJobAssemblies` list contains assemblies for more complex benchmarks, while the `simpleJobAssemblies` list contains assemblies for simpler benchmarks.
+
+The program checks if a debugger is attached, and if so, it runs all the benchmarks in the `additionalJobAssemblies` and `simpleJobAssemblies` lists using the `DebugInProcessConfig` configuration. If a debugger is not attached, the program runs the benchmarks in each assembly separately using the `DashboardConfig` configuration.
+
+The `BenchmarkRunner.Run` method is used to run the benchmarks in each assembly. The first argument is the assembly to run the benchmarks in, and the second argument is the configuration to use for the benchmarking process. The `args` parameter is used to pass command-line arguments to the benchmarking process.
+
+Overall, this program provides a way to run benchmarks for the Nethermind project and view the results in a dashboard. It uses the BenchmarkDotNet library to run the benchmarks and generate reports, and provides a flexible configuration system for customizing the benchmarking process.
+## Questions: 
+ 1. What is the purpose of the `DashboardConfig` class?
+- The `DashboardConfig` class is a custom configuration class for the BenchmarkDotNet library that specifies various settings for benchmarking jobs, such as column providers, loggers, exporters, and diagnosers.
+
+2. What are the `additionalJobAssemblies` and `simpleJobAssemblies` lists used for?
+- The `additionalJobAssemblies` and `simpleJobAssemblies` lists contain the assemblies that contain the benchmarking classes to be run. The former is used for more complex benchmarks, while the latter is used for simpler benchmarks.
+
+3. What is the purpose of the `if (Debugger.IsAttached)` block?
+- The `if (Debugger.IsAttached)` block is used to determine whether the program is being run in debug mode. If it is, then all benchmarks are run in-process using the `DebugInProcessConfig`. Otherwise, the benchmarks are run separately for each assembly using the `DashboardConfig`.

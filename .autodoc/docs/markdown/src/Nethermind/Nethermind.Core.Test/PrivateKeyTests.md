@@ -1,0 +1,30 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Core.Test/PrivateKeyTests.cs)
+
+The `PrivateKeyTests` class is a collection of unit tests for the `PrivateKey` class in the Nethermind project. The `PrivateKey` class is used to represent a private key in the Ethereum blockchain. The purpose of these tests is to ensure that the `PrivateKey` class behaves as expected and that it can be used to generate valid Ethereum addresses.
+
+The first test ensures that a `PrivateKey` object cannot be initialized with an array of bytes that is not exactly 32 bytes long. This is because Ethereum private keys are always 32 bytes long. The test creates byte arrays of different lengths and passes them to the `PrivateKey` constructor, expecting an `ArgumentException` to be thrown.
+
+The next two tests ensure that a `PrivateKey` object cannot be initialized with null bytes or a null string. These tests ensure that the `PrivateKey` constructor behaves correctly when passed invalid arguments.
+
+The `Bytes_are_stored_correctly` test ensures that the `PrivateKey` object stores the bytes passed to it correctly. It generates a random byte array of length 32, creates a `PrivateKey` object from it, and then checks that the `KeyBytes` property of the `PrivateKey` object is equal to the original byte array.
+
+The `String_representation_is_correct` test ensures that the `PrivateKey` object can be initialized from a hex string and that the `ToString` method returns the same hex string. It creates a `PrivateKey` object from a hex string, calls `ToString` on the object, and then checks that the resulting string is equal to the original hex string.
+
+The `Address_as_expected` test ensures that the `PrivateKey` object can be used to generate a valid Ethereum address. It creates a `PrivateKey` object from a hex string, gets the address from the `Address` property of the `PrivateKey` object, and then checks that the resulting address is equal to a known valid address.
+
+The `Address_returns_the_same_value_when_called_twice` test ensures that the `Address` property of the `PrivateKey` object returns the same value when called twice. This is because the `Address` property is calculated lazily, so calling it multiple times should return the same value.
+
+The `Can_decompress_public_key` test ensures that the `PrivateKey` object can be used to generate a public key, which can then be compressed and decompressed to get the same public key. This test ensures that the `CompressedPublicKey` property of the `PrivateKey` object behaves correctly.
+
+The `Fails_on_invalid` test ensures that the `PrivateKey` constructor throws an `ArgumentException` when passed an invalid private key. It tests the constructor with four different hex strings, two of which are valid private keys and two of which are not. The test expects the constructor to throw an exception for the invalid private keys and to succeed for the valid private keys.
+
+Overall, these tests ensure that the `PrivateKey` class behaves correctly and can be used to generate valid Ethereum addresses. They also ensure that the `PrivateKey` constructor behaves correctly when passed invalid arguments or invalid private keys.
+## Questions: 
+ 1. What is the purpose of the `PrivateKey` class?
+- The `PrivateKey` class is used to represent a private key in the Nethermind project's core crypto functionality.
+
+2. What is the significance of the `TestPrivateKeyHex` constant?
+- The `TestPrivateKeyHex` constant is a hex string representation of a private key that is used in various test cases to verify the correctness of the `PrivateKey` class.
+
+3. What is the purpose of the `Fails_on_invalid` test case?
+- The `Fails_on_invalid` test case is used to verify that the `PrivateKey` class correctly throws an exception when initialized with an invalid private key. The test cases include both valid and invalid private keys represented as hex strings.

@@ -1,0 +1,8 @@
+{
+  "fileName": "static-nodes.json",
+  "filePath": "src/Nethermind/Nethermind.Runner/data/static-nodes.json",
+  "url": "https://github.com/nethermindeth/nethermind/Nethermind.Runner/data/static-nodes.json",
+  "summary": "Unfortunately, the provided code snippet is empty and does not contain any code to analyze or explain. Therefore, it is impossible to provide a technical explanation of what this code does or its purpose in the larger project. \n\nIf there is any additional information or code that can be provided, I would be happy to provide a detailed technical explanation.",
+  "questions": "1. What is the purpose of this file in the nethermind project?\n   - This question cannot be answered as the code is missing and there is no information about the file's name or location.\n\n2. What is the expected input and output of the functions in this file?\n   - This question cannot be answered as the code is missing and there is no information about the functions in the file.\n\n3. Are there any potential performance issues or edge cases that need to be considered when using this code?\n   - This question cannot be answered as the code is missing and there is no information about the specific implementation in the file.",
+  "checksum": "53077afd1be2611334c45aed4cb05852"
+}

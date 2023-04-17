@@ -1,0 +1,23 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.State/StateReaderExtensions.cs)
+
+The `StateReaderExtensions` class is a collection of extension methods that provide convenient access to various pieces of information stored in the Ethereum state trie. The state trie is a Merkle tree that stores the current state of the Ethereum blockchain, including account balances, nonces, contract code, and storage.
+
+The `GetNonce`, `GetBalance`, `GetStorageRoot`, `GetCode`, and `GetCodeHash` methods all take a `stateReader` object, a `stateRoot` hash, and an `address` as input. The `stateReader` object is an interface that provides read-only access to the state trie. The `stateRoot` hash represents the root of the state trie at a particular block height, and the `address` represents the Ethereum address of an account.
+
+The `GetNonce` method returns the nonce (transaction count) of the account at the given address. The `GetBalance` method returns the balance of the account in wei. The `GetStorageRoot` method returns the hash of the root node of the storage trie for the account. The `GetCode` method returns the bytecode of the contract at the given address. The `GetCodeHash` method returns the hash of the bytecode of the contract at the given address.
+
+The `HasStateForBlock` method takes a `BlockHeader` object as input and returns a boolean indicating whether the state trie has a root node that matches the `stateRoot` hash in the `BlockHeader`. This method is useful for checking whether a particular block has been fully processed and its state is available in the state trie.
+
+These extension methods are useful for developers who need to access information stored in the Ethereum state trie. For example, a developer building a blockchain explorer could use these methods to display account balances, contract code, and other information for a given Ethereum address. Similarly, a developer building a smart contract could use these methods to read data from other contracts or to check the state of the blockchain before executing a transaction.
+## Questions: 
+ 1. What is the purpose of the `StateReaderExtensions` class?
+    
+    The `StateReaderExtensions` class provides extension methods for the `IStateReader` interface, allowing developers to easily retrieve information about the state of the Ethereum blockchain.
+
+2. What is the significance of the `Keccak` class in this code?
+    
+    The `Keccak` class is used to represent the hash of a state root or an empty tree hash in the Ethereum Merkle Patricia Trie.
+
+3. What is the `HasStateForBlock` method used for?
+    
+    The `HasStateForBlock` method is used to check if the state trie has a root node for a given block header, which is necessary for verifying the validity of a block.

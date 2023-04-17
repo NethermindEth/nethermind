@@ -1,0 +1,22 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Core/Eip1559Constants.cs)
+
+The code defines a class called `Eip1559Constants` that contains constants related to the Ethereum Improvement Proposal (EIP) 1559. EIP 1559 is a proposal to change the way transaction fees are calculated in the Ethereum network. The constants defined in this class are used to set default values for various parameters related to EIP 1559.
+
+The first constant, `DefaultForkBaseFee`, is a `UInt256` value that represents the default base fee for transactions in the EIP 1559 system. The base fee is the minimum fee that a user must pay to have their transaction included in a block. The value of `DefaultForkBaseFee` is set to 1 Gwei, which is a commonly used unit of ether (the native currency of the Ethereum network).
+
+The second constant, `DefaultBaseFeeMaxChangeDenominator`, is also a `UInt256` value that represents the default maximum change in the base fee between blocks. This value is used to prevent sudden changes in the base fee that could disrupt the network. The default value of `DefaultBaseFeeMaxChangeDenominator` is set to 8.
+
+The third constant, `DefaultElasticityMultiplier`, is an integer value that represents the default elasticity multiplier for the EIP 1559 system. The elasticity multiplier is used to adjust the base fee based on changes in network demand. The default value of `DefaultElasticityMultiplier` is set to 2.
+
+The class also defines three static properties that allow these default values to be overridden. These properties are `ForkBaseFee`, `BaseFeeMaxChangeDenominator`, and `ElasticityMultiplier`. These properties can be set from the genesis block of the blockchain to customize the EIP 1559 system for a particular network.
+
+Overall, this code provides a way to set default values for important parameters related to the EIP 1559 proposal. These values can be customized as needed to implement the proposal on a particular Ethereum network.
+## Questions: 
+ 1. What is the purpose of this code?
+   - This code defines constants and default values for the EIP-1559 implementation in the Nethermind Core project.
+
+2. What is the significance of the `UInt256` and `Int256` types?
+   - `UInt256` and `Int256` are custom data types used in the Nethermind project to represent unsigned and signed 256-bit integers, respectively. They are likely used in this code to represent values related to gas fees.
+
+3. Can the default values be overridden?
+   - Yes, the default values for `ForkBaseFee`, `BaseFeeMaxChangeDenominator`, and `ElasticityMultiplier` can be overridden from genesis.

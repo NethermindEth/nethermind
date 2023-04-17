@@ -1,0 +1,25 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Synchronization/Blocks/FastSyncFeed.cs)
+
+The `FastSyncFeed` class is a part of the Nethermind project and is used for synchronizing blocks during the fast sync mode. The purpose of this class is to prepare a request for blocks to be downloaded during the fast sync mode and handle the response received from the peer. 
+
+The `FastSyncFeed` class inherits from the `ActivatedSyncFeed` class and takes a `BlocksRequest` object as a generic parameter. It also has a constructor that takes an `ISyncModeSelector`, an `ISyncConfig`, and an `ILogManager` object as parameters. The `ISyncConfig` object is used to configure the fast sync mode, while the `ILogManager` object is used for logging purposes. 
+
+The `FastSyncFeed` class has an overridden `PrepareRequest` method that returns a `Task` object of type `BlocksRequest`. This method prepares the request for blocks to be downloaded during the fast sync mode. The `BlocksRequest` object is created in the constructor of the `FastSyncFeed` class and is passed to the `PrepareRequest` method. 
+
+The `FastSyncFeed` class also has an overridden `HandleResponse` method that takes a `BlocksRequest` object and a `PeerInfo` object as parameters. This method handles the response received from the peer. In this case, the `FallAsleep` method is called, which is not defined in this class. It is likely that this method is used to simulate a delay in the synchronization process. 
+
+The `FastSyncFeed` class has two properties: `IsMultiFeed` and `Contexts`. The `IsMultiFeed` property returns a boolean value indicating whether the feed is a multi-feed or not. The `Contexts` property returns an `AllocationContexts` object that specifies the context in which the feed is allocated. 
+
+Overall, the `FastSyncFeed` class is an important part of the Nethermind project as it is used for synchronizing blocks during the fast sync mode. It prepares a request for blocks to be downloaded and handles the response received from the peer.
+## Questions: 
+ 1. What is the purpose of the `FastSyncFeed` class?
+    
+    The `FastSyncFeed` class is a subclass of `ActivatedSyncFeed` that prepares and handles requests for blocks during fast sync mode.
+
+2. What is the significance of the `BuildOptions` method?
+    
+    The `BuildOptions` method builds a `DownloaderOptions` object based on the `_syncConfig` object, which determines whether receipts and/or bodies should be downloaded during fast sync.
+
+3. What is the purpose of the `HandleResponse` method?
+    
+    The `HandleResponse` method causes the thread to sleep for a short period of time before returning a `SyncResponseHandlingResult.OK` result, indicating that the response was handled successfully.

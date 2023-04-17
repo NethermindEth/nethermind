@@ -1,0 +1,24 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Precompiles.Benchmark/PrecompileBenchmarkBase.cs)
+
+This code defines an abstract class `PrecompileBenchmarkBase` that serves as a base class for benchmarking Ethereum Virtual Machine (EVM) precompiles. EVM precompiles are native contracts that are implemented in the EVM and are used to perform complex operations that are not possible or efficient to perform using EVM opcodes. 
+
+The `PrecompileBenchmarkBase` class defines two abstract properties: `Precompiles` and `InputsDirectory`. The `Precompiles` property is an enumerable of `IPrecompile` objects, which represent the precompiles to be benchmarked. The `InputsDirectory` property is a string that specifies the directory where the input data for the precompiles is located. 
+
+The `PrecompileBenchmarkBase` class also defines a nested `Param` struct that represents the input data for a single precompile test. The `Param` struct has four properties: `Precompile`, which is the `IPrecompile` object being tested; `Bytes`, which is the input data for the test; `ExpectedResult`, which is the expected output of the test; and `Name`, which is a string that identifies the test. 
+
+The `PrecompileBenchmarkBase` class defines an `Inputs` property that returns an enumerable of `Param` objects. The `Inputs` property iterates over the `Precompiles` enumerable and for each precompile, it reads the input data from the `InputsDirectory` directory. The input data can be in either CSV or JSON format. For CSV files, the `Inputs` property reads the first line of each file and converts it to a `Param` object. For JSON files, the `Inputs` property deserializes the JSON data into an array of `JsonInput` objects and converts each `JsonInput` object to a `Param` object. The `Inputs` property returns an enumerable of all the `Param` objects for all the precompiles. 
+
+The `PrecompileBenchmarkBase` class defines a `Input` property that is annotated with the `ParamsSource` attribute. The `ParamsSource` attribute specifies that the `Input` property should be populated with the `Param` objects returned by the `Inputs` property. 
+
+Finally, the `PrecompileBenchmarkBase` class defines a `Baseline` method that is annotated with the `Benchmark` attribute. The `Baseline` method is the method that is benchmarked. The `Baseline` method calls the `Run` method of the `IPrecompile` object specified by the `Input` property, passing in the `Bytes` property of the `Input` object and the `Berlin` instance. The `Baseline` method returns a tuple containing the output of the `Run` method and a boolean value indicating whether the benchmark is the baseline. 
+
+Overall, this code provides a framework for benchmarking EVM precompiles using input data in CSV or JSON format. The `PrecompileBenchmarkBase` class can be extended to define concrete benchmark classes for specific precompiles.
+## Questions: 
+ 1. What is the purpose of this code file?
+- This code file defines an abstract class `PrecompileBenchmarkBase` that provides a base implementation for benchmarking Ethereum Virtual Machine (EVM) precompiles.
+
+2. What are the inputs for the benchmark?
+- The inputs for the benchmark are defined in the `Inputs` property, which reads CSV and JSON files from a specified directory and generates a list of `Param` objects that contain the precompile to test, the input bytes, and the expected output bytes (if any).
+
+3. What is the purpose of the `Baseline` method?
+- The `Baseline` method is a benchmark method that runs the precompile with the input bytes and returns a tuple containing the output bytes and a boolean indicating whether the execution was successful. This method is marked as the baseline for the benchmark, which means that other benchmark methods can be compared against it to measure their performance.

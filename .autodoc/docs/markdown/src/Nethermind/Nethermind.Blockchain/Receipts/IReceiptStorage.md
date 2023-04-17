@@ -1,0 +1,52 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Blockchain/Receipts/IReceiptStorage.cs)
+
+The code provided is an interface for a receipt storage system in the Nethermind project. Receipts are a crucial part of the Ethereum blockchain as they provide information about the execution of transactions within a block. This interface defines the methods and properties that a receipt storage system must implement in order to be compatible with the Nethermind blockchain.
+
+The `IReceiptStorage` interface extends the `IReceiptFinder` interface, which means that it inherits all of its methods and properties. The `IReceiptFinder` interface defines methods for finding receipts based on their transaction hash or block hash. This means that any implementation of the `IReceiptStorage` interface must also be able to find receipts based on these criteria.
+
+The `IReceiptStorage` interface also defines several additional methods and properties. The `Insert` method is used to insert a block and its associated transaction receipts into the receipt storage system. The `ensureCanonical` parameter is used to indicate whether the receipts should be stored in a canonical order. The `LowestInsertedReceiptBlockNumber` property is used to keep track of the lowest block number for which receipts have been inserted. The `MigratedBlockNumber` property is used to keep track of the block number up to which the receipt storage system has been migrated. The `HasBlock` method is used to check whether a block with a given hash exists in the receipt storage system. Finally, the `EnsureCanonical` method is used to ensure that the receipts for a given block are stored in a canonical order.
+
+Overall, this interface provides a standardized way for receipt storage systems to interact with the Nethermind blockchain. By implementing this interface, developers can ensure that their receipt storage system is compatible with the Nethermind blockchain and can be used in conjunction with other components of the system. Here is an example of how this interface might be implemented:
+
+```csharp
+public class MyReceiptStorage : IReceiptStorage
+{
+    public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical)
+    {
+        // Insert the block and its associated receipts into the storage system
+    }
+
+    public long? LowestInsertedReceiptBlockNumber { get; set; }
+
+    public long MigratedBlockNumber { get; set; }
+
+    public bool HasBlock(Keccak hash)
+    {
+        // Check whether a block with the given hash exists in the storage system
+    }
+
+    public void EnsureCanonical(Block block)
+    {
+        // Ensure that the receipts for the given block are stored in a canonical order
+    }
+
+    public TxReceipt? Find(Keccak txHash)
+    {
+        // Find the receipt for the transaction with the given hash
+    }
+
+    public TxReceipt[] Find(Keccak blockHash, int txIndex)
+    {
+        // Find the receipts for the transaction at the given index in the block with the given hash
+    }
+}
+```
+## Questions: 
+ 1. What is the purpose of this code file?
+   - This code file defines an interface called `IReceiptStorage` that extends `IReceiptFinder` and provides methods for inserting and retrieving transaction receipts from a blockchain.
+
+2. What is the significance of the `Insert` method having a default parameter value of `true` for `ensureCanonical`?
+   - The `Insert` method inserts transaction receipts for a given block into the storage, and the `ensureCanonical` parameter determines whether the receipts should be marked as canonical. By default, receipts are marked as canonical, but this behavior can be overridden by passing `false` as the `ensureCanonical` parameter.
+
+3. What is the purpose of the `MigratedBlockNumber` property?
+   - The `MigratedBlockNumber` property is used to track the block number up to which the receipts have been migrated to a new storage. This property is likely used during a migration process from one storage implementation to another.

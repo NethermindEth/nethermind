@@ -1,0 +1,28 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Network.Dns/EnrTreeRoot.cs)
+
+The `EnrTreeRoot` class is a representation of the root node of a tree structure used in the Nethermind project's DNS (Domain Name System) implementation. The tree structure is used to store and retrieve Ethereum Node Records (ENRs), which are key-value pairs that contain information about Ethereum nodes, such as their IP address, port number, and supported protocols.
+
+The `EnrTreeRoot` class inherits from the `EnrTreeNode` class, which is a base class for all nodes in the tree structure. The `EnrTreeRoot` class has four properties: `EnrRoot`, `LinkRoot`, `Sequence`, and `Signature`. 
+
+The `EnrRoot` and `LinkRoot` properties are strings that represent the root hashes of subtrees containing nodes and links subtrees, respectively. These subtrees are used to store ENRs and links to other nodes in the tree structure. 
+
+The `Sequence` property is an integer that is updated each time the tree gets updated. This property is used to ensure that the latest version of the tree is being used. 
+
+The `Signature` property is a string that represents the signature of the root node. However, the code comments indicate that it is not clear where the public key used to verify the signature should come from.
+
+The `ToString()` method is overridden to return a string representation of the `EnrTreeRoot` object in the format `enrtree-root:v1 e=[enr-root] l=[link-root] seq=[sequence-number] sig=[signature]`.
+
+The `Refs` property is overridden to return an array of strings that represent the `EnrRoot` and `LinkRoot` properties. This property is used to retrieve the root hashes of the subtrees containing nodes and links subtrees.
+
+The `Links` and `Records` properties are overridden to return empty arrays of strings. These properties are used to retrieve the links and records associated with a node in the tree structure.
+
+Overall, the `EnrTreeRoot` class is an important component of the Nethermind project's DNS implementation, as it represents the root node of the tree structure used to store and retrieve ENRs. The properties and methods of the class are used to manage and retrieve information about the tree structure and its nodes.
+## Questions: 
+ 1. What is the purpose of this code and what problem does it solve?
+- This code defines a class called `EnrTreeRoot` which represents the root of a tree structure used for DNS resolution. It contains information about the root hashes of subtrees, a sequence number, and a signature.
+
+2. What is the format of the TXT record that represents the root of the tree?
+- The TXT record has the following format: `enrtree-root:v1 e=[enr-root] l=[link-root] seq=[sequence-number] sig=[signature]`.
+
+3. What is the difference between `Refs`, `Links`, and `Records` properties of `EnrTreeNode`?
+- `Refs` is an array of strings representing the root hashes of subtrees containing nodes and links subtrees. `Links` is an empty array of strings, and `Records` is also an empty array of strings. These properties are overridden in derived classes to provide specific information about the nodes and links in the tree.

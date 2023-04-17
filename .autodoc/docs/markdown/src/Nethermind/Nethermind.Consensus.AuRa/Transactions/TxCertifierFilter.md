@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Consensus.AuRa/Transactions/TxCertifierFilter.cs)
+
+The `TxCertifierFilter` class is a transaction filter used in the AuRa consensus algorithm of the Nethermind project. Its purpose is to filter out transactions that are not certified by a specific contract, while allowing all other transactions to pass through. 
+
+The class implements the `ITxFilter` interface, which requires the implementation of the `IsAllowed` method. This method takes a `Transaction` object and a `BlockHeader` object as input parameters, and returns an `AcceptTxResult` object. The `IsAllowed` method first calls the `IsCertified` method to check if the transaction is certified. If the transaction is certified, the method returns `Accepted`, otherwise it calls the `IsAllowed` method of another `ITxFilter` object passed to the constructor and returns its result.
+
+The `IsCertified` method checks if the transaction is a service transaction with zero gas price and a non-null sender address. If so, it retrieves a cached dictionary of certified addresses for the block specified by the `parentHeader` parameter. If the sender address is found in the cache, the method sets the `IsServiceTransaction` property of the `Transaction` object and returns the cached value. Otherwise, it calls the `Certified` method of the `_certifierContract` object passed to the constructor, passing the `parentHeader` and `sender` parameters. If the call succeeds, the method sets the `IsServiceTransaction` property of the `Transaction` object and adds the sender address and the result to the cache, and returns the result. If the call fails, the method logs an error and returns `false`.
+
+The class has several private fields, including the `_certifierContract` object, which is an instance of the `ICertifierContract` interface, used to check if a transaction is certified. The `_notCertifiedFilter` object is another `ITxFilter` object used to filter out transactions that are not certified. The `_specProvider` object is an instance of the `ISpecProvider` interface, used to retrieve the blockchain specification. The `_certifiedCache` object is a `ResettableDictionary` object used to cache the certified addresses for a specific block. The `_logger` object is an instance of the `ILogger` interface, used to log messages.
+
+The `TxCertifierFilter` class can be used in the larger project to implement the AuRa consensus algorithm, which requires that a certain percentage of the validators certify each block. The `_certifierContract` object can be set to an instance of a smart contract that implements the certification logic. The `_notCertifiedFilter` object can be set to an instance of another `ITxFilter` object that filters out transactions that are not valid according to other criteria. The `TxCertifierFilter` class can be added to a chain of `ITxFilter` objects that are used to filter transactions before they are added to the transaction pool.
+## Questions: 
+ 1. What is the purpose of this code and how does it fit into the nethermind project?
+- This code is a part of the nethermind project's consensus mechanism called AuRa. Specifically, it is a transaction filter that checks whether a transaction is certified by a certain contract before accepting it.
+
+2. What external dependencies does this code have?
+- This code depends on several other classes and interfaces from the nethermind project, including ICertifierContract, ITxFilter, ISpecProvider, ILogManager, and Keccak.
+
+3. What is the caching mechanism used in this code and why is it necessary?
+- This code uses a ResettableDictionary to cache the certification status of transactions from a certain sender address. This is necessary to avoid repeatedly querying the certifier contract for the same sender address in the same block, which can be expensive and slow down the consensus process.

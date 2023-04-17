@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.State.Test.Runner/StateTestTxTracer.cs)
+
+The `StateTestTxTracer` class is a part of the Nethermind project and is used to trace transactions in the Ethereum Virtual Machine (EVM). It implements the `ITxTracer` interface, which defines the methods that are called during the execution of a transaction. The purpose of this class is to record the state changes that occur during the execution of a transaction, which can be used for testing and debugging purposes.
+
+The `StateTestTxTracer` class maintains a `StateTestTxTrace` object, which contains the trace entries for the transaction. The trace entries are instances of the `StateTestTxTraceEntry` class, which contains information about the operation that was executed, such as the opcode, gas, and stack. The `StateTestTxTrace` object also contains the result of the transaction, such as the output, gas used, and error message.
+
+The `StateTestTxTracer` class implements the methods defined in the `ITxTracer` interface, which are called during the execution of a transaction. For example, the `StartOperation` method is called when a new operation is started, and the `ReportOperationError` method is called when an error occurs during the execution of an operation. The `MarkAsSuccess` and `MarkAsFailed` methods are called when the transaction is successful or fails, respectively.
+
+The `StateTestTxTracer` class also implements methods for reporting changes to memory and storage, as well as changes to the balance and code of an account. However, these methods are not currently supported and will throw a `NotSupportedException` if called.
+
+Overall, the `StateTestTxTracer` class is an important component of the Nethermind project, as it provides a way to trace transactions in the EVM and record the state changes that occur during their execution. This information can be used for testing and debugging purposes, and can help developers to identify and fix issues in their smart contracts.
+## Questions: 
+ 1. What is the purpose of the `StateTestTxTracer` class?
+- The `StateTestTxTracer` class is an implementation of the `ITxTracer` interface used for tracing EVM transactions during state tests.
+
+2. What are the different types of tracing that can be enabled with this class?
+- The class supports tracing of receipt, op-level storage, memory, detailed memory, instructions, stack, block hash, access, and fees.
+
+3. What methods are not supported by this class?
+- The class does not support reporting self-destruct, balance change, code change, storage read, action, action end, action error, action end with deployment address, block hash, bytecode, extra gas pressure, and access.

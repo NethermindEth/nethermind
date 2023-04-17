@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Network.Discovery/RoutingTable/NodeBucketItem.cs)
+
+The code defines a class called `NodeBucketItem` that represents an item in a routing table used for network discovery in the Nethermind project. The class has two properties: `Node` and `LastContactTime`. `Node` is a nullable property that represents a network node, and `LastContactTime` is a `DateTime` property that represents the last time the node was contacted. 
+
+The class has a constructor that takes a `Node` object and a `DateTime` object representing the last contact time. It also has a getter for `IsBonded` property that returns a boolean value indicating whether the node is bonded or not. A node is considered bonded if it has been contacted within the last two days. 
+
+The class has a method called `OnContactReceived` that updates the `LastContactTime` property to the current time when a contact is received from the node. 
+
+The class also overrides the `Equals` and `GetHashCode` methods. The `Equals` method checks if the object being compared is the same as the current object, and if not, it checks if the object is a `NodeBucketItem` object and if the `Node` property of both objects have the same `IdHash` value. The `GetHashCode` method returns the hash code of the `Node` property if it is not null, otherwise it returns 0.
+
+This class is used in the larger project to represent an item in the routing table used for network discovery. The `Node` property represents a network node, and the `LastContactTime` property represents the last time the node was contacted. The `IsBonded` property is used to determine if a node is still active and should be kept in the routing table. The `OnContactReceived` method is called when a contact is received from a node to update the `LastContactTime` property. The `Equals` and `GetHashCode` methods are used to compare and hash `NodeBucketItem` objects in the routing table.
+## Questions: 
+ 1. What is the purpose of the `NodeBucketItem` class?
+   - The `NodeBucketItem` class is used in the context of a routing table for network discovery in the Nethermind project. It represents an item in a bucket of nodes that are close to each other in the network.
+
+2. What is the significance of the `LastContactTime` property?
+   - The `LastContactTime` property represents the time when the node was last contacted. It is used to determine whether a node is still active and can be considered for communication.
+
+3. What is the meaning of the `IsBonded` property?
+   - The `IsBonded` property returns a boolean value indicating whether the node has been contacted within the last 2 days. If it has, it is considered "bonded" and can be used for communication.

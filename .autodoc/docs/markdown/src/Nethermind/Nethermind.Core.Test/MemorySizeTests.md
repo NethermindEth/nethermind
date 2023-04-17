@@ -1,0 +1,27 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Core.Test/MemorySizeTests.cs)
+
+The `MemorySizeTests` class is a unit test class that tests the `MemorySizes` class in the `Nethermind.Core` namespace. The purpose of this class is to ensure that the `Align` method in the `MemorySizes` class is working correctly. 
+
+The `MemorySizes` class is responsible for aligning memory sizes to the nearest power of 2. This is useful in situations where memory needs to be allocated in blocks that are a power of 2 in size. The `Align` method takes an integer as input and returns the nearest power of 2 that is greater than or equal to the input integer. 
+
+The `MemorySizeTests` class contains a single test method called `Span`. This method tests the `Align` method by passing in two sets of test cases. The first set of test cases passes in an unaligned value of 1 and expects the aligned value to be 8. The second set of test cases passes in an unaligned value of 1023 and expects the aligned value to be 1024. The `Assert.AreEqual` method is used to compare the expected aligned value with the actual aligned value returned by the `Align` method. 
+
+Overall, the `MemorySizeTests` class is an important part of the testing suite for the `MemorySizes` class. It ensures that the `Align` method is working correctly and that memory sizes are being aligned to the nearest power of 2 as expected. This is important for the larger project because it ensures that memory is being allocated efficiently and that there are no memory leaks or other issues that could cause problems down the line. 
+
+Example usage of the `MemorySizes` class:
+
+```
+int unalignedSize = 100;
+int alignedSize = MemorySizes.Align(unalignedSize);
+Console.WriteLine($"Aligned size: {alignedSize}");
+// Output: Aligned size: 128
+```
+## Questions: 
+ 1. What is the purpose of the `MemorySizeTests` class?
+- The `MemorySizeTests` class is a test fixture for testing the `MemorySizes.Align` method.
+
+2. What is the significance of the `TestCase` attributes on the `Span` method?
+- The `TestCase` attributes specify the input and expected output values for the `Span` test method. In this case, it tests the `MemorySizes.Align` method with two sets of input values.
+
+3. What is the expected behavior of the `MemorySizes.Align` method?
+- The `MemorySizes.Align` method takes an integer input and returns the next power of 2 that is greater than or equal to the input value. This behavior is tested in the `Span` method using the `Assert.AreEqual` method.

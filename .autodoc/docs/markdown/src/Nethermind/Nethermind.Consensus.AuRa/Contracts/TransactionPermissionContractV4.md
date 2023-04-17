@@ -1,0 +1,27 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Consensus.AuRa/Contracts/TransactionPermissionContractV4.cs)
+
+The `TransactionPermissionContractV4` class is a version of a contract used in the Nethermind project to adjust to changes made in EIP1559. This class inherits from the `TransactionPermissionContract` class and overrides the `GetAllowedTxTypesParameters` method. 
+
+The purpose of this class is to provide a way to check if a transaction is allowed to be included in a block. It takes in a transaction and a block header as parameters and returns an array of objects that represent the transaction's properties. These properties include the sender address, recipient address, transaction amount, maximum fee per gas, maximum inclusion fee per gas, gas limit, and transaction data. 
+
+The `TransactionPermissionContractV4` class is used in the larger Nethermind project to enforce transaction validation rules. It is specifically designed to handle transactions that use the EIP1559 fee structure. This version of the contract is used to ensure that only valid transactions are included in a block. 
+
+Here is an example of how this class might be used in the Nethermind project:
+
+```
+var tx = new Transaction(...);
+var blockHeader = new BlockHeader(...);
+var contract = new TransactionPermissionContractV4(...);
+var allowedTxTypes = contract.GetAllowedTxTypesParameters(tx, blockHeader);
+```
+
+In this example, a new transaction and block header are created, and then a new instance of the `TransactionPermissionContractV4` class is instantiated. The `GetAllowedTxTypesParameters` method is then called with the transaction and block header as parameters, and the resulting array of allowed transaction types is returned. This array can then be used to determine if the transaction is valid and should be included in a block.
+## Questions: 
+ 1. What is the purpose of this contract and how does it relate to EIP1559 changes?
+- This is version four of a transaction permission contract and was created to adjust to EIP1559 changes.
+
+2. What is the significance of the `GetAllowedTxTypesParameters` method and what does it return?
+- The `GetAllowedTxTypesParameters` method returns an array of objects that represent the parameters required for a transaction to be allowed. These include the sender address, recipient address, transaction amount, max fee per gas, max inclusion fee per gas, gas limit, and transaction data.
+
+3. What is the role of the `ISpecProvider` interface and how is it used in this contract?
+- The `ISpecProvider` interface is used to provide access to blockchain specifications, which are used to determine the allowed transaction types. In this contract, it is used to set the `_specProvider` field in the constructor.

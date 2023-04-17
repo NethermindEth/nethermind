@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Facade/Filters/IFilterStore.cs)
+
+The code above defines an interface called `IFilterStore` that provides methods for managing filters in the Nethermind blockchain. Filters are used to query and retrieve specific data from the blockchain, such as blocks, transactions, and logs. 
+
+The `IFilterStore` interface includes methods for creating and managing different types of filters, such as `BlockFilter`, `PendingTransactionFilter`, and `LogFilter`. These filters can be used to retrieve data based on various parameters, such as block number, address, and topics. 
+
+For example, the `CreateBlockFilter` method creates a new `BlockFilter` object that can be used to retrieve blocks from the blockchain starting from a specified block number. The `CreatePendingTransactionFilter` method creates a new `PendingTransactionFilter` object that can be used to retrieve pending transactions from the blockchain. The `CreateLogFilter` method creates a new `LogFilter` object that can be used to retrieve logs from the blockchain based on various parameters. 
+
+The `IFilterStore` interface also includes methods for saving and removing filters, as well as checking if a filter exists and getting the type of a filter. Additionally, the interface defines an event called `FilterRemoved` that is raised when a filter is removed. 
+
+Overall, the `IFilterStore` interface provides a way for developers to manage and retrieve data from the Nethermind blockchain using filters. This interface is likely used in conjunction with other components of the Nethermind project to provide a comprehensive blockchain solution.
+## Questions: 
+ 1. What is the purpose of the `IFilterStore` interface?
+- The `IFilterStore` interface defines methods for creating, retrieving, saving, and removing filters related to blockchain data.
+
+2. What is the `FilterBase` class and how is it related to the `IFilterStore` interface?
+- The `FilterBase` class is a base class for filters used in the blockchain data filtering process. The `IFilterStore` interface includes methods that operate on objects of type `FilterBase`.
+
+3. What is the `FilterEventArgs` class and how is it used in the `IFilterStore` interface?
+- The `FilterEventArgs` class is an event argument class that contains information about a filter that has been removed. The `IFilterStore` interface includes an event `FilterRemoved` that is raised when a filter is removed, and the event handler takes an argument of type `FilterEventArgs`.

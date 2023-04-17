@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.State.Test/StateReaderTests.cs)
+
+The `StateReaderTests` class is a collection of tests for the `StateReader` class, which is responsible for reading state data from the Ethereum state trie. The tests are designed to ensure that the `StateReader` class can correctly read account balances and storage values in parallel, and that it can handle non-existent storage values.
+
+The first test, `Can_ask_about_balance_in_parallel()`, creates a `StateProvider` instance and uses it to create an account with a balance of 1 ETH. It then commits the state to the trie and creates four different state roots by adding 1 ETH to the account balance and committing the state each time. The test then creates a `StateReader` instance and starts four tasks, each of which reads the balance of the account at a different state root. The test ensures that all four tasks complete successfully and that the balance is correctly read in each case.
+
+The second test, `Can_ask_about_storage_in_parallel()`, is similar to the first test, but instead of reading account balances, it reads storage values. The test creates a `StorageProvider` instance and uses it to create an account with an initial storage value of `[1]`. It then commits the state to the trie and creates four different state roots by adding 1 ETH to the account balance and updating the storage value each time. The test then creates a `StateReader` instance and starts four tasks, each of which reads the storage value of the account at a different state root. The test ensures that all four tasks complete successfully and that the storage value is correctly read in each case.
+
+The third test, `Non_existing()`, tests the behavior of the `StateReader` class when a storage value does not exist. The test creates a `StorageProvider` instance and uses it to create an account with an initial storage value of `[1]`. It then commits the state to the trie and creates a state root. The test then creates a `StateReader` instance and attempts to read a storage value that does not exist. The test ensures that the `GetStorage()` method returns a default value of `[0]`.
+
+The fourth test, `Get_storage()`, tests the `GetStorage()` method of the `StateReader` class. The test creates a `StateProvider` instance and uses it to create an account with an initial storage value of `[1, 2, 3]`. It then commits the state to the trie and creates a `StateReader` instance. The test ensures that the `GetStorage()` method correctly retrieves the initial storage value. The test then creates a `StateProvider` instance and uses it to update the storage value to `[1, 2, 3, 4, 5]`. The test ensures that the `GetStorage()` method correctly retrieves the updated storage value.
+
+Overall, the `StateReaderTests` class tests the functionality of the `StateReader` class and ensures that it can correctly read account balances and storage values in parallel, and that it can handle non-existent storage values.
+## Questions: 
+ 1. What is the purpose of the `StateReader` class and how is it used in this code?
+- The `StateReader` class is used to read state information from a trie-based database. It is used in this code to retrieve balance and storage information for specific accounts.
+2. What is the significance of the `Parallelizable` attribute on the `StateReaderTests` class?
+- The `Parallelizable` attribute indicates that the tests in the `StateReaderTests` class can be run in parallel. This can improve test performance by allowing multiple tests to run simultaneously.
+3. What is the purpose of the `StartTask` and `StartStorageTask` methods?
+- The `StartTask` and `StartStorageTask` methods are used to create tasks that run in parallel and repeatedly call methods on a `StateReader` instance. They are used in this code to test the performance and concurrency of the `GetBalance` and `GetStorage` methods.

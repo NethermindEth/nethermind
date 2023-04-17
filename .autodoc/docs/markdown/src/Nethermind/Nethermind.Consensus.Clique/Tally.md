@@ -1,0 +1,30 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Consensus.Clique/Tally.cs)
+
+The `Tally` class is a part of the Clique consensus algorithm implementation in the Nethermind project. The purpose of this class is to keep track of the votes for a particular block proposal and to determine whether the proposal should be authorized or not.
+
+The `Tally` class has two properties: `Authorize` and `Votes`. The `Authorize` property is a boolean value that indicates whether the proposal should be authorized or not. The `Votes` property is an integer value that represents the number of votes that the proposal has received.
+
+The constructor of the `Tally` class takes a boolean parameter `authorize` and initializes the `Authorize` property with it. The `Votes` property is initialized to zero by default.
+
+The `Tally` class is used in the Clique consensus algorithm to keep track of the votes for a particular block proposal. When a block proposal is received, each validator in the network can vote either in favor or against the proposal. The `Votes` property of the `Tally` object associated with the proposal is incremented or decremented accordingly.
+
+Once the voting period is over, the `Authorize` property of the `Tally` object is set based on the number of votes received. If the number of votes in favor of the proposal is greater than or equal to the required threshold, the `Authorize` property is set to `true`, indicating that the proposal should be authorized. Otherwise, the `Authorize` property is set to `false`, indicating that the proposal should be rejected.
+
+Here is an example of how the `Tally` class can be used in the Clique consensus algorithm:
+
+```
+Tally tally = new Tally(false); // create a new Tally object with authorize set to false
+tally.Votes++; // increment the number of votes for the proposal
+if (tally.Votes >= threshold) {
+    tally.Authorize = true; // set the authorize property to true if the threshold is met
+}
+```
+## Questions: 
+ 1. What is the purpose of the `Tally` class?
+   - The `Tally` class is used in the Clique consensus algorithm and represents the authorization status and vote count for a given block.
+
+2. What is the significance of the `Authorize` property?
+   - The `Authorize` property represents whether or not a given block has been authorized by the Clique consensus algorithm.
+
+3. Why is the `Votes` property settable?
+   - The `Votes` property is settable so that the vote count for a given block can be updated as more nodes in the network authorize the block.

@@ -1,0 +1,18 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Mev/Metrics.cs)
+
+The code defines a static class called `Metrics` that contains several properties with custom attributes. These properties are used to track various metrics related to the MEV (Maximal Extractable Value) functionality in the Nethermind project.
+
+The `CounterMetric` attribute is used to mark properties that represent a counter of some sort. These counters are incremented each time a certain event occurs. For example, the `BundlesReceived` property tracks the total number of bundles received for inclusion, while the `ValidBundlesReceived` property tracks the total number of valid bundles received for inclusion. Similarly, the `MegabundlesReceived` and `ValidMegabundlesReceived` properties track the total number of megabundles received for inclusion and the total number of valid megabundles received for inclusion, respectively. Finally, the `BundlesSimulated` property tracks the total number of bundles that have been simulated.
+
+The `GaugeMetric` attribute is used to mark properties that represent a gauge of some sort. These gauges represent a value that can go up or down over time. The `TotalCoinbasePayments` property tracks the total coinbase payments in wei.
+
+Overall, this code provides a way to track various metrics related to the MEV functionality in the Nethermind project. These metrics can be used to monitor the performance of the MEV system and identify areas for improvement. For example, if the `ValidBundlesReceived` counter is consistently low, it may indicate that there are issues with the validation process for bundles. Similarly, if the `TotalCoinbasePayments` gauge is consistently high, it may indicate that there are opportunities to optimize the coinbase payment process.
+## Questions: 
+ 1. What is the purpose of this code?
+   - This code defines a static class called `Metrics` that contains several properties with custom attributes used for tracking metrics related to bundle and megabundle transactions in the Nethermind.Mev namespace.
+
+2. What is the significance of the attributes used in this code?
+   - The `CounterMetric` attribute is used to mark properties that represent a counter metric, while the `GaugeMetric` attribute is used to mark properties that represent a gauge metric. The `Description` attribute is used to provide a description of the metric being tracked.
+
+3. What is the data type of the `TotalCoinbasePayments` property?
+   - The `TotalCoinbasePayments` property is of type `decimal` and represents the total coinbase payments in wei.

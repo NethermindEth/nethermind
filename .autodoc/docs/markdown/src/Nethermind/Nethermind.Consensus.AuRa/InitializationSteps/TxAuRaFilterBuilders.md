@@ -1,0 +1,29 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Consensus.AuRa/InitializationSteps/TxAuRaFilterBuilders.cs)
+
+The `TxAuRaFilterBuilders` class is responsible for creating transaction filters for the AuRa consensus algorithm used in the Nethermind project. The class contains several static methods that create different types of transaction filters based on the input parameters.
+
+The `CreateAuRaTxFilterForProducer` method creates a transaction filter for a producer node. It takes in several parameters such as `blocksConfig`, `api`, `readOnlyTxProcessorSource`, `minGasPricesContractDataStore`, and `specProvider`. The method first creates a base AuRa transaction filter using the `CreateBaseAuRaTxFilter` method. It then creates a transaction permission filter using the `CreateTxPermissionFilter` method. If a transaction permission contract is defined in the chain specification, the `CreateTxPermissionFilter` method creates a permission-based transaction filter. Finally, the method returns a composite transaction filter that combines the base AuRa transaction filter and the transaction permission filter.
+
+The `CreateAuRaTxFilter` method creates a transaction filter for a non-producer node. It takes in several parameters such as `api`, `readOnlyTxProcessorSource`, `specProvider`, and `baseTxFilter`. The method first creates a base AuRa transaction filter using the `CreateBaseAuRaTxFilter` method. It then creates a transaction permission filter using the `CreateTxPermissionFilter` method. Finally, the method returns a composite transaction filter that combines the base AuRa transaction filter and the transaction permission filter.
+
+The `CreateBaseAuRaTxFilter` method creates a base AuRa transaction filter. It takes in several parameters such as `blocksConfig`, `api`, `readOnlyTxProcessorSource`, `minGasPricesContractDataStore`, and `specProvider`. The method first creates a minimum gas price transaction filter using the `TxFilterBuilders.CreateStandardMinGasPriceTxFilter` method. It then creates a gas price transaction filter by either using the minimum gas price transaction filter or creating a new filter that combines the minimum gas price transaction filter and a minimum gas price contract transaction filter. If a registrar address is defined in the chain specification, the method creates a certifier filter that combines the gas price transaction filter and a certifier contract transaction filter. Finally, the method returns the certifier filter or the gas price transaction filter.
+
+The `CreateBaseAuRaTxFilter` method also has an overload that creates a base AuRa transaction filter for a non-producer node. It takes in several parameters such as `api`, `readOnlyTxProcessorSource`, `specProvider`, and `baseTxFilter`. The method creates a certifier filter that combines the base transaction filter and a certifier contract transaction filter if a registrar address is defined in the chain specification. Otherwise, the method returns the base transaction filter.
+
+The `CreateTxPermissionFilter` method creates a transaction permission filter. It takes in `api` and `readOnlyTxProcessorSource` as parameters. The method first checks if a transaction permission contract is defined in the chain specification. If so, it creates a permission-based transaction filter using the `VersionedTransactionPermissionContract` class. The method then returns the permission-based transaction filter or null if no transaction permission contract is defined.
+
+The `CreateTxPrioritySources` method creates a tuple of transaction priority contract and local data source. It takes in several parameters such as `config`, `api`, and `readOnlyTxProcessorSource`. The method first checks if a transaction priority contract address is defined in the chain specification. If so, it creates a transaction priority contract using the `TxPriorityContract` class. The method then checks if a transaction priority local data file path is defined in the chain specification. If so, it creates a local data source using the `TxPriorityContract.LocalDataSource` class. Finally, the method returns a tuple of transaction priority contract and local data source.
+
+The `CreateMinGasPricesDataStore` method creates a dictionary contract data store for minimum gas prices. It takes in several parameters such as `api`, `txPriorityContract`, and `localDataSource`. The method first checks if either a transaction priority contract or a transaction priority local data source is defined. If so, it creates a dictionary contract data store using the `DictionaryContractDataStore` class. The method then returns the dictionary contract data store or null if neither a transaction priority contract nor a transaction priority local data source is defined.
+## Questions: 
+ 1. What is the purpose of the `TxAuRaFilterBuilders` class?
+   
+   `TxAuRaFilterBuilders` is a static class that contains methods for creating transaction filters for the AuRa consensus algorithm used in the Nethermind project.
+
+2. What is the purpose of the `CreateFilter` delegate?
+   
+   `CreateFilter` is a delegate that allows for the creation of a new filter based on an original filter and a potential fallback filter if the original filter was not used. It is used to decorate the original filter with `AuRaMergeTxFilter` in order to disable it post-merge.
+
+3. What is the purpose of the `CreateTxPrioritySources` method?
+   
+   `CreateTxPrioritySources` is a method that creates a tuple containing a `TxPriorityContract` and a `TxPriorityContract.LocalDataSource` based on the configuration settings in the `IAuraConfig` object. These objects are used to store and retrieve minimum gas prices for transactions in the AuRa consensus algorithm.

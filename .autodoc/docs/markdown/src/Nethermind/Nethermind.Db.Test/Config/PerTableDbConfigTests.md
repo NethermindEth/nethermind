@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Db.Test/Config/PerTableDbConfigTests.cs)
+
+The `PerTableDbConfigTests` class is a test suite for the `PerTableDbConfig` class, which is responsible for reading and storing configuration settings for different tables in a RocksDB database. The purpose of this class is to ensure that the `PerTableDbConfig` class is functioning correctly by testing its ability to read and use configuration settings.
+
+The first test, `CanReadAllConfigForAllTable`, creates a new `DbConfig` object and an array of table names. It then iterates over each table name and creates a new `PerTableDbConfig` object for that table using the `DbConfig` object and a `RocksDbSettings` object. The test then reads several configuration settings from the `PerTableDbConfig` object to ensure that they can be read correctly. This test ensures that the `PerTableDbConfig` class can read configuration settings for all tables.
+
+The second test, `When_PerTableConfigIsAvailable_UsePerTableConfig`, creates a new `DbConfig` object and sets the `MaxOpenFiles` and `ReceiptsDbMaxOpenFiles` properties to 2 and 3, respectively. It then creates a new `PerTableDbConfig` object for the `Receipts` table using the `DbConfig` object and a `RocksDbSettings` object. The test then checks that the `MaxOpenFiles` property of the `PerTableDbConfig` object is equal to 3. This test ensures that the `PerTableDbConfig` class uses per-table configuration settings when they are available.
+
+The third test, `When_PerTableConfigIsNotAvailable_UseGeneralConfig`, creates a new `DbConfig` object and sets the `MaxOpenFiles` property to 2. It then creates a new `PerTableDbConfig` object for the `Receipts` table using the `DbConfig` object and a `RocksDbSettings` object. The test then checks that the `MaxOpenFiles` property of the `PerTableDbConfig` object is equal to 2. This test ensures that the `PerTableDbConfig` class falls back to the general configuration settings when per-table configuration settings are not available.
+
+Overall, the `PerTableDbConfigTests` class ensures that the `PerTableDbConfig` class is functioning correctly by testing its ability to read and use configuration settings. This is an important part of the larger `nethermind` project, as it ensures that the database is configured correctly and can be used efficiently.
+## Questions: 
+ 1. What is the purpose of the `PerTableDbConfig` class?
+- The `PerTableDbConfig` class is used to read and store configuration settings for a specific table in a RocksDB database.
+
+2. What is the significance of the `CanReadAllConfigForAllTable` test method?
+- The `CanReadAllConfigForAllTable` test method tests whether the `PerTableDbConfig` class can read configuration settings for all tables in a RocksDB database.
+
+3. What is the purpose of the `When_PerTableConfigIsAvailable_UsePerTableConfig` test method?
+- The `When_PerTableConfigIsAvailable_UsePerTableConfig` test method tests whether the `PerTableDbConfig` class uses the per-table configuration settings when they are available, instead of the general configuration settings.

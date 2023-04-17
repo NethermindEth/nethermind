@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Synchronization/LesSync/CanonicalHashTrie.cs)
+
+The `CanonicalHashTrie` class is a subclass of the `PatriciaTree` class and is used in the `nethermind` project for synchronizing Ethereum nodes. It is responsible for storing and retrieving block headers and their corresponding total difficulties in a trie data structure. 
+
+The `CanonicalHashTrie` class has two constructors, one that takes a `KeyValueStoreWithBatching` object and another that takes a `Keccak` object. The `KeyValueStoreWithBatching` object is used to store the trie data structure in a key-value store, while the `Keccak` object is used to initialize the root hash of the trie. 
+
+The `CanonicalHashTrie` class has several methods for building and storing the trie data structure. The `CommitSectionIndex` method is used to store the root hash of the trie in the key-value store. The `GetMaxSectionIndex` method is used to retrieve the maximum section index of the trie. The `BuildProof` method is used to build a proof for a given block number, section index, and from level. The `Set` method is used to store a block header and its corresponding total difficulty in the trie. The `Get` method is used to retrieve a block header and its corresponding total difficulty from the trie.
+
+The `CanonicalHashTrie` class also has several private methods for retrieving and storing data in the key-value store. The `GetMaxSectionIndex` method retrieves the maximum section index from the key-value store. The `SetMaxSectionIndex` method stores the maximum section index in the key-value store. The `GetRootHash` method retrieves the root hash of the trie for a given section index from the key-value store. The `GetMaxRootHash` method retrieves the root hash of the trie for the maximum section index from the key-value store. The `GetKey` method is used to generate a key for a given block number. The `GetRootHashKey` method is used to generate a key for a given section index.
+
+Overall, the `CanonicalHashTrie` class is an important component of the `nethermind` project as it provides a way to efficiently store and retrieve block headers and their corresponding total difficulties in a trie data structure. This data structure is used to synchronize Ethereum nodes and ensure that they have the correct chain of blocks.
+## Questions: 
+ 1. What is the purpose of this code and how does it fit into the nethermind project?
+- This code defines a class called `CanonicalHashTrie` which extends `PatriciaTree` and is used for building and storing a trie data structure. It is part of the `LesSync` namespace in the nethermind project and is used for synchronizing Ethereum nodes.
+
+2. What is the significance of the `SectionSize` constant and how is it used?
+- The `SectionSize` constant is set to 32768 (2^15) and is used to determine the size of each section in the trie. It is used in the `GetSectionFromBlockNo` method to calculate the section index for a given block number.
+
+3. What is the purpose of the `BuildProof` method and how is it used?
+- The `BuildProof` method is used to generate a proof for a given key in the trie. It takes a `blockNo` parameter which is used to calculate the key, a `sectionIndex` parameter which is used to specify which section of the trie to use, and a `fromLevel` parameter which is used to specify the starting level of the proof. It returns an array of byte arrays which represent the nodes in the proof.

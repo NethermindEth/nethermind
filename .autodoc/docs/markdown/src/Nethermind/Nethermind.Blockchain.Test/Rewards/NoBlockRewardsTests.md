@@ -1,0 +1,18 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Blockchain.Test/Rewards/NoBlockRewardsTests.cs)
+
+This code is a test file for the NoBlockRewards class in the Nethermind project. The purpose of this class is to calculate the rewards for mining a block in the Ethereum blockchain. However, the NoBlockRewards class does not actually provide any rewards, as the name suggests. This is useful for testing scenarios where no rewards are expected, such as when a block is not successfully mined.
+
+The code in this file tests the NoBlockRewards class by creating a new block with a number of 10 and an uncle block with a number of 9. It then creates an instance of the NoBlockRewards class and calls the CalculateRewards method with the newly created block as a parameter. The expected result is an empty collection of rewards, which is verified using the Assert.IsEmpty method.
+
+This test ensures that the NoBlockRewards class behaves as expected when no rewards are provided. It is important to test this functionality to ensure that the blockchain operates correctly in scenarios where no rewards are expected, such as when a block is not successfully mined.
+
+Overall, the NoBlockRewards class is an important part of the Nethermind project as it provides a way to calculate rewards for mining blocks in the Ethereum blockchain. The test file for this class ensures that the class behaves as expected in scenarios where no rewards are provided.
+## Questions: 
+ 1. What is the purpose of the `NoBlockRewards` class?
+- The `NoBlockRewards` class is used to calculate block rewards for a given block.
+
+2. What is the significance of the `Timeout` attribute in the `No_rewards` test method?
+- The `Timeout` attribute sets the maximum time allowed for the test to run before it is considered a failure.
+
+3. What is the expected outcome of the `No_rewards` test method?
+- The `No_rewards` test method expects that the `CalculateRewards` method of the `NoBlockRewards` class will return an empty collection of rewards for a given block.

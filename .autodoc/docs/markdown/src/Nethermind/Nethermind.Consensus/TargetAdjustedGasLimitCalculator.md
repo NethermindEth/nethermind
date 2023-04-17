@@ -1,0 +1,25 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Consensus/TargetAdjustedGasLimitCalculator.cs)
+
+The `TargetAdjustedGasLimitCalculator` class is a gas limit calculator used in the Nethermind project for consensus. Gas limit is a parameter in Ethereum that limits the amount of gas that can be used in a block. This class calculates the gas limit for a new block based on the parent block's gas limit and the target gas limit specified in the configuration.
+
+The class implements the `IGasLimitCalculator` interface, which requires the implementation of the `GetGasLimit` method. This method takes a `BlockHeader` object as input, which represents the parent block header, and returns a `long` value representing the calculated gas limit for the new block.
+
+The `TargetAdjustedGasLimitCalculator` constructor takes two parameters: an `ISpecProvider` object and an `IBlocksConfig` object. The `ISpecProvider` object provides the Ethereum specification for the block, and the `IBlocksConfig` object provides the configuration for the block.
+
+The `GetGasLimit` method first retrieves the parent block's gas limit from the `BlockHeader` object. It then checks if a target gas limit is specified in the configuration. If a target gas limit is specified, it calculates the maximum gas limit difference based on the parent block's gas limit and the gas limit bound divisor specified in the Ethereum specification. It then calculates the new gas limit based on the target gas limit and the maximum gas limit difference. If the target gas limit is greater than the parent block's gas limit, it adds the minimum of the difference and the maximum gas limit difference to the parent block's gas limit. If the target gas limit is less than the parent block's gas limit, it subtracts the minimum of the difference and the maximum gas limit difference from the parent block's gas limit.
+
+The method then calls the `AdjustGasLimit` method of the `Eip1559GasLimitAdjuster` class to adjust the gas limit based on the Ethereum Improvement Proposal (EIP) 1559. The adjusted gas limit is returned as the result of the method.
+
+Overall, the `TargetAdjustedGasLimitCalculator` class is an important component of the Nethermind project's consensus mechanism, as it calculates the gas limit for new blocks based on the parent block's gas limit and the target gas limit specified in the configuration. This ensures that the gas limit is set appropriately for each block, which is crucial for the proper functioning of the Ethereum network.
+## Questions: 
+ 1. What is the purpose of this code?
+    
+    This code defines a class called `TargetAdjustedGasLimitCalculator` that implements the `IGasLimitCalculator` interface. It calculates the gas limit for a new block based on the parent block's gas limit and the target block gas limit specified in the configuration.
+
+2. What are the dependencies of this code?
+    
+    This code depends on the `Nethermind.Config`, `Nethermind.Core`, and `Nethermind.Core.Specs` namespaces. It also requires an implementation of the `ISpecProvider` and `IBlocksConfig` interfaces to be passed in as constructor arguments.
+
+3. What is the algorithm used to calculate the gas limit?
+    
+    The algorithm first retrieves the parent block's gas limit and the target block gas limit from the configuration. It then calculates the maximum allowed difference between the parent gas limit and the new gas limit based on the release specification for the block. Finally, it adjusts the gas limit using the EIP-1559 gas limit adjustment algorithm and returns the result.

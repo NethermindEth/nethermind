@@ -1,0 +1,18 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Blockchain.Test/Producers/BuildBlocksWhenRequestedTests.cs)
+
+This code is a unit test for a class called `BuildBlocksWhenRequested` in the `Nethermind.Blockchain.Producers` namespace. The purpose of this class is to provide a mechanism for triggering block production when requested. The `BuildBlocksWhenRequested` class has a method called `BuildBlock` which is used to trigger the block production. 
+
+The `Manual_trigger_works` test method tests whether the `BuildBlock` method works as expected. It creates an instance of the `BuildBlocksWhenRequested` class and subscribes to the `TriggerBlockProduction` event. It then calls the `BuildBlock` method and checks whether the event was triggered by setting a boolean flag to true. Finally, it asserts that the flag is true using the `FluentAssertions` library.
+
+This test is important because it ensures that the `BuildBlocksWhenRequested` class is working as expected and that it can trigger block production when requested. This is a critical component of the larger project because block production is a fundamental aspect of blockchain technology. Without the ability to produce blocks, the blockchain cannot function properly.
+
+Overall, this code is a small but important part of the larger `nethermind` project. It provides a way to trigger block production when requested, which is a critical component of the blockchain. The unit test ensures that this functionality is working as expected.
+## Questions: 
+ 1. What is the purpose of the `BuildBlocksWhenRequested` class?
+   - The `BuildBlocksWhenRequested` class is used to trigger block production and is being tested in this file.
+
+2. What is the significance of the `Timeout` attribute on the `Manual_trigger_works` test method?
+   - The `Timeout` attribute sets the maximum time allowed for the test to run before it is considered a failure.
+
+3. What is the purpose of the `TriggerBlockProduction` event and how is it being used in the `Manual_trigger_works` test method?
+   - The `TriggerBlockProduction` event is used to notify subscribers that a block should be produced. In the `Manual_trigger_works` test method, a subscriber is added to the event and the `BuildBlock` method is called to trigger the event, which sets the `triggered` variable to true. The test then checks that `triggered` is indeed true.

@@ -1,0 +1,47 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Monitoring/Config/MetricsConfig.cs)
+
+The code above defines a class called `MetricsConfig` that implements the `IMetricsConfig` interface. This class is responsible for storing configuration settings related to metrics monitoring in the Nethermind project. 
+
+The `MetricsConfig` class has six properties, each of which represents a different configuration setting. 
+
+The `ExposePort` property is an integer that represents the port number on which the metrics server should listen for incoming requests. If this property is set to `null`, the metrics server will not be exposed over the network. 
+
+The `Enabled` property is a boolean that indicates whether or not metrics monitoring is enabled. If this property is set to `false`, no metrics will be collected or reported. 
+
+The `CountersEnabled` property is a boolean that indicates whether or not counter metrics are enabled. Counter metrics are used to track the number of times a particular event occurs. 
+
+The `PushGatewayUrl` property is a string that represents the URL of the Prometheus push gateway to which metrics should be sent. Prometheus is a popular open-source monitoring system that is commonly used in the Nethermind project. 
+
+The `IntervalSeconds` property is an integer that represents the number of seconds between each metrics collection interval. 
+
+Finally, the `NodeName` property is a string that represents the name of the node that is being monitored. 
+
+Developers working on the Nethermind project can use the `MetricsConfig` class to configure the metrics monitoring system according to their needs. For example, they can set the `ExposePort` property to a specific port number to expose the metrics server over the network, or they can set the `PushGatewayUrl` property to the URL of their Prometheus push gateway to send metrics to their own monitoring system. 
+
+Here is an example of how the `MetricsConfig` class might be used in the larger Nethermind project:
+
+```csharp
+var config = new MetricsConfig
+{
+    Enabled = true,
+    CountersEnabled = true,
+    PushGatewayUrl = "http://prometheus-pushgateway:9091",
+    IntervalSeconds = 10,
+    NodeName = "MyNethermindNode"
+};
+
+// pass the config object to the metrics monitoring system
+var metrics = new Metrics(config);
+metrics.Start();
+```
+
+In this example, a new `MetricsConfig` object is created with the desired configuration settings. This object is then passed to the `Metrics` constructor, which initializes the metrics monitoring system with the specified configuration. Finally, the `Start` method is called to begin collecting and reporting metrics.
+## Questions: 
+ 1. What is the purpose of this code?
+   This code defines a class called MetricsConfig that implements the IMetricsConfig interface and contains properties related to monitoring and metrics.
+
+2. What are the default values for the properties in this class?
+   The default values for the properties are: ExposePort = null, Enabled = false, CountersEnabled = false, PushGatewayUrl = "", IntervalSeconds = 5, and NodeName = "Nethermind".
+
+3. What is the significance of the SPDX-License-Identifier comment?
+   The SPDX-License-Identifier comment is used to specify the license under which the code is released. In this case, the code is released under the LGPL-3.0-only license.

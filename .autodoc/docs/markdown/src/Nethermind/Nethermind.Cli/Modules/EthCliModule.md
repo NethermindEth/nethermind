@@ -1,0 +1,82 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Cli/Modules/EthCliModule.cs)
+
+The `EthCliModule` class is a module in the Nethermind project that provides a command-line interface (CLI) for interacting with the Ethereum network. It contains methods for sending transactions, querying the state of the network, and retrieving information about blocks and transactions.
+
+The `SendEth` method sends Ether from one address to another. It takes the sender's address, the recipient's address, and the amount of Ether to send as input. It then constructs a transaction object with the specified parameters and sends it to the Ethereum network using the `eth_sendTransaction` RPC method. If the transaction is successful, it returns the transaction hash.
+
+The `Syncing` method returns information about the current state of the Ethereum network. It uses the `eth_syncing` RPC method to retrieve this information.
+
+The `GetProof` method retrieves a Merkle proof for a given account and storage keys. It takes the account address, an array of storage keys, and an optional block parameter as input. It then constructs a proof object using the `eth_getProof` RPC method and returns it.
+
+The `Call` method executes a contract function call without creating a transaction. It takes a transaction object and an optional block parameter as input. It then uses the `eth_call` RPC method to execute the call and returns the result.
+
+The `GetBlockByHash` method retrieves a block by its hash. It takes the block hash and a boolean flag indicating whether to return full transaction objects as input. It then uses the `eth_getBlockByHash` RPC method to retrieve the block and returns it.
+
+The `GetTransactionCount` method retrieves the number of transactions sent from a given address. It takes the address and an optional block parameter as input. It then uses the `eth_getTransactionCount` RPC method to retrieve the count and returns it.
+
+The `GetStorageAt` method retrieves the value of a storage position in a contract. It takes the contract address, the position index, and an optional block parameter as input. It then uses the `eth_getStorageAt` RPC method to retrieve the value and returns it.
+
+The `GetBlockByNumber` method retrieves a block by its number. It takes the block number and a boolean flag indicating whether to return full transaction objects as input. It then uses the `eth_getBlockByNumber` RPC method to retrieve the block and returns it.
+
+The `EstimateGas` method estimates the gas cost of a transaction. It takes a transaction object and an optional block parameter as input. It then uses the `eth_estimateGas` RPC method to estimate the cost and returns it.
+
+The `CreateAccessList` method creates an access list for a transaction. It takes a transaction object, an optional block parameter, and a boolean flag indicating whether to optimize the list as input. It then uses the `eth_createAccessList` RPC method to create the list and returns it.
+
+The `SendWei` method is similar to `SendEth`, but it sends Wei instead of Ether.
+
+The `SendRawTransaction` method sends a signed transaction to the Ethereum network. It takes the RLP-encoded transaction as input and uses the `eth_sendRawTransaction` RPC method to send it.
+
+The `SendTransaction` method sends a transaction to the Ethereum network. It takes a transaction object as input and uses the `eth_sendTransaction` RPC method to send it.
+
+The `BlockNumber` method retrieves the current block number. It uses the `eth_blockNumber` RPC method to retrieve the number and returns it.
+
+The `GetCode` method retrieves the bytecode of a contract. It takes the contract address and an optional block parameter as input. It then uses the `eth_getCode` RPC method to retrieve the bytecode and returns it.
+
+The `GetBlockTransactionCountByNumber` method retrieves the number of transactions in a block by its number. It takes the block number as input and uses the `eth_getBlockTransactionCountByNumber` RPC method to retrieve the count.
+
+The `GetBlockTransactionCountByHash` method retrieves the number of transactions in a block by its hash. It takes the block hash as input and uses the `eth_getBlockTransactionCountByHash` RPC method to retrieve the count.
+
+The `GetUncleCountByBlockNumber` method retrieves the number of uncles in a block by its number. It takes the block number as input and uses the `eth_getUncleCountByBlockNumber` RPC method to retrieve the count.
+
+The `GetUncleByBlockNumberAndIndex` method retrieves an uncle block by its number and index. It takes the block number and index as input and uses the `eth_getUncleByBlockNumberAndIndex` RPC method to retrieve the block.
+
+The `GetUncleByBlockHashAndIndex` method retrieves an uncle block by its hash and index. It takes the block hash and index as input and uses the `eth_getUncleByBlockHashAndIndex` RPC method to retrieve the block.
+
+The `GetTransactionByBlockNumberAndIndex` method retrieves a transaction by its block number and index. It takes the block number and index as input and uses the `eth_getTransactionByBlockNumberAndIndex` RPC method to retrieve the transaction.
+
+The `GetTransactionByHash` method retrieves a transaction by its hash. It takes the transaction hash as input and uses the `eth_getTransactionByHash` RPC method to retrieve the transaction.
+
+The `PendingTransactions` method retrieves a list of pending transactions. It uses the `eth_pendingTransactions` RPC method to retrieve the list and returns it.
+
+The `GetTransactionReceipt` method retrieves the receipt for a transaction. It takes the transaction hash as input and uses the `eth_getTransactionReceipt` RPC method to retrieve the receipt.
+
+The `GetBalance` method retrieves the balance of an address. It takes the address and an optional block parameter as input. It then uses the `eth_getBalance` RPC method to retrieve the balance and returns it.
+
+The `ChainId` method retrieves the chain ID of the Ethereum network. It uses the `eth_chainId` RPC method to retrieve the ID and returns it.
+
+The `ProtocolVersion` method retrieves the protocol version of the Ethereum network. It uses the `eth_protocolVersion` RPC method to retrieve the version and returns it.
+
+The `GetLogs` method retrieves logs that match a given filter. It takes the filter object as input and uses the `eth_getLogs` RPC method to retrieve the logs.
+
+The `GetFilterChanges` method retrieves changes to a filter. It takes the filter ID as input and uses the `eth_getFilterChanges` RPC method to retrieve the changes.
+
+The `NewPendingTransactionFilter` method creates a new filter for pending transactions. It uses the `eth_newPendingTransactionFilter` RPC method to create the filter and returns its ID.
+
+The `FeeHistory` method retrieves the fee history of the Ethereum network. It takes the number of blocks to include in the history, the newest block number, and an optional array of reward percentiles as input. It then uses the `eth_feeHistory` RPC method to retrieve the history and returns it.
+
+The `GasPrice` method retrieves the current gas price of the Ethereum network. It uses the `eth_gasPrice` RPC method to retrieve the price and returns it.
+
+The `MaxPriorityFeePerGas` method retrieves the current maximum priority fee per gas of the Ethereum network. It uses the `eth_maxPriorityFeePerGas` RPC method to retrieve the fee and returns it.
+
+The `GetAccount` method retrieves the account information for a given address. It takes the address and an optional block parameter as input. It then uses the `eth_getAccount` RPC method to retrieve the information and returns it.
+
+Overall, the `EthCliModule` class provides a comprehensive set of methods for interacting with the Ethereum network through a command-line interface. These methods can be used to send transactions, query the state of the network, and retrieve information about blocks and transactions.
+## Questions: 
+ 1. What is the purpose of the `SendEth` method and how is it used?
+- The `SendEth` method is used to send Ether from one address to another on the Ethereum network. It takes in the sender's address, recipient's address, and the amount of Ether to send in Wei as parameters, and returns the transaction hash if successful.
+
+2. What is the difference between the `SendEth` and `SendWei` methods?
+- Both methods are used to send Ether on the Ethereum network, but `SendEth` takes in the amount of Ether to send in Eth and converts it to Wei internally, while `SendWei` takes in the amount of Ether to send in Wei directly.
+
+3. What is the purpose of the `CliFunction` and `CliProperty` attributes used in this code?
+- The `CliFunction` and `CliProperty` attributes are used to define functions and properties that can be accessed through the command-line interface (CLI) of the Nethermind client. They allow developers to interact with the Ethereum network and retrieve information or perform actions using simple CLI commands.

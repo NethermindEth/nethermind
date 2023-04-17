@@ -1,0 +1,40 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.JsonRpc.Test/JsonRpcUrlCollectionTests.cs)
+
+The `JsonRpcUrlCollectionTests` file contains a series of tests for the `JsonRpcUrlCollection` class, which is responsible for managing a collection of JSON-RPC URLs. The purpose of this class is to provide a way for the Nethermind project to manage multiple JSON-RPC endpoints, which can be used to interact with the Ethereum blockchain.
+
+The tests in this file cover a variety of scenarios, including cases where the JSON-RPC endpoint is disabled, cases where the endpoint is enabled but no additional URLs are specified, and cases where additional URLs are specified. The tests also cover scenarios where the WebSocket protocol is enabled or disabled, and where the engine module is enabled or disabled.
+
+The `JsonRpcUrlCollection` class is used in the larger Nethermind project to manage the JSON-RPC endpoints that are used to interact with the Ethereum blockchain. By providing a way to manage multiple endpoints, the class makes it easier for developers to build applications that interact with the blockchain. For example, an application might use the `JsonRpcUrlCollection` class to manage a list of JSON-RPC endpoints, and then use those endpoints to query the blockchain for information about transactions, blocks, and other data.
+
+Here is an example of how the `JsonRpcUrlCollection` class might be used in a larger application:
+
+```csharp
+var jsonRpcConfig = new JsonRpcConfig()
+{
+    Enabled = true,
+    EnabledModules = new[] { ModuleType.Eth, ModuleType.Web3, ModuleType.Net },
+    AdditionalRpcUrls = new[] { "https://localhost:1234|https;wss|admin;debug" }
+};
+
+var urlCollection = new JsonRpcUrlCollection(new LogManager(), jsonRpcConfig, true);
+
+foreach (var url in urlCollection)
+{
+    var client = new JsonRpcClient(url);
+    var result = await client.SendRequestAsync("eth_blockNumber", null);
+    Console.WriteLine(result);
+}
+```
+
+In this example, we create a new `JsonRpcConfig` object that specifies that the `Eth`, `Web3`, and `Net` modules should be enabled, and that an additional URL should be added to the collection. We then create a new `JsonRpcUrlCollection` object using the `JsonRpcConfig` object, and loop through each URL in the collection. For each URL, we create a new `JsonRpcClient` object and use it to send a request to the `eth_blockNumber` method of the Ethereum JSON-RPC API. Finally, we print the result of the request to the console.
+
+Overall, the `JsonRpcUrlCollection` class is an important part of the Nethermind project, as it provides a way to manage multiple JSON-RPC endpoints and makes it easier for developers to build applications that interact with the Ethereum blockchain.
+## Questions: 
+ 1. What is the purpose of the `JsonRpcUrlCollection` class?
+- The `JsonRpcUrlCollection` class is used to manage a collection of JSON-RPC URLs for a given configuration.
+
+2. What is the significance of the `EnabledModules` property?
+- The `EnabledModules` property is used to specify which JSON-RPC modules are enabled for a given configuration.
+
+3. What is the purpose of the `EngineHost` and `EnginePort` properties?
+- The `EngineHost` and `EnginePort` properties are used to specify the host and port of a JSON-RPC engine for a given configuration.

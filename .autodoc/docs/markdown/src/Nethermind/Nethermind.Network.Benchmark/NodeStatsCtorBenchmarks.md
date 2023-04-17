@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Network.Benchmark/NodeStatsCtorBenchmarks.cs)
+
+The `NodeStatsCtorBenchmarks` class is a benchmarking tool used to measure the performance of the `NodeStatsLight` class constructor and its associated methods. The purpose of this benchmark is to compare the performance of the `NodeStatsLight` class with an improved version of the code that is not yet implemented, as well as a baseline measurement of the `NodeStatsLight` class constructor.
+
+The `NodeStatsLight` class is used to collect and report statistics on the performance of a `Node` object. The `Node` object is created with a public key, IP address, and port number. The `NodeStatsLight` constructor takes a `Node` object as a parameter and initializes a number of statistics variables, including the current node reputation. The `LightRep` method returns the current node reputation as a long integer.
+
+The `Improved` method is not yet implemented and is included as a placeholder for future improvements to the `NodeStatsLight` class. This method is included in the benchmark to provide a comparison between the current implementation and a hypothetical improved implementation.
+
+The `Light` method is the baseline measurement of the `NodeStatsLight` class constructor. This method creates a new `NodeStatsLight` object using the `_node` object created in the `Setup` method. This method is included in the benchmark to provide a baseline measurement of the performance of the `NodeStatsLight` class constructor.
+
+Overall, the `NodeStatsCtorBenchmarks` class is a tool used to measure the performance of the `NodeStatsLight` class constructor and its associated methods. This benchmark is used to compare the performance of the `NodeStatsLight` class with an improved version of the code that is not yet implemented, as well as a baseline measurement of the `NodeStatsLight` class constructor. This benchmark is useful for identifying performance bottlenecks and for optimizing the performance of the `NodeStatsLight` class.
+## Questions: 
+ 1. What is the purpose of this code?
+    - This code is a benchmark for the `NodeStatsLight` constructor in the `Nethermind.Network` namespace.
+
+2. What is the `Node` class and what does it do?
+    - The `Node` class takes a `PublicKey`, IP address, and port number as arguments and represents a node on the network.
+
+3. What is the difference between the `Improved` and `Light` benchmarks?
+    - The `Improved` benchmark is not implemented and will throw an exception, while the `Light` benchmark creates a `NodeStatsLight` object using the `_node` instance variable.

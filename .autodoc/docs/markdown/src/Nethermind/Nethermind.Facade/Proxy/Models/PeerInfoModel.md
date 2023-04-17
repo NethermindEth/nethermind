@@ -1,0 +1,31 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Facade/Proxy/Models/PeerInfoModel.cs)
+
+The code above defines a C# class called `PeerInfoModel` within the `Nethermind.Facade.Proxy.Models` namespace. This class represents a model for storing information about a peer in the Ethereum network. 
+
+The `PeerInfoModel` class has several properties that store information about the peer, including `ClientId`, `Host`, `Port`, `Address`, `IsBootnode`, `IsTrusted`, `IsStatic`, and `Enode`. These properties are all of type `string` or `bool`, except for `Port`, which is an `int`. 
+
+In addition to these basic properties, the `PeerInfoModel` class also has three additional properties that provide more detailed information about the peer. These include `ClientType`, which stores the type of client the peer is running, `EthDetails`, which stores additional details about the peer's Ethereum protocol implementation, and `LastSignal`, which stores the last signal received from the peer. 
+
+This `PeerInfoModel` class is likely used in the larger Nethermind project to store information about peers that the node is connected to. This information can be used for various purposes, such as monitoring the health of the network, identifying potential issues or attacks, and optimizing network performance. 
+
+Here is an example of how this class might be used in code:
+
+```
+PeerInfoModel peer = new PeerInfoModel();
+peer.ClientId = "Geth/v1.10.8-stable-2688dab4/windows-amd64/go1.17.1";
+peer.Host = "192.168.1.100";
+peer.Port = 30303;
+peer.Address = "192.168.1.100:30303";
+peer.IsBootnode = false;
+peer.IsTrusted = true;
+peer.IsStatic = false;
+peer.Enode = "enode://6ce3f7e3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3c7c8d7c3f7d3
+## Questions: 
+ 1. What is the purpose of the `PeerInfoModel` class?
+   - The `PeerInfoModel` class is a model that represents information about a peer in the Nethermind system, including its client ID, host, port, address, and various flags.
+
+2. What is the significance of the `IsBootnode`, `IsTrusted`, and `IsStatic` properties?
+   - The `IsBootnode` property indicates whether the peer is a bootnode, which is a special type of node that helps new nodes join the network. The `IsTrusted` property indicates whether the peer is trusted, and the `IsStatic` property indicates whether the peer is a static node, which means its IP address is known in advance.
+
+3. What are the `ClientType`, `EthDetails`, and `LastSignal` properties used for?
+   - The `ClientType` property represents the type of client that the peer is running, such as Geth or Parity. The `EthDetails` property contains additional details about the peer's Ethereum protocol implementation. The `LastSignal` property represents the last signal received from the peer.

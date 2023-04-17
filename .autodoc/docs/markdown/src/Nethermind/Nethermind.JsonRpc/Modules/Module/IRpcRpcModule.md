@@ -1,0 +1,32 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.JsonRpc/Modules/Module/IRpcRpcModule.cs)
+
+This code defines an interface for an RPC module in the Nethermind project. RPC stands for Remote Procedure Call, which is a protocol used for communication between different processes or systems. The interface is named `IRpcRpcModule` and it extends another interface called `IRpcModule`. 
+
+The `IRpcRpcModule` interface has one method called `rpc_modules()`, which returns a dictionary of module names and their descriptions. This method is decorated with a `JsonRpcMethod` attribute that provides additional information about the method. The `Description` property specifies a brief description of what the method does, while the `IsImplemented` and `IsSharable` properties indicate whether the method is implemented and whether it can be shared across different RPC modules.
+
+This interface is part of the larger Nethermind project, which is an Ethereum client implementation written in C#. The RPC module is used to expose certain functionalities of the Ethereum client to external systems or applications. By defining this interface, the Nethermind project provides a standard way for external systems to interact with the Ethereum client using RPC.
+
+Here's an example of how this interface might be used in the Nethermind project:
+
+```csharp
+public class MyRpcModule : IRpcRpcModule
+{
+    public ResultWrapper<IDictionary<String, String>> rpc_modules()
+    {
+        // implementation code here
+    }
+
+    // other methods from IRpcModule interface
+}
+```
+
+In this example, a custom RPC module is defined that implements the `IRpcRpcModule` interface. The `rpc_modules()` method is implemented to return a dictionary of module names and their descriptions. This custom RPC module can then be registered with the Nethermind client and used by external systems to interact with the Ethereum client.
+## Questions: 
+ 1. What is the purpose of the `Nethermind.JsonRpc.Modules.Rpc` namespace?
+   - The `Nethermind.JsonRpc.Modules.Rpc` namespace is used for a module related to JSON-RPC in the Nethermind project.
+
+2. What is the `IRpcRpcModule` interface and what does it inherit from?
+   - The `IRpcRpcModule` interface is a JSON-RPC module interface that inherits from the `IRpcModule` interface.
+
+3. What does the `rpc_modules` method do and what is the return type?
+   - The `rpc_modules` method retrieves a list of modules and returns a `ResultWrapper` object containing an `IDictionary` with `String` keys and values.

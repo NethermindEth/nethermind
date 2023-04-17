@@ -1,0 +1,40 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Ethereum.Test.Base/LoadGeneralStateTestsStrategy.cs)
+
+The `LoadGeneralStateTestsStrategy` class is a part of the Ethereum.Test.Base namespace and implements the `ITestLoadStrategy` interface. It provides a way to load general state tests from a specified directory. 
+
+The `Load` method takes two parameters: `testsDirectoryName` and `wildcard`. `testsDirectoryName` is the name of the directory containing the tests to be loaded. If the directory name is not an absolute path, the method searches for the directory in the `GeneralStateTests` directory. `wildcard` is an optional parameter that can be used to filter the tests to be loaded. 
+
+The method first checks if the `testsDirectoryName` is an absolute path. If it is not, it calls the `GetGeneralStateTestsDirectory` method to get the path of the `GeneralStateTests` directory. It then uses the `Directory.EnumerateDirectories` method to get all the directories in the `GeneralStateTests` directory that match the `testsDirectoryName`. If `testsDirectoryName` is an absolute path, it creates an array with a single element containing the directory name. 
+
+The method then calls the `LoadTestsFromDirectory` method for each directory found. It concatenates the results of all the calls to `LoadTestsFromDirectory` and returns the resulting list of tests. 
+
+The `GetGeneralStateTestsDirectory` method gets the path of the `GeneralStateTests` directory. It first gets the path separator character for the current platform. It then gets the base directory for the current application domain and removes the `src` directory and everything after it. It then appends the `GeneralStateTests` directory name to the resulting path. 
+
+The `LoadTestsFromDirectory` method loads the tests from a specified directory. It takes two parameters: `testDir` and `wildcard`. `testDir` is the path of the directory containing the tests to be loaded. `wildcard` is an optional parameter that can be used to filter the tests to be loaded. 
+
+The method first creates an empty list of `GeneralStateTest` objects. It then uses the `Directory.EnumerateFiles` method to get all the files in the `testDir` directory. It then iterates over the files and creates a `FileTestsSource` object for each file. It then calls the `LoadGeneralStateTests` method of the `FileTestsSource` object to load the tests from the file. If the loading is successful, it sets the `Category` property of each test to the `testDir` path and adds the tests to the `testsByName` list. If the loading fails, it creates a new `GeneralStateTest` object with the `Name` property set to the name of the file and the `LoadFailure` property set to the exception message. It then adds the new object to the `testsByName` list. 
+
+Finally, the method returns the `testsByName` list. 
+
+Overall, this class provides a way to load general state tests from a specified directory or from the `GeneralStateTests` directory. It can be used in the larger project to automate the testing process and ensure that the Ethereum implementation is correct and consistent with the Ethereum specification. An example of how this class can be used is shown below:
+
+```
+LoadGeneralStateTestsStrategy strategy = new LoadGeneralStateTestsStrategy();
+IEnumerable<IEthereumTest> tests = strategy.Load("myTestsDirectory", "*.json");
+foreach (IEthereumTest test in tests)
+{
+    // Run the test
+}
+```
+## Questions: 
+ 1. What is the purpose of the `LoadGeneralStateTestsStrategy` class?
+    
+    The `LoadGeneralStateTestsStrategy` class is an implementation of the `ITestLoadStrategy` interface and provides a method to load Ethereum tests from a specified directory.
+
+2. What is the `Load` method doing?
+    
+    The `Load` method takes in a directory name and an optional wildcard string, and returns an enumerable collection of Ethereum tests loaded from the specified directory and its subdirectories. If the directory name is not an absolute path, it searches for the directory in the general state tests directory.
+
+3. What is the purpose of the `LoadTestsFromDirectory` method?
+    
+    The `LoadTestsFromDirectory` method takes in a directory path and a wildcard string, and returns an enumerable collection of `GeneralStateTest` objects loaded from the specified directory. It uses a `FileTestsSource` object to load the tests from the files in the directory and adds them to a list of `GeneralStateTest` objects. If loading a test fails, it adds a `GeneralStateTest` object with the name of the test file and the error message to the list.

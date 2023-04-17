@@ -1,0 +1,38 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Crypto/ShamatarLib.cs)
+
+The `ShamatarLib` class is a static class that provides a set of methods for performing cryptographic operations using the Shamatar library. The Shamatar library is a native library that provides optimized implementations of cryptographic operations for the BN256 and BLS12-381 elliptic curves. The purpose of this class is to provide a managed interface to the Shamatar library, allowing C# code to perform cryptographic operations using the optimized implementations provided by the library.
+
+The class provides a set of methods for performing various operations on the BN256 and BLS12-381 curves. These operations include addition, multiplication, multi-exponentiation, pairing, and mapping to group elements. Each method takes an input byte array and an output byte array, and returns a boolean indicating whether the operation was successful. The input and output byte arrays are passed as `ReadOnlySpan<byte>` and `Span<byte>` parameters, respectively, which allows the methods to operate on the byte arrays without creating additional copies of the data.
+
+The class uses two private methods, `Bn256Op` and `BlsOp`, to perform the actual cryptographic operations. These methods take an operation code, an input byte array, and an output byte array, and use the `eip196_perform_operation` and `eip2537_perform_operation` functions provided by the Shamatar library to perform the operation. The `eip196_perform_operation` function is used for BN256 operations, while the `eip2537_perform_operation` function is used for BLS12-381 operations. Both functions take a byte operation code, an input byte array, an input length, an output byte array, an output length, an error byte array, and an error length as parameters. The output length and error length parameters are passed by reference, allowing the functions to modify the length of the output and error byte arrays as needed.
+
+The `Bn256Op` and `BlsOp` methods use the `fixed` statement to pin the input, output, and error byte arrays in memory, allowing them to be passed to the native functions as pointers. The methods also allocate a stack-allocated byte array to hold the error message returned by the native functions. The methods return a boolean indicating whether the operation was successful, based on the return value of the native functions.
+
+The `ShamatarLib` class is used by other classes in the Nethermind project to perform cryptographic operations on the BN256 and BLS12-381 curves. The class provides a simple and efficient interface to the Shamatar library, allowing C# code to take advantage of the optimized implementations provided by the library. An example usage of the `ShamatarLib` class is shown below:
+
+```
+byte[] input = new byte[64];
+byte[] output = new byte[64];
+
+// perform a BN256 addition operation
+if (ShamatarLib.Bn256Add(input, output))
+{
+    // operation succeeded, output contains the result
+}
+else
+{
+    // operation failed, check the error message
+}
+```
+## Questions: 
+ 1. What is the purpose of the `ShamatarLib` class?
+    
+    The `ShamatarLib` class provides static methods for performing various operations related to BLS and BN256 cryptography using external calls to a native library called `shamatar`.
+
+2. What is the significance of the `DllImport` attributes on the `eip196_perform_operation` and `eip2537_perform_operation` methods?
+    
+    The `DllImport` attributes indicate that the `eip196_perform_operation` and `eip2537_perform_operation` methods are implemented in an external native library called `shamatar` and that they should be invoked using platform invoke (P/Invoke) to call into the native code.
+
+3. What is the purpose of the `Bn256Op` and `BlsOp` methods?
+    
+    The `Bn256Op` and `BlsOp` methods are helper methods that wrap the `eip196_perform_operation` and `eip2537_perform_operation` methods respectively, and provide a more convenient interface for performing BLS and BN256 operations by taking `ReadOnlySpan<byte>` input and `Span<byte>` output parameters.

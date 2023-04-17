@@ -1,0 +1,21 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Cli.Test/StatementHistoryManagerTests.cs)
+
+The `StatementHistoryManagerTests` class is a test suite for the `StatementHistoryManager` class. The purpose of this class is to manage the command history of the CLI console. The `SetUp` method initializes the `_console`, `_fileSystem`, `_file`, and `_historyManager` objects. The `ReadLine.ClearHistory()` method clears the command history.
+
+The `should_write_removed_to_history_if_secured_command_received` test method tests the `UpdateHistory` method of the `StatementHistoryManager` class. This method updates the command history with the received command. If the received command is a secured command, it is replaced with `*removed*` in the command history. The test method checks if the `UpdateHistory` method works as expected by calling it with different commands and checking the command history.
+
+The `Init_should_read_history_from_file` test method tests the `Init` method of the `StatementHistoryManager` class. This method reads the command history from a file and initializes the command history. The test method checks if the `Init` method works as expected by mocking the file system and checking if the command history is initialized with the contents of the file.
+
+These test methods ensure that the `StatementHistoryManager` class works as expected and that the command history is managed correctly. The `StatementHistoryManager` class is used in the larger project to manage the command history of the CLI console. The `UpdateHistory` method is called whenever a command is executed, and the `Init` method is called when the CLI console is initialized. The command history is used to provide command auto-completion and to allow the user to navigate through the command history using the up and down arrow keys.
+## Questions: 
+ 1. What is the purpose of the `StatementHistoryManager` class?
+    
+    The `StatementHistoryManager` class is responsible for managing the command history of a CLI console.
+
+2. What is the purpose of the `should_write_removed_to_history_if_secured_command_received` test method?
+    
+    The `should_write_removed_to_history_if_secured_command_received` test method verifies that the `StatementHistoryManager` correctly removes secured commands from the command history.
+
+3. What is the purpose of the `Init_should_read_history_from_file` test method?
+    
+    The `Init_should_read_history_from_file` test method verifies that the `StatementHistoryManager` correctly initializes the command history by reading it from a file.

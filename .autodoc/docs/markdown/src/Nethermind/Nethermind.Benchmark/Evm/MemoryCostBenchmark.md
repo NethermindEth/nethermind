@@ -1,0 +1,22 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Benchmark/Evm/MemoryCostBenchmark.cs)
+
+The `MemoryCostBenchmark` class is a part of the Nethermind project and is used to benchmark the memory cost of the Ethereum Virtual Machine (EVM). The purpose of this code is to compare the performance of two different implementations of EVM memory, `_current` and `_improved`, by measuring the memory cost of a given scenario. The benchmark uses the `BenchmarkDotNet` library to measure the performance of the code.
+
+The `MemoryCostBenchmark` class contains two private fields `_current` and `_improved`, which are both instances of the `IEvmMemory` interface. The `IEvmMemory` interface is used to define the behavior of EVM memory. The `_current` and `_improved` fields represent two different implementations of EVM memory. The `EvmPooledMemory` class is used to implement the `IEvmMemory` interface.
+
+The `MemoryCostBenchmark` class also contains two private fields `_location` and `_length`, which are both instances of the `UInt256` class. These fields are used to define the memory location and length of the scenario being benchmarked. The `_scenarios` field is an array of tuples that contains different scenarios to be benchmarked. Each tuple contains a memory location and length.
+
+The `MemoryCostBenchmark` class has a public property `ScenarioIndex` that is used to select the scenario to be benchmarked. The `Params` attribute is used to specify the range of values that `ScenarioIndex` can take.
+
+The `Setup` method is used to set the `_location` and `_length` fields based on the selected scenario. The `Benchmark` method is used to measure the memory cost of the selected scenario using the `_current` implementation of EVM memory.
+
+Overall, this code is used to benchmark the memory cost of different scenarios using two different implementations of EVM memory. The results of the benchmark can be used to determine which implementation of EVM memory is more efficient for a given scenario.
+## Questions: 
+ 1. What is the purpose of this code?
+   - This code is for a benchmarking test for memory cost in the Nethermind EVM (Ethereum Virtual Machine).
+
+2. What is the significance of the `Params` attribute on the `ScenarioIndex` property?
+   - The `Params` attribute allows the developer to specify different values for the `ScenarioIndex` property, which determines which scenario to use for the benchmarking test.
+
+3. What is the difference between `_current` and `_improved` variables?
+   - The code only uses `_current` variable and does not use `_improved` variable. It is unclear why `_improved` variable is declared and what its purpose is.

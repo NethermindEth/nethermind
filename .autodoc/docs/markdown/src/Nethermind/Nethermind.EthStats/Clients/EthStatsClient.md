@@ -1,0 +1,24 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.EthStats/Clients/EthStatsClient.cs)
+
+The `EthStatsClient` class is responsible for connecting to an Ethereum statistics server and handling incoming messages. It implements the `IEthStatsClient` interface and is disposable. 
+
+The constructor takes in a `urlFromConfig` string, `reconnectionInterval` integer, `messageSender` object, and `logManager` object. The `urlFromConfig` string is the URL of the Ethereum statistics server. The `reconnectionInterval` integer is the time interval in milliseconds between reconnection attempts. The `messageSender` object is responsible for sending messages to the Ethereum statistics server. The `logManager` object is responsible for logging messages.
+
+The `BuildUrl` method is an internal method that builds the WebSocket URL for the Ethereum statistics server. It first checks if the `urlFromConfig` string is a valid URI. If it is not, it throws an exception. If it is, it checks if the URI scheme is either `ws` or `wss`. If it is not, it creates a new URI with the correct scheme and port number. It then logs the new URL and returns it.
+
+The `InitAsync` method initializes the WebSocket connection to the Ethereum statistics server. It first builds the WebSocket URL using the `BuildUrl` method. It then creates a new `WebsocketClient` object with the URL and sets the `ErrorReconnectTimeout` and `ReconnectTimeout` properties. It subscribes to the `MessageReceived` event and handles incoming messages. If the message contains the `ServerPingMessage` string, it calls the `HandlePingAsync` method. It then tries to start the WebSocket connection. If it fails, it checks if the URL ends with `/api`. If it does not, it adds `/api` to the end of the URL and tries again. If it fails again, it logs a warning message.
+
+The `HandlePingAsync` method handles incoming ping messages from the Ethereum statistics server. It first gets the current client time and the server time from the message. It calculates the latency between the client and server times and sends a pong message back to the server. It then sends a `LatencyMessage` object to the `messageSender` object.
+
+The `Dispose` method disposes of the `WebsocketClient` object.
+
+Overall, the `EthStatsClient` class is an important part of the Nethermind project as it allows the client to connect to an Ethereum statistics server and receive real-time data about the Ethereum network. It can be used in conjunction with other classes in the project to provide a comprehensive view of the Ethereum network.
+## Questions: 
+ 1. What is the purpose of this code?
+- This code defines a class called `EthStatsClient` which is used to connect to an Ethereum statistics server and send/receive messages.
+
+2. What external dependencies does this code have?
+- This code depends on the `Nethermind.Core`, `Nethermind.EthStats.Messages`, `Nethermind.Logging`, and `Websocket.Client` libraries.
+
+3. What is the purpose of the `BuildUrl` method?
+- The `BuildUrl` method takes the URL of an Ethereum statistics server and converts it to a WebSocket URL if necessary. It also logs a message if the URL is modified.

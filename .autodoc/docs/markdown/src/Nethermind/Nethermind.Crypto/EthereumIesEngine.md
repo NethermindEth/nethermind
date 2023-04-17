@@ -1,0 +1,36 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Crypto/EthereumIesEngine.cs)
+
+The `EthereumIesEngine` class is a support class for constructing an integrated encryption cipher for doing basic message exchanges on top of key agreement ciphers. It follows the description given in IEEE Std 1363a with a couple of changes specific to Ethereum. The class is part of the Nethermind project and is used for encryption and decryption of data.
+
+The class has two constructors, one that takes `IMac`, `IDigest`, and `BufferedBlockCipher` as parameters, and another that takes no parameters. The `Init` method is used to initialize the encryptor and takes four parameters: `forEncryption`, `kdfKey`, `parameters`, and `macData`. The `ProcessBlock` method is used to process the block of data and takes four parameters: `input`, `inOff`, `inLen`, and `macData`.
+
+The `EncryptBlock` method is used to encrypt the block of data and takes four parameters: `input`, `inOff`, `inLen`, and `macData`. The method initializes the cipher with the key and initialization vector, encrypts the input data, applies the MAC, and outputs the double (C,T).
+
+The `DecryptBlock` method is used to decrypt the block of data and takes four parameters: `inEnc`, `inOff`, `inLen`, and `macData`. The method initializes the cipher with the key and initialization vector, decrypts the input data, verifies the MAC, and outputs the message.
+
+Overall, the `EthereumIesEngine` class is an important part of the Nethermind project as it provides encryption and decryption functionality for data exchange. It is used in conjunction with key agreement ciphers to provide secure communication between nodes in the network. Below is an example of how to use the `EthereumIesEngine` class:
+
+```
+// Initialize the encryptor
+EthereumIesEngine encryptor = new EthereumIesEngine(mac, hash, cipher);
+encryptor.Init(true, kdfKey, parameters);
+
+// Encrypt the data
+byte[] encryptedData = encryptor.ProcessBlock(input, inOff, inLen, macData);
+
+// Initialize the decryptor
+EthereumIesEngine decryptor = new EthereumIesEngine(mac, hash, cipher);
+decryptor.Init(false, kdfKey, parameters);
+
+// Decrypt the data
+byte[] decryptedData = decryptor.ProcessBlock(encryptedData, inOff, inLen, macData);
+```
+## Questions: 
+ 1. What is the purpose of this code and how is it used in the nethermind project?
+- This code is a support class for constructing integrated encryption cipher for doing basic message exchanges on top of key agreement ciphers. It is used in the nethermind project for encryption and decryption of messages.
+
+2. What external libraries or dependencies does this code rely on?
+- This code relies on the Org.BouncyCastle.Crypto library for cryptographic functions such as key agreement, message authentication code generation, and hashing.
+
+3. What changes were made to the original IEEE Std 1363a description in this implementation specific to Ethereum?
+- The MAC key is hashed before use and the encryption IV is included in the MAC computation.

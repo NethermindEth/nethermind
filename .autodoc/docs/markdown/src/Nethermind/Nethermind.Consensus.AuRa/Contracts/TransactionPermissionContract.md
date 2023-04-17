@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Consensus.AuRa/Contracts/TransactionPermissionContract.cs)
+
+The code defines an interface and an abstract class for a transaction permission contract that can be used in the Nethermind blockchain implementation. The purpose of this contract is to define the allowed transaction types that can be initiated by a sender with a specified gas price and data. This contract is used by the node's engine each time a transaction is about to be included in a block.
+
+The `ITransactionPermissionContract` interface defines two methods. The first method, `Version`, returns the contract version number needed for the node's engine. The second method, `AllowedTxTypes`, defines the allowed transaction types and takes two parameters: `parentHeader`, which is the block header of the parent block, and `tx`, which is the transaction being validated. The method returns a tuple containing a set of allowed transaction types and a boolean value. If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.
+
+The `TransactionPermissionContract` abstract class implements the `ITransactionPermissionContract` interface. It defines the `ContractVersion` method, which returns the contract version number needed for the node's engine. It also defines the `AllowedTxTypes` method, which takes the same parameters as the interface method and returns the same tuple. The `AllowedTxTypes` method calls the `CallAllowedTxTypes` method, which is an abstract method that must be implemented by any class that inherits from `TransactionPermissionContract`. The purpose of this method is to define the parameters that are passed to the contract when `AllowedTxTypes` is called.
+
+The `TransactionPermissionContract` class also defines a nested class called `PermissionConstantContract`, which inherits from `ConstantContract`. This class is used to call the contract's methods and check if the `To` address is a contract or not. If the `To` address is a contract, the `ToIsContract` property is set to `true`.
+
+Overall, this code defines a contract that can be used to validate transactions before they are included in a block. It defines the allowed transaction types and ensures that the sender has the necessary permissions to initiate the transaction. This contract is an important part of the Nethermind blockchain implementation and is used by the node's engine to validate transactions.
+## Questions: 
+ 1. What is the purpose of this code and how does it fit into the nethermind project?
+- This code defines an interface and an abstract class for a transaction permission contract in the AuRa consensus protocol. It is part of the nethermind consensus module.
+
+2. What is the TxPermissions enum used for and how is it related to the AllowedTxTypes method?
+- The TxPermissions enum defines the different types of transactions that can be allowed by the contract. The AllowedTxTypes method takes in a block header and a transaction and returns a tuple containing the set of allowed transaction types and a boolean indicating whether the same permissions should be cached for future calls from the same sender.
+
+3. What is the purpose of the PermissionConstantContract class and how is it used in the TransactionPermissionContract class?
+- The PermissionConstantContract class is a subclass of ConstantContract that is used to make constant calls to the contract. It is used in the TransactionPermissionContract class to call the AllowedTxTypes method and set a boolean indicating whether the "to" address is a contract.

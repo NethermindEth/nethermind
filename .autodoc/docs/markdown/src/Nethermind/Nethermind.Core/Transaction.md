@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Core/Transaction.cs)
+
+The `Transaction` class in the `Nethermind.Core` namespace is a C# class that represents a transaction on the Ethereum blockchain. It contains properties and methods that allow for the manipulation and management of transaction data, including the sender and recipient addresses, the amount of Ether being transferred, and the gas limit and price. 
+
+The `Transaction` class has several properties that are used to store information about the transaction, including the `Nonce`, `GasPrice`, `GasLimit`, `To`, `Value`, `Data`, `SenderAddress`, and `Signature`. The `Nonce` is a unique identifier for the transaction, while the `GasPrice` and `GasLimit` properties determine the amount of gas that will be used to execute the transaction. The `To` property specifies the recipient of the transaction, while the `Value` property specifies the amount of Ether being transferred. The `Data` property contains any additional data that is being sent with the transaction, while the `SenderAddress` property specifies the address of the sender. The `Signature` property contains the digital signature of the transaction, which is used to verify its authenticity.
+
+The `Transaction` class also has several methods that are used to manipulate and manage transaction data. The `SetPreHash` method is used to set the pre-hash of the transaction, which is used to generate the transaction hash. The `ClearPreHash` method is used to clear the pre-hash of the transaction. The `GetLength` method is used to get the encoded length of the transaction, while the `ToString` method is used to convert the transaction to a string representation.
+
+The `Transaction` class also has several properties that are used to support the EIP-1559 and EIP-2930 proposals. The `MaxPriorityFeePerGas` property specifies the maximum priority fee per gas that can be paid for the transaction, while the `MaxFeePerGas` property specifies the maximum fee per gas that can be paid for the transaction. The `SupportsAccessList` property specifies whether the transaction supports the access list feature, while the `Supports1559` property specifies whether the transaction supports the EIP-1559 proposal. The `AccessList` property contains the access list for the transaction, while the `MaxFeePerDataGas` property specifies the maximum fee per data gas that can be paid for the transaction. The `BlobVersionedHashes` property contains the versioned hashes for the transaction.
+
+Overall, the `Transaction` class is an important component of the Nethermind project, as it provides a way to manage and manipulate transaction data on the Ethereum blockchain. It is used extensively throughout the project to handle transactions, and its properties and methods are essential for ensuring the smooth operation of the blockchain.
+## Questions: 
+ 1. What is the purpose of the `Transaction` class and what properties and methods does it provide?
+- The `Transaction` class represents a transaction on the Ethereum network and provides properties and methods for accessing and manipulating various aspects of the transaction, such as its sender and recipient addresses, gas price and limit, and data payload.
+
+2. What is the significance of the `Type` property and how does it affect the behavior of the `Transaction` class?
+- The `Type` property represents the type of transaction, which can be a standard transaction, an access list transaction, or an EIP-1559 transaction. Depending on the type of transaction, certain properties and methods of the `Transaction` class may behave differently or be unavailable.
+
+3. What is the purpose of the `ITransactionSizeCalculator` interface and how is it used by the `Transaction` class?
+- The `ITransactionSizeCalculator` interface is used to calculate the encoded size of a transaction, which is necessary for certain operations such as fee estimation and block validation. The `Transaction` class uses this interface to obtain the encoded size of a transaction when needed.

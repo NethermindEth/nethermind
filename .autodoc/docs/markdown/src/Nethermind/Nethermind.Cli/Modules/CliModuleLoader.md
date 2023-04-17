@@ -1,0 +1,29 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Cli/Modules/CliModuleLoader.cs)
+
+The `CliModuleLoader` class is responsible for discovering and loading CLI modules in the Nethermind project. It is used to load modules that can be used in the command-line interface (CLI) of the Nethermind client. 
+
+The class has a constructor that takes an `ICliEngine`, an `IJsonRpcClient`, and an `ICliConsole`. It also has two public properties: `ModuleNames` and `MethodsByModules`. `ModuleNames` is a list of the names of the loaded modules, while `MethodsByModules` is a dictionary that maps module names to a list of method names.
+
+The `DiscoverAndLoadModules` method is used to discover and load modules. It searches for all DLLs in the application directory and the `plugins` directory that match the pattern `Nethermind*.dll`. It then loads all exported types from these DLLs that inherit from `CliModuleBase` and are marked with the `CliModuleAttribute`. It then calls the `LoadModule` method for each discovered module.
+
+The `LoadModule` method loads a single module. It first checks if the module has the `CliModuleAttribute`. If it does not, it writes an error message to the console and returns. If it does, it gets the module's name from the attribute and adds it to the `ModuleNames` list. It then gets all public instance methods declared in the module and sorts them by name. For each method, it checks if it is a property or a function by looking for the `CliPropertyAttribute` or `CliFunctionAttribute`. It then gets the object name and item name from the attribute and creates a delegate for the method using the `CreateDelegate` method. It then adds the delegate to an `ObjectInstance` and adds the instance to a dictionary of objects. If the method is a property, it adds the property to the object using the `AddProperty` method. If it is a function, it adds the function to the object using the `AddMethod` method. It also adds the method name to the `MethodsByModules` dictionary.
+
+The `CreateDelegate` method creates a delegate for a method using the `MethodInfo` and a `CliModuleBase` instance. It first gets the parameter types and return type of the method. It then creates an array of types that includes the parameter types and the return type. It then creates a delegate type using the array of types and returns a delegate for the method using the delegate type and the `CliModuleBase` instance.
+
+The `AddMethod` method adds a method to an `ObjectInstance`. It takes an instance, a name, and a `DelegateWrapper`. It adds the `DelegateWrapper` to the instance using the `FastAddProperty` method.
+
+The `AddProperty` method adds a property to an `ObjectInstance`. It takes an instance, a name, and a `DelegateWrapper`. It creates a `JsValue` from the `DelegateWrapper` and sets the getter to the `JsValue`. It then sets the setter to `JsValue.Null` and defines the property using the `DefineOwnProperty` method.
+
+Overall, the `CliModuleLoader` class is an important part of the Nethermind project as it allows developers to easily create and load CLI modules. It provides a simple and flexible way to extend the functionality of the Nethermind client.
+## Questions: 
+ 1. What is the purpose of this code?
+   
+   This code defines a `CliModuleLoader` class that is responsible for discovering and loading CLI modules for the Nethermind project. It also creates delegates for each method in the modules and adds them to the appropriate object instances.
+
+2. What external dependencies does this code have?
+   
+   This code depends on the `Jint` library, which is used to create delegates for the methods in the CLI modules. It also depends on the `Nethermind` project, which provides the `CliModuleBase` class that the CLI modules inherit from.
+
+3. What is the purpose of the `CreateDelegate` method?
+   
+   The `CreateDelegate` method is used to create a delegate for a given method in a CLI module. It takes a `MethodInfo` object and a `CliModuleBase` object as parameters, and returns a delegate that can be used to invoke the method. The method signature of the delegate matches that of the original method.

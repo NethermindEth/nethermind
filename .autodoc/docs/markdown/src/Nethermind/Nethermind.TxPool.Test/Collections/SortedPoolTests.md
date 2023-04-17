@@ -1,0 +1,24 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.TxPool.Test/Collections/SortedPoolTests.cs)
+
+The `SortedPoolTests` class is a test suite for the `SortedPool` class, which is a transaction pool implementation that stores transactions in a sorted order based on a custom key. The purpose of this class is to test the behavior of the `SortedPool` class under various conditions.
+
+The `SortedPool` class is a generic class that takes three type parameters: `ValueKeccak`, `Transaction`, and `Address`. The `ValueKeccak` type is used as the key for the transactions in the pool, and is a custom type that represents the keccak hash of the transaction's value. The `Transaction` type is the type of the transactions stored in the pool, and the `Address` type is the type of the sender address of the transactions.
+
+The `SortedPool` class is initialized with a capacity of 16, and a default transaction comparer provided by the `TransactionComparerProvider` class. The `SortedPool` class is tested under two scenarios: when the pool is filled beyond capacity, and when the pool is filled beyond capacity in a sorted order.
+
+In the first test, the `Beyond_capacity` test, the `SortedPool` class is filled with transactions until it reaches its capacity of 16. After that, new transactions are added to the pool, causing the oldest transactions to be evicted. The test checks that the pool contains the expected number of transactions, and that the transactions are evicted in the correct order.
+
+In the second test, the `Beyond_capacity_ordered` test, the `SortedPool` class is filled with transactions in a sorted order, and the oldest transactions are evicted in the same order. This test checks that the `SortedPool` class correctly maintains the order of the transactions in the pool.
+
+The third test, `should_remove_empty_buckets`, tests that the `SortedPool` class correctly removes empty buckets from the pool. This test creates a transaction and inserts it into the pool, then removes it and checks that the bucket for the sender address of the transaction is empty.
+
+Overall, the `SortedPoolTests` class tests the behavior of the `SortedPool` class under various conditions, ensuring that it correctly maintains the order of transactions in the pool and evicts transactions in the correct order when the pool reaches its capacity.
+## Questions: 
+ 1. What is the purpose of the `SortedPool` class?
+- The `SortedPool` class is a transaction pool that stores transactions in a sorted order based on a specified comparer.
+
+2. What is the significance of the `Capacity` constant?
+- The `Capacity` constant specifies the maximum number of transactions that the `SortedPool` can hold.
+
+3. What is the purpose of the `should_remove_empty_buckets` test?
+- The `should_remove_empty_buckets` test verifies that when a transaction is removed from the `SortedPool`, any empty buckets in the pool are also removed.

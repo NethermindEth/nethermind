@@ -1,0 +1,32 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Blockchain.Test.Runner/BlockchainTestsBugHunter.cs)
+
+The `BlockchainTestsBugHunter` class is a test runner for blockchain tests in the Nethermind project. It implements the `IBlockchainTestRunner` interface and extends the `BlockchainTestBase` class. 
+
+The purpose of this class is to run a set of blockchain tests and report the results. It takes an `ITestSourceLoader` object as a constructor parameter, which is used to load the tests. The `RunTestsAsync` method is the main entry point for running the tests. It loads the tests using the `_testsSource` object and iterates over them. For each test, it sets up the test environment using the `Setup` method, runs the test using the `RunTest` method, and reports the result.
+
+If the test fails to load, the test runner reports the failure and adds it to the list of test results. If the test runs successfully, the test runner reports whether it passed or failed. If the test fails, the test runner writes the failure to a log file and re-runs the test to capture additional information. The log file is created in a directory named "FailingTests" on the user's desktop.
+
+The `WriteRed` and `WriteGreen` methods are helper methods for writing colored text to the console. They are used to report the test results.
+
+Here is an example of how to use the `BlockchainTestsBugHunter` class:
+
+```csharp
+ITestSourceLoader testsSource = new MyTestSourceLoader();
+BlockchainTestsBugHunter testRunner = new BlockchainTestsBugHunter(testsSource);
+IEnumerable<EthereumTestResult> results = await testRunner.RunTestsAsync();
+foreach (EthereumTestResult result in results)
+{
+    Console.WriteLine($"{result.Name}: {result.Pass}");
+}
+```
+
+In this example, `MyTestSourceLoader` is a custom implementation of the `ITestSourceLoader` interface that loads the tests from a specific source. The `RunTestsAsync` method returns a list of `EthereumTestResult` objects, which contain the name of the test and whether it passed or failed. The example code iterates over the results and writes them to the console.
+## Questions: 
+ 1. What is the purpose of the `BlockchainTestsBugHunter` class?
+- The `BlockchainTestsBugHunter` class is a test runner for blockchain tests and implements the `IBlockchainTestRunner` interface.
+
+2. What is the significance of the `LoadFailure` property of the `BlockchainTest` class?
+- The `LoadFailure` property of the `BlockchainTest` class is used to indicate if there was an error loading the test.
+
+3. What is the purpose of the `NLogManager` class and how is it used in this code?
+- The `NLogManager` class is used to log test failures to a file. It is used in this code to create a log file with the name of the test and category in the `FailingTests` directory if the test fails.

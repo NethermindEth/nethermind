@@ -1,0 +1,25 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.TxPool/Comparison/CompareReplacedTxByFee.cs)
+
+The code defines a class called `CompareReplacedTxByFee` that implements the `IComparer` interface for comparing two `Transaction` objects. The purpose of this class is to compare the fee of a newcomer transaction with the fee of a transaction intended to be replaced, increased by a given percentage. This is used in the context of a transaction pool, where transactions are stored and ordered based on their fees.
+
+The `Compare` method takes two `Transaction` objects as input and returns an integer value indicating their relative order. If the first transaction has a higher fee than the second, the method returns a positive value. If the second transaction has a higher fee, the method returns a negative value. If the fees are equal, the method returns zero.
+
+The method first checks if the two transactions are equal or if one of them is null. If one of them is null, it returns a value indicating that the non-null transaction should come first. If both transactions are non-null, it checks if the second transaction has a zero fee. If it does, it returns a value indicating that the first transaction should come first, since a zero fee transaction can always be replaced.
+
+If both transactions are legacy transactions (i.e., not using the EIP-1559 fee structure), the method calculates a new gas price for the second transaction by dividing its gas price by 10 and adding the result to the original gas price. It then compares this new gas price to the gas price of the first transaction and returns a value indicating their relative order.
+
+If either transaction is an EIP-1559 transaction, the method calculates a new max fee per gas and max priority fee per gas for the second transaction by dividing them by 10 and adding the results to the original values. It then compares the new max fee per gas and max priority fee per gas to the corresponding values of the first transaction and returns a value indicating their relative order.
+
+Overall, this code is used to order transactions in a transaction pool based on their fees, with a preference for transactions that have a higher fee than the transaction they are intended to replace. This is important for ensuring that the transaction pool contains only valid and profitable transactions.
+## Questions: 
+ 1. What is the purpose of this code?
+    
+    This code defines a class called `CompareReplacedTxByFee` that implements the `IComparer` interface and is used to compare the fee of a newcomer transaction with the fee of a transaction intended to be replaced, increased by a given percentage.
+
+2. What is the significance of the `PartOfFeeRequiredToIncrease` constant?
+    
+    The `PartOfFeeRequiredToIncrease` constant is used to determine the minimum percentage increase in fee required for a new transaction to replace an existing one. It is set to 10, which means that the new transaction needs to have a fee that is at least 10% higher than the existing transaction's fee.
+
+3. What is the purpose of the `Compare` method?
+    
+    The `Compare` method is used to compare two transactions (`x` and `y`) based on their fees. It first checks if the transactions are equal or null, and then compares their fees based on whether they are legacy transactions or support EIP-1559. If both transactions are legacy transactions, it compares their `GasPrice` values. If both transactions support EIP-1559, it compares their `MaxPriorityFeePerGas` values. Otherwise, it compares the `GasPrice` of the newcomer transaction with the `MaxFeePerGas` of the transaction intended to be replaced, increased by a given percentage.

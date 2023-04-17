@@ -1,0 +1,31 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Network/SessionMonitor.cs)
+
+The `SessionMonitor` class is responsible for monitoring and managing P2P sessions in the Nethermind network. It implements the `ISessionMonitor` interface and provides methods to start and stop the session monitor. 
+
+The `SessionMonitor` class maintains a list of active sessions in a `ConcurrentDictionary<Guid, ISession>`. When a new session is added to the list using the `AddSession` method, the `OnDisconnected` method is registered as an event handler for the `Disconnected` event of the session. If the session is not in the process of disconnecting, it is added to the list of active sessions.
+
+The `SendPingMessages` method is responsible for sending ping messages to all active sessions that have not received a ping in the last `_pingInterval` time. It uses the `SendPingMessage` method to send a ping message to each session. The `SendPingMessage` method sends a ping message to the session and waits for a pong message. If a pong message is not received, the session is marked for closing. 
+
+The `StartPingTimer` method starts a timer that calls the `SendPingMessages` method at regular intervals. The timer is stopped when the `Stop` method is called.
+
+The `SessionMonitor` class is used by other classes in the Nethermind network to manage P2P sessions. For example, the `PeerManager` class uses the `SessionMonitor` to manage P2P sessions with other peers in the network. 
+
+Example usage:
+
+```csharp
+INetworkConfig networkConfig = new NetworkConfig();
+ILogManager logManager = new LogManager();
+SessionMonitor sessionMonitor = new SessionMonitor(networkConfig, logManager);
+sessionMonitor.Start();
+// ... add sessions to the session monitor ...
+sessionMonitor.Stop();
+```
+## Questions: 
+ 1. What is the purpose of the `SessionMonitor` class?
+- The `SessionMonitor` class is responsible for monitoring and managing P2P sessions in the network.
+
+2. What is the significance of the `_pingInterval` field?
+- The `_pingInterval` field determines the time interval between sending ping messages to P2P sessions.
+
+3. What happens if a ping message is not responded to by a P2P session?
+- If a pong message is not received in response to a ping message, the `SendPingMessage` method returns `false` and the session is marked for closing.

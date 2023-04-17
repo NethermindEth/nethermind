@@ -1,0 +1,29 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Network/P2P/Subprotocols/Eth/V62/Messages/BlockBodiesMessage.cs)
+
+The `BlockBodiesMessage` class is a part of the `nethermind` project and is used in the P2P subprotocol for Ethereum version 62. This class represents a message that contains the bodies of one or more blocks. 
+
+The `BlockBodiesMessage` class inherits from the `P2PMessage` class and overrides two of its properties: `PacketType` and `Protocol`. The `PacketType` property is set to `Eth62MessageCode.BlockBodies`, which is a code that identifies this message type in the Ethereum P2P protocol. The `Protocol` property is set to `"eth"`, which indicates that this message belongs to the Ethereum protocol.
+
+The `BlockBodiesMessage` class has three constructors. The first constructor takes no arguments and does nothing. The second constructor takes an array of `Block` objects and initializes the `Bodies` property with an array of `BlockBody` objects extracted from the `Block` objects. If a `Block` object is `null`, the corresponding `BlockBody` object in the `Bodies` array is also `null`. The third constructor takes an array of `BlockBody` objects and initializes the `Bodies` property with it.
+
+The `Bodies` property is a public property that gets or sets an array of `BlockBody` objects. This property is used to store the bodies of one or more blocks that are sent in this message.
+
+The `ToString()` method is overridden to return a string representation of this message. The returned string contains the name of the class and the length of the `Bodies` array.
+
+This class is used in the larger `nethermind` project to implement the Ethereum P2P protocol version 62. When a node wants to request the bodies of one or more blocks from another node, it sends a `BlockBodiesMessage` containing the hashes of the requested blocks. The receiving node responds with a `BlockBodiesMessage` containing the bodies of the requested blocks. The `BlockBodiesMessage` class is used to represent both the request and the response messages. 
+
+Here is an example of how to create a `BlockBodiesMessage` object with an array of `BlockBody` objects:
+
+```
+BlockBody[] bodies = new BlockBody[] { block1.Body, block2.Body };
+BlockBodiesMessage message = new BlockBodiesMessage(bodies);
+```
+## Questions: 
+ 1. What is the purpose of this code?
+- This code defines a class called `BlockBodiesMessage` which is a message used in the Ethereum P2P subprotocol version 62 to transmit block bodies.
+
+2. What is the relationship between this code and other parts of the `nethermind` project?
+- This code is part of the `nethermind` project's implementation of the Ethereum P2P subprotocol version 62.
+
+3. What is the significance of the `PacketType` and `Protocol` properties?
+- The `PacketType` property specifies the code used to identify this message type in the P2P protocol, while the `Protocol` property specifies the name of the subprotocol this message belongs to.

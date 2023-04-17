@@ -1,0 +1,33 @@
+[View code on GitHub](https://github.com/nethermindeth/nethermind/Nethermind.Core/Resettables/ResettableHashSet.cs)
+
+The `ResettableHashSet` class is a custom implementation of a hash set that can be reset to its initial state. It is designed to be used in scenarios where a hash set is frequently created and destroyed, and resetting the hash set to its initial state is more efficient than creating a new one. 
+
+The class is implemented as a wrapper around the built-in `HashSet` class in C#. It implements the `ICollection<T>` and `IReadOnlyCollection<T>` interfaces, which provide methods for adding, removing, and checking for the presence of items in the hash set. 
+
+The `ResettableHashSet` constructor takes two optional parameters: `startCapacity` and `resetRatio`. `startCapacity` specifies the initial capacity of the hash set, and `resetRatio` specifies the ratio by which the capacity is reduced when the hash set is reset. By default, `startCapacity` is set to a constant value defined in another class, and `resetRatio` is set to a constant value defined in the same class. 
+
+The `ResettableHashSet` class provides a `Reset` method that resets the hash set to its initial state. The method first checks if the hash set is empty, in which case it does nothing. If the hash set is not empty, it checks if the current count of items in the hash set is less than the current capacity divided by the reset ratio, and if the current capacity is not equal to the start capacity. If this condition is true, the current capacity is reduced by the reset ratio, and a new hash set is created with the reduced capacity. If the condition is false, the current capacity is increased by the reset ratio until it is greater than or equal to the current count of items in the hash set, and the hash set is cleared. 
+
+Overall, the `ResettableHashSet` class provides a way to reuse a hash set by resetting it to its initial state instead of creating a new one. This can be useful in scenarios where creating a new hash set is expensive, such as in performance-critical code. 
+
+Example usage:
+
+```
+ResettableHashSet<int> set = new ResettableHashSet<int>();
+set.Add(1);
+set.Add(2);
+set.Add(3);
+set.Reset(); // clears the set
+```
+## Questions: 
+ 1. What is the purpose of the `ResettableHashSet` class?
+    
+    The `ResettableHashSet` class is a custom implementation of a hash set that allows resetting its contents to its initial state while keeping the same capacity.
+
+2. What is the significance of the `_startCapacity` and `_resetRatio` parameters in the constructor?
+    
+    The `_startCapacity` parameter sets the initial capacity of the hash set, while the `_resetRatio` parameter determines the ratio at which the capacity is reset when the `Reset` method is called.
+
+3. What happens when the `Reset` method is called?
+    
+    When the `Reset` method is called, the hash set is cleared if its count is greater than the current capacity. Otherwise, the capacity is adjusted based on the `_resetRatio` parameter and a new hash set is created with the updated capacity.
