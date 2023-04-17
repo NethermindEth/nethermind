@@ -52,7 +52,6 @@ public class StartMonitoring : IStep
 
         if (metricsConfig.Enabled)
         {
-            Console.WriteLine($"Monitoring initialized");
             _api.MonitoringService = new MonitoringService(controller, metricsConfig, _api.LogManager);
 
             await _api.MonitoringService.StartAsync().ContinueWith(x =>

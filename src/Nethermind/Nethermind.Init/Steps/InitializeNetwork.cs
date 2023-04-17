@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,7 +24,6 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
@@ -262,6 +262,8 @@ public class InitializeNetwork : IStep
             throw new InvalidOperationException("Cannot initialize network without knowing own enode");
         }
 
+        SetNetworkNameMetric();
+
         ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
         ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
@@ -430,6 +432,20 @@ public class InitializeNetwork : IStep
 
 
         return Task.CompletedTask;
+    }
+
+    private void SetNetworkNameMetric()
+    {
+        Process cliProcess = new() {
+            StartInfo = new ProcessStartInfo("nslookup", _api.IpResolver!.ExternalIp.ToString()) {
+                UseShellExecute = false,
+                RedirectStandardOutput = true
+            }
+        };
+        cliProcess.Start();
+        string cliOut = cliProcess.StandardOutput.ReadToEnd();
+        cliProcess.WaitForExit();
+        cliProcess.Close();
     }
 
     private async Task InitPeer()

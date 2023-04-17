@@ -4,12 +4,16 @@
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
+using Nethermind.Monitoring.Metrics;
 
 namespace Nethermind.Network
 {
     //TODO: consult on use of metric disabeling flags!
     public static class Metrics
     {
+        [MetricsStaticDescriptionTag(nameof(NetworkMetricsInformer.Name), typeof(NetworkMetricsInformer))]
+        public static long Network { get; set; }
+
         [CounterMetric]
         [Description("Number of incoming connection.")]
         public static long IncomingConnections { get; set; }
