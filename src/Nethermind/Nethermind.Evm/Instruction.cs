@@ -177,7 +177,7 @@ namespace Nethermind.Evm
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
     }
-    
+
     public static class InstructionExtensions
     {
         public static string? GetName(this Instruction instruction, bool isPostMerge = false)

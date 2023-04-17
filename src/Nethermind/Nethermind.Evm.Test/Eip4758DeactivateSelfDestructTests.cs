@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
-            
+
             Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
             byte[] initByteCode = Prepare.EvmCode
                 .ForInitOf(
@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Test
                         .Op(Instruction.JUMPDEST)
                         .Done)
                 .Done;
-            
+
             byte[] byteCode1 = Prepare.EvmCode
                 .Call(contractAddress, 100000)
                 .Op(Instruction.STOP).Done;
@@ -121,7 +121,7 @@ namespace Nethermind.Evm.Test
                         .Op(Instruction.SELFDESTRUCT)
                         .Op(Instruction.JUMPDEST)
                         .Done;
-            byte[] initCode = Prepare.EvmCode.ForInitOf(contractCode) .Done;
+            byte[] initCode = Prepare.EvmCode.ForInitOf(contractCode).Done;
             byte[] salt = new UInt256(123).ToBigEndian();
             Address createTxAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
             Address contractAddress = ContractAddress.From(createTxAddress, salt, initCode);
