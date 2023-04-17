@@ -54,7 +54,7 @@ namespace Nethermind.Trie
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
             _logger = logManager.GetClassLogger();
-            foreach (string? node in missingNodes)
+            foreach (string node in Missing)
             {
                 missingNodes.Add(node);
             }
