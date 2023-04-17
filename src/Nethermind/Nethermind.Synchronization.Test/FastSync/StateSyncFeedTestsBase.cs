@@ -34,6 +34,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 {
     public class StateSyncFeedTestsBase
     {
+        protected readonly TrieNodeResolverCapability _resolverCapability;
+
         private const int TimeoutLength = 2000;
 
         protected static IBlockTree _blockTree;
@@ -45,8 +47,9 @@ namespace Nethermind.Synchronization.Test.FastSync
         private readonly int _defaultPeerCount;
         private readonly int _defaultPeerMaxRandomLatency;
 
-        public StateSyncFeedTestsBase(int defaultPeerCount = 1, int defaultPeerMaxRandomLatency = 0)
+        public StateSyncFeedTestsBase(TrieNodeResolverCapability capability, int defaultPeerCount = 1, int defaultPeerMaxRandomLatency = 0)
         {
+            _resolverCapability = capability;
             _defaultPeerCount = defaultPeerCount;
             _defaultPeerMaxRandomLatency = defaultPeerMaxRandomLatency;
         }
@@ -153,7 +156,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             private readonly ILogger _logger;
 
-            public DbContext(ILogger logger, ILogManager logManager)
+            public DbContext(TrieNodeResolverCapability capability, ILogger logger, ILogManager logManager)
             {
                 _logger = logger;
                 RemoteDb = new MemDb();
@@ -165,7 +168,14 @@ namespace Nethermind.Synchronization.Test.FastSync
                 RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
 
                 RemoteStateTree = new StateTree(RemoteTrieStore, logManager);
-                LocalStateTree = new StateTreeByPath(new TrieStoreByPath(LocalStateDb, logManager), logManager);
+
+                ITrieStore localTrieStore = capability.CreateTrieStore(LocalStateDb, logManager);
+                LocalStateTree = capability switch
+                {
+                    TrieNodeResolverCapability.Hash => new StateTree(localTrieStore, logManager),
+                    TrieNodeResolverCapability.Path => new StateTreeByPath(localTrieStore, logManager),
+                    _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
+                };
             }
 
             public IDb RemoteCodeDb { get; }
@@ -176,7 +186,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             public IDb RemoteStateDb { get; }
             public IDb LocalStateDb { get; }
             public StateTree RemoteStateTree { get; }
-            public StateTreeByPath LocalStateTree { get; }
+            public IStateTree LocalStateTree { get; }
 
             public void CompareTrees(string stage, bool skipLogs = true)
             {

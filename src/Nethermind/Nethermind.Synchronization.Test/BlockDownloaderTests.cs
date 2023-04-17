@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,7 +10,6 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -24,8 +22,6 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
@@ -33,26 +29,32 @@ using Nethermind.Stats.Model;
 using Nethermind.Db.Blooms;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Specs.Forks;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
-using NSubstitute.Exceptions;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Synchronization.Test
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
+
+    [Parallelizable(ParallelScope.All)]
+    [TestFixture(TrieNodeResolverCapability.Hash)]
+    [TestFixture(TrieNodeResolverCapability.Path)]
     public partial class BlockDownloaderTests
     {
+
+        private readonly TrieNodeResolverCapability _resolverCapability;
+
+        public BlockDownloaderTests(TrieNodeResolverCapability capability = TrieNodeResolverCapability.Hash)
+        {
+            _resolverCapability = capability;
+        }
+
         [TestCase(1L, DownloaderOptions.Process, 0)]
         [TestCase(32L, DownloaderOptions.Process, 0)]
         [TestCase(32L, DownloaderOptions.None, 0)]
@@ -73,7 +75,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(SyncBatchSize.Max * 8, DownloaderOptions.Process, 32)]
         public async Task Happy_path(long headNumber, int options, int threshold)
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             DownloaderOptions downloaderOptions = (DownloaderOptions)options;
             bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
             BlockDownloader downloader = ctx.BlockDownloader;
@@ -115,7 +117,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Ancestor_lookup_simple()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             ctx.BlockTree = Build.A.BlockTree().OfChainLength(1024).TestObject;
             BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -144,7 +146,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Ancestor_lookup_headers()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             ctx.BlockTree = Build.A.BlockTree().OfChainLength(1024).TestObject;
             BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -171,7 +173,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Ancestor_failure()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             ctx.BlockTree = Build.A.BlockTree().OfChainLength(2048 + 1).TestObject;
             BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -187,7 +189,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Ancestor_failure_blocks()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             ctx.BlockTree = Build.A.BlockTree().OfChainLength(2048 + 1).TestObject;
             BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -208,7 +210,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(0, false)]
         public async Task Can_sync_with_peer_when_it_times_out_on_full_batch(int ignoredBlocks, bool mergeDownloader)
         {
-            Context ctx = mergeDownloader ? new PostMergeContext() : new Context();
+            Context ctx = mergeDownloader ? new PostMergeContext(capability: _resolverCapability) : new Context(capability: _resolverCapability);
             SyncBatchSize syncBatchSize = new SyncBatchSize(LimboLogs.Instance);
             syncBatchSize.ExpandUntilMax();
             ctx.SyncBatchSize = syncBatchSize;
@@ -246,7 +248,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(32, 16, 100, false)]
         public async Task Can_sync_partially_when_only_some_bodies_is_available(int blockCount, int availableBlock, int minResponseLength, bool mergeDownloader)
         {
-            Context ctx = mergeDownloader ? new PostMergeContext() : new Context();
+            Context ctx = mergeDownloader ? new PostMergeContext(capability: _resolverCapability) : new Context(capability: _resolverCapability);
             BlockDownloader downloader = ctx.BlockDownloader;
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -295,7 +297,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Headers_already_known()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             BlockDownloader downloader = ctx.BlockDownloader;
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -319,7 +321,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Peer_only_advertise_one_header()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             BlockDownloader downloader = ctx.BlockDownloader;
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -339,7 +341,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(65L)]
         public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies(long headNumber)
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             BlockDownloader downloader = ctx.BlockDownloader;
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -362,7 +364,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Throws_on_null_best_peer()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             BlockDownloader downloader = ctx.BlockDownloader;
             Task task1 = downloader.DownloadHeaders(null, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
             await task1.ContinueWith(t => Assert.True(t.IsFaulted));
@@ -374,7 +376,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Throws_on_inconsistent_batch()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect ^ Response.Consistent));
@@ -391,7 +393,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Throws_on_invalid_seal()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             ctx.SealValidator = Always.Invalid;
             BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -410,7 +412,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Throws_on_invalid_header()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             ctx.BlockValidator = Always.Invalid;
             BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -485,7 +487,7 @@ namespace Nethermind.Synchronization.Test
         [Ignore("Fails OneLoggerLogManager Travis only")]
         public async Task Can_cancel_seal_validation()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             ctx.SealValidator = new SlowSealValidator();
             BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -516,7 +518,7 @@ namespace Nethermind.Synchronization.Test
         [Test, MaxTime(7000)]
         public async Task Can_cancel_adding_headers()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             ctx.BlockValidator = new SlowHeaderValidator();
             BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -550,7 +552,7 @@ namespace Nethermind.Synchronization.Test
         {
             ISealValidator sealValidator = Substitute.For<ISealValidator>();
             sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             ctx.SealValidator = sealValidator;
             BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -651,7 +653,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Faults_on_get_headers_faulting()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             BlockDownloader downloader = ctx.BlockDownloader;
 
             ISyncPeer syncPeer = new ThrowingPeer(1000, UInt256.MaxValue);
@@ -664,7 +666,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Throws_on_block_task_exception()
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             BlockDownloader downloader = ctx.BlockDownloader;
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -694,7 +696,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(DownloaderOptions.Process, false)]
         public async Task Throws_on_receipt_task_exception_when_downloading_receipts(int options, bool shouldThrow)
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             DownloaderOptions downloaderOptions = (DownloaderOptions)options;
             BlockDownloader downloader = ctx.BlockDownloader;
 
@@ -735,7 +737,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(DownloaderOptions.Process, false)]
         public async Task Throws_on_null_receipt_downloaded(int options, bool shouldThrow)
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             DownloaderOptions downloaderOptions = (DownloaderOptions)options;
             bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
             BlockDownloader downloader = ctx.BlockDownloader;
@@ -795,7 +797,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(0)]
         public async Task Throws_on_block_bodies_count_higher_than_receipts_list_count(int threshold)
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             BlockDownloader downloader = ctx.BlockDownloader;
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -826,7 +828,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(1)]
         public async Task Does_throw_on_transaction_count_different_than_receipts_count_in_block(int threshold)
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             BlockDownloader downloader = ctx.BlockDownloader;
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -857,7 +859,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(1)]
         public async Task Throws_on_incorrect_receipts_root(int threshold)
         {
-            Context ctx = new();
+            Context ctx = new Context(capability: _resolverCapability);
             BlockDownloader downloader = ctx.BlockDownloader;
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -903,6 +905,7 @@ namespace Nethermind.Synchronization.Test
             private MemDb _stateDb = new();
             private MemDb _blockInfoDb = new();
             private SyncConfig syncConfig = new();
+            protected readonly TrieNodeResolverCapability _resolverCapability;
             private IBlockTree? _blockTree { get; set; }
             private Dictionary<long, Keccak> TestHeaderMapping { get; }
             public InMemoryReceiptStorage ReceiptStorage = new();
@@ -950,12 +953,14 @@ namespace Nethermind.Synchronization.Test
 
             private ISyncProgressResolver? _syncProgressResolver;
 
+            private ITrieStore TrieStore => _resolverCapability.CreateTrieStore(_stateDb, LimboLogs.Instance);
+
             private ISyncProgressResolver? SyncProgressResolver => _syncProgressResolver ??=
                 new SyncProgressResolver(
                     BlockTree,
                     ReceiptStorage,
                     _stateDb,
-                    new TrieStoreByPath(_stateDb, LimboLogs.Instance),
+                    TrieStore,
                     ProgressTracker,
                     syncConfig,
                     LimboLogs.Instance);
@@ -1008,7 +1013,7 @@ namespace Nethermind.Synchronization.Test
                 SyncBatchSize
             );
 
-            public Context(BlockTree? blockTree = null)
+            public Context(TrieNodeResolverCapability capability, BlockTree? blockTree = null)
             {
                 if (blockTree != null)
                 {
@@ -1017,6 +1022,7 @@ namespace Nethermind.Synchronization.Test
 
                 TestHeaderMapping = new Dictionary<long, Keccak>();
                 TestHeaderMapping.Add(0, genesis.Hash!);
+                _resolverCapability = capability;
             }
         }
 

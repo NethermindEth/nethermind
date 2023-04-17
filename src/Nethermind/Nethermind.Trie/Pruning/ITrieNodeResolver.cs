@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -36,5 +37,33 @@ namespace Nethermind.Trie.Pruning
     {
         Hash,
         Path
+    }
+
+    public static class TrieNodeResolverCapabilityExtension
+    {
+        public static ITrieStore CreateTrieStore(this TrieNodeResolverCapability capability, IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
+        {
+            return capability switch
+            {
+                TrieNodeResolverCapability.Hash => new TrieStore(keyValueStore, logManager),
+                TrieNodeResolverCapability.Path => new TrieStoreByPath(keyValueStore, logManager),
+                _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
+            };
+        }
+
+        public static ITrieStore CreateTrieStore(
+            this TrieNodeResolverCapability capability,
+            IKeyValueStoreWithBatching? keyValueStore,
+            IPruningStrategy? pruningStrategy,
+            IPersistenceStrategy? persistenceStrategy,
+            ILogManager? logManager)
+        {
+            return capability switch
+            {
+                TrieNodeResolverCapability.Hash => new TrieStore(keyValueStore, pruningStrategy, persistenceStrategy, logManager),
+                TrieNodeResolverCapability.Path => new TrieStoreByPath(keyValueStore, pruningStrategy, persistenceStrategy, logManager),
+                _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
+            };
+        }
     }
 }
