@@ -815,7 +815,7 @@ namespace Nethermind.Trie
             {
                 TrieNode? storageRoot = _storageRoot;
                 // TODO: fix this hack
-                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, FullPath.Concat(new byte[]{(byte) 128}).ToArray(), out storageRoot)))
+                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, FullPath?.Concat(new byte[]{(byte) 128}).ToArray(), out storageRoot)))
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
                     storageRoot!.CallRecursively(action, resolver, skipPersisted, logger);
