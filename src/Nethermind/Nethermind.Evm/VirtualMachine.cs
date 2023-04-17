@@ -2185,7 +2185,7 @@ namespace Nethermind.Evm
                                 outputOffset = 0;
                             }
 
-                            ExecutionType executionType = GetCallExecutionType(instruction, txCtx.Header.IsPostMerge, spec);
+                            ExecutionType executionType = GetCallExecutionType(instruction, txCtx.Header.IsPostMerge);
                             EvmState callState = new(
                                 gasLimitUl,
                                 callEnv,
@@ -2526,7 +2526,7 @@ AccessViolation:
             _txTracer.ReportOperationRemainingGas(gasAvailable);
         }
 
-        private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
+        private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
         {
             ExecutionType executionType;
             if (instruction == Instruction.CALL)

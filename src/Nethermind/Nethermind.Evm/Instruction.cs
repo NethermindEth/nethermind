@@ -5,9 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
-using Nethermind.Core.Specs;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm
 {
