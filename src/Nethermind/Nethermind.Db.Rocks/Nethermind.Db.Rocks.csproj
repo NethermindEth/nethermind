@@ -1,30 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
-        <Nullable>enable</Nullable>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-        <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
-      <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <PackageReference Include="ConcurrentHashSet" Version="1.3.0" />
-      <PackageReference Include="FastEnum" Version="1.7.0" />
-      <PackageReference Include="RocksDB" Version="6.29.3.26014" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <None Update="runtimes\linux-arm64\native\librocksdb.so">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-      <None Update="runtimes\osx-arm64\native\librocksdb.dylib">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ConcurrentHashSet" />
+    <PackageReference Include="FastEnum" />
+    <PackageReference Include="RocksDB" />
+  </ItemGroup>
 
 </Project>

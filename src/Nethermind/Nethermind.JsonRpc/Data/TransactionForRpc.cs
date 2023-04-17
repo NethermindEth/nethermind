@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -41,7 +28,7 @@ public class TransactionForRpc
         GasPrice = transaction.GasPrice;
         Gas = transaction.GasLimit;
         Input = Data = transaction.Data;
-        if (transaction.IsEip1559)
+        if (transaction.Supports1559)
         {
             GasPrice = baseFee is not null
                 ? transaction.CalculateEffectiveGasPrice(true, baseFee.Value)
@@ -57,7 +44,7 @@ public class TransactionForRpc
         if (signature is not null)
         {
 
-            YParity = (transaction.IsEip1559 || transaction.IsEip2930) ? signature.RecoveryId : null;
+            YParity = transaction.SupportsAccessList ? signature.RecoveryId : null;
             R = new UInt256(signature.R, true);
             S = new UInt256(signature.S, true);
             V = transaction.Type == TxType.Legacy ? (UInt256?)signature.V : (UInt256?)signature.RecoveryId;
@@ -104,6 +91,8 @@ public class TransactionForRpc
 
     public AccessListItemForRpc[]? AccessList { get; set; }
 
+    public UInt256? MaxFeePerDataGas { get; set; } // eip4844
+
     public UInt256? V { get; set; }
 
     public UInt256? S { get; set; }
@@ -133,9 +122,14 @@ public class TransactionForRpc
             Hash = Hash
         };
 
-        if (tx.IsEip1559)
+        if (tx.Supports1559)
         {
             tx.GasPrice = MaxPriorityFeePerGas ?? 0;
+        }
+
+        if (tx.SupportsBlobs)
+        {
+            tx.MaxFeePerDataGas = MaxFeePerDataGas;
         }
 
         return tx;
@@ -156,13 +150,19 @@ public class TransactionForRpc
             Data = Data ?? Input,
             Type = Type,
             AccessList = TryGetAccessList(),
-            ChainId = chainId
+            ChainId = chainId,
+            MaxFeePerDataGas = MaxFeePerDataGas,
         };
 
-        if (tx.IsEip1559)
+        if (tx.Supports1559)
         {
             tx.GasPrice = MaxPriorityFeePerGas ?? 0;
             tx.DecodedMaxFeePerGas = MaxFeePerGas ?? 0;
+        }
+
+        if (tx.SupportsBlobs)
+        {
+            tx.MaxFeePerDataGas = MaxFeePerDataGas;
         }
 
         return tx;

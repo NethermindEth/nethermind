@@ -1,20 +1,8 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -39,6 +27,7 @@ namespace Nethermind.TxPool.Test
         private IReceiptStorage _persistentStorage;
         private IReceiptFinder _receiptFinder;
         private IReceiptStorage _inMemoryStorage;
+        private IBlockTree _blockTree;
 
         public ReceiptStorageTests(bool useEip2718)
         {
@@ -50,8 +39,17 @@ namespace Nethermind.TxPool.Test
         {
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
+            _blockTree = Build.A.BlockTree()
+                .WithBlocks(Build.A.Block.TestObject)
+                .TestObject;
             ReceiptsRecovery receiptsRecovery = new(_ethereumEcdsa, _specProvider);
-            _persistentStorage = new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, receiptsRecovery);
+            _persistentStorage = new PersistentReceiptStorage(
+                new MemColumnsDb<ReceiptsColumns>(),
+                _specProvider,
+                receiptsRecovery,
+                _blockTree,
+                new ReceiptConfig()
+            );
             _receiptFinder = new FullInfoReceiptFinder(_persistentStorage, receiptsRecovery, Substitute.For<IBlockFinder>());
             _inMemoryStorage = new InMemoryReceiptStorage();
         }
@@ -111,7 +109,7 @@ namespace Nethermind.TxPool.Test
                 storage.LowestInsertedReceiptBlockNumber = block.Number;
             }
 
-            storage.LowestInsertedReceiptBlockNumber.Should().Be(updateLowest ? 0 : null);
+            storage.LowestInsertedReceiptBlockNumber.Should().Be(updateLowest ? 1 : null);
         }
 
         private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder receiptFinder = null)
@@ -122,8 +120,10 @@ namespace Nethermind.TxPool.Test
             var transaction = GetSignedTransaction();
             transaction.SenderAddress = null;
             var block = GetBlock(transaction);
+            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader);
             var receipt = GetReceipt(transaction, block);
             storage.Insert(block, receipt);
+            receipt = storage.Get(block)[0];
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
             var fetchedReceipt = receiptFinder.Get(block).ForTransaction(transaction.Hash);
@@ -140,8 +140,10 @@ namespace Nethermind.TxPool.Test
         {
             var transaction = GetSignedTransaction();
             var block = GetBlock(transaction);
+            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader);
             var receipt = GetReceipt(transaction, block);
             storage.Insert(block, receipt);
+            receipt = storage.Get(block)[0];
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
             var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);
@@ -159,7 +161,8 @@ namespace Nethermind.TxPool.Test
                 .WithBlockHash(block.Hash).TestObject;
 
         private Block GetBlock(Transaction transaction) =>
-            Build.A.Block.WithNumber(0)
+            Build.A.Block.WithNumber(1)
+                .WithParent(_blockTree.Genesis)
                 .WithTransactions(transaction)
                 .WithReceiptsRoot(TestItem.KeccakA).TestObject;
     }

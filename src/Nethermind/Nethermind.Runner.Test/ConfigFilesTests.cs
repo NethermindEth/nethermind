@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -59,10 +46,8 @@ namespace Nethermind.Runner.Test
 
         [TestCase("validators", true, true)]
         [TestCase("poacore_validator.cfg", true, true)]
-        [TestCase("xdai_validator.cfg", true, true)]
         [TestCase("spaceneth", false, false)]
         [TestCase("archive", false, false)]
-        [TestCase("baseline", false, false)]
         [TestCase("fast", true, true)]
         public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled)
         {
@@ -73,12 +58,6 @@ namespace Nethermind.Runner.Test
         [TestCase("archive", true)]
         [TestCase("fast", true)]
         [TestCase("spaceneth", false)]
-        [TestCase("baseline", true)]
-        [TestCase("ndm_consumer_goerli.cfg", true)]
-        [TestCase("ndm_consumer_local.cfg", true)]
-        [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
-        [TestCase("ndm_consumer_ropsten.cfg", true)]
-        [TestCase("ndm_consumer_ropsten_proxy.cfg", false)]
         public void Sync_is_disabled_when_needed(string configWildcard, bool isSyncEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SynchronizationEnabled, isSyncEnabled);
@@ -87,12 +66,6 @@ namespace Nethermind.Runner.Test
         [TestCase("archive", true)]
         [TestCase("fast", true)]
         [TestCase("spaceneth", false)]
-        [TestCase("baseline", true)]
-        [TestCase("ndm_consumer_goerli.cfg", true)]
-        [TestCase("ndm_consumer_local.cfg", true)]
-        [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
-        [TestCase("ndm_consumer_ropsten.cfg", true)]
-        [TestCase("ndm_consumer_ropsten_proxy.cfg", false)]
         public void Networking_is_disabled_when_needed(string configWildcard, bool isEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.NetworkingEnabled, isEnabled);
@@ -102,12 +75,10 @@ namespace Nethermind.Runner.Test
         [TestCase("rinkeby", "ws://localhost:3000/api")]
         [TestCase("goerli", "wss://stats.goerli.net/api")]
         [TestCase("mainnet", "wss://ethstats.net/api")]
-        [TestCase("sokol", "ws://localhost:3000/api")]
         [TestCase("poacore", "ws://localhost:3000/api")]
         [TestCase("xdai", "ws://localhost:3000/api")]
         [TestCase("spaceneth", "ws://localhost:3000/api")]
         [TestCase("volta", "ws://localhost:3000/api")]
-        [TestCase("baseline", "ws://localhost:3000/api")]
         public void Ethstats_values_are_correct(string configWildcard, string host)
         {
             Test<IEthStatsConfig, bool>(configWildcard, c => c.Enabled, false);
@@ -128,7 +99,6 @@ namespace Nethermind.Runner.Test
         [TestCase("rinkeby", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]
         [TestCase("goerli", "0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")]
         [TestCase("mainnet", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
-        [TestCase("sokol", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
         [TestCase("poacore", "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634")]
         [TestCase("xdai", "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")]
         [TestCase("volta", "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5")]
@@ -138,7 +108,6 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("spaceneth", true)]
-        [TestCase("baseline", true)]
         [TestCase("validators", true)]
         [TestCase("^validators ^spaceneth", false)]
         public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
@@ -158,19 +127,6 @@ namespace Nethermind.Runner.Test
         {
             Test<IGrpcConfig, bool>(configWildcard, c => c.Enabled, expectedDefault);
         }
-
-        [TestCase("ndm_consumer_local.cfg")]
-        public void IsMining_enabled_for_ndm_consumer_local(string configWildcard)
-        {
-            Test<IInitConfig, bool>(configWildcard, c => c.IsMining, true);
-        }
-
-        // [TestCase("ndm", true)]
-        // [TestCase("^ndm", false)]
-        // public void Ndm_enabled_only_for_ndm_configs(string configWildcard, bool ndmEnabled)
-        // {
-        //     Test<INdmConfig, bool>(configWildcard, c => c.Enabled, ndmEnabled);
-        // }
 
         [TestCase("*")]
         public void Analytics_defaults(string configWildcard)
@@ -211,8 +167,6 @@ namespace Nethermind.Runner.Test
         [TestCase("xdai ^archive", 768000000)]
         [TestCase("poacore archive", 1024000000)]
         [TestCase("poacore ^archive", 768000000)]
-        [TestCase("sokol archive", 768000000)]
-        [TestCase("sokol ^archive", 512000000)]
         [TestCase("spaceneth.cfg", 64000000)]
         [TestCase("spaceneth_persistent.cfg", 128000000)]
         public void Memory_hint_values_are_correct(string configWildcard, long expectedValue)
@@ -229,9 +183,8 @@ namespace Nethermind.Runner.Test
             Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "");
         }
 
-        [TestCase("^mainnet ^spaceneth ^volta ^baseline", 50)]
+        [TestCase("^mainnet ^spaceneth ^volta", 50)]
         [TestCase("spaceneth", 4)]
-        [TestCase("baseline", 25)]
         [TestCase("volta", 25)]
         [TestCase("mainnet", 100)]
         public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
@@ -250,20 +203,19 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("mainnet xdai poacore energy", 2048)]
-        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^energy ^sokol ^poacore ^xdai", 1024)]
-        [TestCase("baseline volta sokol", 512)]
+        [TestCase("^mainnet ^spaceneth ^volta ^energy ^poacore ^xdai", 1024)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
             Test<ITxPoolConfig, int>(configWildcard, c => c.Size, poolSize);
         }
 
-        [TestCase("baseline", true)]
         [TestCase("spaceneth", true)]
         [TestCase("ropsten", true)]
         [TestCase("goerli", true)]
+        [TestCase("xdai", true)]
         [TestCase("mainnet", true)]
-        [TestCase("^spaceneth ^baseline ^ropsten ^goerli ^mainnet", false)]
+        [TestCase("^spaceneth ^ropsten ^goerli ^mainnet ^xdai", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -295,8 +247,6 @@ namespace Nethermind.Runner.Test
         [TestCase("rinkeby.cfg", false)]
         [TestCase("sepolia.cfg", true)]
         [TestCase("xdai.cfg", false)]
-        [TestCase("sokol.cfg", false)]
-        [TestCase("kiln.cfg", false)]
         public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
@@ -338,8 +288,7 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => p.Should().StartWith(startWith));
         }
 
-        [TestCase("^baseline", "Data/static-nodes.json")]
-        [TestCase("baseline", "Data/static-nodes-baseline.json")]
+        [TestCase("^", "Data/static-nodes.json")]
         public void Static_nodes_path_is_default(string configWildcard, string staticNodesPath)
         {
             Test<IInitConfig, string>(configWildcard, c => c.StaticNodesPath, staticNodesPath);
@@ -363,7 +312,6 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli", false)]
         [TestCase("mainnet_archive.cfg", true)]
         [TestCase("mainnet.cfg", true)]
-        [TestCase("sokol", false)]
         [TestCase("poacore", true)]
         [TestCase("xdai", true)]
         [TestCase("volta", false)]
@@ -388,15 +336,11 @@ namespace Nethermind.Runner.Test
         [TestCase("rinkeby")]
         [TestCase("goerli", new[] { 16, 16, 16, 16 })]
         [TestCase("mainnet")]
-        [TestCase("sokol.cfg", new[] { 16, 16, 16, 16 })]
-        [TestCase("sokol_archive.cfg", new[] { 16, 16, 16, 16 })]
-        [TestCase("sokol_validator.cfg", null, false)]
         [TestCase("poacore.cfg", new[] { 16, 16, 16, 16 })]
         [TestCase("poacore_archive.cfg", new[] { 16, 16, 16, 16 })]
         [TestCase("poacore_validator.cfg", null, false)]
         [TestCase("xdai.cfg", new[] { 16, 16, 16 })]
         [TestCase("xdai_archive.cfg", new[] { 16, 16, 16 })]
-        [TestCase("xdai_validator.cfg", null, false)]
         [TestCase("volta")]
         public void Bloom_configs_are_as_expected(string configWildcard, int[] levels = null, bool index = true)
         {
@@ -415,7 +359,7 @@ namespace Nethermind.Runner.Test
         [TestCase("*")]
         public void Arena_order_is_default(string configWildcard)
         {
-            Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, 11);
+            Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, -1);
         }
 
         [TestCase("^mainnet ^goerli", false)]
@@ -479,15 +423,11 @@ namespace Nethermind.Runner.Test
             "kovan_archive.cfg",
             "mainnet_archive.cfg",
             "mainnet.cfg",
-            "sokol.cfg",
-            "sokol_archive.cfg",
-            "sokol_validator.cfg",
             "poacore.cfg",
             "poacore_archive.cfg",
             "poacore_validator.cfg",
             "xdai.cfg",
             "xdai_archive.cfg",
-            "xdai_validator.cfg",
             "spaceneth.cfg",
             "spaceneth_persistent.cfg",
             "volta.cfg",
@@ -497,51 +437,6 @@ namespace Nethermind.Runner.Test
             "energyweb.cfg",
             "energyweb_archive.cfg",
         };
-
-        private IEnumerable<string> Resolve(string configWildcard)
-        {
-            Dictionary<string, IEnumerable<string>> groups = BuildConfigGroups();
-            string[] configWildcards = configWildcard.Split(" ");
-
-            List<IEnumerable<string>> toIntersect = new List<IEnumerable<string>>();
-            foreach (string singleWildcard in configWildcards)
-            {
-                string singleWildcardBase = singleWildcard.Replace("^", string.Empty);
-                var result = groups.ContainsKey(singleWildcardBase)
-                    ? groups[singleWildcardBase]
-                    : Enumerable.Repeat(singleWildcardBase, 1);
-
-                if (singleWildcard.StartsWith("^"))
-                {
-                    result = Configs.Except(result);
-                }
-
-                toIntersect.Add(result);
-            }
-
-            var intersection = toIntersect.First();
-            foreach (IEnumerable<string> next in toIntersect.Skip(1))
-            {
-                intersection = intersection.Intersect(next);
-            }
-
-            return intersection;
-        }
-
-        private Dictionary<string, IEnumerable<string>> BuildConfigGroups()
-        {
-            Dictionary<string, IEnumerable<string>> groups = new Dictionary<string, IEnumerable<string>>();
-            foreach (PropertyInfo propertyInfo in GetType().GetProperties(BindingFlags.Instance | BindingFlags.NonPublic))
-            {
-                ConfigFileGroup groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
-                if (groupAttribute is not null)
-                {
-                    groups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this));
-                }
-            }
-
-            return groups;
-        }
 
         public IEnumerable<int> AllIndexesOf(string str, string searchString)
         {

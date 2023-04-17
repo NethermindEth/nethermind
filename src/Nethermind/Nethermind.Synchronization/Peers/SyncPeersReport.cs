@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -62,25 +49,12 @@ namespace Nethermind.Synchronization.Peers
                 }
 
                 RememberState(out bool _);
-                _stringBuilder.Append($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
-                bool headerAdded = false;
-                foreach (PeerInfo peerInfo in OrderedPeers)
-                {
-                    if (!headerAdded)
-                    {
-                        headerAdded = true;
-                        AddPeerHeader();
-                    }
-                    _stringBuilder.AppendLine();
-                    AddPeerInfo(peerInfo);
-                }
 
-                _logger.Info(_stringBuilder.ToString());
-                _stringBuilder.Clear();
+                _logger.Info(MakeReportForPeer(OrderedPeers, $"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}"));
             }
         }
 
-        public void WriteShortReport()
+        public void WriteAllocatedReport()
         {
             lock (_writeLock)
             {
@@ -88,28 +62,35 @@ namespace Nethermind.Synchronization.Peers
                 {
                     return;
                 }
+
                 RememberState(out bool changed);
                 if (!changed)
                 {
                     return;
                 }
 
-                _stringBuilder.Append($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
-                bool headerAdded = false;
-                foreach (PeerInfo peerInfo in OrderedPeers.Where(p => !p.CanBeAllocated(AllocationContexts.All)))
-                {
-                    if (!headerAdded)
-                    {
-                        headerAdded = true;
-                        AddPeerHeader();
-                    }
-                    _stringBuilder.AppendLine();
-                    AddPeerInfo(peerInfo);
-                }
-
-                _logger.Info(_stringBuilder.ToString());
-                _stringBuilder.Clear();
+                _logger.Info(MakeReportForPeer(OrderedPeers.Where(p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}"));
             }
+        }
+
+        internal string? MakeReportForPeer(IEnumerable<PeerInfo> peers, string header)
+        {
+            _stringBuilder.Append(header);
+            bool headerAdded = false;
+            foreach (PeerInfo peerInfo in peers)
+            {
+                if (!headerAdded)
+                {
+                    headerAdded = true;
+                    AddPeerHeader();
+                }
+                _stringBuilder.AppendLine();
+                AddPeerInfo(peerInfo);
+            }
+
+            string result = _stringBuilder.ToString();
+            _stringBuilder.Clear();
+            return result;
         }
 
         private void AddPeerInfo(PeerInfo peerInfo)
@@ -140,7 +121,7 @@ namespace Nethermind.Synchronization.Peers
         {
             _stringBuilder.AppendLine();
             _stringBuilder.Append("===")
-                                .Append("[Active][Sleep ][Peer (ProtocolVersion/Head/Host:Port)    ]")
+                                .Append("[Active][Sleep ][Peer(ProtocolVersion/Head/Host:Port/Direction)]")
                                 .Append("[Transfer Speeds (L/H/B/R/N/S)      ]")
                                 .Append("[Client Info (Name/Version/Operating System/Language)     ]")
                                 .AppendLine();

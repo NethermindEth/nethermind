@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -37,6 +24,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
+using Nethermind.Core.Extensions;
+using Nethermind.Config;
 
 namespace Nethermind.Facade
 {
@@ -57,6 +46,7 @@ namespace Nethermind.Facade
         private readonly IReceiptFinder _receiptFinder;
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
+        private readonly IBlocksConfig _blocksConfig;
 
         public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
             ITxPool? txPool,
@@ -67,6 +57,7 @@ namespace Nethermind.Facade
             ITimestamper? timestamper,
             ILogFinder? logFinder,
             ISpecProvider specProvider,
+            IBlocksConfig blocksConfig,
             bool isMining)
         {
             _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
@@ -78,6 +69,7 @@ namespace Nethermind.Facade
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _blocksConfig = blocksConfig;
             IsMining = isMining;
         }
 
@@ -103,7 +95,7 @@ namespace Nethermind.Facade
                     TxReceipt txReceipt = txReceipts.ForTransaction(txHash);
                     int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
                     Transaction tx = block.Transactions[txReceipt.Index];
-                    bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
+                    bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
                     UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
                     return (txReceipt, effectiveGasPrice, logIndexStart);
                 }
@@ -186,7 +178,8 @@ namespace Nethermind.Facade
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider, _specProvider);
+            GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider,
+                _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
 
             return new CallOutput
@@ -263,10 +256,8 @@ namespace Nethermind.Facade
                     blockHeader.Number + 1,
                     blockHeader.GasLimit,
                     Math.Max(blockHeader.Timestamp + 1, _timestamper.UnixTime.Seconds),
-                    Array.Empty<byte>())
-                {
-                    BaseFeePerGas = BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(blockHeader.Number + 1)),
-                }
+                    Array.Empty<byte>(),
+                    null)
                 : new(
                     blockHeader.ParentHash!,
                     blockHeader.UnclesHash!,
@@ -275,12 +266,23 @@ namespace Nethermind.Facade
                     blockHeader.Number,
                     blockHeader.GasLimit,
                     blockHeader.Timestamp,
-                    blockHeader.ExtraData)
-                {
-                    BaseFeePerGas = blockHeader.BaseFeePerGas,
-                };
+                    blockHeader.ExtraData,
+                    blockHeader.ExcessDataGas);
 
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(callHeader);
+            callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
+                ? BaseFeeCalculator.Calculate(blockHeader, releaseSpec)
+                : blockHeader.BaseFeePerGas;
+
+            if (releaseSpec.IsEip4844Enabled)
+            {
+                // TODO: Calculate ExcessDataGas depending on parent ExcessDataGas and number of blobs in txs
+                callHeader.ExcessDataGas = treatBlockHeaderAsParentBlock
+                    ? 0
+                    : blockHeader.ExcessDataGas;
+            }
             callHeader.MixHash = blockHeader.MixHash;
+            callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
             transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
         }
@@ -295,7 +297,6 @@ namespace Nethermind.Facade
             return _processingEnv.StateReader.GetNonce(stateRoot, address);
         }
 
-        public ulong GetNetworkId() => _processingEnv.BlockTree.ChainId;
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
         public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);

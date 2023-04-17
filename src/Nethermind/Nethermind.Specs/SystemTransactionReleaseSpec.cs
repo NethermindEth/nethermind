@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -28,6 +15,7 @@ namespace Nethermind.Specs
         {
             _spec = spec;
         }
+        public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
 
         public string Name => "System";
 
@@ -128,13 +116,16 @@ namespace Nethermind.Specs
         }
 
         public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
+        public ulong WithdrawalTimestamp => _spec.WithdrawalTimestamp;
+
+        public ulong Eip4844TransitionTimestamp => _spec.Eip4844TransitionTimestamp;
 
         public Address Eip1559FeeCollector => _spec.Eip1559FeeCollector;
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
-        public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
         public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
         public bool IsEip3860Enabled => _spec.IsEip3860Enabled;
-        public bool IsEip4758Enabled => _spec.IsEip4758Enabled;
+        public bool IsEip4895Enabled => _spec.IsEip4895Enabled;
+        public bool IsEip6780Enabled => _spec.IsEip6780Enabled;
     }
 }

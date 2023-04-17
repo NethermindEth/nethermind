@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers;
@@ -91,6 +78,17 @@ namespace Nethermind.Network
         public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.StaticPeerCount;
         private int AvailableActivePeersCount => MaxActivePeers - _peerPool.ActivePeers.Count;
 
+        /// <summary>
+        /// The simplest hack for now until it is cleaned further.
+        /// Peer manager / peer pool responsibilities still not clearly separated.
+        /// </summary>
+        private readonly ConcurrentDictionary<PublicKey, object> _nodesBeingAdded = new();
+
+        /// <summary>
+        /// New peer probably added via discovery app or some other form of discovery.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="nodeEventArgs"></param>
         private void PeerPoolOnPeerAdded(object sender, PeerEventArgs nodeEventArgs)
         {
             Peer peer = nodeEventArgs.Peer;
@@ -111,10 +109,15 @@ namespace Nethermind.Network
             if (_pending < AvailableActivePeersCount && CanConnectToPeer(peer))
             {
 #pragma warning disable 4014
-                // fire and forget - all the surrounding logic will be executed
-                // exceptions can be lost here without issues
-                // this for rapid connections to newly discovered peers without having to go through the UpdatePeerLoop
-                SetupPeerConnection(peer);
+
+                // TODO: hack related to not clearly separated peer pool and peer manager
+                if (!_nodesBeingAdded.ContainsKey(peer.Node.Id))
+                {
+                    // fire and forget - all the surrounding logic will be executed
+                    // exceptions can be lost here without issues
+                    // this for rapid connections to newly discovered peers without having to go through the UpdatePeerLoop
+                    SetupOutgoingPeerConnection(peer);
+                }
 #pragma warning restore 4014
             }
 
@@ -181,6 +184,8 @@ namespace Nethermind.Network
             await Task.CompletedTask;
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
         }
+
+        #region Inactive peer loop handling. Peer may be discovered but inactive.
 
         private class CandidateSelection
         {
@@ -260,7 +265,7 @@ namespace Nethermind.Network
                         }
 
                         ActionBlock<Peer> workerBlock = new(
-                            SetupPeerConnection,
+                            SetupOutgoingPeerConnection,
                             new ExecutionDataflowBlockOptions
                             {
                                 MaxDegreeOfParallelism = _parallelism,
@@ -344,106 +349,7 @@ namespace Nethermind.Network
             }
         }
 
-        private bool CanConnectToPeer(Peer peer)
-        {
-            if (_stats.FindCompatibilityValidationResult(peer.Node).HasValue)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due to failed compatibility result");
-                return false;
-            }
-
-            (bool delayed, NodeStatsEventType? reason) = _stats.IsConnectionDelayed(peer.Node);
-            if (delayed)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due forced connection delay. Reason: {reason}");
-                return false;
-            }
-
-            return true;
-        }
-
-
-        [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
-        private async Task SetupPeerConnection(Peer peer)
-        {
-            // TODO: hack related to not clearly separated peer pool and peer manager
-            if (_nodesBeingAdded.ContainsKey(peer.Node.Id))
-            {
-                return;
-            }
-
-            // Can happen when In connection is received from the same peer and is initialized before we get here
-            // In this case we do not initialize OUT connection
-            if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
-                return;
-            }
-
-            Interlocked.Increment(ref _tryCount);
-            Interlocked.Increment(ref _pending);
-            bool result = await InitializePeerConnection(peer);
-            // for some time we will have a peer in active that has no session assigned - analyze this?
-
-            Interlocked.Decrement(ref _pending);
-            if (_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_peerPool.ActivePeerCount}, CAND: {_peerPool.PeerCount}");
-
-            if (!result)
-            {
-                _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
-                Interlocked.Increment(ref _failedInitialConnect);
-                if (peer.OutSession is not null)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
-                    peer.OutSession?.MarkDisconnected(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
-                }
-
-                peer.IsAwaitingConnection = false;
-                DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
-
-                return;
-            }
-
-            Interlocked.Increment(ref _newActiveNodes);
-        }
-
-        private bool AddActivePeer(PublicKey nodeId, Peer peer, string reason)
-        {
-
-            peer.IsAwaitingConnection = false;
-            bool added = _peerPool.ActivePeers.TryAdd(nodeId, peer);
-            if (added)
-            {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} added to active peers - {reason}");
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} already in active peers");
-            }
-
-            return added;
-        }
-
-        private void RemoveActivePeer(PublicKey nodeId, string reason)
-        {
-            bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out Peer removedPeer);
-            // if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
-        }
-
-        private void DeactivatePeerIfDisconnected(Peer peer, string reason)
-        {
-            if (_logger.IsTrace) _logger.Trace($"DEACTIVATING IF DISCONNECTED {peer}");
-            if (!IsConnected(peer) && !peer.IsAwaitingConnection)
-            {
-                // dropping references to sessions so they can be garbage collected
-                peer.InSession = null;
-                peer.OutSession = null;
-                RemoveActivePeer(peer.Node.Id, reason);
-            }
-        }
-
         private static readonly IReadOnlyList<ActivePeerSelectionCounter> _enumValues = FastEnum.GetValues<ActivePeerSelectionCounter>();
-
 
         private void SelectAndRankCandidates()
         {
@@ -541,308 +447,6 @@ namespace Nethermind.Network
 
             _stats.UpdateCurrentReputation(_currentSelection.Candidates);
             _currentSelection.Candidates.Sort(_peerComparer);
-        }
-
-        private string GetIncompatibleDesc(IReadOnlyCollection<Peer> incompatibleNodes)
-        {
-            if (!incompatibleNodes.Any())
-            {
-                return "0";
-            }
-
-            IGrouping<CompatibilityValidationType?, Peer>[] validationGroups = incompatibleNodes.GroupBy(x => _stats.FindCompatibilityValidationResult(x.Node)).ToArray();
-            return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
-        }
-
-        private async Task<bool> InitializePeerConnection(Peer candidate)
-        {
-            try
-            {
-                if (_logger.IsTrace) _logger.Trace($"CONNECTING TO {candidate}");
-                candidate.IsAwaitingConnection = true;
-                _stats.ReportEvent(candidate.Node, NodeStatsEventType.Connecting);
-                await _rlpxHost.ConnectAsync(candidate.Node);
-                return true;
-            }
-            catch (NetworkingException ex)
-            {
-                if (ex.NetworkExceptionType == NetworkExceptionType.TargetUnreachable)
-                {
-                    _stats.ReportEvent(candidate.Node, NodeStatsEventType.ConnectionFailedTargetUnreachable);
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"Cannot connect to peer [{ex.NetworkExceptionType.ToString()}]: {candidate.Node:s}");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsDebug) _logger.Error($"Error trying to initiate connection with peer: {candidate.Node:s}", ex);
-                return false;
-            }
-        }
-
-        private void ProcessOutgoingConnection(ISession session)
-        {
-            PublicKey id = session.RemoteNodeId;
-            if (_logger.IsTrace) _logger.Trace($"PROCESS OUTGOING {id}");
-
-            if (!_peerPool.ActivePeers.TryGetValue(id, out Peer peer))
-            {
-                session.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "peer removed");
-                return;
-            }
-
-            _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionEstablished);
-
-            AddSession(session, peer);
-        }
-
-        private ConnectionDirection ChooseDirectionToKeep(PublicKey remoteNode)
-        {
-            if (_logger.IsTrace) _logger.Trace($"CHOOSING DIRECTION {remoteNode}");
-            byte[] localKey = _rlpxHost.LocalNodeId.Bytes;
-            byte[] remoteKey = remoteNode.Bytes;
-            for (int i = 0; i < remoteNode.Bytes.Length; i++)
-            {
-                if (localKey[i] > remoteKey[i])
-                {
-                    return ConnectionDirection.Out;
-                }
-
-                if (localKey[i] < remoteKey[i])
-                {
-                    return ConnectionDirection.In;
-                }
-            }
-
-            return ConnectionDirection.In;
-        }
-
-        private void ProcessIncomingConnection(ISession session)
-        {
-            if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))
-            {
-                // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
-                session.Node.IsStatic = existingPeer.Node.IsStatic;
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"INCOMING {session}");
-
-            // if we have already initiated connection before
-            if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer existingActivePeer))
-            {
-                AddSession(session, existingActivePeer);
-                return;
-            }
-
-            if (!session.Node.IsStatic && _peerPool.ActivePeers.Count >= MaxActivePeers)
-            {
-                int initCount = 0;
-                foreach (KeyValuePair<PublicKey, Peer> pair in _peerPool.ActivePeers)
-                {
-                    // we need to count initialized as we may have a list of active peers that is just being initialized
-                    // and we do not know yet whether they are fine or not
-                    if (pair.Value.InSession?.State == SessionState.Initialized ||
-                        pair.Value.OutSession?.State == SessionState.Initialized)
-                    {
-                        initCount++;
-                    }
-                }
-
-                if (initCount >= MaxActivePeers)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.TooManyPeers} {DisconnectType.Local}");
-                    session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{initCount}");
-                    return;
-                }
-            }
-
-            try
-            {
-                _nodesBeingAdded.TryAdd(session.RemoteNodeId, null);
-                Peer peer = _peerPool.GetOrAdd(session.Node);
-                AddSession(session, peer);
-            }
-            finally
-            {
-                _nodesBeingAdded.TryRemove(session.RemoteNodeId, out _);
-            }
-        }
-
-        /// <summary>
-        /// The simplest hack for now until it is cleaned further.
-        /// Peer manager / peer pool responsibilities still not clearly separated.
-        /// </summary>
-        private readonly ConcurrentDictionary<PublicKey, object> _nodesBeingAdded = new();
-
-        private void AddSession(ISession session, Peer peer)
-        {
-            if (_logger.IsTrace) _logger.Trace($"ADDING {session} {peer}");
-            bool newSessionIsIn = session.Direction == ConnectionDirection.In;
-            bool newSessionIsOut = !newSessionIsIn;
-            bool peerIsDisconnected = !IsConnected(peer);
-
-            if (peerIsDisconnected || (peer.IsAwaitingConnection && session.Direction == ConnectionDirection.Out))
-            {
-                if (newSessionIsIn)
-                {
-                    _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.In);
-                    peer.InSession = session;
-                }
-                else
-                {
-                    peer.OutSession = session;
-                }
-            }
-            else
-            {
-                bool peerHasAnOpenInSession = !peer.InSession?.IsClosing ?? false;
-                bool peerHasAnOpenOutSession = !peer.OutSession?.IsClosing ?? false;
-
-                if (newSessionIsIn && peerHasAnOpenInSession || newSessionIsOut && peerHasAnOpenOutSession)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Disconnecting a {session} - already connected");
-                    session.InitiateDisconnect(DisconnectReason.AlreadyConnected, "same");
-                }
-                else if (newSessionIsIn && peerHasAnOpenOutSession || newSessionIsOut && peerHasAnOpenInSession)
-                {
-                    // disconnecting the new session as it lost to the existing one
-                    ConnectionDirection directionToKeep = ChooseDirectionToKeep(session.RemoteNodeId);
-                    if (session.Direction != directionToKeep)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Disconnecting a new {session} - {directionToKeep} session already connected");
-                        session.InitiateDisconnect(DisconnectReason.AlreadyConnected, "same");
-                        if (newSessionIsIn)
-                        {
-                            _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.In);
-                            peer.InSession = session;
-                        }
-                        else
-                        {
-                            peer.OutSession = session;
-                        }
-                    }
-                    // replacing existing session with the new one as the new one won
-                    else if (newSessionIsIn)
-                    {
-                        peer.InSession = session;
-                        if (_logger.IsDebug) _logger.Debug($"Disconnecting an existing {session} - {directionToKeep} session to replace");
-                        peer.OutSession?.InitiateDisconnect(DisconnectReason.AlreadyConnected, "same");
-                    }
-                    else
-                    {
-                        peer.OutSession = session;
-                        if (_logger.IsDebug) _logger.Debug($"Disconnecting an existing {session} - {directionToKeep} session to replace");
-                        peer.InSession?.InitiateDisconnect(DisconnectReason.AlreadyConnected, "same");
-                    }
-                }
-            }
-
-            AddActivePeer(peer.Node.Id, peer, newSessionIsIn ? "new IN session" : "new OUT session");
-        }
-
-        private static bool IsConnected(Peer peer)
-        {
-            return !(peer.InSession?.IsClosing ?? true) || !(peer.OutSession?.IsClosing ?? true);
-        }
-
-        private void OnDisconnected(object sender, DisconnectEventArgs e)
-        {
-            ISession session = (ISession)sender;
-            ToggleSessionEventListeners(session, false);
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} closing");
-
-            if (session.State != SessionState.Disconnected)
-            {
-                throw new InvalidAsynchronousStateException($"Invalid session state in {nameof(OnDisconnected)} - {session.State}");
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| peer disconnected event in PeerManager - {session} {e.DisconnectReason} {e.DisconnectType}");
-
-            if (session.RemoteNodeId is null)
-            {
-                // this happens when we have a disconnect on incoming connection before handshake
-                if (_logger.IsTrace) _logger.Trace($"Disconnect on session with no RemoteNodeId - {session}");
-                return;
-            }
-
-            Peer peer = _peerPool.GetOrAdd(session.Node);
-            if (session.Direction == ConnectionDirection.Out)
-            {
-                peer.IsAwaitingConnection = false;
-            }
-
-            if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer))
-            {
-                //we want to update reputation always
-                _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
-                if (activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Received disconnect on a different session than the active peer runs. Ignoring. Id: {activePeer.Node.Id}");
-                    return;
-                }
-
-                DeactivatePeerIfDisconnected(activePeer, "session disconnected");
-                _peerUpdateRequested.Set();
-            }
-        }
-
-        private void ToggleSessionEventListeners(ISession session, bool shouldListen)
-        {
-            if (shouldListen)
-            {
-                session.HandshakeComplete += OnHandshakeComplete;
-                session.Disconnected += OnDisconnected;
-            }
-            else
-            {
-                session.HandshakeComplete -= OnHandshakeComplete;
-                session.Disconnected -= OnDisconnected;
-            }
-        }
-
-        private void OnHandshakeComplete(object sender, EventArgs args)
-        {
-            ISession session = (ISession)sender;
-            _stats.GetOrAdd(session.Node);
-
-            //In case of OUT connections and different RemoteNodeId we need to replace existing Active Peer with new peer
-            ManageNewRemoteNodeId(session);
-
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} completed handshake - peer manager handling");
-
-            //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
-            if (session.Direction == ConnectionDirection.In)
-            {
-                ProcessIncomingConnection(session);
-            }
-            else
-            {
-                if (!_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer peer))
-                {
-                    //Can happen when peer sent Disconnect message before handshake is done, it takes us a while to disconnect
-                    if (_logger.IsTrace) _logger.Trace($"Initiated handshake (OUT) with a peer without adding it to the Active collection : {session}");
-                    return;
-                }
-
-                _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.Out);
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} handshake initialized in peer manager");
-        }
-
-        private void ManageNewRemoteNodeId(ISession session)
-        {
-            if (session.ObsoleteRemoteNodeId is null)
-            {
-                return;
-            }
-
-            Peer newPeer = _peerPool.Replace(session);
-
-            RemoveActivePeer(session.ObsoleteRemoteNodeId, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
-            AddActivePeer(session.RemoteNodeId, newPeer, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
-            if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer not present in candidate collection");
         }
 
         private void StartPeerUpdateLoop()
@@ -960,6 +564,412 @@ namespace Nethermind.Network
                     ? failedValidationCompare
                     : x.CurrentReputation.CompareTo(y.CurrentReputation);
             }
+        }
+
+        #endregion
+
+        #region Outgoing connection handling
+
+        [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
+        private async Task SetupOutgoingPeerConnection(Peer peer)
+        {
+            // Can happen when In connection is received from the same peer and is initialized before we get here
+            // In this case we do not initialize OUT connection
+            if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
+                return;
+            }
+
+            Interlocked.Increment(ref _tryCount);
+            Interlocked.Increment(ref _pending);
+            bool result = await InitializeOutgoingPeerConnection(peer);
+            // for some time we will have a peer in active that has no session assigned - analyze this?
+
+            Interlocked.Decrement(ref _pending);
+            if (_logger.IsTrace) _logger.Trace($"Connecting to {_stats.GetCurrentReputation(peer.Node)} rep node - {result}, ACTIVE: {_peerPool.ActivePeerCount}, CAND: {_peerPool.PeerCount}");
+
+            if (!result)
+            {
+                _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionFailed);
+                Interlocked.Increment(ref _failedInitialConnect);
+                if (peer.OutSession is not null)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
+                    peer.OutSession?.MarkDisconnected(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
+                }
+
+                peer.IsAwaitingConnection = false;
+                DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
+
+                return;
+            }
+
+            Interlocked.Increment(ref _newActiveNodes);
+        }
+
+        private async Task<bool> InitializeOutgoingPeerConnection(Peer candidate)
+        {
+            try
+            {
+                if (_logger.IsTrace) _logger.Trace($"CONNECTING TO {candidate}");
+                candidate.IsAwaitingConnection = true;
+                _stats.ReportEvent(candidate.Node, NodeStatsEventType.Connecting);
+                await _rlpxHost.ConnectAsync(candidate.Node);
+                return true;
+            }
+            catch (NetworkingException ex)
+            {
+                if (ex.NetworkExceptionType == NetworkExceptionType.TargetUnreachable)
+                {
+                    _stats.ReportEvent(candidate.Node, NodeStatsEventType.ConnectionFailedTargetUnreachable);
+                }
+
+                if (_logger.IsTrace) _logger.Trace($"Cannot connect to peer [{ex.NetworkExceptionType.ToString()}]: {candidate.Node:s}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsDebug) _logger.Error($"Error trying to initiate connection with peer: {candidate.Node:s}", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// For when getting event from rlpx. Connection here is probably initiated from `InitializeOutgoingPeerConnection`
+        /// </summary>
+        /// <param name="session"></param>
+        private void ProcessOutgoingConnection(ISession session)
+        {
+            PublicKey id = session.RemoteNodeId;
+            if (_logger.IsTrace) _logger.Trace($"PROCESS OUTGOING {id}");
+
+            if (!_peerPool.ActivePeers.TryGetValue(id, out Peer peer))
+            {
+                session.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "peer removed");
+                return;
+            }
+
+            _stats.ReportEvent(peer.Node, NodeStatsEventType.ConnectionEstablished);
+
+            AddSession(session, peer);
+        }
+
+        #endregion
+
+        #region Incoming connection handling
+
+        private void ProcessIncomingConnection(ISession session)
+        {
+            if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))
+            {
+                // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
+                session.Node.IsStatic = existingPeer.Node.IsStatic;
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"INCOMING {session}");
+
+            // if we have already initiated connection before
+            if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer existingActivePeer))
+            {
+                AddSession(session, existingActivePeer);
+                return;
+            }
+
+            if (!session.Node.IsStatic && _peerPool.ActivePeers.Count >= MaxActivePeers)
+            {
+                int initCount = 0;
+                foreach (KeyValuePair<PublicKey, Peer> pair in _peerPool.ActivePeers)
+                {
+                    // we need to count initialized as we may have a list of active peers that is just being initialized
+                    // and we do not know yet whether they are fine or not
+                    if (pair.Value.InSession?.State == SessionState.Initialized ||
+                        pair.Value.OutSession?.State == SessionState.Initialized)
+                    {
+                        initCount++;
+                    }
+                }
+
+                if (initCount >= MaxActivePeers)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.TooManyPeers} {DisconnectType.Local}");
+                    session.InitiateDisconnect(InitiateDisconnectReason.TooManyPeers, $"{initCount}");
+                    return;
+                }
+            }
+
+            try
+            {
+                _nodesBeingAdded.TryAdd(session.RemoteNodeId, null);
+                Peer peer = _peerPool.GetOrAdd(session.Node);
+                AddSession(session, peer);
+            }
+            finally
+            {
+                _nodesBeingAdded.TryRemove(session.RemoteNodeId, out _);
+            }
+        }
+
+        #endregion
+
+        private bool CanConnectToPeer(Peer peer)
+        {
+            if (_stats.FindCompatibilityValidationResult(peer.Node).HasValue)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due to failed compatibility result");
+                return false;
+            }
+
+            (bool delayed, NodeStatsEventType? reason) = _stats.IsConnectionDelayed(peer.Node);
+            if (delayed)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not connecting peer: {peer} due forced connection delay. Reason: {reason}");
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool AddActivePeer(PublicKey nodeId, Peer peer, string reason)
+        {
+            peer.IsAwaitingConnection = false;
+            bool added = _peerPool.ActivePeers.TryAdd(nodeId, peer);
+            if (added)
+            {
+                Interlocked.Increment(ref Metrics.PeerCount);
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} added to active peers - {reason}");
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {peer.Node:s} already in active peers");
+            }
+
+            return added;
+        }
+
+        private void RemoveActivePeer(PublicKey nodeId, string reason)
+        {
+            bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out Peer removedPeer);
+            if (removed)
+            {
+                Interlocked.Decrement(ref Metrics.PeerCount);
+            }
+            // if (removed && _logger.IsDebug) _logger.Debug($"{removedPeer.Node:s} removed from active peers - {reason}");
+        }
+
+        private void DeactivatePeerIfDisconnected(Peer peer, string reason)
+        {
+            if (_logger.IsTrace) _logger.Trace($"DEACTIVATING IF DISCONNECTED {peer}");
+            if (!IsConnected(peer) && !peer.IsAwaitingConnection)
+            {
+                // dropping references to sessions so they can be garbage collected
+                peer.InSession = null;
+                peer.OutSession = null;
+                RemoveActivePeer(peer.Node.Id, reason);
+            }
+        }
+
+        private string GetIncompatibleDesc(IReadOnlyCollection<Peer> incompatibleNodes)
+        {
+            if (!incompatibleNodes.Any())
+            {
+                return "0";
+            }
+
+            IGrouping<CompatibilityValidationType?, Peer>[] validationGroups = incompatibleNodes.GroupBy(x => _stats.FindCompatibilityValidationResult(x.Node)).ToArray();
+            return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
+        }
+
+        private ConnectionDirection ChooseDirectionToKeep(PublicKey remoteNode)
+        {
+            if (_logger.IsTrace) _logger.Trace($"CHOOSING DIRECTION {remoteNode}");
+            byte[] localKey = _rlpxHost.LocalNodeId.Bytes;
+            byte[] remoteKey = remoteNode.Bytes;
+            for (int i = 0; i < remoteNode.Bytes.Length; i++)
+            {
+                if (localKey[i] > remoteKey[i])
+                {
+                    return ConnectionDirection.Out;
+                }
+
+                if (localKey[i] < remoteKey[i])
+                {
+                    return ConnectionDirection.In;
+                }
+            }
+
+            return ConnectionDirection.In;
+        }
+
+        private void AddSession(ISession session, Peer peer)
+        {
+            if (_logger.IsTrace) _logger.Trace($"ADDING {session} {peer}");
+            bool newSessionIsIn = session.Direction == ConnectionDirection.In;
+            bool newSessionIsOut = !newSessionIsIn;
+            bool peerIsDisconnected = !IsConnected(peer);
+
+            if (peerIsDisconnected || (peer.IsAwaitingConnection && session.Direction == ConnectionDirection.Out))
+            {
+                if (newSessionIsIn)
+                {
+                    _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.In);
+                    peer.InSession = session;
+                }
+                else
+                {
+                    peer.OutSession = session;
+                }
+            }
+            else
+            {
+                bool peerHasAnOpenInSession = !peer.InSession?.IsClosing ?? false;
+                bool peerHasAnOpenOutSession = !peer.OutSession?.IsClosing ?? false;
+
+                if (newSessionIsIn && peerHasAnOpenInSession || newSessionIsOut && peerHasAnOpenOutSession)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Disconnecting a {session} - already connected");
+                    session.InitiateDisconnect(InitiateDisconnectReason.SessionAlreadyExist, "same");
+                }
+                else if (newSessionIsIn && peerHasAnOpenOutSession || newSessionIsOut && peerHasAnOpenInSession)
+                {
+                    // disconnecting the new session as it lost to the existing one
+                    ConnectionDirection directionToKeep = ChooseDirectionToKeep(session.RemoteNodeId);
+                    if (session.Direction != directionToKeep)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Disconnecting a new {session} - {directionToKeep} session already connected");
+                        session.InitiateDisconnect(InitiateDisconnectReason.ReplacingSessionWithOppositeDirection, "same");
+                        if (newSessionIsIn)
+                        {
+                            _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.In);
+                            peer.InSession = session;
+                        }
+                        else
+                        {
+                            peer.OutSession = session;
+                        }
+                    }
+                    // replacing existing session with the new one as the new one won
+                    else if (newSessionIsIn)
+                    {
+                        peer.InSession = session;
+                        if (_logger.IsDebug) _logger.Debug($"Disconnecting an existing {session} - {directionToKeep} session to replace");
+                        peer.OutSession?.InitiateDisconnect(InitiateDisconnectReason.OppositeDirectionCleanup, "same");
+                    }
+                    else
+                    {
+                        peer.OutSession = session;
+                        if (_logger.IsDebug) _logger.Debug($"Disconnecting an existing {session} - {directionToKeep} session to replace");
+                        peer.InSession?.InitiateDisconnect(InitiateDisconnectReason.OppositeDirectionCleanup, "same");
+                    }
+                }
+            }
+
+            AddActivePeer(peer.Node.Id, peer, newSessionIsIn ? "new IN session" : "new OUT session");
+        }
+
+        private static bool IsConnected(Peer peer)
+        {
+            return !(peer.InSession?.IsClosing ?? true) || !(peer.OutSession?.IsClosing ?? true);
+        }
+
+        private void OnDisconnected(object sender, DisconnectEventArgs e)
+        {
+            ISession session = (ISession)sender;
+            ToggleSessionEventListeners(session, false);
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} closing");
+
+            if (session.State != SessionState.Disconnected)
+            {
+                throw new InvalidAsynchronousStateException($"Invalid session state in {nameof(OnDisconnected)} - {session.State}");
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| peer disconnected event in PeerManager - {session} {e.DisconnectReason} {e.DisconnectType}");
+
+            if (session.RemoteNodeId is null)
+            {
+                // this happens when we have a disconnect on incoming connection before handshake
+                if (_logger.IsTrace) _logger.Trace($"Disconnect on session with no RemoteNodeId - {session}");
+                return;
+            }
+
+            Peer peer = _peerPool.GetOrAdd(session.Node);
+            if (session.Direction == ConnectionDirection.Out)
+            {
+                peer.IsAwaitingConnection = false;
+            }
+
+            if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer))
+            {
+                //we want to update reputation always
+                _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
+                if (activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Received disconnect on a different session than the active peer runs. Ignoring. Id: {activePeer.Node.Id}");
+                    return;
+                }
+
+                DeactivatePeerIfDisconnected(activePeer, "session disconnected");
+                _peerUpdateRequested.Set();
+            }
+        }
+
+        private void ToggleSessionEventListeners(ISession session, bool shouldListen)
+        {
+            if (shouldListen)
+            {
+                session.HandshakeComplete += OnHandshakeComplete;
+                session.Disconnected += OnDisconnected;
+            }
+            else
+            {
+                session.HandshakeComplete -= OnHandshakeComplete;
+                session.Disconnected -= OnDisconnected;
+            }
+        }
+
+        private void OnHandshakeComplete(object sender, EventArgs args)
+        {
+            ISession session = (ISession)sender;
+            _stats.GetOrAdd(session.Node);
+
+            //In case of OUT connections and different RemoteNodeId we need to replace existing Active Peer with new peer
+            ManageNewRemoteNodeId(session);
+
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} completed handshake - peer manager handling");
+
+            //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
+            if (session.Direction == ConnectionDirection.In)
+            {
+                // For incoming connection, this is the entry point.
+                ProcessIncomingConnection(session);
+            }
+            else
+            {
+                if (!_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer peer))
+                {
+                    //Can happen when peer sent Disconnect message before handshake is done, it takes us a while to disconnect
+                    if (_logger.IsTrace) _logger.Trace($"Initiated handshake (OUT) with a peer without adding it to the Active collection : {session}");
+                    return;
+                }
+
+                _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.Out);
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} handshake initialized in peer manager");
+        }
+
+        private void ManageNewRemoteNodeId(ISession session)
+        {
+            if (session.ObsoleteRemoteNodeId is null)
+            {
+                return;
+            }
+
+            Peer newPeer = _peerPool.Replace(session);
+
+            RemoveActivePeer(session.ObsoleteRemoteNodeId, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
+            AddActivePeer(session.RemoteNodeId, newPeer, $"handshake difference old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}");
+            if (_logger.IsTrace) _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer not present in candidate collection");
         }
     }
 }

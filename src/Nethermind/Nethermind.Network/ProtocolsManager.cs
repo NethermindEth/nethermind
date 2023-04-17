@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -22,6 +9,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
@@ -29,6 +17,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
+using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Les;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Wit;
@@ -59,7 +48,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
-        private readonly ISpecProvider _specProvider;
+        private readonly ForkInfo _forkInfo;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
@@ -78,7 +67,7 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
             INetworkStorage peerStorage,
-            ISpecProvider specProvider,
+            ForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             ILogManager logManager)
         {
@@ -92,7 +81,7 @@ namespace Nethermind.Network
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -195,8 +184,9 @@ namespace Nethermind.Network
                 {
                     var ethHandler = version switch
                     {
-                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
-                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
+                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager),
+                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager),
+                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
@@ -243,7 +233,7 @@ namespace Nethermind.Network
                 // SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
                 // _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
                 // {
-                //     ChainId = typedArgs.ChainId,
+                //     NetworkId = typedArgs.NetworkId,
                 //     BestHash = typedArgs.BestHash,
                 //     GenesisHash = typedArgs.GenesisHash,
                 //     ProtocolVersion = typedArgs.ProtocolVersion,
@@ -324,7 +314,7 @@ namespace Nethermind.Network
                 SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
                 _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
                 {
-                    ChainId = typedArgs.ChainId,
+                    NetworkId = typedArgs.NetworkId,
                     BestHash = typedArgs.BestHash,
                     GenesisHash = typedArgs.GenesisHash,
                     ProtocolVersion = typedArgs.ProtocolVersion,
@@ -352,7 +342,7 @@ namespace Nethermind.Network
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
-                        session.InitiateDisconnect(DisconnectReason.AlreadyConnected, "sync peer");
+                        session.InitiateDisconnect(InitiateDisconnectReason.SessionIdAlreadyExists, "sync peer");
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");

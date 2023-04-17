@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
@@ -32,14 +18,14 @@ namespace Nethermind.Merge.Plugin
 {
     public partial class MergePlugin
     {
-        private IMiningConfig _miningConfig = null!;
-        private PostMergeBlockProducer _postMergeBlockProducer = null!;
-        private IManualBlockProductionTrigger? _blockProductionTrigger = null;
-        private ManualTimestamper? _manualTimestamper;
+        protected PostMergeBlockProducer _postMergeBlockProducer = null!;
+        protected IManualBlockProductionTrigger? _blockProductionTrigger = null;
+        protected ManualTimestamper? _manualTimestamper;
 
-        protected virtual ITxSource? CreateTxSource(IStateProvider stateProvider) => null;
+        protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
+            => new(_api.SpecProvider!, _api.SealEngine, _manualTimestamper!, _blocksConfig, _api.LogManager);
 
-        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public virtual async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             if (MergeEnabled)
             {
@@ -64,18 +50,15 @@ namespace Nethermind.Merge.Plugin
                 IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
                     ? await consensusPlugin.InitBlockProducer()
                     : null;
-                _miningConfig = _api.Config<IMiningConfig>();
                 _manualTimestamper ??= new ManualTimestamper();
                 _blockProductionTrigger = new BuildBlocksWhenRequested();
                 BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
 
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.SealValidator, _api.LogManager);
                 _api.Sealer = _api.SealEngine;
-                PostMergeBlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _miningConfig, _api.LogManager);
-                _postMergeBlockProducer = blockProducerFactory.Create(
+                _postMergeBlockProducer = CreateBlockProducerFactory().Create(
                     blockProducerEnv,
-                    _blockProductionTrigger,
-                    CreateTxSource(blockProducerEnv.ReadOnlyStateProvider)
+                    _blockProductionTrigger
                 );
 
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);

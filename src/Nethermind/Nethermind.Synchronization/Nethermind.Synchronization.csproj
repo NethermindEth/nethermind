@@ -1,17 +1,23 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
-        <Nullable>annotations</Nullable>
-        <Deterministic>true</Deterministic>
-        <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <Nullable>annotations</Nullable>
+    
+    
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
-      <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
-      <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+    <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Contract\Nethermind.Network.Contract.csproj" />
+    <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.ObjectPool" />
+    <PackageReference Include="ConcurrentHashSet" />
+  </ItemGroup>
 
 </Project>

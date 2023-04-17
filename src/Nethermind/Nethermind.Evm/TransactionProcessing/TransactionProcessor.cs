@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -141,7 +128,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer,
             ExecutionOptions executionOptions)
         {
-            IReleaseSpec spec = _specProvider.GetSpec((block.Number, block.Timestamp));
+            IReleaseSpec spec = _specProvider.GetSpec(block);
             bool eip658NotEnabled = !spec.IsEip658Enabled;
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
@@ -204,10 +191,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            if (transaction.IsContractCreation && spec.IsEip3860Enabled && transaction.Data.Length > spec.MaxInitCodeSize)
+            if (transaction.IsAboveInitCode(spec))
             {
-                TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.Data.Length} > {spec.MaxInitCodeSize}");
-                QuickFail(transaction, block, txTracer, eip658NotEnabled, "eip-3860 - transaction size over max init code size");
+                TraceLogInvalidTx(transaction, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {transaction.DataLength} > {spec.MaxInitCodeSize}");
+                QuickFail(transaction, block, txTracer, eip658NotEnabled, "EIP-3860 - transaction size over max init code size");
                 return;
             }
 
@@ -333,20 +320,21 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 recipientOrNull = recipient;
 
-                ExecutionEnvironment env = new();
-                env.TxExecutionContext = new TxExecutionContext(block, caller, effectiveGasPrice);
-                env.Value = value;
-                env.TransferValue = value;
-                env.Caller = caller;
-                env.CodeSource = recipient;
-                env.ExecutingAccount = recipient;
-                env.InputData = data ?? Array.Empty<byte>();
-                env.CodeInfo = machineCode is null
-                    ? _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec)
-                    : new CodeInfo(machineCode);
-
+                ExecutionEnvironment env = new
+                (
+                    txExecutionContext: new TxExecutionContext(block, caller, effectiveGasPrice, transaction.BlobVersionedHashes),
+                    value: value,
+                    transferValue: value,
+                    caller: caller,
+                    codeSource: recipient,
+                    executingAccount: recipient,
+                    inputData: data ?? Array.Empty<byte>(),
+                    codeInfo: machineCode is null
+                        ? _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec)
+                        : new CodeInfo(machineCode)
+                );
                 ExecutionType executionType =
-                    transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
+                    transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Transaction;
                 using (EvmState state =
                     new(unspentGas, env, executionType, true, snapshot, false))
                 {
@@ -443,9 +431,10 @@ namespace Nethermind.Evm.TransactionProcessing
                         _stateProvider.CreateAccount(gasBeneficiary, fees);
                     }
 
-                    if (!transaction.IsFree() && spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null)
+                    UInt256 burntFees = !transaction.IsFree() ? (ulong)spentGas * block.BaseFeePerGas : 0;
+
+                    if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null)
                     {
-                        UInt256 burntFees = (ulong)spentGas * block.BaseFeePerGas;
                         if (!burntFees.IsZero)
                         {
                             if (_stateProvider.AccountExists(spec.Eip1559FeeCollector))
@@ -457,6 +446,11 @@ namespace Nethermind.Evm.TransactionProcessing
                                 _stateProvider.CreateAccount(spec.Eip1559FeeCollector, burntFees);
                             }
                         }
+                    }
+
+                    if (txTracer.IsTracingFees)
+                    {
+                        txTracer.ReportFees(fees, burntFees);
                     }
                 }
             }

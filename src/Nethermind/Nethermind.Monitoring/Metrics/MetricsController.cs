@@ -1,72 +1,78 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
-using Nethermind.Core;
-using Nethermind.Core.Collections;
+using Nethermind.Core.Attributes;
 using Nethermind.Monitoring.Config;
 using Prometheus;
 
 namespace Nethermind.Monitoring.Metrics
 {
-    public class MetricsController : IMetricsController
+    public partial class MetricsController : IMetricsController
     {
         private readonly int _intervalSeconds;
         private Timer _timer;
-        private Dictionary<string, Gauge> _gauges = new();
-        private Dictionary<Type, (PropertyInfo, string)[]> _propertiesCache = new();
-        private Dictionary<Type, (FieldInfo, string)[]> _fieldsCache = new();
-        private Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
-        private HashSet<Type> _metricTypes = new();
+        private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
+        private readonly Dictionary<Type, (string DictName, IDictionary<string, long> Dict)> _dynamicPropCache = new();
+        private readonly HashSet<Type> _metricTypes = new();
+
+        public readonly Dictionary<string, Gauge> _gauges = new();
+        private readonly bool _useCounters;
 
         public void RegisterMetrics(Type type)
         {
+            if (_metricTypes.Add(type) == false)
+            {
+                return;
+            }
+
+            Meter meter = new(type.Namespace);
+
             EnsurePropertiesCached(type);
-            foreach ((PropertyInfo propertyInfo, string gaugeName) in _propertiesCache[type])
+            foreach ((MemberInfo member, string gaugeName, Func<double> observer) in _membersCache[type])
             {
-                CreateMemberInfoMectricsGauge(propertyInfo, gaugeName);
-            }
+                if (_useCounters)
+                {
+                    CreateDiagnosticsMetricsObservableGauge(meter, member, observer);
+                }
 
-            foreach ((FieldInfo fieldInfo, string gaugeName) in _fieldsCache[type])
-            {
-                CreateMemberInfoMectricsGauge(fieldInfo, gaugeName);
+                _gauges[gaugeName] = CreateMemberInfoMetricsGauge(member);
             }
-
-            _metricTypes.Add(type);
         }
 
-        private void CreateMemberInfoMectricsGauge(MemberInfo propertyInfo, string gaugeName)
+        private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member)
         {
-            GaugeConfiguration configuration = new();
-            Dictionary<string, string> tagValues = new();
-
-            configuration.StaticLabels = propertyInfo
+            Dictionary<string, string> staticLabels = member
                 .GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
                 .ToDictionary(
                     attribute => attribute.Label,
                     attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
 
-            string description = propertyInfo.GetCustomAttribute<DescriptionAttribute>()?.Description;
-            _gauges[gaugeName] = CreateGauge(BuildGaugeName(propertyInfo.Name), description, configuration);
+            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
+            string name = BuildGaugeName(member);
+
+            return CreateGauge(name, description, staticLabels);
+        }
+
+        private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
+        {
+            string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
+            string name = member.GetCustomAttribute<DataMemberAttribute>()?.Name ?? member.Name;
+
+            if (member.GetCustomAttribute<CounterMetricAttribute>() != null)
+            {
+                return meter.CreateObservableCounter(name, observer, description: description);
+            }
+
+            return meter.CreateObservableGauge(name, observer, description: description);
         }
 
         private static string GetStaticMemberInfo(Type givenInformer, string givenName)
@@ -75,31 +81,41 @@ namespace Nethermind.Monitoring.Metrics
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
             PropertyInfo info = tagsData.FirstOrDefault(info => info.Name == givenName);
             if (info is null)
-            {
                 throw new NotSupportedException("Developer error: a requested static description field was not implemented!");
-            }
 
             object value = info.GetValue(null);
             if (value is null)
-            {
                 throw new NotSupportedException("Developer error: a requested static description field was not initialised!");
-            }
 
             return value.ToString();
         }
 
         private void EnsurePropertiesCached(Type type)
         {
-            if (!_propertiesCache.ContainsKey(type))
+            static bool NotEnumerable(Type t) => !t.IsAssignableTo(typeof(System.Collections.IEnumerable));
+
+            static Func<double> GetValueAccessor(MemberInfo member)
             {
-                _propertiesCache[type] = type.GetProperties().Where(p => !p.PropertyType.IsAssignableTo(typeof(System.Collections.IEnumerable))).Select(
-                    p => (p, GetGaugeNameKey(type.Name, p.Name))).ToArray();
+                if (member is PropertyInfo property)
+                {
+                    return () => Convert.ToDouble(property.GetValue(null));
+                }
+
+                if (member is FieldInfo field)
+                {
+                    return () => Convert.ToDouble(field.GetValue(null));
+                }
+
+                throw new NotImplementedException($"Type of {member} is not handled");
             }
 
-            if (!_fieldsCache.ContainsKey(type))
+            if (!_membersCache.ContainsKey(type))
             {
-                _fieldsCache[type] = type.GetFields().Where(f => !f.FieldType.IsAssignableTo(typeof(System.Collections.IEnumerable))).Select(
-                    f => (f, GetGaugeNameKey(type.Name, f.Name))).ToArray();
+                _membersCache[type] = type.GetProperties()
+                    .Where(p => NotEnumerable(p.PropertyType))
+                    .Concat<MemberInfo>(type.GetFields().Where(f => NotEnumerable(f.FieldType)))
+                    .Select(member => (member, GetGaugeNameKey(type.Name, member.Name), GetValueAccessor(member)))
+                    .ToArray();
             }
 
             if (!_dynamicPropCache.ContainsKey(type))
@@ -112,28 +128,25 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        private static string BuildGaugeName(string propertyName)
-        {
-            return Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "$1_$2").ToLowerInvariant();
-        }
+        private static string BuildGaugeName(MemberInfo propertyInfo) =>
+            propertyInfo.GetCustomAttribute<DataMemberAttribute>()?.Name ?? BuildGaugeName(propertyInfo.Name);
 
-        private static Gauge CreateGauge(string name, string help = "", GaugeConfiguration configuration = null)
-                => Prometheus.Metrics.CreateGauge($"nethermind_{name}", help, configuration);
+        private static string BuildGaugeName(string propertyName) =>
+            $"nethermind_{GetGaugeNameRegex().Replace(propertyName, "$1_$2").ToLowerInvariant()}";
+
+        private static Gauge CreateGauge(string name, string help = null, IDictionary<string, string> labels = null) => labels is null
+            ? Prometheus.Metrics.CreateGauge(name, help ?? string.Empty)
+            : Prometheus.Metrics.WithLabels(labels).CreateGauge(name, help ?? string.Empty);
 
         public MetricsController(IMetricsConfig metricsConfig)
         {
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
+            _useCounters = metricsConfig.CountersEnabled;
         }
 
-        public void StartUpdating()
-        {
-            _timer = new Timer(UpdateMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
-        }
+        public void StartUpdating() => _timer = new Timer(UpdateMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
 
-        public void StopUpdating()
-        {
-            _timer?.Change(Timeout.Infinite, 0);
-        }
+        public void StopUpdating() => _timer?.Change(Timeout.Infinite, 0);
 
         public void UpdateMetrics(object state)
         {
@@ -147,16 +160,9 @@ namespace Nethermind.Monitoring.Metrics
         {
             EnsurePropertiesCached(type);
 
-            foreach ((PropertyInfo propertyInfo, string gaugeName) in _propertiesCache[type])
+            foreach ((MemberInfo _, string gaugeName, Func<double> accessor) in _membersCache[type])
             {
-                double value = Convert.ToDouble(propertyInfo.GetValue(null));
-                ReplaceValueIfChanged(value, gaugeName);
-            }
-
-            foreach ((FieldInfo fieldInfo, string gaugeName) in _fieldsCache[type])
-            {
-                double value = Convert.ToDouble(fieldInfo.GetValue(null));
-                ReplaceValueIfChanged(value, gaugeName);
+                ReplaceValueIfChanged(accessor(), gaugeName);
             }
 
             if (_dynamicPropCache.TryGetValue(type, out var dict))
@@ -168,7 +174,7 @@ namespace Nethermind.Monitoring.Metrics
 
                     if (ReplaceValueIfChanged(value, gaugeName) is null)
                     {
-                        var gauge = CreateGauge(BuildGaugeName(kvp.Key));
+                        Gauge gauge = CreateGauge(BuildGaugeName(kvp.Key));
                         _gauges[gaugeName] = gauge;
                         gauge.Set(value);
                     }
@@ -177,21 +183,19 @@ namespace Nethermind.Monitoring.Metrics
 
             Gauge ReplaceValueIfChanged(double value, string gaugeName)
             {
-                if (_gauges.TryGetValue(gaugeName, out var gauge))
+                if (_gauges.TryGetValue(gaugeName, out Gauge gauge))
                 {
                     if (Math.Abs(gauge.Value - value) > double.Epsilon)
-                    {
                         gauge.Set(value);
-                    }
                 }
 
                 return gauge;
             }
         }
 
-        private string GetGaugeNameKey(params string[] par)
-        {
-            return string.Join('.', par);
-        }
+        private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
+
+        [GeneratedRegex("(\\p{Ll})(\\p{Lu})")]
+        private static partial Regex GetGaugeNameRegex();
     }
 }

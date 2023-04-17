@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -34,6 +21,109 @@ namespace Nethermind.Trie
     public partial class TrieNode
     {
         private const int BranchesCount = 16;
+
+        /// <summary>
+        /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
+        /// `nextToVisit`. Also, it assume the node is already resolved.
+        /// </summary>
+        /// <param name="visitor"></param>
+        /// <param name="nodeResolver"></param>
+        /// <param name="trieVisitContext"></param>
+        /// <param name="nextToVisit"></param>
+        /// <exception cref="InvalidDataException"></exception>
+        /// <exception cref="TrieException"></exception>
+        internal void AcceptResolvedNode(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, SmallTrieVisitContext)> nextToVisit)
+        {
+            switch (NodeType)
+            {
+                case NodeType.Branch:
+                    {
+                        visitor.VisitBranch(this, trieVisitContext.ToVisitContext());
+                        trieVisitContext.Level++;
+
+                        for (int i = 0; i < BranchesCount; i++)
+                        {
+                            TrieNode child = GetChild(nodeResolver, i);
+                            if (child is not null)
+                            {
+                                child.ResolveKey(nodeResolver, false);
+                                if (visitor.ShouldVisit(child.Keccak!))
+                                {
+                                    SmallTrieVisitContext childCtx = trieVisitContext; // Copy
+                                    childCtx.BranchChildIndex = (byte?)i;
+
+                                    nextToVisit.Add((child, childCtx));
+                                }
+
+                                if (child.IsPersisted)
+                                {
+                                    UnresolveChild(i);
+                                }
+                            }
+                        }
+
+                        break;
+                    }
+                case NodeType.Extension:
+                    {
+                        visitor.VisitExtension(this, trieVisitContext.ToVisitContext());
+                        TrieNode child = GetChild(nodeResolver, 0);
+                        if (child is null)
+                        {
+                            throw new InvalidDataException($"Child of an extension {Key} should not be null.");
+                        }
+
+                        child.ResolveKey(nodeResolver, false);
+                        if (visitor.ShouldVisit(child.Keccak!))
+                        {
+                            trieVisitContext.Level++;
+                            trieVisitContext.BranchChildIndex = null;
+
+                            nextToVisit.Add((child, trieVisitContext));
+                        }
+
+                        break;
+                    }
+
+                case NodeType.Leaf:
+                    {
+                        visitor.VisitLeaf(this, trieVisitContext.ToVisitContext(), Value);
+
+                        if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
+                        {
+                            Account account = _accountDecoder.Decode(Value.AsRlpStream());
+                            if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
+                            {
+                                trieVisitContext.Level++;
+                                trieVisitContext.BranchChildIndex = null;
+                                visitor.VisitCode(account.CodeHash, trieVisitContext.ToVisitContext());
+                                trieVisitContext.Level--;
+                            }
+
+                            if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
+                            {
+                                trieVisitContext.IsStorage = true;
+                                trieVisitContext.Level++;
+                                trieVisitContext.BranchChildIndex = null;
+
+                                if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
+                                {
+                                    nextToVisit.Add((storageRoot!, trieVisitContext));
+                                }
+                                else
+                                {
+                                    visitor.VisitMissingNode(account.StorageRoot, trieVisitContext.ToVisitContext());
+                                }
+                            }
+                        }
+
+                        break;
+                    }
+
+                default:
+                    throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
+            }
+        }
 
         internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, TrieVisitContext trieVisitContext)
         {
@@ -103,6 +193,7 @@ namespace Nethermind.Trie
                         }
 
                         visitor.VisitBranch(this, trieVisitContext);
+                        trieVisitContext.AddVisited();
                         trieVisitContext.Level++;
 
                         if (trieVisitContext.MaxDegreeOfParallelism != 1 && trieVisitContext.Semaphore.CurrentCount > 1)
@@ -136,6 +227,7 @@ namespace Nethermind.Trie
                 case NodeType.Extension:
                     {
                         visitor.VisitExtension(this, trieVisitContext);
+                        trieVisitContext.AddVisited();
                         TrieNode child = GetChild(nodeResolver, 0);
                         if (child is null)
                         {
@@ -157,6 +249,7 @@ namespace Nethermind.Trie
                 case NodeType.Leaf:
                     {
                         visitor.VisitLeaf(this, trieVisitContext, Value);
+                        trieVisitContext.AddVisited();
                         if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                         {
                             Account account = _accountDecoder.Decode(Value.AsRlpStream());

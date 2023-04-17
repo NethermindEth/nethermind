@@ -1,28 +1,18 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc;
 using Nethermind.Synchronization;
 
 namespace Nethermind.HealthChecks
@@ -43,16 +33,19 @@ namespace Nethermind.HealthChecks
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly INethermindApi _api;
+        private readonly IRpcCapabilitiesProvider _rpcCapabilitiesProvider;
+        private readonly IDriveInfo[] _drives;
         private readonly bool _isMining;
 
-        public NodeHealthService(
-            ISyncServer syncServer,
+        public NodeHealthService(ISyncServer syncServer,
             IBlockchainProcessor blockchainProcessor,
             IBlockProducer blockProducer,
             IHealthChecksConfig healthChecksConfig,
             IHealthHintService healthHintService,
             IEthSyncingInfo ethSyncingInfo,
+            IRpcCapabilitiesProvider rpcCapabilitiesProvider,
             INethermindApi api,
+            IDriveInfo[] drives,
             bool isMining)
         {
             _syncServer = syncServer;
@@ -62,7 +55,9 @@ namespace Nethermind.HealthChecks
             _blockchainProcessor = blockchainProcessor;
             _blockProducer = blockProducer;
             _ethSyncingInfo = ethSyncingInfo;
+            _rpcCapabilitiesProvider = rpcCapabilitiesProvider;
             _api = api;
+            _drives = drives;
         }
 
         public CheckHealthResult CheckHealth()
@@ -122,6 +117,17 @@ namespace Nethermind.HealthChecks
                 }
             }
 
+            for (int index = 0; index < _drives.Length; index++)
+            {
+                IDriveInfo drive = _drives[index];
+                double freeSpacePercentage = drive.GetFreeSpacePercentage();
+                if (freeSpacePercentage < _healthChecksConfig.LowStorageSpaceWarningThreshold)
+                {
+                    AddLowDiskSpaceMessage(messages, drive, freeSpacePercentage);
+                    healthy = false;
+                }
+            }
+
             return new CheckHealthResult() { Healthy = healthy, Messages = messages };
         }
 
@@ -140,37 +146,34 @@ namespace Nethermind.HealthChecks
         public bool CheckClAlive()
         {
             var now = _api.Timestamper.UtcNow;
-            bool forkchoice = CheckMethodInvoked("engine_forkchoiceUpdatedV1", now);
-            bool newPayload = CheckMethodInvoked("engine_newPayloadV1", now);
-            bool exchangeTransition = CheckMethodInvoked("engine_exchangeTransitionConfigurationV1", now);
-            return forkchoice || newPayload || exchangeTransition;
+            var capabilities = _rpcCapabilitiesProvider.GetEngineCapabilities();
+            bool result = false;
+            foreach (var capability in capabilities)
+            {
+                if (capability.Value)
+                {
+                    result |= UpdateStatsAndCheckInvoked(capability.Key, now);
+                }
+            }
+            return result;
         }
 
-        private readonly ConcurrentDictionary<string, bool> _previousMethodCheckResult = new();
         private readonly ConcurrentDictionary<string, DateTime> _previousSuccessfulCheckTime = new();
         private readonly ConcurrentDictionary<string, int> _previousMethodCallSuccesses = new();
 
-        private bool CheckMethodInvoked(string methodName, DateTime now)
+        private bool UpdateStatsAndCheckInvoked(string methodName, DateTime now)
         {
             var methodCallSuccesses = _api.JsonRpcLocalStats!.GetMethodStats(methodName).Successes;
-            var previousCheckResult = _previousMethodCheckResult.GetOrAdd(methodName, true);
             var previousSuccesses = _previousMethodCallSuccesses.GetOrAdd(methodName, 0);
             var lastSuccessfulCheckTime = _previousSuccessfulCheckTime.GetOrAdd(methodName, now);
 
             if (methodCallSuccesses == previousSuccesses)
             {
                 int diff = (int)(Math.Floor((now - lastSuccessfulCheckTime).TotalSeconds));
-                if (diff > _healthChecksConfig.MaxIntervalClRequestTime)
-                {
-                    _previousMethodCheckResult[methodName] = false;
-                    return false;
-                }
-
-                return previousCheckResult;
+                return diff <= _healthChecksConfig.MaxIntervalClRequestTime;
             }
 
             _previousSuccessfulCheckTime[methodName] = now;
-            _previousMethodCheckResult[methodName] = true;
             _previousMethodCallSuccesses[methodName] = methodCallSuccesses;
             return true;
         }
@@ -230,6 +233,11 @@ namespace Nethermind.HealthChecks
         private static void AddFullySyncMessage(ICollection<(string Description, string LongDescription)> messages)
         {
             messages.Add(("Fully synced", $"The node is now fully synced with a network"));
+        }
+
+        private static void AddLowDiskSpaceMessage(ICollection<(string Description, string LongDescription)> messages, IDriveInfo drive, double freeSpacePercent)
+        {
+            messages.Add(("Low free disk space", $"The node is running out of free disk space in '{drive.RootDirectory.FullName}' - only {drive.GetFreeSpaceInGiB():F2} GB ({freeSpacePercent:F2}%) left"));
         }
     }
 }

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -20,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -60,13 +48,13 @@ namespace Nethermind.Consensus.Producers
         private readonly ITxSource _txSource;
         private readonly IBlockProductionTrigger _trigger;
         private bool _isRunning;
-        private readonly ManualResetEvent _producingBlockLock = new(true);
+        protected readonly SemaphoreSlim _producingBlockLock = new(1);
         private CancellationTokenSource? _producerCancellationToken;
 
         private DateTime _lastProducedBlockDateTime;
-        private const int BlockProductionTimeout = 1000;
+        protected const int BlockProductionTimeout = 2000;
         protected ILogger Logger { get; }
-        protected readonly IMiningConfig MiningConfig;
+        protected readonly IBlocksConfig _blocksConfig;
 
         protected BlockProducerBase(
             ITxSource? txSource,
@@ -80,7 +68,7 @@ namespace Nethermind.Consensus.Producers
             ISpecProvider? specProvider,
             ILogManager? logManager,
             IDifficultyCalculator? difficultyCalculator,
-            IMiningConfig? miningConfig)
+            IBlocksConfig? blocksConfig)
         {
             _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
@@ -93,7 +81,7 @@ namespace Nethermind.Consensus.Producers
             _trigger = trigger ?? throw new ArgumentNullException(nameof(trigger));
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            MiningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
+            _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
         }
 
         private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
@@ -134,7 +122,7 @@ namespace Nethermind.Consensus.Producers
             token = tokenSource.Token;
 
             Block? block = null;
-            if (await _producingBlockLock.WaitOneAsync(BlockProductionTimeout, token))
+            if (await _producingBlockLock.WaitAsync(BlockProductionTimeout, token))
             {
                 try
                 {
@@ -152,7 +140,7 @@ namespace Nethermind.Consensus.Producers
                 }
                 finally
                 {
-                    _producingBlockLock.Set();
+                    _producingBlockLock.Release();
                 }
             }
             else
@@ -241,6 +229,12 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
+        /// <summary>
+        /// Sets the state to produce block on
+        /// </summary>
+        /// <param name="parentStateRoot">Parent block state</param>
+        /// <returns>True if succeeded, false otherwise</returns>
+        /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
         protected bool TrySetState(Keccak? parentStateRoot)
         {
             bool HasState(Keccak stateRoot)
@@ -295,7 +289,7 @@ namespace Nethermind.Consensus.Producers
                 parent.Number + 1,
                 payloadAttributes?.GasLimit ?? _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
-                MiningConfig.GetExtraDataBytes())
+                _blocksConfig.GetExtraDataBytes())
             {
                 Author = blockAuthor,
                 MixHash = payloadAttributes?.PrevRandao
@@ -306,7 +300,7 @@ namespace Nethermind.Consensus.Producers
             header.TotalDifficulty = parent.TotalDifficulty + difficulty;
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
-            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header));
             return header;
         }
 
@@ -315,7 +309,14 @@ namespace Nethermind.Consensus.Producers
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
             IEnumerable<Transaction> transactions = GetTransactions(parent);
-            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>());
+
+            if (_specProvider.GetSpec(header).IsEip4844Enabled)
+            {
+                // TODO: Calculate ExcessDataGas depending on parent ExcessDataGas and number of blobs in txs
+                header.ExcessDataGas = 0;
+            }
+
+            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }
     }
 }

@@ -1,4 +1,4 @@
-name: '[RUN] Consensus Legacy Tests'
+name: '[RUN] Consensus legacy tests'
 
 on:
   push:
@@ -7,16 +7,17 @@ on:
 
 jobs:
   run-legacy-tests:
-    name: Running Blockchain Tests
+    name: Run blockchain tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - name: Check out repository
+      uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v1
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '6.0.x'
+        dotnet-version: 7
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -24,21 +25,22 @@ jobs:
         sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Ethereum.Blockchain.Block.Legacy
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Block.Legacy.Test
+        dotnet test -c release src/Nethermind/Ethereum.Blockchain.Block.Legacy.Test
 
   run-general-state-tests:
-    name: Running General State Tests
+    name: Run general state tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - name: Check out repository
+      uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Setting up dotnet
-      uses: actions/setup-dotnet@v1
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: '6.0.x'
-    - name: Updating submodules
+        dotnet-version: 7
+    - name: Update submodules
       run: git submodule update --init
     - name: Ethereum.Blockchain.Legacy
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Legacy.Test
+        dotnet test -c release src/Nethermind/Ethereum.Blockchain.Legacy.Test

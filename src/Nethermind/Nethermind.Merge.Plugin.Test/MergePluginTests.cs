@@ -1,42 +1,23 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
-using NUnit.Framework.Constraints;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -52,14 +33,14 @@ namespace Nethermind.Merge.Plugin.Test
         public void Setup()
         {
             _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
-            MiningConfig? miningConfig = new() { Enabled = true };
+            BlocksConfig? miningConfig = new();
             IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { "engine" } };
 
             _context = Build.ContextWithMocks();
             _context.SealEngineType = SealEngineType.Clique;
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
             _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
-            _context.ConfigProvider.GetConfig<IMiningConfig>().Returns(miningConfig);
+            _context.ConfigProvider.GetConfig<IBlocksConfig>().Returns(miningConfig);
             _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
             _context.BlockProcessingQueue?.IsEmpty.Returns(true);
             _context.MemDbFactory = new MemDbFactory();
@@ -84,6 +65,22 @@ namespace Nethermind.Merge.Plugin.Test
             _plugin = new MergePlugin();
 
             _consensusPlugin = new();
+        }
+
+        [Test]
+        public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()
+        {
+
+            JsonConfigSource? jsonSource = new("MisconfiguredConfig.cfg");
+            ConfigProvider? configProvider = new();
+            configProvider.AddSource(jsonSource);
+            configProvider.Initialize();
+            IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
+            IMergeConfig mergeConfig = configProvider.GetConfig<IMergeConfig>();
+            Assert.Throws<InvalidConfigurationException>(() =>
+            {
+                MergePlugin.MigrateSecondsPerSlot(blocksConfig, mergeConfig);
+            });
         }
 
         [TestCase(true)]

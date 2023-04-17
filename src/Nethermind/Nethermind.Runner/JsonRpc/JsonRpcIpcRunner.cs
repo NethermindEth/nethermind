@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -127,7 +130,8 @@ namespace Nethermind.Runner.JsonRpc
                     _jsonRpcProcessor,
                     _jsonRpcService,
                     _jsonRpcLocalStats,
-                    _jsonSerializer);
+                    _jsonSerializer,
+                    maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);
 
                 await socketsClient.ReceiveAsync();
             }

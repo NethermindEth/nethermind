@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -63,21 +50,29 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             catch (RlpException e)
             {
                 if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
-                ReportIn($"{typeof(T).Name} - Deserialization exception");
+                ReportIn($"{typeof(T).Name} - Deserialization exception", data.Length);
                 throw;
             }
         }
 
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
         {
+            int size = data.ReadableBytes;
             try
             {
-                return _serializer.Deserialize<T>(data);
+                int originalReaderIndex = data.ReaderIndex;
+                T result = _serializer.Deserialize<T>(data);
+                if (data.IsReadable())
+                {
+                    throw new IncompleteDeserializationException(
+                        $"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
+                }
+                return result;
             }
             catch (RlpException e)
             {
                 if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
-                ReportIn($"{typeof(T).Name} - Deserialization exception");
+                ReportIn($"{typeof(T).Name} - Deserialization exception", size);
                 throw;
             }
         }
@@ -86,8 +81,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, message.ToString());
-            Session.DeliverMessage(message);
+            int size = Session.DeliverMessage(message);
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, message.ToString(), size);
         }
 
         protected async Task CheckProtocolInitTimeout()
@@ -103,7 +98,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
                 }
 
-                Session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "protocol init timeout");
+                Session.InitiateDisconnect(InitiateDisconnectReason.ProtocolInitTimeout, "protocol init timeout");
             }
             else
             {
@@ -116,21 +111,21 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _initCompletionSource?.SetResult(msg);
         }
 
-        protected void ReportIn(MessageBase msg)
+        protected void ReportIn(MessageBase msg, int size)
         {
             if (Logger.IsTrace || NetworkDiagTracer.IsEnabled)
             {
-                ReportIn(msg.ToString());
+                ReportIn(msg.ToString(), size);
             }
         }
 
-        protected void ReportIn(string messageInfo)
+        protected void ReportIn(string messageInfo, int size)
         {
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {messageInfo}");
 
             if (NetworkDiagTracer.IsEnabled)
-                NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo);
+                NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo, size);
         }
 
         public abstract void Dispose();
@@ -150,5 +145,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public abstract event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
 
         public abstract event EventHandler<ProtocolEventArgs> SubprotocolRequested;
+    }
+
+    public class IncompleteDeserializationException : Exception
+    {
+        public IncompleteDeserializationException(string msg) : base(msg)
+        {
+        }
     }
 }

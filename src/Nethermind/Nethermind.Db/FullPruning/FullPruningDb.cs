@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -35,7 +21,7 @@ namespace Nethermind.Db.FullPruning
     /// When <see cref="IPruningContext"/> returned in <see cref="TryStartPruning"/> is <see cref="IDisposable.Dispose"/>d it will delete the pruning DB if the pruning was not successful.
     /// It uses <see cref="IRocksDbFactory"/> to create new pruning DB's. Check <see cref="FullPruningInnerDbFactory"/> to see how inner sub DB's are organised.
     /// </remarks>
-    public class FullPruningDb : IDb, IFullPruningDb
+    public class FullPruningDb : IDb, IFullPruningDb, ITunableDb
     {
         private readonly RocksDbSettings _settings;
         private readonly IRocksDbFactory _dbFactory;
@@ -58,7 +44,7 @@ namespace Nethermind.Db.FullPruning
 
         private IDb CreateDb(RocksDbSettings settings) => _dbFactory.CreateDb(settings);
 
-        public byte[]? this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get
             {
@@ -81,7 +67,18 @@ namespace Nethermind.Db.FullPruning
             }
         }
 
-        private void Duplicate(IKeyValueStore db, byte[] key, byte[]? value)
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? value = _currentDb.Get(key, flags); // we are reading from the main DB
+            if (_pruningContext?.DuplicateReads == true)
+            {
+                Duplicate(_pruningContext.CloningDb, key, value);
+            }
+
+            return value;
+        }
+
+        private void Duplicate(IKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value)
         {
             db[key] = value;
             _updateDuplicateWriteMetrics?.Invoke();
@@ -108,14 +105,14 @@ namespace Nethermind.Db.FullPruning
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _currentDb.GetAllValues(ordered);
 
         // we need to remove from both DB's
-        public void Remove(byte[] key)
+        public void Remove(ReadOnlySpan<byte> key)
         {
             _currentDb.Remove(key);
             IDb? cloningDb = _pruningContext?.CloningDb;
             cloningDb?.Remove(key);
         }
 
-        public bool KeyExists(byte[] key) => _currentDb.KeyExists(key);
+        public bool KeyExists(ReadOnlySpan<byte> key) => _currentDb.KeyExists(key);
 
         // inner DB's can be deleted in the future and
         // we cannot expose a DB that will potentially be later deleted
@@ -201,6 +198,9 @@ namespace Nethermind.Db.FullPruning
             public bool DuplicateReads { get; }
             private readonly FullPruningDb _db;
 
+            private long _counter = 0;
+            private ConcurrentQueue<IBatch> _batches = new();
+
             public PruningContext(FullPruningDb db, IDb cloningDb, bool duplicateReads)
             {
                 CloningDb = cloningDb;
@@ -209,15 +209,37 @@ namespace Nethermind.Db.FullPruning
             }
 
             /// <inheritdoc />
-            public byte[]? this[byte[] key]
+            public byte[]? this[ReadOnlySpan<byte> key]
             {
                 get => CloningDb[key];
-                set => _db.Duplicate(CloningDb, key, value);
+                set
+                {
+                    if (!_batches.TryDequeue(out IBatch currentBatch))
+                    {
+                        currentBatch = CloningDb.StartBatch();
+                    }
+
+                    _db.Duplicate(currentBatch, key, value);
+                    long val = Interlocked.Increment(ref _counter);
+                    if (val % 10000 == 0)
+                    {
+                        currentBatch.Dispose();
+                    }
+                    else
+                    {
+                        _batches.Enqueue(currentBatch);
+                    }
+                }
             }
 
             /// <inheritdoc />
             public void Commit()
             {
+                foreach (IBatch batch in _batches)
+                {
+                    batch.Dispose();
+                }
+
                 _db.FinishPruning();
                 _committed = true; // we mark the context as committed.
             }
@@ -274,7 +296,7 @@ namespace Nethermind.Db.FullPruning
                 _clonedBatch.Dispose();
             }
 
-            public byte[]? this[byte[] key]
+            public byte[]? this[ReadOnlySpan<byte> key]
             {
                 get => _batch[key];
                 set
@@ -282,6 +304,14 @@ namespace Nethermind.Db.FullPruning
                     _batch[key] = value;
                     _db.Duplicate(_clonedBatch, key, value);
                 }
+            }
+        }
+
+        public void Tune(ITunableDb.TuneType type)
+        {
+            if (_currentDb is ITunableDb tunableDb)
+            {
+                tunableDb.Tune(type);
             }
         }
     }

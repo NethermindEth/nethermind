@@ -1,18 +1,15 @@
-using System.Reflection;
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using FluentAssertions;
 using Nethermind.Db.Rocks;
 using NUnit.Framework;
-using RocksDbSharp;
 
 namespace Nethermind.Db.Test;
 
-[TestFixture]
 [Parallelizable(ParallelScope.All)]
-public static class RocksDbTests
+internal static class RocksDbTests
 {
     [Test]
-    public static void Should_have_required_version()
-    {
-        string version = DbOnTheRocks.GetRocksDbVersion();
-        Assert.AreEqual("6.29.3", $"{version}", "Unexpected RocksDB version");
-    }
+    public static void Should_have_required_version() => DbOnTheRocks.GetRocksDbVersion().Should().Be("8.0.0");
 }

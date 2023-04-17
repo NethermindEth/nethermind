@@ -1,25 +1,12 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Exceptions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -37,7 +24,10 @@ public class MessageDictionary<T66Msg, TMsg, TData> where T66Msg : Eth66Message<
 
     // It could be that we had some kind of temporary connection loss, so once in a while we need to check really old
     // request. This is to prevent getting stuck on concurrent request limit and prevent potential memory leak.
-    private static readonly TimeSpan DefaultOldRequestThreshold = TimeSpan.FromSeconds(60);
+    // The timeout is higher than Timeouts.Eth because it could be than the peer is delayed by only a few second.
+    // If that is the case, and this throw due to unrecognized request id, the peer will get disconnected, which
+    // we don't want to do too much as that decrease number of peer.
+    private static readonly TimeSpan DefaultOldRequestThreshold = TimeSpan.FromSeconds(30);
 
     private readonly TimeSpan _oldRequestThreshold;
 
@@ -55,7 +45,7 @@ public class MessageDictionary<T66Msg, TMsg, TData> where T66Msg : Eth66Message<
     {
         if (_requestCount >= MaxConcurrentRequest)
         {
-            throw new InvalidOperationException("Concurrent request limit reached");
+            throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(TMsg)}");
         }
 
         if (_requests.TryAdd(request.Message.RequestId, request))
@@ -77,22 +67,16 @@ public class MessageDictionary<T66Msg, TMsg, TData> where T66Msg : Eth66Message<
         {
             await Task.Delay(_oldRequestThreshold);
 
-            ArrayPoolList<long> toRemove = new(MaxConcurrentRequest);
             foreach (KeyValuePair<long, Request<T66Msg, TData>> requestIdValues in _requests)
             {
                 if (requestIdValues.Value.Elapsed > _oldRequestThreshold)
                 {
-                    toRemove.Add(requestIdValues.Key);
-                }
-            }
-
-            for (int i = 0; i < toRemove.Count; i++)
-            {
-                if (_requests.TryRemove(toRemove[i], out Request<T66Msg, TData> request))
-                {
-                    _requestCount--;
-                    // Unblock waiting thread.
-                    request.CompletionSource.SetException(new TimeoutException("No response received"));
+                    if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
+                    {
+                        _requestCount--;
+                        // Unblock waiting thread.
+                        request.CompletionSource.SetException(new TimeoutException("No response received"));
+                    }
                 }
             }
 

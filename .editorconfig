@@ -20,7 +20,7 @@ indent_style = space
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-file_header_template = Copyright 2022 Demerzel Solutions Limited\nLicensed under the LGPL-3.0. For full terms, see LICENSE-LGPL in the project root.
+file_header_template = SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited\nSPDX-License-Identifier: LGPL-3.0-only
 
 ###############################
 # Other file type settings    #
@@ -208,6 +208,7 @@ csharp_style_deconstructed_variable_declaration = true:suggestion
 csharp_prefer_simple_default_expression = true:suggestion
 csharp_style_pattern_local_over_anonymous_function = true:suggestion
 csharp_style_inlined_variable_declaration = true:suggestion
+csharp_style_namespace_declarations = file_scoped:suggestion
 ###############################
 # C# Formatting Rules         #
 ###############################

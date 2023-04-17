@@ -1,20 +1,8 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -31,7 +19,7 @@ namespace Nethermind.Consensus.Processing
         private readonly ILogger _logger;
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="ecdsa">Needed to recover an address from a signature.</param>
         /// <param name="txPool">Finding transactions in mempool can speed up address recovery.</param>
@@ -52,9 +40,9 @@ namespace Nethermind.Consensus.Processing
                 return;
             }
 
-            var releaseSpec = _specProvider.GetSpec(block.Number);
+            var releaseSpec = _specProvider.GetSpec(block.Header);
 
-            for (int i = 0; i < block.Transactions.Length; i++)
+            Parallel.For(0, block.Transactions.Length, i =>
             {
                 Transaction blockTransaction = block.Transactions[i];
                 _txPool.TryGetPendingTransaction(blockTransaction.Hash, out Transaction? transaction);
@@ -64,7 +52,7 @@ namespace Nethermind.Consensus.Processing
 
                 blockTransaction.SenderAddress = sender ?? _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
                 if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender}, block transaction address: {blockTransactionAddress})");
-            }
+            });
         }
     }
 }

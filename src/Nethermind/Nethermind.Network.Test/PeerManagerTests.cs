@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -347,7 +334,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             var networkNode = new NetworkNode(ctx.GenerateEnode());
-            ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.ChainId);
+            ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.NetworkId);
 
             ctx.PeerPool.GetOrAdd(networkNode);
 
@@ -355,7 +342,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.ActivePeers.Count.Should().Be(0);
         }
 
-        private int _travisDelay = 100;
+        private int _travisDelay = 500;
 
         private int _travisDelayLong = 1000;
 
@@ -376,7 +363,7 @@ namespace Nethermind.Network.Test
             }
         }
 
-        [Test, Retry(3)]
+        [Test]
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing()
         {
             await using Context ctx = new();
@@ -385,11 +372,13 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             int currentCount = 0;
+            int maxCount = 0;
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
+                maxCount += 50;
                 await Task.Delay(_travisDelay);
-                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + 25);
+                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, maxCount);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
                 ctx.DisconnectAllSessions();

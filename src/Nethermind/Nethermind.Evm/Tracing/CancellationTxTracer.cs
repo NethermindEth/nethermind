@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -42,6 +28,7 @@ namespace Nethermind.Evm.Tracing
         private readonly bool _isTracingStorage;
         private readonly bool _isTracingBlockHash;
         private readonly bool _isTracingBlockAccess;
+        private readonly bool _isTracingFees;
 
         public ITxTracer InnerTracer => _innerTracer;
 
@@ -123,6 +110,12 @@ namespace Nethermind.Evm.Tracing
             init => _isTracingBlockAccess = value;
         }
 
+        public bool IsTracingFees
+        {
+            get => _isTracingFees || _innerTracer.IsTracingFees;
+            init => _isTracingFees = value;
+        }
+
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             _token.ThrowIfCancellationRequested();
@@ -159,7 +152,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingStorage)
@@ -168,7 +161,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportStorageRead(StorageCell storageCell)
+        public void ReportStorageRead(in StorageCell storageCell)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingStorage)
@@ -195,12 +188,12 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false, IReleaseSpec? spec = null)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingInstructions)
             {
-                _innerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge, spec);
+                _innerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
             }
         }
 
@@ -435,6 +428,15 @@ namespace Nethermind.Evm.Tracing
             if (_innerTracer.IsTracingAccess)
             {
                 _innerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
+            }
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            _token.ThrowIfCancellationRequested();
+            if (_innerTracer.IsTracingFees)
+            {
+                _innerTracer.ReportFees(fees, burntFees);
             }
         }
     }

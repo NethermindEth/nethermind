@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -34,6 +21,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private ValidatorInfo _latestValidatorInfo;
         private static readonly int EmptyBlockNumber = -1;
         private static readonly ValidatorInfo EmptyValidatorInfo = new ValidatorInfo(-1, -1, Array.Empty<Address>());
+        private static Keccak GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
         public ValidatorStore(IDb db)
         {
@@ -55,12 +43,19 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private Keccak GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
-
-        public Address[] GetValidators(long? blockNumber = null)
+        public Address[] GetValidators(in long? blockNumber = null)
         {
-            return blockNumber is null || blockNumber > _latestFinalizedValidatorsBlockNumber ? GetLatestValidatorInfo().Validators : FindValidatorInfo(blockNumber.Value);
+            return blockNumber == null || blockNumber > _latestFinalizedValidatorsBlockNumber
+                ? GetLatestValidatorInfo().Validators
+                : FindValidatorInfo(blockNumber.Value).Validators;
+        }
+
+        public ValidatorInfo GetValidatorsInfo(in long? blockNumber = null)
+        {
+            return blockNumber == null || blockNumber > _latestFinalizedValidatorsBlockNumber
+                ? GetLatestValidatorInfo()
+                : FindValidatorInfo(blockNumber.Value);
         }
 
         public PendingValidators PendingValidators
@@ -73,7 +68,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             set => _db.Set(PendingValidatorsKey, PendingValidatorsDecoder.Encode(value).Bytes);
         }
 
-        private Address[] FindValidatorInfo(in long blockNumber)
+        private ValidatorInfo FindValidatorInfo(in long blockNumber)
         {
             var currentValidatorInfo = GetLatestValidatorInfo();
             while (currentValidatorInfo.FinalizingBlockNumber >= blockNumber)
@@ -81,7 +76,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 currentValidatorInfo = LoadValidatorInfo(currentValidatorInfo.PreviousFinalizingBlockNumber);
             }
 
-            return currentValidatorInfo.Validators;
+            return currentValidatorInfo;
         }
 
         private ValidatorInfo GetLatestValidatorInfo()

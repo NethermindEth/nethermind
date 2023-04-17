@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -41,6 +28,7 @@ namespace Nethermind.Evm.Tracing
 
         public bool IsTracingBlockHash => _currentTxTracer.IsTracingBlockHash;
         public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
+        public bool IsTracingFees => _currentTxTracer.IsTracingFees;
 
         private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
@@ -107,8 +95,8 @@ namespace Nethermind.Evm.Tracing
             return txReceipt;
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false, IReleaseSpec? spec = null) =>
-            _currentTxTracer.StartOperation(depth, gas, opcode, pc, isPostMerge, spec);
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) =>
+            _currentTxTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
 
         public void ReportOperationError(EvmExceptionType error) =>
             _currentTxTracer.ReportOperationError(error);
@@ -148,10 +136,10 @@ namespace Nethermind.Evm.Tracing
         public void ReportAccountRead(Address address) =>
             _currentTxTracer.ReportAccountRead(address);
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after) =>
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) =>
             _currentTxTracer.ReportStorageChange(storageCell, before, after);
 
-        public void ReportStorageRead(StorageCell storageCell) =>
+        public void ReportStorageRead(in StorageCell storageCell) =>
             _currentTxTracer.ReportStorageRead(storageCell);
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) =>
@@ -195,6 +183,14 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemory(List<string> memoryTrace) =>
             _currentTxTracer.SetOperationMemory(memoryTrace);
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            if (_currentTxTracer.IsTracingFees)
+            {
+                _currentTxTracer.ReportFees(fees, burntFees);
+            }
+        }
 
         private ITxTracer _currentTxTracer = NullTxTracer.Instance;
         private int _currentIndex;

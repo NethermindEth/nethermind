@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -31,6 +18,7 @@ using Nethermind.State;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Config;
 
 namespace Nethermind.Clique.Test
 {
@@ -43,7 +31,7 @@ namespace Nethermind.Clique.Test
         {
             CliqueConfig cliqueConfig = new();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            Signer signer = new(ChainId.Ropsten, TestItem.PrivateKeyA, LimboLogs.Instance);
+            Signer signer = new(BlockchainIds.Ropsten, TestItem.PrivateKeyA, LimboLogs.Instance);
             CliqueBlockProducer producer = new(
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
@@ -53,7 +41,7 @@ namespace Nethermind.Clique.Test
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),
                 new CliqueSealer(signer, cliqueConfig, Substitute.For<ISnapshotManager>(), LimboLogs.Instance),
-                new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()),
+                new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new BlocksConfig()),
                 MainnetSpecProvider.Instance,
                 cliqueConfig,
                 LimboLogs.Instance);

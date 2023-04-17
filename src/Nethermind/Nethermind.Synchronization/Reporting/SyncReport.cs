@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Text;
@@ -42,7 +29,7 @@ namespace Nethermind.Synchronization.Reporting
         private const int SyncReportFrequency = 1;
         private const int PeerCountFrequency = 15;
         private const int NoProgressStateSyncReportFrequency = 30;
-        private const int SyncShortPeersReportFrequency = 30;
+        private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
         private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(1);
 
@@ -105,9 +92,9 @@ namespace Nethermind.Synchronization.Reporting
             {
                 _syncPeersReport.WriteFullReport();
             }
-            else if (_reportId % SyncShortPeersReportFrequency == 0)
+            else if (_reportId % SyncAllocatedPeersReportFrequency == 0)
             {
-                _syncPeersReport.WriteShortReport();
+                _syncPeersReport.WriteAllocatedReport();
             }
 
             _reportId++;
@@ -134,6 +121,8 @@ namespace Nethermind.Synchronization.Reporting
         public MeasuredProgress FullSyncBlocksDownloaded { get; } = new();
 
         public MeasuredProgress BeaconHeaders { get; } = new();
+
+        public MeasuredProgress BeaconHeadersInQueue { get; } = new();
 
         public long FullSyncBlocksKnown { get; set; }
 
@@ -319,7 +308,7 @@ namespace Nethermind.Synchronization.Reporting
             long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
             int paddingLength = numHeadersToDownload.ToString().Length;
             _logger.Info($"Beacon Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
-                         + $"{Pad(BeaconHeaders.CurrentValue, paddingLength)} / {Pad(numHeadersToDownload, paddingLength)} | queue {Pad(HeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(BeaconHeaders.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(BeaconHeaders.TotalPerSecond, SpeedPaddingLength)}bps");
+                         + $"{Pad(BeaconHeaders.CurrentValue, paddingLength)} / {Pad(numHeadersToDownload, paddingLength)} | queue {Pad(BeaconHeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(BeaconHeaders.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(BeaconHeaders.TotalPerSecond, SpeedPaddingLength)}bps");
             BeaconHeaders.SetMeasuringPoint();
         }
 

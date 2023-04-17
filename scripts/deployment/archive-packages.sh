@@ -1,49 +1,20 @@
 #!/bin/bash
-#exit when any command fails
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 set -e
-LIN=nethermind-linux-amd64
-OSX=nethermind-darwin-amd64
-OSX_ARM64=nethermind-darwin-arm64
-WIN=nethermind-windows-amd64
-LIN_ARM64=nethermind-linux-arm64
-RELEASE_PATH=nethermind/src/Nethermind/Nethermind.Runner/bin/release/net6.0
 
-echo =======================================================
-echo Archiving Nethermind packages
-echo =======================================================
+echo "Archiving Nethermind packages"
 
-cd $RELEASE_DIRECTORY
-VERSION=$1
-COMMIT_HASH=$(echo $2 | awk '{print substr($0,0,7);}')
-DATE=$(date +'%Y%m%d' -d @$3)
+cd $GITHUB_WORKSPACE
+mkdir $PACKAGE_DIR
+cd $PUB_DIR
 
-echo =======================================================
-echo Copying and packing plugins
-echo =======================================================
+cd linux-x64 && zip -r $GITHUB_WORKSPACE/$PACKAGE_DIR/$PACKAGE_PREFIX-linux-x64.zip . && cd ..
+cd linux-arm64 && zip -r $GITHUB_WORKSPACE/$PACKAGE_DIR/$PACKAGE_PREFIX-linux-arm64.zip . && cd ..
+cd win-x64 && zip -r $GITHUB_WORKSPACE/$PACKAGE_DIR/$PACKAGE_PREFIX-windows-x64.zip . && cd ..
+cd osx-x64 && zip -r $GITHUB_WORKSPACE/$PACKAGE_DIR/$PACKAGE_PREFIX-macos-x64.zip . && cd ..
+cd osx-arm64 && zip -r $GITHUB_WORKSPACE/$PACKAGE_DIR/$PACKAGE_PREFIX-macos-arm64.zip . && cd ..
+cd ref && zip -r $GITHUB_WORKSPACE/$PACKAGE_DIR/$PACKAGE_PREFIX-ref-assemblies.zip . && cd ..
 
-mkdir -p $LIN_RELEASE/plugins
-mkdir -p $OSX_RELEASE/plugins
-mkdir -p $OSX_ARM64_RELEASE/plugins
-mkdir -p $WIN_RELEASE/plugins
-mkdir -p $LIN_ARM64_RELEASE/plugins
-
-cd nethermind/src/Nethermind/Nethermind.Runner
-dotnet build -c release Nethermind.Runner.csproj
-
-cd $RELEASE_DIRECTORY
-
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev}.dll $LIN_RELEASE/plugins
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev}.dll $OSX_RELEASE/plugins
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev}.dll $WIN_RELEASE/plugins
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev}.dll $LIN_ARM64_RELEASE/plugins
-cp $RELEASE_DIRECTORY/$RELEASE_PATH/Nethermind.{Api,HealthChecks,EthStats,Merge.Plugin,Mev}.dll $OSX_ARM64_RELEASE/plugins
-
-cd $LIN_RELEASE && zip -r $LIN-$VERSION-$COMMIT_HASH-$DATE.zip . && cd ..
-cd $OSX_RELEASE && zip -r $OSX-$VERSION-$COMMIT_HASH-$DATE.zip . && cd ..
-cd $WIN_RELEASE && zip -r $WIN-$VERSION-$COMMIT_HASH-$DATE.zip . && cd ..
-cd $LIN_ARM64_RELEASE && zip -r $LIN_ARM64-$VERSION-$COMMIT_HASH-$DATE.zip . && cd ..
-cd $OSX_ARM64_RELEASE && zip -r $OSX_ARM64-$VERSION-$COMMIT_HASH-$DATE.zip . && cd ..
-
-echo =======================================================
-echo Archiving Nethermind packages completed
-echo =======================================================
+echo "Archiving completed"

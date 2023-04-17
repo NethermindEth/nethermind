@@ -1,20 +1,8 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -28,18 +16,36 @@ namespace Nethermind.Blockchain.Receipts
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
 
-        private readonly TxReceipt[] _receipts;
+        private readonly TxReceipt[]? _receipts;
         private int _position;
+        private readonly IReceiptsRecovery.IRecoveryContext? _recoveryContext;
+        private readonly bool _compactEncoding;
 
-        public ReceiptsIterator(in Span<byte> receiptsData, IDbWithSpan blocksDb)
+        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb, IReceiptsRecovery.IRecoveryContext? receiptsRecoveryContext)
         {
             _decoderContext = receiptsData.AsRlpValueContext();
-            _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
             _blocksDb = blocksDb;
             _receipts = null;
             _position = 0;
+            _recoveryContext = receiptsRecoveryContext;
+
+            if (_decoderContext.Length > 0 && _decoderContext.PeekByte() == ReceiptArrayStorageDecoder.CompactEncoding)
+            {
+                _compactEncoding = true;
+                _decoderContext.ReadByte();
+            }
+            else
+            {
+                _compactEncoding = false;
+            }
+
+            _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
         }
 
+        /// <summary>
+        /// Note: This code path assume the receipts already have other info recovered. Its used only by cache.
+        /// </summary>
+        /// <param name="receipts"></param>
         public ReceiptsIterator(TxReceipt[] receipts)
         {
             _decoderContext = new Rlp.ValueDecoderContext();
@@ -55,7 +61,15 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (_decoderContext.Position < _length)
                 {
-                    ReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    if (_compactEncoding)
+                    {
+                        CompactReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    }
+                    else
+                    {
+                        ReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    }
+                    _recoveryContext?.RecoverReceiptData(ref current);
                     return true;
                 }
             }

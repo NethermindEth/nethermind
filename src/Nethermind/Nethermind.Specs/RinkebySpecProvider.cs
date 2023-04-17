@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -23,17 +10,18 @@ namespace Nethermind.Specs
 {
     public class RinkebySpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock = null;
+        private ForkActivation? _theMergeBlock = null;
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber.Value;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
+        public ulong TimestampFork => ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
@@ -64,19 +52,20 @@ namespace Nethermind.Specs
         public const long BerlinBlockNumber = 8_290_928;
         public const long LondonBlockNumber = 8_897_988;
 
-        public ulong ChainId => Core.ChainId.Rinkeby;
+        public ulong NetworkId => Core.BlockchainIds.Rinkeby;
+        public ulong ChainId => NetworkId;
 
-        public ForkActivation[] TransitionBlocks { get; } =
+        public ForkActivation[] TransitionActivations { get; } =
         {
-            HomesteadBlockNumber,
-            TangerineWhistleBlockNumber,
-            SpuriousDragonBlockNumber,
-            ByzantiumBlockNumber,
-            ConstantinopleBlockNumber,
-            ConstantinopleFixBlockNumber,
-            IstanbulBlockNumber,
-            BerlinBlockNumber,
-            LondonBlockNumber
+            (ForkActivation)HomesteadBlockNumber,
+            (ForkActivation)TangerineWhistleBlockNumber,
+            (ForkActivation)SpuriousDragonBlockNumber,
+            (ForkActivation)ByzantiumBlockNumber,
+            (ForkActivation)ConstantinopleBlockNumber,
+            (ForkActivation)ConstantinopleFixBlockNumber,
+            (ForkActivation)IstanbulBlockNumber,
+            (ForkActivation)BerlinBlockNumber,
+            (ForkActivation)LondonBlockNumber
         };
 
         private RinkebySpecProvider() { }

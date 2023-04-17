@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -526,7 +513,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             byte[] code = Prepare.EvmCode
                 .PushData(TestItem.AddressC)
-                .Op(Instruction.SENDALL)
+                .Op(Instruction.SELFDESTRUCT)
                 .Done;
 
             (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
@@ -611,20 +598,12 @@ namespace Nethermind.Evm.Test.Tracing
         {
             byte[] deployedCode = Prepare.EvmCode
                 .Call(IdentityPrecompile.Instance.Address, 50000)
-                .Op(Instruction.STOP)
-                .Done;
-
-            byte[] initCode = Prepare.EvmCode
-                .ForInitOf(deployedCode)
-                .Done;
-
-            byte[] createCode = Prepare.EvmCode
-                .Create(initCode, 0)
+                .CallWithValue(IdentityPrecompile.Instance.Address, 50000, 1.Ether())
                 .Op(Instruction.STOP)
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
+            Keccak createCodeHash = TestState.UpdateCode(deployedCode);
             TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
@@ -645,12 +624,18 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(IdentityPrecompile.Instance.Address, trace.Action.Subtraces[0].To, "[0] to");
 
             // AddressC call - only one call
-            Assert.AreEqual(1, trace.Action.Subtraces[1].Subtraces.Count, "[1] subtraces");
+            Assert.AreEqual(2, trace.Action.Subtraces[1].Subtraces.Count, "[1] subtraces");
             Assert.AreEqual("call", trace.Action.Subtraces[1].CallType, "[1] type");
 
-            // Check the subtrace - not a precompile call
+            // Check the 1st subtrace - a precompile call
             Assert.AreEqual(0, trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, "[1, 0] subtraces");
-            Assert.AreEqual("create", trace.Action.Subtraces[1].Subtraces[0].CallType, "[1, 0] type");
+            Assert.AreEqual("call", trace.Action.Subtraces[1].Subtraces[0].CallType, "[1, 0] type");
+            Assert.AreEqual(false, trace.Action.Subtraces[1].Subtraces[0].IncludeInTrace, "[1, 0] type");
+
+            // Check the 2nd subtrace - a precompile call with value - must be included
+            Assert.AreEqual(0, trace.Action.Subtraces[1].Subtraces[1].Subtraces.Count, "[1, 1] subtraces");
+            Assert.AreEqual("call", trace.Action.Subtraces[1].Subtraces[1].CallType, "[1, 1] type");
+            Assert.AreEqual(true, trace.Action.Subtraces[1].Subtraces[1].IncludeInTrace, "[1, 1] type");
         }
 
         [Test]

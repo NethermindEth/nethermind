@@ -1,14 +1,13 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Security.Cryptography.X509Certificates;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Overseer.Test.JsonRpc.Dto;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
@@ -91,12 +90,29 @@ public class BySpeedStrategyTests
         int selectedPeerIdx = peers.IndexOf(selectedPeer);
         if (pickedNewPeer)
         {
-            selectedPeerIdx.Should().Be(peerWithKnownSpeed);
+            selectedPeerIdx.Should().Be(peerWithKnownSpeed); // It picked the first peer with unknown speed
         }
         else
         {
-            selectedPeerIdx.Should().Be(0);
+            selectedPeerIdx.Should().BeLessThan(peerWithKnownSpeed); // It picked earlier peers which have known speed
         }
+    }
+
+    [Test]
+    public void TestWhenSameSpeed_RandomlyTryOtherPeer()
+    {
+        INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+
+        List<PeerInfo> peers = Enumerable.Repeat<long?>(10, 50)
+            .Concat(Enumerable.Repeat<long?>(100, 50))
+            .Select((speed) => CreatePeerInfoWithSpeed(speed, nodeStatsManager))
+            .ToList();
+
+        BySpeedStrategy strategy = new(TransferSpeedType.Bodies, true, 0, 0, 0, 0);
+
+        PeerInfo? selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject);
+        int selectedPeerIdx = peers.IndexOf(selectedPeer);
+        selectedPeerIdx.Should().BeGreaterThan(50);
     }
 
     [TestCase(10, 0, 0, 0)]

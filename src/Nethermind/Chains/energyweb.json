@@ -20,6 +20,7 @@
         "gasLimitBoundDivisor": "0x400",
         "minGasLimit": "0x1388",
         "maxCodeSize": "0x6000",
+        "maxCodeSizeTransition": "0x0",
         "eip140Transition": "0x0",
         "eip211Transition": "0x0",
         "eip214Transition": "0x0",

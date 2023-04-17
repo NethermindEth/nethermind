@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Text.RegularExpressions;
@@ -22,7 +8,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public static class SyncPeerExtensions
+    public static partial class SyncPeerExtensions
     {
         // Check if OpenEthereum supports GetNodeData
         private static readonly Version _openEthereumSecondRemoveGetNodeDataVersion = new(3, 3, 3);
@@ -53,7 +39,7 @@ namespace Nethermind.Synchronization.Peers
             return true;
         }
 
-        private static readonly Regex _openEthereumVersionRegex = new(@"OpenEthereum\/([a-zA-z-0-9]*\/)*v(?<version>(?<mainVersion>[0-9]\.[0-9]\.[0-9])-?(rc\.(?<rc>[0-9]*))?)", RegexOptions.Compiled);
+        private static readonly Regex _openEthereumVersionRegex = OpenEthereumRegex();
 
         public static Version? GetOpenEthereumVersion(this ISyncPeer peer, out int releaseCandidate)
         {
@@ -71,5 +57,8 @@ namespace Nethermind.Synchronization.Peers
             releaseCandidate = 0;
             return null;
         }
+
+        [GeneratedRegex("OpenEthereum\\/([a-zA-z-0-9]*\\/)*v(?<version>(?<mainVersion>[0-9]\\.[0-9]\\.[0-9])-?(rc\\.(?<rc>[0-9]*))?)")]
+        private static partial Regex OpenEthereumRegex();
     }
 }

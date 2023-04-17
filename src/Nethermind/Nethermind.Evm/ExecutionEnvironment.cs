@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -21,51 +8,74 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
-    public struct ExecutionEnvironment
+    public readonly struct ExecutionEnvironment
     {
+        public ExecutionEnvironment
+        (
+            CodeInfo codeInfo,
+            Address executingAccount,
+            Address caller,
+            Address? codeSource,
+            ReadOnlyMemory<byte> inputData,
+            TxExecutionContext txExecutionContext,
+            UInt256 transferValue,
+            UInt256 value,
+            int callDepth = 0)
+        {
+            CodeInfo = codeInfo;
+            ExecutingAccount = executingAccount;
+            Caller = caller;
+            CodeSource = codeSource;
+            InputData = inputData;
+            TxExecutionContext = txExecutionContext;
+            TransferValue = transferValue;
+            Value = value;
+            CallDepth = callDepth;
+        }
+
         /// <summary>
-        /// Transaction originator
+        /// Parsed bytecode for the current call.
         /// </summary>
-        public TxExecutionContext TxExecutionContext { get; set; }
+        public readonly CodeInfo CodeInfo;
 
         /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).
         /// </summary>
-        public Address ExecutingAccount { get; set; }
+        public readonly Address ExecutingAccount;
 
         /// <summary>
         /// Caller
         /// </summary>
-        public Address Caller { get; set; }
+        public readonly Address Caller;
 
         /// <summary>
         /// Bytecode source (account address).
         /// </summary>
-        public Address? CodeSource { get; set; }
+        public readonly Address? CodeSource;
 
         /// <summary>
         /// Parameters / arguments of the current call.
         /// </summary>
-        public ReadOnlyMemory<byte> InputData { get; set; }
+        public readonly ReadOnlyMemory<byte> InputData;
+
+        /// <summary>
+        /// Transaction originator
+        /// </summary>
+        public readonly TxExecutionContext TxExecutionContext;
 
         /// <summary>
         /// ETH value transferred in this call.
         /// </summary>
-        public UInt256 TransferValue { get; set; }
+        public readonly UInt256 TransferValue;
 
         /// <summary>
         /// Value information passed (it is different from transfer value in DELEGATECALL.
         /// DELEGATECALL behaves like a library call and it uses the value information from the caller even
         /// as no transfer happens.
         /// </summary>
-        public UInt256 Value { get; set; }
-
-        /// <summary>
-        /// Parsed bytecode for the current call.
-        /// </summary>
-        public CodeInfo CodeInfo { get; set; }
+        public readonly UInt256 Value;
 
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
-        public int CallDepth { get; set; }
+        public readonly int CallDepth;
     }
 }

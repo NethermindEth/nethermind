@@ -1,31 +1,21 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Merge.Plugin;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Db;
-using Nethermind.Blockchain;
-using Nethermind.State;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
+using Nethermind.Config;
+using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Db;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -36,6 +26,9 @@ namespace Nethermind.Merge.AuRa
     public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _auraApi;
+
+        public override string Name => "AuRaMerge";
+        public override string Description => $"AuRa Merge plugin for ETH1-ETH2";
 
         public override bool MergeEnabled => ShouldBeEnabled(_api);
 
@@ -56,27 +49,35 @@ namespace Nethermind.Merge.AuRa
             }
         }
 
-        protected override ITxSource? CreateTxSource(IStateProvider stateProvider)
+        public override Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _api.DbProvider!.AsReadOnly(false),
-                _api.ReadOnlyTrieStore,
-                _api.BlockTree!.AsReadOnly(),
-                _api.SpecProvider,
-                _api.LogManager
-            );
+            _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
+                (AuRaNethermindApi)_api,
+                _api.Config<IAuraConfig>(),
+                _api.DisposeStack,
+                _api.DbProvider!,
+                _api.BlockTree!,
+                _api.ReadOnlyTrieStore!,
+                _api.SpecProvider!,
+                _api.BlockValidator!,
+                _api.RewardCalculatorSource!,
+                _api.ReceiptStorage!,
+                _api.BlockPreprocessor!,
+                _api.TxPool!,
+                _api.TransactionComparerProvider!,
+                _api.Config<IBlocksConfig>(),
+                _api.LogManager);
 
-            ReadOnlyTxProcessingEnv constantContractsProcessingEnv = new(
-                _api.DbProvider!.AsReadOnly(false),
-                _api.ReadOnlyTrieStore,
-                _api.BlockTree!.AsReadOnly(),
-                _api.SpecProvider,
-                _api.LogManager
-            );
-
-            return new StartBlockProducerAuRa(_auraApi!)
-                .CreateStandardTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv);
+            return base.InitBlockProducer(consensusPlugin);
         }
+
+        protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
+            => new AuRaPostMergeBlockProducerFactory(
+                _api.SpecProvider!,
+                _api.SealEngine,
+                _manualTimestamper!,
+                _blocksConfig,
+                _api.LogManager);
 
         private bool ShouldBeEnabled(INethermindApi api) => _mergeConfig.Enabled && IsPreMergeConsensusAuRa(api);
 

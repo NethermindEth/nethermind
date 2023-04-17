@@ -1,45 +1,33 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using System.Threading;
-using Nethermind.Blockchain.Find;
-using Nethermind.Trie.Pruning;
-using System.Threading.Tasks;
-using Nethermind.Consensus.Processing;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Config;
 
 namespace Nethermind.Facade.Test
 {
@@ -90,6 +78,7 @@ namespace Nethermind.Facade.Test
                 _timestamper,
                 Substitute.For<ILogFinder>(),
                 _specProvider,
+                new BlocksConfig(),
                 false);
         }
 
@@ -145,6 +134,23 @@ namespace Nethermind.Facade.Test
                 Arg.Is<BlockHeader>(bh =>
                     bh.Number == 11 && bh.Timestamp == ((ITimestamper)_timestamper).UnixTime.Seconds),
                 Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer));
+        }
+
+        [Test]
+        public void Call_uses_valid_post_merge_and_random_value()
+        {
+            BlockHeader header = Build.A.BlockHeader
+                .WithDifficulty(0)
+                .WithMixHash(TestItem.KeccakA)
+                .TestObject;
+
+            Transaction tx = Build.A.Transaction.TestObject;
+
+            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _transactionProcessor.Received().CallAndRestore(
+                tx,
+                Arg.Is<BlockHeader>(header => header.IsPostMerge && header.Random == TestItem.KeccakA),
+                Arg.Any<ITxTracer>());
         }
 
         [Test]
@@ -219,6 +225,7 @@ namespace Nethermind.Facade.Test
                 _timestamper,
                 Substitute.For<ILogFinder>(),
                 _specProvider,
+                new BlocksConfig(),
                 false);
 
             _blockchainBridge.HeadBlock.Should().Be(head);

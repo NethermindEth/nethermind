@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -135,7 +121,7 @@ namespace Nethermind.AccountAbstraction.Source
          */
         public uint GetPaymasterOpsSeen(Address paymaster)
         {
-            return _opsSeen.ContainsKey(paymaster) ? _opsSeen[paymaster] : 0;
+            return _opsSeen.TryGetValue(paymaster, out uint value) ? value : 0;
         }
 
         /* @dev Includes a paymaster in the throttler's "included operations" dictionary if it was not previously there,
@@ -144,7 +130,7 @@ namespace Nethermind.AccountAbstraction.Source
          */
         public uint GetPaymasterOpsIncluded(Address paymaster)
         {
-            return _opsIncluded.ContainsKey(paymaster) ? _opsIncluded[paymaster] : 0;
+            return _opsIncluded.TryGetValue(paymaster, out uint value) ? value : 0;
         }
 
         /* @dev Updates the throttler's dictionaries with an exponential-moving-average (EMA) pattern.

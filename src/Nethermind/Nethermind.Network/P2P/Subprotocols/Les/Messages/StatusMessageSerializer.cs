@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
@@ -30,7 +17,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             int protocolVersionLength = Rlp.LengthOf(StatusMessage.KeyNames.ProtocolVersion) + Rlp.LengthOf(message.ProtocolVersion);
             totalContentLength += Rlp.LengthOfSequence(protocolVersionLength);
 
-            int networkIdLength = Rlp.LengthOf(StatusMessage.KeyNames.ChainId) + Rlp.LengthOf(message.ChainId);
+            int networkIdLength = Rlp.LengthOf(StatusMessage.KeyNames.NetworkId) + Rlp.LengthOf(message.NetworkId);
             totalContentLength += Rlp.LengthOfSequence(networkIdLength);
 
             int headTdLength = Rlp.LengthOf(StatusMessage.KeyNames.TotalDifficulty) + Rlp.LengthOf(message.TotalDifficulty);
@@ -135,8 +122,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             rlpStream.Encode(message.ProtocolVersion);
 
             rlpStream.StartSequence(networkIdLength);
-            rlpStream.Encode(StatusMessage.KeyNames.ChainId);
-            rlpStream.Encode(message.ChainId);
+            rlpStream.Encode(StatusMessage.KeyNames.NetworkId);
+            rlpStream.Encode(message.NetworkId);
 
             rlpStream.StartSequence(headTdLength);
             rlpStream.Encode(StatusMessage.KeyNames.TotalDifficulty);
@@ -258,8 +245,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
                     case StatusMessage.KeyNames.ProtocolVersion:
                         statusMessage.ProtocolVersion = rlpStream.DecodeByte();
                         break;
-                    case StatusMessage.KeyNames.ChainId:
-                        statusMessage.ChainId = rlpStream.DecodeUInt256();
+                    case StatusMessage.KeyNames.NetworkId:
+                        statusMessage.NetworkId = rlpStream.DecodeUInt256();
                         break;
                     case StatusMessage.KeyNames.TotalDifficulty:
                         statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();

@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -42,7 +28,7 @@ namespace Nethermind.Core.Test.Encoding
             yield return (Build.A.Transaction
                 .WithData(new byte[] { 1, 2, 3 })
                 .WithType(TxType.AccessList)
-                .WithChainId(1)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
                     new AccessList(
                         new Dictionary<Address, IReadOnlySet<UInt256>>
@@ -54,7 +40,7 @@ namespace Nethermind.Core.Test.Encoding
                 .WithData(new byte[] { 1, 2, 3 })
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(30)
-                .WithChainId(1)
+                .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
                     new AccessList(
                         new Dictionary<Address, IReadOnlySet<UInt256>>
@@ -79,11 +65,11 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((Transaction Tx, string Description) testCase)
         {
-            RlpStream rlpStream = new(10000);
+            RlpStream rlpStream = new RlpStream(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
             _txDecoder.Encode(rlpStream, testCase.Tx);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(rlpStream);
-            decoded!.SenderAddress = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance).RecoverAddress(decoded);
+            decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
         }
@@ -98,7 +84,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
-            decoded!.SenderAddress = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance).RecoverAddress(decoded);
+            decoded!.SenderAddress = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
             decoded.Hash = decoded.CalculateHash();
             decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
         }
@@ -178,7 +164,6 @@ namespace Nethermind.Core.Test.Encoding
             decoded!.Hash.Should().Be(decodedByValueDecoderContext!.Hash);
             Assert.AreEqual(encoded.Bytes, encodedWithDecodedByValueDecoderContext.Bytes);
         }
-
 
         [TestCaseSource(nameof(TestCaseSource))]
         public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding((Transaction Tx, string Description) testCase)

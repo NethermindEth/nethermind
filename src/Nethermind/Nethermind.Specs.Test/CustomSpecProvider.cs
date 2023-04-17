@@ -1,22 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -26,17 +14,20 @@ namespace Nethermind.Specs.Test
     public class CustomSpecProvider : ISpecProvider
     {
         private ForkActivation? _theMergeBlock = null;
-        private (ForkActivation forkActivation, IReleaseSpec Release)[] _transitions;
+        private readonly (ForkActivation Activation, IReleaseSpec Spec)[] _transitions;
 
+        public ulong NetworkId { get; }
         public ulong ChainId { get; }
-        public ForkActivation[] TransitionBlocks { get; }
 
-        public CustomSpecProvider(params (ForkActivation forkActivation, IReleaseSpec Release)[] transitions) : this(0, transitions)
+        public ForkActivation[] TransitionActivations { get; }
+
+        public CustomSpecProvider(params (ForkActivation Activation, IReleaseSpec Spec)[] transitions) : this(TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId, transitions)
         {
         }
 
-        public CustomSpecProvider(ulong chainId, params (ForkActivation forkActivation, IReleaseSpec Release)[] transitions)
+        public CustomSpecProvider(ulong networkId, ulong chainId, params (ForkActivation Activation, IReleaseSpec Spec)[] transitions)
         {
+            NetworkId = networkId;
             ChainId = chainId;
 
             if (transitions.Length == 0)
@@ -44,10 +35,10 @@ namespace Nethermind.Specs.Test
                 throw new ArgumentException($"There must be at least one release specified when instantiating {nameof(CustomSpecProvider)}", $"{nameof(transitions)}");
             }
 
-            _transitions = transitions.OrderBy(r => r.forkActivation).ToArray();
-            TransitionBlocks = _transitions.Select(t => t.forkActivation).ToArray();
+            _transitions = transitions.OrderBy(r => r.Activation).ToArray();
+            TransitionActivations = _transitions.Select(t => t.Activation).ToArray();
 
-            if (transitions[0].forkActivation.BlockNumber != 0L)
+            if (transitions[0].Activation.BlockNumber != 0L)
             {
                 throw new ArgumentException($"First release specified when instantiating {nameof(CustomSpecProvider)} should be at genesis block (0)", $"{nameof(transitions)}");
             }
@@ -56,43 +47,37 @@ namespace Nethermind.Specs.Test
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
-                _theMergeBlock = blockNumber;
+                _theMergeBlock = (ForkActivation)blockNumber;
             if (terminalTotalDifficulty is not null)
                 TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
         public ForkActivation? MergeBlockNumber => _theMergeBlock;
+
+        public ulong TimestampFork { get; set; } = ISpecProvider.TimestampForkNever;
         public UInt256? TerminalTotalDifficulty { get; set; }
 
 #pragma warning disable CS8602
 #pragma warning disable CS8603
-        public IReleaseSpec GenesisSpec => _transitions?.Length == 0 ? null : _transitions[0].Release;
+        public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Spec;
 #pragma warning restore CS8603
 #pragma warning restore CS8602
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation)
-        {
-            IReleaseSpec spec = _transitions[0].Release;
-            for (int i = 1; i < _transitions.Length; i++)
-            {
-                if (forkActivation >= _transitions[i].forkActivation)
-                {
-                    spec = _transitions[i].Release;
-                }
-                else
-                {
-                    break;
-                }
-            }
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+            _transitions.TryGetSearchedItem(forkActivation,
+                CompareTransitionOnBlock,
+                out (ForkActivation Activation, IReleaseSpec Spec) transition)
+                ? transition.Spec
+                : GenesisSpec;
 
-            return spec;
-        }
+        private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation Activation, IReleaseSpec Spec) transition) =>
+            forkActivation.CompareTo(transition.Activation);
 
         public long? DaoBlockNumber
         {
             get
             {
-                (ForkActivation forkActivation, IReleaseSpec daoRelease) = _transitions.SingleOrDefault(t => t.Release == Dao.Instance);
+                (ForkActivation forkActivation, IReleaseSpec daoRelease) = _transitions.SingleOrDefault(t => t.Spec == Dao.Instance);
                 return daoRelease is not null ? forkActivation.BlockNumber : null;
             }
         }

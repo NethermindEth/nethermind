@@ -1,24 +1,11 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -37,7 +24,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Collects_on_reads()
         {
             Context context = new();
-            context.Wrapped[Key1].Returns(Value1);
+            context.Wrapped.ReadFunc = (key) => Value1;
 
             using IDisposable tracker = context.WitnessCollector.TrackOnThisThread();
             _ = context.Database[Key1];
@@ -49,7 +36,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Does_not_collect_if_no_tracking()
         {
             Context context = new();
-            context.Wrapped[Key1].Returns(Value1);
+            context.Wrapped.ReadFunc = (key) => Value1;
             _ = context.Database[Key1];
             context.WitnessCollector.Collected.Should().HaveCount(0);
         }
@@ -58,9 +45,9 @@ namespace Nethermind.Store.Test.Witnesses
         public void Collects_on_reads_when_cached_underneath()
         {
             Context context = new(2);
-            context.Wrapped[Key1].Returns(Value1);
-            context.Wrapped[Key2].Returns(Value2);
-            context.Wrapped[Key3].Returns(Value3);
+            context.Wrapped[Key1] = Value1;
+            context.Wrapped[Key2] = Value2;
+            context.Wrapped[Key3] = Value3;
 
             using IDisposable tracker = context.WitnessCollector.TrackOnThisThread();
             _ = context.Database[Key1];
@@ -109,14 +96,15 @@ namespace Nethermind.Store.Test.Witnesses
         public void Only_works_with_32_bytes_keys(int keyLength)
         {
             Context context = new();
-            context.Wrapped[null].ReturnsForAnyArgs(Bytes.Empty);
+            context.Wrapped.ReadFunc = (key) => Bytes.Empty;
+
             Assert.Throws<NotSupportedException>(
                 () => _ = context.Database[new byte[keyLength]]);
         }
 
         private class Context
         {
-            public IKeyValueStoreWithBatching Wrapped { get; } = Substitute.For<IKeyValueStoreWithBatching>();
+            public TestMemDb Wrapped { get; } = new TestMemDb();
 
             public WitnessingStore Database { get; }
 

@@ -1,21 +1,9 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
@@ -36,7 +24,7 @@ namespace Nethermind.Core.Test.Builders
                 Nonce = 0,
                 Value = 1,
                 Data = Array.Empty<byte>(),
-                Timestamp = 0
+                Timestamp = 0,
             };
         }
 
@@ -58,7 +46,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> To(Address address)
+        public TransactionBuilder<T> To(Address? address)
         {
             TestObjectInternal.To = address;
             return this;
@@ -144,6 +132,52 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public TransactionBuilder<T> WithMaxFeePerDataGas(UInt256? maxFeePerDataGas)
+        {
+            TestObjectInternal.MaxFeePerDataGas = maxFeePerDataGas;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobVersionedHashes(byte[][] blobVersionedHashes)
+        {
+            TestObjectInternal.BlobVersionedHashes = blobVersionedHashes;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobVersionedHashes(int? count)
+        {
+            if (count is null)
+            {
+                return this;
+            }
+
+            TestObjectInternal.BlobVersionedHashes = Enumerable.Range(0, count.Value).Select(x =>
+            {
+                byte[] bvh = new byte[32];
+                bvh[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+                return bvh;
+            }).ToArray();
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobs(byte[] blobs)
+        {
+            TestObjectInternal.Blobs = blobs;
+
+            return this;
+        }
+        public TransactionBuilder<T> WithBlobKzgs(byte[] blobKzgs)
+        {
+            TestObjectInternal.BlobKzgs = blobKzgs;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithProofs(byte[] proofs)
+        {
+            TestObjectInternal.BlobProofs = proofs;
+            return this;
+        }
+
         public TransactionBuilder<T> WithSignature(Signature signature)
         {
             TestObjectInternal.Signature = signature;
@@ -168,15 +202,9 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> SignedAndResolved(PrivateKey? privateKey = null)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
-            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? ChainId.Mainnet, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId, LimboLogs.Instance);
             ecdsa.Sign(privateKey, TestObjectInternal, true);
             TestObjectInternal.SenderAddress = privateKey.Address;
-            return this;
-        }
-
-        public TransactionBuilder<T> DeliveredBy(PublicKey publicKey)
-        {
-            TestObjectInternal.DeliveredBy = publicKey;
             return this;
         }
 

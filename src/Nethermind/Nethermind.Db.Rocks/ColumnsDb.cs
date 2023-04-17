@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -26,10 +13,10 @@ namespace Nethermind.Db.Rocks;
 
 public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 {
-    private readonly IDictionary<T, IDbWithSpan> _columnDbs = new Dictionary<T, IDbWithSpan>();
+    private readonly IDictionary<T, ColumnDb> _columnDbs = new Dictionary<T, ColumnDb>();
 
     public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys)
-        : base(basePath, settings, dbConfig, logManager, GetColumnFamilies(dbConfig, settings.DbName, GetEnumKeys(keys)))
+        : base(basePath, settings, dbConfig, logManager, GetEnumKeys(keys).Select((key) => key.ToString()).ToList())
     {
         keys = GetEnumKeys(keys);
 
@@ -49,30 +36,10 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return keys;
     }
 
-    private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, string name, IReadOnlyList<T> keys)
+    protected override void BuildOptions<O>(PerTableDbConfig dbConfig, Options<O> options)
     {
-        InitCache(dbConfig);
-
-        ColumnFamilies result = new();
-        ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize), name);
-        foreach (T key in keys)
-        {
-            ColumnFamilyOptions columnFamilyOptions = new();
-            columnFamilyOptions.OptimizeForPointLookup(blockCacheSize);
-            columnFamilyOptions.SetBlockBasedTableFactory(
-                new BlockBasedTableOptions()
-                    .SetFilterPolicy(BloomFilterPolicy.Create())
-                    .SetBlockCache(_cache));
-            result.Add(key.ToString(), columnFamilyOptions);
-        }
-        return result;
-    }
-
-    protected override DbOptions BuildOptions(IDbConfig dbConfig)
-    {
-        DbOptions options = base.BuildOptions(dbConfig);
+        base.BuildOptions(dbConfig, options);
         options.SetCreateMissingColumnFamilies();
-        return options;
     }
 
     public IDbWithSpan GetColumnDb(T key) => _columnDbs[key];
@@ -82,5 +49,16 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
     {
         return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
+    }
+
+    protected override void ApplyOptions(IDictionary<string, string> options)
+    {
+        string[] keys = options.Select<KeyValuePair<string, string>, string>(e => e.Key).ToArray();
+        string[] values = options.Select<KeyValuePair<string, string>, string>(e => e.Value).ToArray();
+        foreach (KeyValuePair<T, ColumnDb> cols in _columnDbs)
+        {
+            _rocksDbNative.rocksdb_set_options_cf(_db.Handle, cols.Value._columnFamily.Handle, keys.Length, keys, values);
+        }
+        base.ApplyOptions(options);
     }
 }

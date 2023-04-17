@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IdentityModel.Tokens.Jwt;
@@ -26,7 +13,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core.Authentication;
 
-public class JwtAuthentication : IRpcAuthentication
+public partial class JwtAuthentication : IRpcAuthentication
 {
     private readonly SecurityKey _securityKey;
     private readonly ILogger _logger;
@@ -74,11 +61,10 @@ public class JwtAuthentication : IRpcAuthentication
                 {
                     logger.Error($"Cannot write authentication secret to '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
                 }
-
                 throw;
             }
 
-            if (logger.IsInfo) logger.Info($"Authentication secret has been written to '{fileInfo.FullName}'.");
+            if (logger.IsWarn) logger.Warn($"The authentication secret hasn't been found in '{fileInfo.FullName}'so it has been automatically created.");
 
             return new(secret, timestamper, logger);
         }
@@ -98,18 +84,16 @@ public class JwtAuthentication : IRpcAuthentication
                 {
                     logger.Error($"Cannot read authentication secret from '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
                 }
-
                 throw;
             }
 
             hexSecret = hexSecret.Trim();
-            if (!Regex.IsMatch(hexSecret, @"^(0x)?[0-9a-fA-F]{64}$"))
+            if (!SecretRegex().IsMatch(hexSecret))
             {
                 if (logger.IsError)
                 {
                     logger.Error($"The specified authentication secret is not a 64-digit hex number. Delete the '{fileInfo.FullName}' to generate a new secret or set the 'JsonRpc.JwtSecretFile' parameter.");
                 }
-
                 throw new FormatException("The specified authentication secret must be a 64-digit hex number.");
             }
 
@@ -186,8 +170,11 @@ public class JwtAuthentication : IRpcAuthentication
         SecurityToken securityToken,
         TokenValidationParameters validationParameters)
     {
-        if (expires == null) return true;
+        if (!expires.HasValue) return true;
         long exp = ((DateTimeOffset)expires).ToUnixTimeSeconds();
         return _timestamper.UnixTime.SecondsLong < exp;
     }
+
+    [GeneratedRegex("^(0x)?[0-9a-fA-F]{64}$")]
+    private static partial Regex SecretRegex();
 }

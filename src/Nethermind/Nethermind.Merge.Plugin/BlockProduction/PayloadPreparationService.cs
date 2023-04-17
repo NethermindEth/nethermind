@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers.Binary;
@@ -27,12 +13,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers.V1;
+using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
     /// <summary>
-    /// A cache of pending payloads. A payload is created whenever a consensus client requests a payload creation in <see cref="ForkchoiceUpdatedV1Handler"/>.
+    /// A cache of pending payloads. A payload is created whenever a consensus client requests a payload creation in <see cref="ForkchoiceUpdatedHandler"/>.
     /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_forkchoiceupdatedv1"/>
     /// Each payload is assigned a payloadId which can be used by the consensus client to retrieve payload later by calling a <see cref="GetPayloadV1Handler"/>.
     /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_getpayloadv1"/>
@@ -42,7 +28,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private readonly PostMergeBlockProducer _blockProducer;
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
         private readonly ILogger _logger;
-        private readonly List<string> _payloadsToRemove = new();
 
         // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
         public const int SlotsPerOldPayloadCleanup = 6;
@@ -164,28 +149,31 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         private void CleanupOldPayloads(object? sender, EventArgs e)
         {
-            if (_logger.IsTrace) _logger.Trace("Started old payloads cleanup");
-            foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
+            try
             {
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-                if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
+                if (_logger.IsTrace) _logger.Trace("Started old payloads cleanup");
+                foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
-                    _payloadsToRemove.Add(payload.Key);
+                    DateTimeOffset now = DateTimeOffset.UtcNow;
+                    if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
+                    {
+                        if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
+
+                        if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
+                        {
+                            context.Dispose();
+                            if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
+                        }
+                    }
                 }
+
+                if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Exception in old payloads cleanup: {ex}");
             }
 
-            foreach (string payloadToRemove in _payloadsToRemove)
-            {
-                if (_payloadStorage.TryRemove(payloadToRemove, out IBlockImprovementContext? context))
-                {
-                    context.Dispose();
-                    if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
-                }
-            }
-
-            _payloadsToRemove.Clear();
-            if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");
         }
 
         private Block? LogProductionResult(Task<Block?> t)
@@ -214,7 +202,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return t.Result;
         }
 
-        public async ValueTask<Block?> GetPayload(string payloadId)
+        public async ValueTask<IBlockProductionContext?> GetPayload(string payloadId)
         {
             if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
             {
@@ -226,7 +214,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                         await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(GetPayloadWaitForFullBlockMillisecondsDelay));
                     }
 
-                    return blockContext.CurrentBestBlock;
+                    return blockContext;
                 }
             }
 

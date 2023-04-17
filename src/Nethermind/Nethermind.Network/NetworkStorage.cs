@@ -1,22 +1,13 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,10 +20,14 @@ namespace Nethermind.Network
 {
     public class NetworkStorage : INetworkStorage
     {
+        private readonly object _lock = new();
         private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
+        private readonly List<NetworkNode> _nodesList = new();
+        private readonly HashSet<PublicKey> _nodePublicKeys = new();
         private long _updateCounter;
         private long _removeCounter;
+        private NetworkNode[] _nodes;
 
         public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
         {
@@ -40,41 +35,88 @@ namespace Nethermind.Network
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public int PersistedNodesCount
-        {
-            get
-            {
-                return _fullDb.Values.Count;
-            }
-        }
+        public int PersistedNodesCount => GetPersistedNodes().Length;
 
         public NetworkNode[] GetPersistedNodes()
         {
-            List<NetworkNode> nodes = new();
-            foreach (byte[]? nodeRlp in _fullDb.Values)
+            NetworkNode[] nodes = _nodes;
+            return nodes is not null ? nodes : GenerateNodes();
+        }
+
+        private NetworkNode[] GenerateNodes()
+        {
+            NetworkNode[] nodes;
+            lock (_lock)
             {
-                if (nodeRlp is null)
+                nodes = _nodes;
+                if (nodes is not null)
                 {
-                    continue;
+                    // Already updated
+                    return nodes;
                 }
 
-                try
+                List<NetworkNode> nodeList = _nodesList;
+                if (nodeList.Count > 0)
                 {
-                    nodes.Add(GetNode(nodeRlp));
+                    return (_nodes = nodeList.ToArray());
                 }
-                catch (Exception e)
+
+                foreach (byte[]? nodeRlp in _fullDb.Values)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
+                    if (nodeRlp is null)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        NetworkNode node = GetNode(nodeRlp);
+                        nodeList.Add(node);
+                        _nodePublicKeys.Add(node.NodeId);
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
+                    }
+                }
+
+                if (nodeList.Count == 0)
+                {
+                    return Array.Empty<NetworkNode>();
+                }
+                else
+                {
+                    return (_nodes = nodeList.ToArray());
                 }
             }
-
-            return nodes.ToArray();
         }
 
         public void UpdateNode(NetworkNode node)
         {
-            (_currentBatch ?? (IKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
-            _updateCounter++;
+            lock (_lock)
+            {
+                (_currentBatch ?? (IKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
+                _updateCounter++;
+
+                if (!_nodePublicKeys.Contains(node.NodeId))
+                {
+                    _nodePublicKeys.Add(node.NodeId);
+                    _nodesList.Add(node);
+                    // New node, clear the cache
+                    _nodes = null;
+                }
+                else
+                {
+                    Span<NetworkNode> span = CollectionsMarshal.AsSpan(_nodesList);
+                    for (int i = 0; i < span.Length; i++)
+                    {
+                        if (node.NodeId == span[i].NodeId)
+                        {
+                            span[i] = node;
+                        }
+                    }
+                }
+            }
         }
 
         public void UpdateNodes(IEnumerable<NetworkNode> nodes)
@@ -89,6 +131,27 @@ namespace Nethermind.Network
         {
             (_currentBatch ?? (IKeyValueStore)_fullDb)[nodeId.Bytes] = null;
             _removeCounter++;
+
+            RemoveLocal(nodeId);
+        }
+
+        private void RemoveLocal(PublicKey nodeId)
+        {
+            lock (_lock)
+            {
+                Span<NetworkNode> span = CollectionsMarshal.AsSpan(_nodesList);
+                for (int i = 0; i < span.Length; i++)
+                {
+                    if (nodeId == span[i].NodeId)
+                    {
+                        _nodesList.RemoveAt(i);
+                        _nodePublicKeys.Remove(nodeId);
+                        // New node, clear the cache
+                        _nodes = null;
+                        return;
+                    }
+                }
+            }
         }
 
         private IBatch? _currentBatch;

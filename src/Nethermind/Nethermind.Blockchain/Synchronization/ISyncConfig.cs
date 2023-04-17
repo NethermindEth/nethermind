@@ -1,23 +1,11 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -91,11 +79,29 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Enables SNAP sync protocol.", DefaultValue = "false")]
         public bool SnapSync { get; set; }
 
+        [ConfigItem(Description = "Number of account range partition to create. Increase snap sync request concurrency. Value must be between 1 to 256 (inclusive).", DefaultValue = "8")]
+        int SnapSyncAccountRangePartitionCount { get; set; }
+
         [ConfigItem(Description = "[ONLY FOR MISSING RECEIPTS ISSUE] Turns on receipts validation that checks for ones that might be missing due to previous bug. It downloads them from network if needed." +
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
         public bool FixReceipts { get; set; }
 
+        [ConfigItem(Description = "[ONLY TO FIX INCORRECT TOTAL DIFFICULTY ISSUE] Recalculates total difficulty starting from FixTotalDifficultyStartingBlock to FixTotalDifficultyLastBlock.", DefaultValue = "false")]
+        public bool FixTotalDifficulty { get; set; }
+
+        [ConfigItem(Description = "[ONLY TO FIX INCORRECT TOTAL DIFFICULTY ISSUE] First block which total difficulty will be recalculated.", DefaultValue = "1")]
+        public long FixTotalDifficultyStartingBlock { get; set; }
+
+        [ConfigItem(Description = "[ONLY TO FIX INCORRECT TOTAL DIFFICULTY ISSUE] Last block which total difficulty will be recalculated. If set to null equals to best known block", DefaultValue = "null")]
+        public long? FixTotalDifficultyLastBlock { get; set; }
+
         [ConfigItem(Description = "Disable some optimization and run a more extensive sync. Useful for broken sync state but normally not needed", DefaultValue = "false")]
         public bool StrictMode { get; set; }
+
+        [ConfigItem(Description = "[EXPERIMENTAL] Only for non validator nodes! If set to true, DownloadReceiptsInFastSync and/or DownloadBodiesInFastSync can be set to false.", DefaultValue = "false")]
+        public bool NonValidatorNode { get; set; }
+
+        [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync. Significantly reduce total writes written and some sync time if you are not network limited.", DefaultValue = "Default")]
+        public ITunableDb.TuneType TuneDbMode { get; set; }
     }
 }

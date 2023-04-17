@@ -1,22 +1,9 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -40,26 +27,27 @@ namespace Nethermind.Synchronization.StateSync
 
         protected override async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {
-            if (batch?.RequestedNodes is null || batch.RequestedNodes.Length == 0)
+            if (batch?.RequestedNodes is null || batch.RequestedNodes.Count == 0)
             {
                 return;
             }
 
             ISyncPeer peer = peerInfo.SyncPeer;
-            Keccak[]? a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
             Task<byte[][]> task = null;
-
+            HashList? hashList = null;
             // Use GETNODEDATA if possible
-            if (peer.Node.EthDetails.Equals("eth66"))
+            if (peerInfo.CanGetNodeData())
             {
-                task = peer.GetNodeData(a, cancellationToken);
+                hashList = HashList.Rent(batch.RequestedNodes);
+                task = peer.GetNodeData(hashList, cancellationToken);
             }
             // GETNODEDATA is not supported so we try with SNAP protocol
             else if (peer.TryGetSatelliteProtocol("snap", out ISnapSyncPeer handler))
             {
                 if (batch.NodeDataType == NodeDataType.Code)
                 {
-                    task = handler.GetByteCodes(a, cancellationToken);
+                    hashList = HashList.Rent(batch.RequestedNodes);
+                    task = handler.GetByteCodes(hashList, cancellationToken);
                 }
                 else
                 {
@@ -70,23 +58,19 @@ namespace Nethermind.Synchronization.StateSync
 
             if (task is null)
             {
-                return;
+                throw new InvalidOperationException("State sync dispatch was scheduled to a peer unable to serve state sync.");
             }
 
-            await task.ContinueWith(
-                (t, state) =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", t.Exception);
-                    }
+            try
+            {
+                batch.Responses = await task;
 
-                    StateSyncBatch batchLocal = (StateSyncBatch)state!;
-                    if (t.IsCompletedSuccessfully)
-                    {
-                        batchLocal.Responses = t.Result;
-                    }
-                }, batch);
+                if (hashList is not null) HashList.Return(hashList);
+            }
+            catch (Exception e)
+            {
+                if (Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", e);
+            }
         }
 
         /// <summary>
@@ -154,14 +138,62 @@ namespace Nethermind.Synchronization.StateSync
                 accountPathIndex++;
             }
 
-            if (batch.RequestedNodes.Length != requestedNodeIndex)
+            if (batch.RequestedNodes.Count != requestedNodeIndex)
             {
-                Logger.Warn($"INCORRECT number of paths RequestedNodes.Length:{batch.RequestedNodes.Length} <> requestedNodeIndex:{requestedNodeIndex}");
+                Logger.Warn($"INCORRECT number of paths RequestedNodes.Length:{batch.RequestedNodes.Count} <> requestedNodeIndex:{requestedNodeIndex}");
             }
 
             return request;
         }
 
         private static byte[] EncodePath(byte[] input) => input.Length == 64 ? Nibbles.ToBytes(input) : Nibbles.ToCompactHexEncoding(input);
+
+        /// <summary>
+        /// Present an array of StateSyncItem[] as IReadOnlyList<Keccak> to avoid allocating secondary array
+        /// Also Rent and Return cache for single item to try and avoid allocating the HashList in common case
+        /// </summary>
+        private sealed class HashList : IReadOnlyList<Keccak>
+        {
+            private static HashList s_cache;
+
+            private IList<StateSyncItem> _items;
+
+            public static HashList Rent(IList<StateSyncItem> items)
+            {
+                HashList hashList = Interlocked.Exchange(ref s_cache, null) ?? new HashList();
+                hashList.Initialize(items);
+                return hashList;
+            }
+
+            public static void Return(HashList hashList)
+            {
+                hashList.Reset();
+                Volatile.Write(ref s_cache, hashList);
+            }
+
+            public void Initialize(IList<StateSyncItem> items)
+            {
+                _items = items;
+            }
+
+            public void Reset()
+            {
+                _items = null;
+            }
+
+            public Keccak this[int index] => _items[index].Hash;
+
+            public int Count => _items.Count;
+
+            public IEnumerator<Keccak> GetEnumerator()
+            {
+                foreach (StateSyncItem item in _items)
+                {
+                    yield return item.Hash;
+                }
+            }
+
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
     }
 }

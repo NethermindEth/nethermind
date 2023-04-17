@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -202,11 +189,11 @@ public class JsonRpcService : IJsonRpcService
         }
         catch (TargetParameterCountException e)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.ToString(), request.Id, returnAction);
         }
         catch (TargetInvocationException e) when (e.InnerException is JsonException)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", e.InnerException?.ToString(), request.Id, returnAction);
         }
         catch (Exception e) when (e.InnerException is OperationCanceledException)
         {
@@ -215,7 +202,7 @@ public class JsonRpcService : IJsonRpcService
         }
         catch (Exception e) when (e.InnerException is InsufficientBalanceException)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, null, request.Id, returnAction);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, e.ToString(), request.Id, returnAction);
         }
         finally
         {
@@ -398,11 +385,14 @@ public class JsonRpcService : IJsonRpcService
     public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage) =>
         GetErrorResponse(null, errorCode, errorMessage, null, null);
 
+    public JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object id) =>
+        GetErrorResponse(methodName, errorCode, errorMessage, null, id);
+
     public JsonConverter[] Converters { get; }
 
     private JsonRpcErrorResponse GetErrorResponse(string? methodName, int errorCode, string? errorMessage, object? errorData, object? id, Action? disposableAction = null)
     {
-        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorCode}, message: {errorMessage}");
+        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
         JsonRpcErrorResponse response = new(disposableAction)
         {
             Error = new Error

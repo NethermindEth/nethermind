@@ -1,27 +1,19 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
+
+using Microsoft.Win32.SafeHandles;
+
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.Db
@@ -32,7 +24,7 @@ namespace Nethermind.Db
 
         private ILogger _logger;
         private bool _hasPendingChanges;
-        private ConcurrentDictionary<byte[], byte[]> _cache;
+        private SpanConcurrentDictionary<byte, byte[]> _cache;
 
         public string DbPath { get; }
         public string Name { get; }
@@ -58,7 +50,7 @@ namespace Nethermind.Db
             LoadData();
         }
 
-        public byte[] this[byte[] key]
+        public byte[] this[ReadOnlySpan<byte> key]
         {
             get => _cache[key];
             set
@@ -69,20 +61,20 @@ namespace Nethermind.Db
                 }
                 else
                 {
-                    _cache.AddOrUpdate(key, newValue => Add(value), (x, oldValue) => Update(oldValue, value));
+                    _cache.AddOrUpdate(key.ToArray(), newValue => Add(value), (x, oldValue) => Update(oldValue, value));
                 }
             }
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
 
-        public void Remove(byte[] key)
+        public void Remove(ReadOnlySpan<byte> key)
         {
             _hasPendingChanges = true;
             _cache.TryRemove(key, out _);
         }
 
-        public bool KeyExists(byte[] key)
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
             return _cache.ContainsKey(key);
         }
@@ -188,24 +180,97 @@ namespace Nethermind.Db
 
         private void LoadData()
         {
-            _cache = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            const int maxLineLength = 2048;
+
+            _cache = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanEqualityComparer);
 
             if (!File.Exists(DbPath))
             {
                 return;
             }
 
-            string[] lines = File.ReadAllLines(DbPath);
-            foreach (string line in lines)
+            using SafeFileHandle fileHandle = File.OpenHandle(DbPath, FileMode.OpenOrCreate);
+
+            byte[] rentedBuffer = ArrayPool<byte>.Shared.Rent(maxLineLength);
+            int read = RandomAccess.Read(fileHandle, rentedBuffer, 0);
+
+            long offset = 0L;
+            Span<byte> bytes = default;
+            while (read > 0)
             {
-                string[] values = line.Split(",");
-                if (values.Length != 2)
+                offset += read;
+                bytes = rentedBuffer.AsSpan(0, read + bytes.Length);
+                while (true)
                 {
-                    if (_logger.IsError) _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
-                    continue;
+                    // Store the original span incase need to undo the key slicing if end of line not found
+                    Span<byte> iterationSpan = bytes;
+                    int commaIndex = bytes.IndexOf((byte)',');
+                    Span<byte> key = default;
+                    if (commaIndex >= 0)
+                    {
+                        key = bytes[..commaIndex];
+                        bytes = bytes[(commaIndex + 1)..];
+                    }
+                    int lineEndIndex = bytes.IndexOf((byte)'\n');
+                    if (lineEndIndex < 0)
+                    {
+                        // Restore the iteration start span
+                        bytes = iterationSpan;
+                        break;
+                    }
+
+                    Span<byte> value;
+                    if (bytes[lineEndIndex - 1] == (byte)'\r')
+                    {
+                        // Windows \r\n
+                        value = bytes[..(lineEndIndex - 1)];
+                    }
+                    else
+                    {
+                        // Linux \n
+                        value = bytes[..lineEndIndex];
+                    }
+
+                    if (commaIndex < 0)
+                    {
+                        // End of line but no comma
+                        RecordError(value);
+                    }
+                    else if (lineEndIndex >= 0)
+                    {
+                        _cache[Bytes.FromUtf8HexString(key)] = Bytes.FromUtf8HexString(value);
+                    }
+                    // Move to after end of line
+                    bytes = bytes[(lineEndIndex + 1)..];
                 }
 
-                _cache[Bytes.FromHexString(values[0])] = Bytes.FromHexString(values[1]);
+                if (bytes.Length > 0)
+                {
+                    // Move up any remaining to start of buffer
+                    bytes.CopyTo(rentedBuffer);
+                }
+
+                read = RandomAccess.Read(fileHandle, rentedBuffer.AsSpan(bytes.Length), offset);
+            }
+
+            ArrayPool<byte>.Shared.Return(rentedBuffer);
+            if (bytes.Length > 0)
+            {
+                ThrowInvalidDataException();
+            }
+
+            void RecordError(Span<byte> data)
+            {
+                if (_logger.IsError)
+                {
+                    string line = Encoding.UTF8.GetString(data);
+                    _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
+                }
+            }
+
+            static void ThrowInvalidDataException()
+            {
+                throw new InvalidDataException("Malformed data");
             }
         }
 
@@ -227,7 +292,6 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
-            GC.SuppressFinalize(this);
         }
     }
 }

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Net;
@@ -48,7 +35,6 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
-        public string LocalIp { get; }
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
@@ -60,7 +46,6 @@ namespace Nethermind.Network.Rlpx
 
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
-            string localIp,
             int localPort,
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
@@ -92,7 +77,6 @@ namespace Nethermind.Network.Rlpx
             _disconnectsAnalyzer = disconnectsAnalyzer ?? throw new ArgumentNullException(nameof(disconnectsAnalyzer));
             _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
-            LocalIp = localIp;
             LocalPort = localPort;
             _sendLatency = sendLatency;
         }
@@ -125,7 +109,7 @@ namespace Nethermind.Network.Rlpx
                         InitializeChannel(ch, session);
                     }));
 
-                _bootstrapChannel = await bootstrap.BindAsync(IPAddress.Parse(LocalIp!), LocalPort).ContinueWith(t =>
+                _bootstrapChannel = await bootstrap.BindAsync(LocalPort).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -225,14 +209,19 @@ namespace Nethermind.Network.Rlpx
 
             if (session.Direction == ConnectionDirection.Out)
             {
-                pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
+                pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
             }
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
-            channel.CloseCompletion.ContinueWith(x =>
+            channel.CloseCompletion.ContinueWith(async x =>
             {
+                // The close completion is completed before actual closing or remaining packet is processed.
+                // So usually, we do get a disconnect reason from peer, we just receive it after this. So w need to
+                // add some delay to account for whatever that is holding the network pipeline.
+                await Task.Delay(TimeSpan.FromSeconds(1));
+
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} channel disconnected");
-                session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "channel disconnected");
+                session.MarkDisconnected(DisconnectReason.TcpSubSystemError, DisconnectType.Remote, "channel disconnected");
             });
         }
 

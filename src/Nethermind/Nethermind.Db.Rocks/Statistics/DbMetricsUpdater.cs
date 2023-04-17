@@ -1,18 +1,5 @@
-//  Copyright (c) 2022 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -24,21 +11,23 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks.Statistics;
 
-public class DbMetricsUpdater
+public partial class DbMetricsUpdater
 {
     private readonly string _dbName;
     private readonly DbOptions _dbOptions;
     private readonly RocksDb _db;
     private readonly IDbConfig _dbConfig;
     private readonly ILogger _logger;
+    private readonly ColumnFamilyHandle? _columnFamilyHandle;
     private Timer? _timer;
 
-    public DbMetricsUpdater(string dbName, DbOptions dbOptions, RocksDb db, IDbConfig dbConfig, ILogger logger)
+    public DbMetricsUpdater(string dbName, DbOptions dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, ILogger logger)
     {
         _dbName = dbName;
         _dbOptions = dbOptions;
         _db = db;
         _dbConfig = dbConfig;
+        _columnFamilyHandle = cf;
         _logger = logger;
     }
 
@@ -54,7 +43,15 @@ public class DbMetricsUpdater
         try
         {
             // It seems that currently there is no other option with .NET api to extract the compaction statistics than through the dumped string
-            var compactionStatsString = _db.GetProperty("rocksdb.stats");
+            var compactionStatsString = "";
+            if (_columnFamilyHandle != null)
+            {
+                compactionStatsString = _db.GetProperty("rocksdb.stats", _columnFamilyHandle);
+            }
+            else
+            {
+                compactionStatsString = _db.GetProperty("rocksdb.stats");
+            }
             ProcessCompactionStats(compactionStatsString);
 
             if (_dbConfig.EnableDbStatistics)
@@ -74,7 +71,7 @@ public class DbMetricsUpdater
     {
         if (!string.IsNullOrEmpty(compactionStatsString))
         {
-            var stats = ExctractStatsPerLevel(compactionStatsString);
+            var stats = ExtractStatsPerLevel(compactionStatsString);
             UpdateMetricsFromList(stats);
 
             stats = ExctractIntervalCompaction(compactionStatsString);
@@ -101,13 +98,13 @@ public class DbMetricsUpdater
     /// Example line:
     ///   L0      2/0    1.77 MB   0.5      0.0     0.0      0.0       0.4      0.4       0.0   1.0      0.0     44.6      9.83              0.00       386    0.025       0      0
     /// </summary>
-    private List<(string Name, long Value)> ExctractStatsPerLevel(string compactionStatsDump)
+    private List<(string Name, long Value)> ExtractStatsPerLevel(string compactionStatsDump)
     {
         var stats = new List<(string Name, long Value)>(5);
 
         if (!string.IsNullOrEmpty(compactionStatsDump))
         {
-            var rgx = new Regex(@"^\s+L(\d+)\s+(\d+)\/(\d+).*$", RegexOptions.Multiline);
+            var rgx = ExtractStatsRegex();
             var matches = rgx.Matches(compactionStatsDump);
 
             foreach (Match m in matches)
@@ -131,7 +128,7 @@ public class DbMetricsUpdater
 
         if (!string.IsNullOrEmpty(compactionStatsDump))
         {
-            var rgx = new Regex(@"^Interval compaction: (\d+)\.\d+.*GB write.*\s+(\d+)\.\d+.*MB\/s write.*\s+(\d+)\.\d+.*GB read.*\s+(\d+)\.\d+.*MB\/s read.*\s+(\d+)\.\d+.*seconds.*$", RegexOptions.Multiline);
+            var rgx = ExtractIntervalRegex();
             var match = rgx.Match(compactionStatsDump);
 
             if (match is not null && match.Success)
@@ -149,5 +146,16 @@ public class DbMetricsUpdater
         }
 
         return stats;
+    }
+
+    [GeneratedRegex("^\\s+L(\\d+)\\s+(\\d+)\\/(\\d+).*$", RegexOptions.Multiline)]
+    private static partial Regex ExtractStatsRegex();
+
+    [GeneratedRegex("^Interval compaction: (\\d+)\\.\\d+.*GB write.*\\s+(\\d+)\\.\\d+.*MB\\/s write.*\\s+(\\d+)\\.\\d+.*GB read.*\\s+(\\d+)\\.\\d+.*MB\\/s read.*\\s+(\\d+)\\.\\d+.*seconds.*$", RegexOptions.Multiline)]
+    private static partial Regex ExtractIntervalRegex();
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
     }
 }

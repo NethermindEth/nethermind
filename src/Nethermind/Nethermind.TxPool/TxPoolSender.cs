@@ -1,62 +1,69 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
     public class TxPoolSender : ITxSender
     {
         private readonly ITxPool _txPool;
-        private readonly ITxSealer[] _sealers;
+        private readonly ITxSealer _sealer;
+        private readonly INonceManager _nonceManager;
+        private readonly IEthereumEcdsa _ecdsa;
 
-        public TxPoolSender(ITxPool txPool, params ITxSealer[] sealers)
+        public TxPoolSender(ITxPool txPool, ITxSealer sealer, INonceManager nonceManager, IEthereumEcdsa ecdsa)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _sealers = sealers ?? throw new ArgumentNullException(nameof(sealers));
-            if (sealers.Length == 0) throw new ArgumentException("Sealers can not be empty.", nameof(sealers));
+            _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
+            _nonceManager = nonceManager ?? throw new ArgumentNullException(nameof(nonceManager));
+            _ecdsa = ecdsa ?? throw new ArgumentException(nameof(ecdsa));
         }
 
         public ValueTask<(Keccak, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            if (tx.Hash is null)
-                throw new ArgumentNullException(nameof(tx.Hash));
-            AcceptTxResult? result = null;
+            bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
+            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
+            if (tx.SenderAddress is null)
+                throw new ArgumentNullException(nameof(tx.SenderAddress));
 
-            // TODO: this is very not intuitive - can we fix it...?
-            // maybe move nonce reservation to sender itself before sealing
-            // sealers should behave like composite and not like chain of commands
-            foreach (ITxSealer sealer in _sealers)
+            AcceptTxResult result = manageNonce
+                ? SubmitTxWithManagedNonce(tx, txHandlingOptions)
+                : SubmitTxWithNonce(tx, txHandlingOptions);
+
+            return new ValueTask<(Keccak, AcceptTxResult?)>((tx.Hash!, result)); // The sealer calculates the hash
+        }
+
+        private AcceptTxResult SubmitTxWithNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
+        {
+            using NonceLocker locker = _nonceManager.TxWithNonceReceived(tx.SenderAddress!, tx.Nonce);
+            return SubmitTx(locker, tx, txHandlingOptions);
+        }
+
+        private AcceptTxResult SubmitTxWithManagedNonce(Transaction tx, TxHandlingOptions txHandlingOptions)
+        {
+            using NonceLocker locker = _nonceManager.ReserveNonce(tx.SenderAddress!, out UInt256 reservedNonce);
+            txHandlingOptions |= TxHandlingOptions.AllowReplacingSignature;
+            tx.Nonce = reservedNonce;
+            return SubmitTx(locker, tx, txHandlingOptions);
+        }
+
+        private AcceptTxResult SubmitTx(NonceLocker locker, Transaction tx, TxHandlingOptions txHandlingOptions)
+        {
+            _sealer.Seal(tx, txHandlingOptions);
+            AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
+
+            if (result == AcceptTxResult.Accepted)
             {
-                sealer.Seal(tx, txHandlingOptions);
-
-                result = _txPool.SubmitTx(tx, txHandlingOptions);
-
-                if (result != AcceptTxResult.OwnNonceAlreadyUsed && result != AcceptTxResult.AlreadyKnown
-                    || (txHandlingOptions & TxHandlingOptions.ManagedNonce) != TxHandlingOptions.ManagedNonce)
-                {
-                    break;
-                }
+                locker.Accept();
             }
 
-            return new ValueTask<(Keccak, AcceptTxResult?)>((tx.Hash, result));
+            return result;
         }
     }
 }

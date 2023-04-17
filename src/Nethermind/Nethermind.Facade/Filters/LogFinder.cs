@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -193,17 +180,15 @@ namespace Nethermind.Blockchain.Find
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
             int count = 0;
-            while (count < _maxBlockDepth && toBlock.Number >= (fromBlock?.Number ?? long.MaxValue))
+            while (count < _maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
             {
-                foreach (var filterLog in FindLogsInBlock(filter, toBlock, cancellationToken))
+                foreach (var filterLog in FindLogsInBlock(filter, fromBlock, cancellationToken))
                 {
                     yield return filterLog;
                 }
 
-                if (!TryGetParentBlock(toBlock, out toBlock))
-                {
-                    break;
-                }
+                fromBlock = _blockFinder.FindHeader(fromBlock.Number + 1);
+                if (fromBlock is null) break;
 
                 count++;
             }
@@ -305,7 +290,7 @@ namespace Nethermind.Blockchain.Find
                     var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (block is not null)
                     {
-                        if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.Success)
+                        if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.NeedReinsert)
                         {
                             _receiptStorage.Insert(block, receipts);
                         }

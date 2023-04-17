@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -23,7 +10,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     public class StatusMessage : P2PMessage
     {
         public byte ProtocolVersion { get; set; }
-        public UInt256 ChainId { get; set; }
+        public UInt256 NetworkId { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public Keccak? BestHash { get; set; }
         public Keccak? GenesisHash { get; set; }
@@ -34,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public override string ToString()
         {
-            return $"{Protocol}.{ProtocolVersion} chain: {ChainId} | diff: {TotalDifficulty} | best: {BestHash?.ToShortString()} | genesis: {GenesisHash?.ToShortString()} | fork: {ForkId}";
+            return $"{Protocol}.{ProtocolVersion} network: {NetworkId} | diff: {TotalDifficulty} | best: {BestHash?.ToShortString()} | genesis: {GenesisHash?.ToShortString()} | fork: {ForkId}";
         }
     }
 }

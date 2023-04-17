@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -52,17 +38,22 @@ public class StartMonitoring : IStep
             _api.LogManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
         }
 
-        if (metricsConfig.Enabled)
+        MetricsController? controller = null;
+        if (metricsConfig.Enabled || metricsConfig.CountersEnabled)
         {
             PrepareProductInfoMetrics();
-            MetricsController metricsController = new(metricsConfig);
+            controller = new(metricsConfig);
 
-            _api.MonitoringService = new MonitoringService(metricsController, metricsConfig, _api.LogManager);
-            IEnumerable<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics));
+            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics));
             foreach (Type metric in metrics)
             {
-                _api.MonitoringService.RegisterMetrics(metric);
+                controller.RegisterMetrics(metric);
             }
+        }
+
+        if (metricsConfig.Enabled)
+        {
+            _api.MonitoringService = new MonitoringService(controller, metricsConfig, _api.LogManager);
 
             await _api.MonitoringService.StartAsync().ContinueWith(x =>
             {
@@ -76,6 +67,13 @@ public class StartMonitoring : IStep
         {
             if (logger.IsInfo)
                 logger.Info("Grafana / Prometheus metrics are disabled in configuration");
+        }
+
+        if (logger.IsInfo)
+        {
+            logger.Info(metricsConfig.CountersEnabled
+                ? "System.Diagnostics.Metrics enabled and will be collectable with dotnet-counters"
+                : "System.Diagnostics.Metrics disabled");
         }
     }
 

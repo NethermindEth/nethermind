@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -24,6 +11,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
@@ -212,7 +200,7 @@ namespace Nethermind.Network.P2P
             }
         }
 
-        public void DeliverMessage<T>(T message) where T : P2PMessage
+        public int DeliverMessage<T>(T message) where T : P2PMessage
         {
             lock (_sessionStateLock)
             {
@@ -223,15 +211,16 @@ namespace Nethermind.Network.P2P
 
                 if (IsClosing)
                 {
-                    return;
+                    return 1;
                 }
             }
 
             if (_logger.IsTrace) _logger.Trace($"P2P to deliver {message.Protocol}.{message.PacketType} on {this}");
 
             message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
-            var size = _packetSender.Enqueue(message);
+            int size = _packetSender.Enqueue(message);
             Interlocked.Add(ref Metrics.P2PBytesSent, size);
+            return size;
         }
 
         public void ReceiveMessage(Packet packet)
@@ -348,8 +337,10 @@ namespace Nethermind.Network.P2P
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
+        public void InitiateDisconnect(InitiateDisconnectReason initiateDisconnectReason, string? details = null)
         {
+            DisconnectReason disconnectReason = initiateDisconnectReason.ToDisconnectReason();
+
             bool ShouldDisconnectStaticNode()
             {
                 switch (disconnectReason)
@@ -358,8 +349,6 @@ namespace Nethermind.Network.P2P
                     case DisconnectReason.TcpSubSystemError:
                     case DisconnectReason.UselessPeer:
                     case DisconnectReason.TooManyPeers:
-                    case DisconnectReason.Breach1:
-                    case DisconnectReason.Breach2:
                     case DisconnectReason.Other:
                         return false;
                     case DisconnectReason.ReceiveMessageTimeout:
@@ -370,9 +359,6 @@ namespace Nethermind.Network.P2P
                     case DisconnectReason.ClientQuitting:
                     case DisconnectReason.UnexpectedIdentity:
                     case DisconnectReason.IdentitySameAsSelf:
-                    case DisconnectReason.NdmInvalidHiSignature:
-                    case DisconnectReason.NdmHostAddressesNotConfigured:
-                    case DisconnectReason.NdmPeerAddressesNotConfigured:
                         return true;
                     default:
                         return true;
@@ -395,7 +381,7 @@ namespace Nethermind.Network.P2P
                 State = SessionState.DisconnectingProtocols;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"{this} disconnecting protocols");
+            if (_logger.IsDebug) _logger.Debug($"{this} initiating disconnect because {initiateDisconnectReason}, details: {details}");
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (_protocols.Any())
             {
@@ -404,7 +390,7 @@ namespace Nethermind.Network.P2P
                     try
                     {
                         if (_logger.IsTrace)
-                            _logger.Trace($"{this} disconnecting {protocolHandler.Name} {disconnectReason} ({details})");
+                            _logger.Trace($"{this} disconnecting {protocolHandler.Name} {initiateDisconnectReason} ({details})");
                         protocolHandler.DisconnectProtocol(disconnectReason, details);
                     }
                     catch (Exception e)

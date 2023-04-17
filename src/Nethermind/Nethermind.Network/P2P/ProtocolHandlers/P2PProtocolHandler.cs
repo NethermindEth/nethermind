@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -25,6 +12,7 @@ using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
@@ -111,12 +99,16 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     public override void HandleMessage(Packet msg)
     {
+        int size = msg.Data.Length;
+
         switch (msg.PacketType)
         {
             case P2PMessageCode.Hello:
                 {
                     Metrics.HellosReceived++;
-                    HandleHello(Deserialize<HelloMessage>(msg.Data));
+                    HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
+                    HandleHello(helloMessage);
+                    ReportIn(helloMessage, size);
 
                     // We need to initialize subprotocols in alphabetical order. Protocols are using AdaptiveId,
                     // which should be constant for the whole session. Some protocols (like Eth) are sending messages
@@ -134,7 +126,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
             case P2PMessageCode.Disconnect:
                 {
                     DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
-                    ReportIn(disconnectMessage);
+                    ReportIn(disconnectMessage, size);
                     if (Logger.IsTrace)
                     {
                         string reason = FastEnum.IsDefined<DisconnectReason>((byte)disconnectMessage.Reason)
@@ -150,12 +142,14 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                 {
                     if (Logger.IsTrace) Logger.Trace($"{Session} Received PING on {Session.RemotePort}");
                     HandlePing();
+                    ReportIn("Ping", size);
                     break;
                 }
             case P2PMessageCode.Pong:
                 {
                     if (Logger.IsTrace) Logger.Trace($"{Session} Received PONG on {Session.RemotePort}");
                     HandlePong(msg);
+                    ReportIn("Pong", size);
                     break;
                 }
             case P2PMessageCode.AddCapability:
@@ -177,7 +171,6 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     private void HandleHello(HelloMessage hello)
     {
-        ReportIn(hello);
         bool isInbound = !_sentHello;
 
         if (Logger.IsTrace) Logger.Trace($"{Session} P2P received hello.");
@@ -232,8 +225,9 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
         if (_agreedCapabilities.Count == 0)
         {
+            _nodeStatsManager.ReportFailedValidation(Session.Node, CompatibilityValidationType.Capabilities);
             Session.InitiateDisconnect(
-                DisconnectReason.UselessPeer,
+                InitiateDisconnectReason.NoCapabilityMatched,
                 $"capabilities: {string.Join(", ", capabilities)}");
         }
 
@@ -328,7 +322,6 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     private void HandlePing()
     {
-        ReportIn("Ping");
         if (Logger.IsTrace) Logger.Trace($"{Session} P2P responding to ping");
         Send(PongMessage.Instance);
     }
@@ -356,7 +349,6 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     private void HandlePong(Packet msg)
     {
-        ReportIn("Pong");
         if (Logger.IsTrace) Logger.Trace($"{Session} sending P2P pong");
         _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingIn);
         _pongCompletionSource?.TrySetResult(msg);

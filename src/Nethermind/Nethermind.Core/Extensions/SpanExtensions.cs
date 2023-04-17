@@ -1,35 +1,46 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Extensions
 {
     public static class SpanExtensions
     {
-        public static string ToHexString(this in Span<byte> span, bool withZeroX)
+        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
         {
             return ToHexString(span, withZeroX, false, false);
         }
 
-        public static string ToHexString(this in Span<byte> span)
+        public static string ToHexString(this in Span<byte> span, bool withZeroX)
+        {
+            return ToHexViaLookup(span, withZeroX, false, false);
+        }
+
+        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros)
+        {
+            return ToHexViaLookup(span, withZeroX, noLeadingZeros, false);
+        }
+
+        public static string ToHexString(this in ReadOnlySpan<byte> span)
         {
             return ToHexString(span, false, false, false);
+        }
+
+        public static string ToHexString(this in Span<byte> span)
+        {
+            return ToHexViaLookup(span, false, false, false);
+        }
+
+        public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
+        {
+            return ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
         }
 
         public static string ToHexString(this in Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
@@ -38,93 +49,92 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        private static string ToHexViaLookup(in Span<byte> span, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
+        private static string ToHexViaLookup(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
-            int leadingZeros = skipLeadingZeros ? CountLeadingZeros(span) : 0;
-            char[] result = new char[span.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
-            string? hashHex = null;
             if (withEip55Checksum)
             {
-                hashHex = Keccak.Compute(span.ToHexString(false)).ToString(false);
+                return ToHexStringWithEip55Checksum(bytes, withZeroX, skipLeadingZeros);
             }
 
-            if (withZeroX)
-            {
-                result[0] = '0';
-                result[1] = 'x';
-            }
+            int leadingZeros = skipLeadingZeros ? Bytes.CountLeadingZeros(bytes) : 0;
+            int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros;
 
-            for (int i = 0; i < span.Length; i++)
-            {
-                uint val = Lookup32[span[i]];
-                char char1 = (char)val;
-                char char2 = (char)(val >> 16);
+            char[] charArray = ArrayPool<char>.Shared.Rent(length);
 
-                if (leadingZeros <= i * 2)
-                {
-                    result[2 * i + (withZeroX ? 2 : 0) - leadingZeros] =
-                        withEip55Checksum && char.IsLetter(char1) && hashHex![2 * i] > '7'
-                            ? char.ToUpper(char1)
-                            : char1;
-                }
+            ref byte input = ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), leadingZeros / 2);
+            Bytes.OutputBytesToCharHex(ref input, bytes.Length, ref charArray[0], withZeroX, leadingZeros);
 
-                if (leadingZeros <= i * 2 + 1)
-                {
-                    result[2 * i + 1 + (withZeroX ? 2 : 0) - leadingZeros] =
-                        withEip55Checksum && char.IsLetter(char2) && hashHex![2 * i + 1] > '7'
-                            ? char.ToUpper(char2)
-                            : char2;
-                }
-            }
-
-            if (skipLeadingZeros && result.Length == (withZeroX ? 2 : 0))
-            {
-                return withZeroX ? "0x0" : "0";
-            }
-
-            return new string(result);
-        }
-
-        private static readonly uint[] Lookup32 = CreateLookup32("x2");
-
-        private static uint[] CreateLookup32(string format)
-        {
-            uint[] result = new uint[256];
-            for (int i = 0; i < 256; i++)
-            {
-                string s = i.ToString(format);
-                result[i] = s[0] + ((uint)s[1] << 16);
-            }
+            string result = new string(charArray.AsSpan(0, length));
+            ArrayPool<char>.Shared.Return(charArray);
 
             return result;
         }
 
-        private static int CountLeadingZeros(in Span<byte> span)
+        private static string ToHexStringWithEip55Checksum(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros)
         {
-            int leadingZeros = 0;
-            for (int i = 0; i < span.Length; i++)
+            string hashHex = Keccak.Compute(bytes.ToHexString(false)).ToString(false);
+
+            int leadingZeros = skipLeadingZeros ? Bytes.CountLeadingZeros(bytes) : 0;
+            int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros;
+            if (leadingZeros >= 2)
             {
-                if ((span[i] & 240) == 0)
-                {
-                    leadingZeros++;
-                    if ((span[i] & 15) == 0)
-                    {
-                        leadingZeros++;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    break;
-                }
+                bytes = bytes[(leadingZeros / 2)..];
+            }
+            char[] charArray = ArrayPool<char>.Shared.Rent(length);
+
+            Span<char> chars = charArray.AsSpan(0, length);
+
+            if (withZeroX)
+            {
+                // In reverse, bounds check on [1] will elide bounds check on [0]
+                chars[1] = 'x';
+                chars[0] = '0';
+                // Trim off the two chars from the span
+                chars = chars[2..];
             }
 
-            return leadingZeros;
+            uint[] lookup32 = Bytes.Lookup32;
+
+            bool odd = (leadingZeros & 1) != 0;
+            int oddity = odd ? 2 : 0;
+            if (odd)
+            {
+                // Odd number of hex chars, handle the first
+                // seperately so loop can work in pairs
+                uint val = lookup32[bytes[0]];
+                char char2 = (char)(val >> 16);
+                chars[0] = char.IsLetter(char2) && hashHex[1] > '7'
+                            ? char.ToUpper(char2)
+                            : char2;
+
+                // Trim off the first byte and char from the spans
+                chars = chars[1..];
+                bytes = bytes[1..];
+            }
+
+            for (int i = 0; i < chars.Length; i += 2)
+            {
+                uint val = lookup32[bytes[i / 2]];
+                char char1 = (char)val;
+                char char2 = (char)(val >> 16);
+
+                chars[i] = char.IsLetter(char1) && hashHex[i + oddity] > '7'
+                            ? char.ToUpper(char1)
+                            : char1;
+                chars[i + 1] = char.IsLetter(char2) && hashHex[i + 1 + oddity] > '7'
+                            ? char.ToUpper(char2)
+                            : char2;
+            }
+
+            string result = new string(charArray.AsSpan(0, length));
+            ArrayPool<char>.Shared.Return(charArray);
+
+            return result;
         }
 
-        public static bool IsNullOrEmpty<T>(this in Span<T> span) => span == null || span.Length == 0;
+        public static bool IsNullOrEmpty<T>(this in Span<T> span) => span.Length == 0;
+        public static bool IsNull<T>(this in Span<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
+        public static bool IsNullOrEmpty<T>(this in ReadOnlySpan<T> span) => span.Length == 0;
+        public static bool IsNull<T>(this in ReadOnlySpan<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
     }
 }

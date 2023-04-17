@@ -1,21 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Db;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
@@ -31,54 +20,54 @@ namespace Nethermind.Store.Test
             Context ctx = new(2);
             ctx.Database[Key1] = Value1;
             _ = ctx.Database[Key1];
-            _ = ctx.Wrapped.DidNotReceive()[Arg.Any<byte[]>()];
+            ctx.Wrapped.KeyWasWritten(Key3, 0);
         }
 
         [Test]
         public void When_reading_values_stores_them_in_the_cache()
         {
             Context ctx = new(2);
-            ctx.Wrapped[Arg.Any<byte[]>()].Returns(Value1);
+            ctx.Wrapped.ReadFunc = (key) => Value1;
             _ = ctx.Database[Key1];
             _ = ctx.Database[Key1];
-            _ = ctx.Wrapped.Received(1)[Key1];
+            ctx.Wrapped.KeyWasRead(Key1);
         }
 
         [Test]
         public void Uses_lru_strategy_when_caching_on_reads()
         {
             Context ctx = new(2);
-            ctx.Wrapped[Arg.Any<byte[]>()].Returns(Value1);
+            ctx.Wrapped.ReadFunc = (key) => Value1;
             _ = ctx.Database[Key1];
             _ = ctx.Database[Key2];
             _ = ctx.Database[Key3];
             _ = ctx.Database[Key3];
             _ = ctx.Database[Key2];
             _ = ctx.Database[Key1];
-            _ = ctx.Wrapped.Received(2)[Key1];
-            _ = ctx.Wrapped.Received(1)[Key2];
-            _ = ctx.Wrapped.Received(1)[Key3];
+            ctx.Wrapped.KeyWasRead(Key1, 2);
+            ctx.Wrapped.KeyWasRead(Key2, 1);
+            ctx.Wrapped.KeyWasRead(Key3, 1);
         }
 
         [Test]
         public void Uses_lru_strategy_when_caching_on_writes()
         {
             Context ctx = new(2);
-            ctx.Wrapped[Arg.Any<byte[]>()].Returns(Value1);
+            ctx.Wrapped.ReadFunc = (key) => Value1;
             ctx.Database[Key1] = Value1;
             ctx.Database[Key2] = Value1;
             ctx.Database[Key3] = Value1;
             _ = ctx.Database[Key3];
             _ = ctx.Database[Key2];
             _ = ctx.Database[Key1];
-            _ = ctx.Wrapped.Received(1)[Key1];
-            _ = ctx.Wrapped.Received(0)[Key2];
-            _ = ctx.Wrapped.Received(0)[Key3];
+            ctx.Wrapped.KeyWasRead(Key1, 1);
+            ctx.Wrapped.KeyWasRead(Key2, 0);
+            ctx.Wrapped.KeyWasRead(Key3, 0);
         }
 
         private class Context
         {
-            public IKeyValueStoreWithBatching Wrapped { get; set; } = Substitute.For<IKeyValueStoreWithBatching>();
+            public TestMemDb Wrapped { get; set; } = new();
 
             public CachingStore Database { get; set; }
 

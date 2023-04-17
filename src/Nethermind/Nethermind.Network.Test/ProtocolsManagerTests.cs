@@ -1,19 +1,7 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
@@ -22,6 +10,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -103,9 +92,11 @@ namespace Nethermind.Network.Test
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 _blockTree = Substitute.For<IBlockTree>();
-                _blockTree.ChainId.Returns(1ul);
+                _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
+                _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
                 _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-                _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
+                ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!);
+                _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _syncPeerPool = Substitute.For<ISyncPeerPool>();
                 _gossipPolicy = Substitute.For<IGossipPolicy>();
@@ -120,7 +111,7 @@ namespace Nethermind.Network.Test
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
-                    MainnetSpecProvider.Instance,
+                    forkInfo,
                     _gossipPolicy,
                     LimboLogs.Instance);
 
@@ -181,7 +172,11 @@ namespace Nethermind.Network.Test
             public Context ReceiveDisconnect()
             {
                 DisconnectMessage message = new(DisconnectReason.Other);
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Disconnect, _serializer.Serialize(message)));
+                IByteBuffer disconnectPacket = _serializer.ZeroSerialize(message);
+
+                // to account for AdaptivePacketType byte
+                disconnectPacket.ReadByte();
+                _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
                 return this;
             }
 
@@ -197,6 +192,12 @@ namespace Nethermind.Network.Test
                 return this;
             }
 
+            public Context VerifyCompatibilityValidationType(CompatibilityValidationType expectedType)
+            {
+                Assert.AreEqual(expectedType, _nodeStatsManager.GetOrAdd(_currentSession.Node).FailedCompatibilityValidation);
+                return this;
+            }
+
             public Context Disconnect()
             {
                 _currentSession.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Local, "test");
@@ -207,10 +208,11 @@ namespace Nethermind.Network.Test
             {
                 StatusMessage msg = new();
                 msg.TotalDifficulty = 1;
-                msg.ChainId = 1;
+                msg.NetworkId = TestBlockchainIds.NetworkId;
                 msg.GenesisHash = _blockTree.Genesis.Hash;
                 msg.BestHash = _blockTree.Genesis.Hash;
                 msg.ProtocolVersion = 66;
+                msg.ForkId = new ForkId(0, 0);
 
                 return ReceiveStatus(msg);
             }
@@ -227,7 +229,7 @@ namespace Nethermind.Network.Test
             public Context VerifyEthInitialized()
             {
                 INodeStats stats = _nodeStatsManager.GetOrAdd(_currentSession.Node);
-                Assert.AreEqual(1, stats.EthNodeDetails.ChainId);
+                Assert.AreEqual(TestBlockchainIds.NetworkId, stats.EthNodeDetails.NetworkId);
                 Assert.AreEqual(_blockTree.Genesis.Hash, stats.EthNodeDetails.GenesisHash);
                 Assert.AreEqual(66, stats.EthNodeDetails.ProtocolVersion);
                 Assert.AreEqual(BigInteger.One, stats.EthNodeDetails.TotalDifficulty);
@@ -241,6 +243,17 @@ namespace Nethermind.Network.Test
                 return this;
             }
 
+            private Context ReceiveHello(HelloMessage msg)
+            {
+                IByteBuffer helloPacket = _serializer.ZeroSerialize(msg);
+                // to account for AdaptivePacketType byte
+                helloPacket.ReadByte();
+
+                _currentSession.ReceiveMessage(new ZeroPacket(helloPacket) { PacketType = P2PMessageCode.Hello });
+                return this;
+            }
+
+
             public Context ReceiveHello(byte p2pVersion = 5)
             {
                 HelloMessage msg = new();
@@ -249,8 +262,8 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = p2pVersion;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
-                return this;
+
+                return ReceiveHello(msg);
             }
 
             public Context ReceiveHelloNoEth()
@@ -261,8 +274,7 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
-                return this;
+                return ReceiveHello(msg);
             }
 
             public Context ReceiveHelloEth(int protocolVersion)
@@ -273,8 +285,7 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
-                return this;
+                return ReceiveHello(msg);
             }
 
 
@@ -283,11 +294,11 @@ namespace Nethermind.Network.Test
                 return ReceiveHelloEth(65);
             }
 
-            public Context ReceiveStatusWrongChain()
+            public Context ReceiveStatusWrongChain(ulong networkId)
             {
                 StatusMessage msg = new();
                 msg.TotalDifficulty = 1;
-                msg.ChainId = 2;
+                msg.NetworkId = networkId;
                 msg.GenesisHash = TestItem.KeccakA;
                 msg.BestHash = TestItem.KeccakA;
                 msg.ProtocolVersion = 66;
@@ -299,7 +310,7 @@ namespace Nethermind.Network.Test
             {
                 StatusMessage msg = new();
                 msg.TotalDifficulty = 1;
-                msg.ChainId = 1;
+                msg.NetworkId = TestBlockchainIds.NetworkId;
                 msg.GenesisHash = TestItem.KeccakB;
                 msg.BestHash = TestItem.KeccakB;
                 msg.ProtocolVersion = 66;
@@ -424,8 +435,9 @@ namespace Nethermind.Network.Test
                 .VerifyDisconnected();
         }
 
-        [Test]
-        public void Disconnects_on_wrong_chain_id()
+        [TestCase(TestBlockchainIds.NetworkId + 1)]
+        [TestCase(TestBlockchainIds.ChainId)]
+        public void Disconnects_on_wrong_network_id(int networkId)
         {
             When
                 .CreateIncomingSession()
@@ -434,7 +446,8 @@ namespace Nethermind.Network.Test
                 .Init()
                 .VerifyInitialized()
                 .ReceiveHello()
-                .ReceiveStatusWrongChain()
+                .ReceiveStatusWrongChain((ulong)networkId)
+                .VerifyCompatibilityValidationType(CompatibilityValidationType.NetworkId)
                 .VerifyDisconnected();
         }
 

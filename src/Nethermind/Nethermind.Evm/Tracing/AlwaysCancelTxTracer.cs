@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -54,12 +41,13 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => true;
         public bool IsTracingAccess => true;
+        public bool IsTracingFees => true;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false, IReleaseSpec? spec = null) => throw new OperationCanceledException(ErrorMessage);
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportOperationError(EvmExceptionType error) => throw new OperationCanceledException(ErrorMessage);
 
@@ -90,9 +78,9 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportAccountRead(Address address) => throw new OperationCanceledException(ErrorMessage);
 
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after) => throw new OperationCanceledException(ErrorMessage);
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => throw new OperationCanceledException(ErrorMessage);
 
-        public void ReportStorageRead(StorageCell storageCell) => throw new OperationCanceledException(ErrorMessage);
+        public void ReportStorageRead(in StorageCell storageCell) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new OperationCanceledException(ErrorMessage);
 
@@ -107,5 +95,6 @@ namespace Nethermind.Evm.Tracing
         public void ReportRefund(long refund) => throw new OperationCanceledException(ErrorMessage);
         public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage);
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
+        public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new OperationCanceledException(ErrorMessage);
     }
 }

@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -31,23 +17,32 @@ public class SepoliaSpecProvider : ISpecProvider
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
         if (blockNumber is not null)
-            _theMergeBlock = blockNumber;
+            _theMergeBlock = (ForkActivation)blockNumber;
         if (terminalTotalDifficulty is not null)
             _terminalTotalDifficulty = terminalTotalDifficulty;
     }
 
     public ForkActivation? MergeBlockNumber => _theMergeBlock;
+    public ulong TimestampFork => ISpecProvider.TimestampForkNever;
     public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
     public IReleaseSpec GenesisSpec => London.Instance;
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) => London.Instance;
+    public const ulong ShanghaiBlockTimestamp = 1677557088;
+
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+        forkActivation switch
+        {
+            { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => London.Instance,
+            _ => Shanghai.Instance
+        };
 
     public long? DaoBlockNumber => null;
 
 
-    public ulong ChainId => Core.ChainId.Rinkeby;
+    public ulong NetworkId => Core.BlockchainIds.Rinkeby;
+    public ulong ChainId => NetworkId;
 
-    public ForkActivation[] TransitionBlocks { get; } = { 1735371 };
+    public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)1735371, new ForkActivation(1735371, 1677557088) };
 
     private SepoliaSpecProvider() { }
 

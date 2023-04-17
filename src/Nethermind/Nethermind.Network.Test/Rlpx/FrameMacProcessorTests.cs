@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Common.Utilities;
 using Nethermind.Core.Test.Builders;
@@ -72,13 +59,13 @@ namespace Nethermind.Network.Test.Rlpx
             }
 
             var secretsA = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
-            secretsA.EgressMac.BlockUpdate(egressUpdate.Slice(0, 16), 0, 16);
-            secretsA.EgressMac.BlockUpdate(egressUpdate.Slice(16, 16), 0, 16);
+            secretsA.EgressMac.Update(egressUpdate.Slice(0, 16));
+            secretsA.EgressMac.Update(egressUpdate.Slice(16, 16));
             FrameMacProcessor macProcessorA = new(TestItem.PublicKeyA, secretsA);
             macProcessorA.AddMac(a1, 0, 16, false);
 
             var secretsB = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
-            secretsB.EgressMac.BlockUpdate(egressUpdate, 0, 32);
+            secretsB.EgressMac.Update(egressUpdate);
             FrameMacProcessor macProcessorB = new(TestItem.PublicKeyA, secretsB);
             macProcessorB.AddMac(b1, 0, 16, false);
 

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
 using Nethermind.Consensus.Validators;
@@ -57,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _blockTree.SuggestHeader(_block.Header);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_more_than_two_uncles_returns_false()
         {
             BlockHeader[] uncles = GetValidUncles(3);
@@ -66,7 +53,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(unclesValidator.Validate(Build.A.BlockHeader.TestObject, uncles));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_uncle_is_self_returns_false()
         {
             BlockHeader[] uncles = new BlockHeader[1];
@@ -76,7 +63,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(unclesValidator.Validate(_block.Header, uncles));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_uncle_is_brother_returns_false()
         {
             BlockHeader[] uncles = new BlockHeader[1];
@@ -88,7 +75,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(unclesValidator.Validate(_block.Header, uncles));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_uncle_is_parent_returns_false()
         {
             BlockHeader[] uncles = new BlockHeader[1];
@@ -98,7 +85,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(unclesValidator.Validate(_block.Header, uncles));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_uncle_was_already_included_return_false()
         {
             UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
@@ -116,7 +103,7 @@ namespace Nethermind.Blockchain.Test.Validators
             return uncles;
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_all_is_fine_returns_true()
         {
             BlockHeader[] uncles = GetValidUncles(1);
@@ -125,7 +112,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.True(unclesValidator.Validate(_block.Header, uncles));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Grandpas_brother_is_fine()
         {
             BlockHeader[] uncles = GetValidUncles(1);
@@ -136,7 +123,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.True(unclesValidator.Validate(_block.Header, uncles));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Same_uncle_twice_returns_false()
         {
             BlockHeader[] uncles = GetValidUncles(1).Union(GetValidUncles(1)).ToArray();
@@ -145,7 +132,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Assert.False(unclesValidator.Validate(_block.Header, uncles));
         }
 
-        [Test] // because we decided to store the head block at 0x00..., eh
+        [Test, Timeout(Timeout.MaxTestTime)] // because we decided to store the head block at 0x00..., eh
         public void Uncles_near_genesis_with_00_address_used()
         {
             Block falseUncle = Build.A.Block.WithParent(Build.A.Block.WithDifficulty(123).TestObject).TestObject;

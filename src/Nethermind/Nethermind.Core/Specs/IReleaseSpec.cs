@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Int256;
 
@@ -21,7 +8,7 @@ namespace Nethermind.Core.Specs
     /// <summary>
     /// https://github.com/ethereum/EIPs
     /// </summary>
-    public interface IReleaseSpec
+    public interface IReleaseSpec : IEip1559Spec, IReceiptSpec
     {
         public string Name { get; }
         long MaximumExtraDataSize { get; }
@@ -133,11 +120,6 @@ namespace Nethermind.Core.Specs
         bool IsEip649Enabled { get; }
 
         /// <summary>
-        /// Byzantium Embedding transaction return data in receipts
-        /// </summary>
-        bool IsEip658Enabled { get; }
-
-        /// <summary>
         /// Constantinople SHL, SHR, SAR instructions
         /// </summary>
         bool IsEip145Enabled { get; }
@@ -228,11 +210,6 @@ namespace Nethermind.Core.Specs
         bool IsEip158IgnoredAccount(Address address);
 
         /// <summary>
-        /// Gas target and base fee, and fee burning.
-        /// </summary>
-        bool IsEip1559Enabled { get; }
-
-        /// <summary>
         /// BaseFee opcode
         /// </summary>
         bool IsEip3198Enabled { get; }
@@ -243,7 +220,7 @@ namespace Nethermind.Core.Specs
         bool IsEip3529Enabled { get; }
 
         /// <summary>
-        /// Reject new contracts starting with the 0xEF byte 
+        /// Reject new contracts starting with the 0xEF byte
         /// </summary>
         bool IsEip3541Enabled { get; }
 
@@ -251,11 +228,6 @@ namespace Nethermind.Core.Specs
         /// Reject transactions where senders have non-empty code hash
         /// </summary>
         bool IsEip3607Enabled { get; }
-
-        /// <summary>
-        /// Upgrade consensus to Proof-of-Stake
-        /// </summary>
-        bool IsEip3675Enabled { get; }
 
         /// <summary>
         /// Warm COINBASE
@@ -279,9 +251,21 @@ namespace Nethermind.Core.Specs
         bool IsEip3860Enabled { get; }
 
         /// <summary>
-        /// Deactivate SELFDESTRUCT
+        /// Gets or sets a value indicating whether the
+        /// <see href="https://eips.ethereum.org/EIPS/eip-4895">EIP-4895</see>
+        /// validator withdrawals are enabled.
         /// </summary>
-        bool IsEip4758Enabled { get; }
+        bool IsEip4895Enabled { get; }
+
+        /// <summary>
+        /// Blob transactions
+        /// </summary>
+        bool IsEip4844Enabled { get; }
+
+        /// <summary>
+        /// SELFDESTRUCT only in same transaction
+        /// </summary>
+        bool IsEip6780Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
@@ -289,13 +273,9 @@ namespace Nethermind.Core.Specs
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateChainId => true;
 
-        /// <summary>
-        /// Should validate ReceiptsRoot.
-        /// </summary>
-        /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
-        bool ValidateReceipts => true;
+        public ulong WithdrawalTimestamp { get; }
 
-        public long Eip1559TransitionBlock { get; }
+        public ulong Eip4844TransitionTimestamp { get; }
 
         // STATE related 
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
@@ -362,12 +342,9 @@ namespace Nethermind.Core.Specs
         // EVM Related
         public bool IncludePush0Instruction => IsEip3855Enabled;
 
-        public Address? Eip1559FeeCollector => null;
-
-        public UInt256? Eip1559BaseFeeMinValue => null;
-
         public bool TransientStorageEnabled => IsEip1153Enabled;
 
-        public bool SelfDestructDeactivated => IsEip4758Enabled;
+        public bool WithdrawalsEnabled => IsEip4895Enabled;
+        public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
     }
 }

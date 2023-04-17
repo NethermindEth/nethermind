@@ -1,26 +1,13 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 
 namespace Nethermind.Evm
 {
-    public ref struct ZeroPaddedSpan
+    public readonly ref struct ZeroPaddedSpan
     {
-        public static ZeroPaddedSpan Empty => new(Span<byte>.Empty, 0, PadDirection.Right);
+        public static ZeroPaddedSpan Empty => new(default, 0, PadDirection.Right);
 
         public ZeroPaddedSpan(ReadOnlySpan<byte> span, int paddingLength, PadDirection padDirection)
         {
@@ -29,9 +16,9 @@ namespace Nethermind.Evm
             PaddingLength = paddingLength;
         }
 
-        public PadDirection PadDirection;
-        public ReadOnlySpan<byte> Span;
-        public int PaddingLength;
+        public readonly PadDirection PadDirection;
+        public readonly ReadOnlySpan<byte> Span;
+        public readonly int PaddingLength;
         public int Length => Span.Length + PaddingLength;
 
         /// <summary>
@@ -41,7 +28,7 @@ namespace Nethermind.Evm
         public readonly byte[] ToArray()
         {
             byte[] result = new byte[Span.Length + PaddingLength];
-            Span.CopyTo(result.AsSpan().Slice(PadDirection == PadDirection.Right ? 0 : PaddingLength, Span.Length));
+            Span.CopyTo(result.AsSpan(PadDirection == PadDirection.Right ? 0 : PaddingLength, Span.Length));
             return result;
         }
     }
