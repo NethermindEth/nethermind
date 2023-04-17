@@ -264,7 +264,7 @@ namespace Nethermind.Init
                 64.MB(), // max buffer size
                 4.MB(), // min block cache
                 128.GB(), // max block cache
-                1m); // db memory %
+                0.05m); // db memory %
         }
 
         private DbNeeds GetBlockInfosNeeds(uint cpuCount, ISyncConfig syncConfig)
@@ -277,7 +277,7 @@ namespace Nethermind.Init
                 8.MB(), // max buffer size
                 1.MB(), // min block cache
                 512.MB(), // max block cache
-                0.02m); // db memory %
+                0.001m); // db memory %
         }
 
         private DbNeeds GetHeaderNeeds(uint cpuCount, ISyncConfig syncConfig)
@@ -289,7 +289,7 @@ namespace Nethermind.Init
                 8.MB(), // max buffer size
                 1.MB(), // min block cache
                 1.GB(), // max block cache
-                0.02m); // db memory %
+                0.001m); // db memory %
         }
 
         private DbNeeds GetBlocksNeeds(uint cpuCount, ISyncConfig syncConfig)
@@ -301,7 +301,7 @@ namespace Nethermind.Init
                 64.MB(), // max buffer size
                 8.MB(), // min block cache
                 2.GB(), // max block cache
-                0.04m); // db memory %
+                0.002m); // db memory %
         }
 
         private DbNeeds GetReceiptsNeeds(uint cpuCount, ISyncConfig syncConfig)
@@ -313,7 +313,7 @@ namespace Nethermind.Init
                 64.MB(), // max buffer size
                 8.MB(), // min block cache
                 2.GB(), // max block cache
-                0.01m); // db memory %
+                0.005m); // db memory %
         }
 
         private DbNeeds GetPendingTxNeeds(uint cpuCount, ISyncConfig syncConfig)
@@ -324,7 +324,7 @@ namespace Nethermind.Init
                 16.MB(), // max buffer size
                 2.MB(), // min block cache
                 128.MB(), // max block cache
-                0.01m); // db memory %
+                0.005m); // db memory %
         }
 
         private DbNeeds GetCodeNeeds(uint cpuCount, ISyncConfig syncConfig)
