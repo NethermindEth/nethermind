@@ -113,7 +113,7 @@ namespace Nethermind.Store.Test
         {
             WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
             provider.Commit(Frontier.Instance);
-            provider.RestoreStateSnapshot(-1);
+            provider.RestoreState(-1);
         }
 
         [Test]
@@ -153,7 +153,7 @@ namespace Nethermind.Store.Test
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
-            provider.RestoreStateSnapshot(4);
+            provider.RestoreState(4);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -162,7 +162,7 @@ namespace Nethermind.Store.Test
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
-            provider.RestoreStateSnapshot(4);
+            provider.RestoreState(4);
             Assert.AreEqual((UInt256)4, provider.GetBalance(_address1));
         }
 
@@ -174,11 +174,11 @@ namespace Nethermind.Store.Test
             provider.Commit(Frontier.Instance);
             provider.GetBalance(_address1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
-            provider.RestoreStateSnapshot(-1);
+            provider.RestoreState(-1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
-            provider.RestoreStateSnapshot(-1);
+            provider.RestoreState(-1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
-            provider.RestoreStateSnapshot(-1);
+            provider.RestoreState(-1);
             Assert.AreEqual(UInt256.Zero, provider.GetBalance(_address1));
         }
 
@@ -197,27 +197,27 @@ namespace Nethermind.Store.Test
             Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
             Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
             Assert.AreEqual(code, provider.GetCode(_address1));
-            provider.RestoreStateSnapshot(4);
+            provider.RestoreState(4);
             Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
             Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
             Assert.AreEqual(code, provider.GetCode(_address1));
-            provider.RestoreStateSnapshot(3);
+            provider.RestoreState(3);
             Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
             Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
             Assert.AreEqual(code, provider.GetCode(_address1));
-            provider.RestoreStateSnapshot(2);
+            provider.RestoreState(2);
             Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
             Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
             Assert.AreEqual(new byte[0], provider.GetCode(_address1));
-            provider.RestoreStateSnapshot(1);
+            provider.RestoreState(1);
             Assert.AreEqual(UInt256.Zero, provider.GetNonce(_address1));
             Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
             Assert.AreEqual(new byte[0], provider.GetCode(_address1));
-            provider.RestoreStateSnapshot(0);
+            provider.RestoreState(0);
             Assert.AreEqual(UInt256.Zero, provider.GetNonce(_address1));
             Assert.AreEqual(UInt256.One, provider.GetBalance(_address1));
             Assert.AreEqual(new byte[0], provider.GetCode(_address1));
-            provider.RestoreStateSnapshot(-1);
+            provider.RestoreState(-1);
             Assert.AreEqual(false, provider.AccountExists(_address1));
         }
 

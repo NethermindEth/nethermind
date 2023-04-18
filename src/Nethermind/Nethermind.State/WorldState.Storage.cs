@@ -23,7 +23,7 @@ public partial class WorldState
     private int _storageCapacity = StorageStartCapacity;
 
     private StorageChange?[] _storageChanges = new StorageChange[StorageStartCapacity];
-    private int _currentStoragePosition = Resettable.EmptyPosition;
+    private int _storageCurrentPosition = Resettable.EmptyPosition;
 
     // stack of snapshot indexes on changes for start of each transaction
     // this is needed for OriginalValues for new transactions
@@ -150,9 +150,9 @@ public partial class WorldState
     {
         SetupRegistry(cell);
         IncrementChangePosition();
-        _storageIntraBlockCache[cell].Push(_currentStoragePosition);
+        _storageIntraBlockCache[cell].Push(_storageCurrentPosition);
         _originalValues[cell] = value;
-        _storageChanges[_currentStoragePosition] = new StorageChange(StorageChangeType.JustCache, cell, value);
+        _storageChanges[_storageCurrentPosition] = new StorageChange(ChangeType.JustCache, cell, value);
     }
 
     public void ClearStorage(Address address)
@@ -176,8 +176,8 @@ public partial class WorldState
     {
         SetupRegistry(cell);
         IncrementChangePosition();
-        _storageIntraBlockCache[cell].Push(_currentStoragePosition);
-        _storageChanges[_currentStoragePosition] = new StorageChange(StorageChangeType.Update, cell, value);
+        _storageIntraBlockCache[cell].Push(_storageCurrentPosition);
+        _storageChanges[_storageCurrentPosition] = new StorageChange(ChangeType.Update, cell, value);
     }
 
     /// <summary>
@@ -197,12 +197,12 @@ public partial class WorldState
     /// </summary>
     private void IncrementChangePosition()
     {
-        Resettable<StorageChange>.IncrementPosition(ref _storageChanges, ref _storageCapacity, ref _currentStoragePosition);
+        Resettable<StorageChange>.IncrementPosition(ref _storageChanges, ref _storageCapacity, ref _storageCurrentPosition);
     }
 
-    private void CommitStorage(IStorageTracer tracer)
+    private void CommitStorage(IWorldStateTracer tracer)
     {
-        if (_currentStoragePosition == Snapshot.EmptyPosition)
+        if (_storageCurrentPosition == Snapshot.EmptyPosition)
         {
             if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
         }
@@ -221,29 +221,29 @@ public partial class WorldState
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring storage snapshot {snapshot}");
 
-        if (snapshot > _currentStoragePosition)
+        if (snapshot > _storageCurrentPosition)
         {
-            throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {_currentStoragePosition}");
+            throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {_storageCurrentPosition}");
         }
 
-        if (snapshot == _currentStoragePosition)
+        if (snapshot == _storageCurrentPosition)
         {
             return;
         }
 
         List<StorageChange> keptInCache = new();
 
-        for (int i = 0; i < _currentStoragePosition - snapshot; i++)
+        for (int i = 0; i < _storageCurrentPosition - snapshot; i++)
         {
-            StorageChange storageChange = _storageChanges[_currentStoragePosition - i];
+            StorageChange storageChange = _storageChanges[_storageCurrentPosition - i];
             if (_storageIntraBlockCache[storageChange!.StorageCell].Count == 1)
             {
-                if (_storageChanges[_storageIntraBlockCache[storageChange.StorageCell].Peek()]!.StorageChangeType == StorageChangeType.JustCache)
+                if (_storageChanges[_storageIntraBlockCache[storageChange.StorageCell].Peek()]!.StorageChangeType == ChangeType.JustCache)
                 {
                     int actualPosition = _storageIntraBlockCache[storageChange.StorageCell].Pop();
-                    if (actualPosition != _currentStoragePosition - i)
+                    if (actualPosition != _storageCurrentPosition - i)
                     {
-                        throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentStoragePosition} - {i}");
+                        throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_storageCurrentPosition} - {i}");
                     }
 
                     keptInCache.Add(storageChange);
@@ -253,12 +253,12 @@ public partial class WorldState
             }
 
             int forAssertion = _storageIntraBlockCache[storageChange.StorageCell].Pop();
-            if (forAssertion != _currentStoragePosition - i)
+            if (forAssertion != _storageCurrentPosition - i)
             {
-                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentStoragePosition} - {i}");
+                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_storageCurrentPosition} - {i}");
             }
 
-            _storageChanges[_currentStoragePosition - i] = null;
+            _storageChanges[_storageCurrentPosition - i] = null;
 
             if (_storageIntraBlockCache[storageChange.StorageCell].Count == 0)
             {
@@ -266,12 +266,12 @@ public partial class WorldState
             }
         }
 
-        _currentStoragePosition = snapshot;
+        _storageCurrentPosition = snapshot;
         foreach (StorageChange kept in keptInCache)
         {
-            _currentStoragePosition++;
-            _storageChanges[_currentStoragePosition] = kept;
-            _storageIntraBlockCache[kept.StorageCell].Push(_currentStoragePosition);
+            _storageCurrentPosition++;
+            _storageChanges[_storageCurrentPosition] = kept;
+            _storageIntraBlockCache[kept.StorageCell].Push(_storageCurrentPosition);
         }
 
         while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
@@ -282,12 +282,12 @@ public partial class WorldState
 
     private int TakeStorageSnapshot(bool newTransactionStart)
     {
-        if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_currentStoragePosition}");
-        if (newTransactionStart && _currentStoragePosition != Resettable.EmptyPosition)
+        if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_storageCurrentPosition}");
+        if (newTransactionStart && _storageCurrentPosition != Resettable.EmptyPosition)
         {
-            _transactionChangesSnapshots.Push(_currentStoragePosition);
+            _transactionChangesSnapshots.Push(_storageCurrentPosition);
         }
-        return _currentStoragePosition;
+        return _storageCurrentPosition;
     }
 
     /// <summary>
@@ -299,14 +299,14 @@ public partial class WorldState
     {
         if (_logger.IsTrace) _logger.Trace("Committing storage changes");
 
-        if (_storageChanges[_currentStoragePosition] is null)
+        if (_storageChanges[_storageCurrentPosition] is null)
         {
-            throw new InvalidOperationException($"Change at current position {_currentStoragePosition} was null when commiting storage in {nameof(WorldState)}");
+            throw new InvalidOperationException($"Change at current position {_storageCurrentPosition} was null when commiting storage in {nameof(WorldState)}");
         }
 
-        if (_storageChanges[_currentStoragePosition + 1] is not null)
+        if (_storageChanges[_storageCurrentPosition + 1] is not null)
         {
-            throw new InvalidOperationException($"Change after current position ({_currentStoragePosition} + 1) was not null when commiting storage in {nameof(WorldState)}");
+            throw new InvalidOperationException($"Change after current position ({_storageCurrentPosition} + 1) was not null when commiting storage in {nameof(WorldState)}");
         }
 
         HashSet<Address> toUpdateRoots = new HashSet<Address>();
@@ -318,17 +318,17 @@ public partial class WorldState
             trace = new Dictionary<StorageCell, StorageChangeTrace>();
         }
 
-        for (int i = 0; i <= _currentStoragePosition; i++)
+        for (int i = 0; i <= _storageCurrentPosition; i++)
         {
-            StorageChange storageChange = _storageChanges[_currentStoragePosition - i];
-            if ((storageChange!.StorageCell.IsTransient) || (!isTracing && storageChange!.StorageChangeType == StorageChangeType.JustCache))
+            StorageChange storageChange = _storageChanges[_storageCurrentPosition - i];
+            if ((storageChange!.StorageCell.IsTransient) || (!isTracing && storageChange!.StorageChangeType == ChangeType.JustCache))
             {
                 continue;
             }
 
             if (_storageCommittedThisRound.Contains(storageChange!.StorageCell))
             {
-                if (isTracing && storageChange.StorageChangeType == StorageChangeType.JustCache)
+                if (isTracing && storageChange.StorageChangeType == ChangeType.JustCache)
                 {
                     trace![storageChange.StorageCell] = new StorageChangeTrace(storageChange.Value, trace[storageChange.StorageCell].After);
                 }
@@ -336,31 +336,31 @@ public partial class WorldState
                 continue;
             }
 
-            if (isTracing && storageChange.StorageChangeType == StorageChangeType.JustCache)
+            if (isTracing && storageChange.StorageChangeType == ChangeType.JustCache)
             {
                 tracer!.ReportStorageRead(storageChange.StorageCell);
             }
 
             _storageCommittedThisRound.Add(storageChange.StorageCell);
 
-            if (storageChange.StorageChangeType == StorageChangeType.Destroy)
+            if (storageChange.StorageChangeType == ChangeType.Destroy)
             {
                 continue;
             }
 
             int forAssertion = _storageIntraBlockCache[storageChange.StorageCell].Pop();
-            if (forAssertion != _currentStoragePosition - i)
+            if (forAssertion != _storageCurrentPosition - i)
             {
-                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentStoragePosition} - {i}");
+                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_storageCurrentPosition} - {i}");
             }
 
             switch (storageChange.StorageChangeType)
             {
-                case StorageChangeType.Destroy:
+                case ChangeType.Destroy:
                     break;
-                case StorageChangeType.JustCache:
+                case ChangeType.JustCache:
                     break;
-                case StorageChangeType.Update:
+                case ChangeType.Update:
                     if (_logger.IsTrace)
                     {
                         _logger.Trace($"  Update {storageChange.StorageCell.Address}_{storageChange.StorageCell.Index} V = {storageChange.Value.ToHexString(true)}");
@@ -381,7 +381,6 @@ public partial class WorldState
             }
         }
 
-        // TODO: it seems that we are unnecessarily recalculating root hashes all the time in storage?
         foreach (Address address in toUpdateRoots)
         {
             // since the accounts could be empty accounts that are removing (EIP-158)
@@ -394,7 +393,7 @@ public partial class WorldState
             }
         }
 
-        Resettable<StorageChange>.Reset(ref _storageChanges, ref _storageCapacity, ref _currentStoragePosition);
+        Resettable<StorageChange>.Reset(ref _storageChanges, ref _storageCapacity, ref _storageCurrentPosition);
         _storageIntraBlockCache.Reset();
         _transactionChangesSnapshots.Clear();
 
@@ -439,30 +438,18 @@ public partial class WorldState
         public byte[] After { get; }
     }
 
-    /// <summary>
-    /// Used for tracking each change to storage
-    /// </summary>
+
     private class StorageChange
     {
-        public StorageChange(StorageChangeType storageChangeType, StorageCell storageCell, byte[] value)
+        public StorageChange(ChangeType storageChangeType, StorageCell storageCell, byte[] value)
         {
             StorageCell = storageCell;
             Value = value;
             StorageChangeType = storageChangeType;
         }
 
-        public StorageChangeType StorageChangeType { get; }
+        public ChangeType StorageChangeType { get; }
         public StorageCell StorageCell { get; }
         public byte[] Value { get; }
-    }
-
-    /// <summary>
-    /// Type of change to track
-    /// </summary>
-    private enum StorageChangeType
-    {
-        JustCache,
-        Update,
-        Destroy,
     }
 }

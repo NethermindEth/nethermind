@@ -11,7 +11,7 @@ namespace Nethermind.State
     {
         private NullStateTracer() { }
 
-        public static IStateTracer Instance { get; } = new NullStateTracer();
+        public static IWorldStateTracer Instance { get; } = new NullStateTracer();
         private const string ErrorMessage = "Null tracer should never receive any calls.";
 
         public bool IsTracingState => false;

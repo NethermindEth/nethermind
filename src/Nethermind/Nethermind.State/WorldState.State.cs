@@ -27,7 +27,6 @@ public partial class WorldState
     private StateChange?[] _stateChanges = new StateChange?[StateStartCapacity];
     private int _stateCurrentPosition = Resettable.EmptyPosition;
     private bool _needsStateRootUpdate;
-    private readonly StateTree _stateTree;
 
     public Keccak StateRoot
     {
@@ -48,7 +47,7 @@ public partial class WorldState
         CommitState(releaseSpec, NullStateTracer.Instance, isGenesis);
     }
 
-    private void CommitState(IReleaseSpec releaseSpec, IStateTracer stateTracer, bool isGenesis = false)
+    private void CommitState(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis = false)
     {
         if (_stateCurrentPosition == -1)
         {
@@ -77,14 +76,14 @@ public partial class WorldState
         for (int i = 0; i <= _stateCurrentPosition; i++)
         {
             StateChange stateChange = _stateChanges[_stateCurrentPosition - i];
-            if (!isTracing && stateChange!.StateChangeType == StateChangeType.JustCache)
+            if (!isTracing && stateChange!.ChangeType == ChangeType.JustCache)
             {
                 continue;
             }
 
             if (_stateCommittedThisRound.Contains(stateChange!.Address))
             {
-                if (isTracing && stateChange.StateChangeType == StateChangeType.JustCache)
+                if (isTracing && stateChange.ChangeType == ChangeType.JustCache)
                 {
                     trace[stateChange.Address] = new StateChangeTrace(stateChange.Account, trace[stateChange.Address].After);
                 }
@@ -93,7 +92,7 @@ public partial class WorldState
             }
 
             // because it was not committed yet it means that the just cache is the only state (so it was read only)
-            if (isTracing && stateChange.StateChangeType == StateChangeType.JustCache)
+            if (isTracing && stateChange.ChangeType == ChangeType.JustCache)
             {
                 _stateReadsForTracing.Add(stateChange.Address);
                 continue;
@@ -107,14 +106,14 @@ public partial class WorldState
 
             _stateCommittedThisRound.Add(stateChange.Address);
 
-            switch (stateChange.StateChangeType)
+            switch (stateChange.ChangeType)
             {
-                case StateChangeType.JustCache:
+                case ChangeType.JustCache:
                     {
                         break;
                     }
-                case StateChangeType.Touch:
-                case StateChangeType.Update:
+                case ChangeType.Touch:
+                case ChangeType.Update:
                     {
                         if (releaseSpec.IsEip158Enabled && stateChange.Account.IsEmpty && !isGenesis)
                         {
@@ -137,7 +136,7 @@ public partial class WorldState
 
                         break;
                     }
-                case StateChangeType.New:
+                case ChangeType.New:
                     {
                         if (!releaseSpec.IsEip158Enabled || !stateChange.Account.IsEmpty || isGenesis)
                         {
@@ -151,14 +150,14 @@ public partial class WorldState
 
                         break;
                     }
-                case StateChangeType.Delete:
+                case ChangeType.Delete:
                     {
                         if (_logger.IsTrace) _logger.Trace($"  Commit remove {stateChange.Address}");
                         bool wasItCreatedNow = false;
                         while (_intraBlockCacheForState[stateChange.Address].Count > 0)
                         {
                             int previousOne = _intraBlockCacheForState[stateChange.Address].Pop();
-                            wasItCreatedNow |= _stateChanges[previousOne].StateChangeType == StateChangeType.New;
+                            wasItCreatedNow |= _stateChanges[previousOne].ChangeType == ChangeType.New;
                             if (wasItCreatedNow)
                             {
                                 break;
@@ -362,12 +361,7 @@ public partial class WorldState
     public byte[] GetCode(Address address)
     {
         Account? account = GetThroughCache(address);
-        if (account is null)
-        {
-            return Array.Empty<byte>();
-        }
-
-        return GetCode(account.CodeHash);
+        return account is null ? Array.Empty<byte>() : GetCode(account.CodeHash);
     }
 
     public byte[] GetCode(Keccak codeHash)
@@ -399,7 +393,7 @@ public partial class WorldState
     {
         if (_intraBlockCacheForState.TryGetValue(address, out Stack<int> value))
         {
-            return _stateChanges[value.Peek()]!.StateChangeType != StateChangeType.Delete;
+            return _stateChanges[value.Peek()]!.ChangeType != ChangeType.Delete;
         }
 
         return GetAndAddToCache(address) is not null;
@@ -437,29 +431,7 @@ public partial class WorldState
         PushUpdate(address, changedAccount);
     }
 
-    private void CommitStateTree(long blockNumber)
-    {
-        if (_needsStateRootUpdate)
-        {
-            RecalculateStateRoot();
-        }
-
-        _stateTree.Commit(blockNumber);
-    }
-
-    private void ResetState()
-    {
-        if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
-        _intraBlockCacheForState.Reset();
-        _stateCommittedThisRound.Reset();
-        _stateReadsForTracing.Clear();
-        if (_codeDb is ReadOnlyDb db) db.ClearTempChanges();
-        _stateCurrentPosition = Resettable.EmptyPosition;
-        Array.Clear(_stateChanges, 0, _stateChanges.Length);
-        _needsStateRootUpdate = false;
-    }
-
-    internal void RestoreStateSnapshot(int snapshot)
+    internal void RestoreState(int snapshot)
     {
         if (snapshot > _stateCurrentPosition)
         {
@@ -477,7 +449,7 @@ public partial class WorldState
             StateChange stateChange = _stateChanges[_stateCurrentPosition - i];
             if (_intraBlockCacheForState[stateChange!.Address].Count == 1)
             {
-                if (stateChange.StateChangeType == StateChangeType.JustCache)
+                if (stateChange.ChangeType == ChangeType.JustCache)
                 {
                     int actualPosition = _intraBlockCacheForState[stateChange.Address].Pop();
                     if (actualPosition != _stateCurrentPosition - i)
@@ -664,45 +636,45 @@ public partial class WorldState
 
     private void PushJustCache(Address address, Account account)
     {
-        Push(StateChangeType.JustCache, address, account);
+        Push(ChangeType.JustCache, address, account);
     }
 
     private void PushUpdate(Address address, Account account)
     {
-        Push(StateChangeType.Update, address, account);
+        Push(ChangeType.Update, address, account);
     }
 
     private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
     {
         if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
-        Push(StateChangeType.Touch, address, account);
+        Push(ChangeType.Touch, address, account);
     }
 
     private void PushDelete(Address address)
     {
-        Push(StateChangeType.Delete, address, null);
+        Push(ChangeType.Delete, address, null);
     }
 
-    private void Push(StateChangeType stateChangeType, Address address, Account? touchedAccount)
+    private void Push(ChangeType changeType, Address address, Account? touchedAccount)
     {
-        SetupCache(address);
-        if (stateChangeType == StateChangeType.Touch
-            && _stateChanges[_intraBlockCacheForState[address].Peek()]!.StateChangeType == StateChangeType.Touch)
+        SetupAccountCache(address);
+        if (changeType == ChangeType.Touch
+            && _stateChanges[_intraBlockCacheForState[address].Peek()]!.ChangeType == ChangeType.Touch)
         {
             return;
         }
 
         IncrementStateChangePosition();
         _intraBlockCacheForState[address].Push(_stateCurrentPosition);
-        _stateChanges[_stateCurrentPosition] = new StateChange(stateChangeType, address, touchedAccount);
+        _stateChanges[_stateCurrentPosition] = new StateChange(changeType, address, touchedAccount);
     }
 
     private void PushNew(Address address, Account account)
     {
-        SetupCache(address);
+        SetupAccountCache(address);
         IncrementStateChangePosition();
         _intraBlockCacheForState[address].Push(_stateCurrentPosition);
-        _stateChanges[_stateCurrentPosition] = new StateChange(StateChangeType.New, address, account);
+        _stateChanges[_stateCurrentPosition] = new StateChange(ChangeType.New, address, account);
     }
 
     private void IncrementStateChangePosition()
@@ -710,7 +682,7 @@ public partial class WorldState
         Resettable<StateChange>.IncrementPosition(ref _stateChanges, ref _stateCapacity, ref _stateCurrentPosition);
     }
 
-    private void SetupCache(Address address)
+    private void SetupAccountCache(Address address)
     {
         if (!_intraBlockCacheForState.ContainsKey(address))
         {
@@ -736,25 +708,17 @@ public partial class WorldState
         public Account? After { get; }
     }
 
-    private enum StateChangeType
-    {
-        JustCache,
-        Touch,
-        Update,
-        New,
-        Delete
-    }
 
     private class StateChange
     {
-        public StateChange(StateChangeType type, Address address, Account? account)
+        public StateChange(ChangeType type, Address address, Account? account)
         {
-            StateChangeType = type;
+            ChangeType = type;
             Address = address;
             Account = account;
         }
 
-        public StateChangeType StateChangeType { get; }
+        public ChangeType ChangeType { get; }
         public Address Address { get; }
         public Account? Account { get; }
     }

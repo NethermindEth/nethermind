@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -21,6 +23,8 @@ namespace Nethermind.State;
 public partial class WorldState: IWorldState
 {
     private readonly ITrieStore _trieStore;
+    private readonly StateTree _stateTree;
+
     private readonly ILogManager? _logManager;
     private readonly ILogger _logger;
 
@@ -35,64 +39,81 @@ public partial class WorldState: IWorldState
 
     public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
     {
-        CommitStorage((IStorageTracer)NullStateTracer.Instance);
+        CommitStorage(NullStateTracer.Instance);
         CommitState(releaseSpec, isGenesis);
     }
 
 
-    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false)
+    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? stateTracer, bool isGenesis = false)
     {
+        IWorldStateTracer? tracer = stateTracer ?? NullStateTracer.Instance;
+        CommitStorage(tracer);
         CommitState(releaseSpec, tracer, isGenesis);
-        CommitStorage(tracer ?? (IStorageTracer)NullStateTracer.Instance);
     }
 
-
     /// <summary>
-    /// Commit persisent storage trees
+    /// Commit persistent state and storage trees
     /// </summary>
     /// <param name="blockNumber">Current block number</param>
     public void CommitTree(long blockNumber)
     {
-        // _logger.Warn($"Storage block commit {blockNumber}");
         foreach (KeyValuePair<Address, StorageTree> storage in _storages)
         {
             storage.Value.Commit(blockNumber);
         }
-
-        // TODO: maybe I could update storage roots only now?
-
         // only needed here as there is no control over cached storage size otherwise
         _storages.Reset();
 
-        CommitStateTree(blockNumber);
+        if (_needsStateRootUpdate) RecalculateStateRoot();
+        _stateTree.Commit(blockNumber);
     }
 
     public void Reset()
     {
-        if (_logger.IsTrace) _logger.Trace("Resetting storage");
+        if (_logger.IsTrace) _logger.Trace("clearing storage structures");
 
         _storageIntraBlockCache.Clear();
         _transactionChangesSnapshots.Clear();
-        _currentStoragePosition = -1;
+        _storageCurrentPosition = -1;
         Array.Clear(_storageChanges, 0, _storageChanges.Length);
-
         _storages.Reset();
         _originalValues.Clear();
         _storageCommittedThisRound.Clear();
 
-        ResetState();
+        if (_logger.IsTrace) _logger.Trace("clearing state structures");
+        _intraBlockCacheForState.Reset();
+        _stateCommittedThisRound.Reset();
+        _stateReadsForTracing.Clear();
+        if (_codeDb is ReadOnlyDb db) db.ClearTempChanges();
+        _stateCurrentPosition = Resettable.EmptyPosition;
+        Array.Clear(_stateChanges, 0, _stateChanges.Length);
+        _needsStateRootUpdate = false;
     }
 
     public void Restore(Snapshot snapshot)
     {
-        RestoreStateSnapshot(snapshot.StateSnapshot);
+        RestoreState(snapshot.StateSnapshot);
         RestoreStorage(snapshot.StorageSnapshot);
     }
 
     public Snapshot TakeSnapshot(bool newTransactionStart)
     {
-        int storageSnapshot = TakeStorageSnapshot(newTransactionStart);
-        return new Snapshot(_stateCurrentPosition, storageSnapshot);
+
+        if (_logger.IsTrace) _logger.Trace($"WorldStateSnapshot {_stateCurrentPosition} {_storageCurrentPosition}");
+        if (newTransactionStart && _storageCurrentPosition != Resettable.EmptyPosition)
+        {
+            _transactionChangesSnapshots.Push(_storageCurrentPosition);
+        }
+        return new Snapshot(_stateCurrentPosition, _storageCurrentPosition);
     }
 
+    private enum ChangeType
+    {
+        JustCache,
+        Touch,
+        Update,
+        New,
+        Delete,
+        Destroy
+    }
 }
