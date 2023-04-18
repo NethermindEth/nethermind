@@ -115,7 +115,7 @@ namespace Nethermind.Init.Steps
                     Persist.EveryBlock,
                     getApi.LogManager, 128);
 
-            TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
+            TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new TrieStoreBoundaryWatcher(trieStore, _api.BlockTree!, _api.LogManager);
             getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
             getApi.DisposeStack.Push(trieStore);
 
@@ -126,7 +126,7 @@ namespace Nethermind.Init.Steps
                 codeDb,
                 getApi.LogManager);
 
-            ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
+            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(getApi.DbProvider, false);
 
             IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
 
@@ -135,7 +135,7 @@ namespace Nethermind.Init.Steps
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
             stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-            _logger.Info($"Current Block: {getApi.BlockTree!.Head?.Number} {getApi.BlockTree!.Head?.StateRoot} {getApi.BlockTree!.Head?.Hash}");
+            _logger.Info($"Current Block: Number:{getApi.BlockTree!.Head?.Number} StateRoot:{getApi.BlockTree!.Head?.StateRoot} Hash:{getApi.BlockTree!.Head?.Hash}");
 
             void VerifyTrie()
             {

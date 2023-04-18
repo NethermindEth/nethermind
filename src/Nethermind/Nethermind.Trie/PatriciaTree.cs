@@ -1235,18 +1235,30 @@ namespace Nethermind.Trie
                         break;
                     case TrieNodeResolverCapability.Path:
                         rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
+
+                        ////
+                        TrieNode? testNode = new TrieNode(NodeType.Unknown, Array.Empty<byte>(), rootHash);
+                        testNode!.ResolveNode(TrieStore);
+                        testNode!.ResolveKey(TrieStore, true);
+                        _logger.Info($"Test Root Node: Key:{testNode.Key} Keccak:{testNode.Keccak} FullPath:{testNode.FullPath}");
+                        ///
                         _logger.Info($"Starting Visitor - Resolve RootNode - rh:{rootHash} crh:{RootHash}");
                         try
                         {
-                            _logger.Info($"rootRef Node:  {rootRef.NodeType}");
-                            if (rootRef.NodeType == NodeType.Unknown)
+                            _logger.Info($"fetched rootRef node type: {rootRef?.NodeType}");
+                            if (rootRef!.NodeType == NodeType.Unknown)
                             {
                                 rootRef!.ResolveNode(TrieStore);
                                 rootRef!.ResolveKey(TrieStore, true);
-                                _logger.Info($"rootRef resolve:  {rootRef.Keccak}");
+                                _logger.Info($"rootRef resolved keccak to:  {rootRef.Keccak}");
                                 if (rootRef.Keccak != rootHash)
+                                {
+                                    _logger.Info($"ERROR: wanted: {rootHash} got: {rootRef.Keccak}");
                                     throw new TrieException("Root ref hash mismatch!");
+                                }
                             }
+                            _logger.Info($"root node found:  {rootRef.Keccak}");
+
                         }
                         catch (TrieException)
                         {
