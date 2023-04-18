@@ -36,6 +36,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     private IntPtr? _rateLimiter;
     internal WriteOptions? WriteOptions { get; private set; }
+    internal WriteOptions? LowPriorityWriteOptions { get; private set; }
 
     internal DbOptions? DbOptions { get; private set; }
 
@@ -306,6 +307,10 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         WriteOptions.SetSync(dbConfig
             .WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
 
+        LowPriorityWriteOptions = new WriteOptions();
+        LowPriorityWriteOptions.SetSync(dbConfig.WriteAheadLogSync);
+        RocksDbSharp.Native.Instance.rocksdb_writeoptions_set_low_pri(LowPriorityWriteOptions.Handle, true);
+
         if (dbConfig.EnableDbStatistics)
         {
             options.EnableStatistics();
@@ -352,11 +357,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
             if (value is null)
             {
-                _db.Remove(key, null, WriteOptions);
+                _db.Remove(key, null, WriteFlagsToWriteOptions(flags));
             }
             else
             {
-                _db.Put(key, value, null, WriteOptions);
+                _db.Put(key, value, null, WriteFlagsToWriteOptions(flags));
             }
         }
         catch (RocksDbSharpException e)
@@ -365,6 +370,17 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             throw;
         }
     }
+
+    public WriteOptions? WriteFlagsToWriteOptions(WriteFlags flags)
+    {
+        if (flags == WriteFlags.LowPriority)
+        {
+            return LowPriorityWriteOptions;
+        }
+
+        return WriteOptions;
+    }
+
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
     {
@@ -598,6 +614,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     internal class RocksDbBatch : IBatch
     {
         private readonly DbOnTheRocks _dbOnTheRocks;
+        private WriteFlags _writeFlags = WriteFlags.None;
         private bool _isDisposed;
 
         internal readonly WriteBatch _rocksBatch;
@@ -629,7 +646,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
             try
             {
-                _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteOptions);
+                _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
                 _dbOnTheRocks._currentBatches.TryRemove(this);
                 _rocksBatch.Dispose();
             }
@@ -661,6 +678,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             {
                 _rocksBatch.Put(key, value);
             }
+
+            _writeFlags = flags;
         }
     }
 

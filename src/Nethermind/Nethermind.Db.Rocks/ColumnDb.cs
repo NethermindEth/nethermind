@@ -38,11 +38,11 @@ public class ColumnDb : IDbWithSpan
         UpdateWriteMetrics();
         if (value is null)
         {
-            _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
+            _rocksDb.Remove(key, _columnFamily, _mainDb.WriteFlagsToWriteOptions(flags));
         }
         else
         {
-            _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
+            _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteFlagsToWriteOptions(flags));
         }
     }
 
