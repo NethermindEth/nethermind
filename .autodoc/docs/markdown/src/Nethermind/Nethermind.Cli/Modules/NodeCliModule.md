@@ -1,0 +1,26 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Cli/Modules/NodeCliModule.cs)
+
+The `NodeCliModule` class is a module in the Nethermind project that provides a command-line interface (CLI) for interacting with a node. It contains several methods that allow the user to switch between nodes, set a node key, and retrieve information about the current node.
+
+The `SetNodeKey` method takes a private key as input, converts it to bytes, and writes it to a file called `node.key.plain`. This method is useful for setting the private key of a node, which is required for signing transactions and blocks.
+
+The `Switch` method takes a URI as input and switches the current node to the one specified by the URI. If the URI does not contain a port number, it defaults to port 8545. If the URI does not start with "http://" or "https://", it adds "http://" to the beginning. This method is useful for switching between nodes when running a local blockchain.
+
+The `SwitchLocal` method takes a URI as input and switches the current node to the one specified by the URI. It first checks if an environment variable called `NETHERMIND_CLI_SWITCH_LOCAL` is set. If it is, it uses the value of the variable as the base URI. If not, it defaults to "http://localhost". It then appends the input URI to the base URI and switches the node to the resulting URI. This method is useful for switching between nodes when running a local blockchain.
+
+The `Address` method returns the address of the current node in the form of a string. It first retrieves the current enode URL using the `Enode` method, then creates an `Enode` object from the URL and returns the address of the node.
+
+The `Enode` method retrieves the current enode URL from the node and returns it as a string. This method is useful for retrieving information about the current node.
+
+The `Uri` method returns the current URI of the node as a `JsValue`. This method is useful for retrieving information about the current node.
+
+Overall, the `NodeCliModule` class provides a convenient way for users to interact with a node through the command line. It allows users to switch between nodes, set node keys, and retrieve information about the current node. These methods are useful for developers who are building applications on top of the Nethermind blockchain.
+## Questions: 
+ 1. What is the purpose of this code file?
+- This code file is a module for the Nethermind CLI tool that provides functionality related to node management.
+
+2. What external libraries or dependencies does this code use?
+- This code uses the Jint and Nethermind libraries, as well as the System and System.IO namespaces.
+
+3. What functionality does this code provide to the user?
+- This code provides CLI functions for setting the node key, switching the node URI, and retrieving information about the current node address, enode, and URI.

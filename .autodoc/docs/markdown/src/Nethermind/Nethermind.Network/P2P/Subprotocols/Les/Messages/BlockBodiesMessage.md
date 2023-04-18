@@ -1,0 +1,29 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Network/P2P/Subprotocols/Les/Messages/BlockBodiesMessage.cs)
+
+The code defines a class called `BlockBodiesMessage` that represents a message in the LES (Light Ethereum Subprotocol) subprotocol of the P2P (Peer-to-Peer) network in the Nethermind project. The LES subprotocol is used for fast synchronization of Ethereum nodes.
+
+The `BlockBodiesMessage` class inherits from the `P2PMessage` class and overrides its `PacketType` and `Protocol` properties to specify the type and protocol of the message. The class also has three properties: `EthMessage`, `RequestId`, and `BufferValue`.
+
+The `EthMessage` property is of type `Eth.V62.Messages.BlockBodiesMessage` and represents the actual block bodies data that is being sent in the message. The `RequestId` property is of type `long` and represents a unique identifier for the request that this message is responding to. The `BufferValue` property is of type `int` and represents the maximum size of the message buffer.
+
+The `BlockBodiesMessage` class has two constructors. The default constructor takes no arguments and does nothing. The second constructor takes three arguments: an `Eth.V62.Messages.BlockBodiesMessage` object representing the block bodies data, a `long` representing the request ID, and an `int` representing the maximum size of the message buffer. This constructor initializes the `EthMessage`, `RequestId`, and `BufferValue` properties with the corresponding arguments.
+
+Overall, the `BlockBodiesMessage` class is used to represent a message containing block bodies data in the LES subprotocol of the Nethermind P2P network. It can be used to send and receive block bodies data between Ethereum nodes for fast synchronization. An example usage of this class might be:
+
+```
+var ethMessage = new Eth.V62.Messages.BlockBodiesMessage(blockBodiesData);
+var requestId = 12345;
+var bufferValue = 1024;
+var message = new BlockBodiesMessage(ethMessage, requestId, bufferValue);
+```
+
+This creates a new `BlockBodiesMessage` object with the given block bodies data, request ID, and buffer value. The message can then be sent over the P2P network to another Ethereum node for synchronization.
+## Questions: 
+ 1. What is the purpose of the `BlockBodiesMessage` class?
+   - The `BlockBodiesMessage` class is a subprotocol message used in the Nethermind network's P2P communication for the Les protocol to transmit block bodies.
+
+2. What is the `EthMessage` property used for?
+   - The `EthMessage` property is used to store an instance of the `Eth.V62.Messages.BlockBodiesMessage` class, which contains the actual block bodies being transmitted.
+
+3. What is the significance of the `RequestId` and `BufferValue` properties?
+   - The `RequestId` property is used to uniquely identify the request for which this message is a response, while the `BufferValue` property is used to specify the maximum size of the response buffer.

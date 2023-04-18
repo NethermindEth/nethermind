@@ -1,0 +1,18 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Mining.Test/GasLimitCalculatorTests.cs)
+
+The `GasLimitCalculatorTests` class is a unit test suite for the `TargetAdjustedGasLimitCalculator` class in the Nethermind project. The purpose of this class is to test the `GetGasLimit` method of the `TargetAdjustedGasLimitCalculator` class, which calculates the gas limit for a new block based on the current block's gas limit and the target gas limit specified in the `BlocksConfig` object.
+
+The `GasLimitCalculatorTests` class contains a single test method called `Test`, which takes three arguments: `current`, `target`, and `expected`. These arguments represent the current gas limit, target gas limit, and expected gas limit for a new block, respectively. The `Test` method creates a new `BlocksConfig` object with the specified target gas limit, creates a new `TargetAdjustedGasLimitCalculator` object with the `MainnetSpecProvider` and `BlocksConfig` objects, and creates a new `BlockHeader` object with the specified current gas limit. The `Test` method then calls the `GetGasLimit` method of the `TargetAdjustedGasLimitCalculator` object with the `BlockHeader` object as an argument and asserts that the result is equal to the expected gas limit.
+
+The `GasLimitCalculatorTests` class uses the `FluentAssertions` library to make the assertions in the `Test` method more readable. The `NUnit.Framework` namespace is also used to define the `TestFixture` and `TestCase` attributes, which are used to define the test suite and test cases, respectively.
+
+Overall, the `GasLimitCalculatorTests` class is an important part of the Nethermind project's testing infrastructure, as it ensures that the `TargetAdjustedGasLimitCalculator` class is working correctly and producing the expected results. By running this test suite, developers can be confident that the gas limit calculation logic is correct and that the blockchain will function as expected.
+## Questions: 
+ 1. What is the purpose of the GasLimitCalculatorTests class?
+    - The GasLimitCalculatorTests class is a test class that contains a Test method to test the GetGasLimit method of the TargetAdjustedGasLimitCalculator class.
+
+2. What is the significance of the TestCases in the Test method?
+    - The TestCases attribute specifies the input values for the Test method and the expected output values. The Test method is executed for each set of input values, and the output is compared with the expected value.
+
+3. What is the purpose of the FluentAssertions namespace?
+    - The FluentAssertions namespace provides a set of extension methods that allow developers to write more readable and expressive assertions in their tests. It enhances the readability of the test code and makes it easier to understand the intent of the test.

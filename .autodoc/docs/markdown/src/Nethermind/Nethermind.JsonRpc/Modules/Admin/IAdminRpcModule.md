@@ -1,0 +1,28 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.JsonRpc/Modules/Admin/IAdminRpcModule.cs)
+
+The code defines an interface for an Admin RPC module in the Nethermind project. The module provides several methods for managing nodes and displaying information about the current node.
+
+The `admin_addPeer` method adds a given node to the list of connected peers. The `enode` parameter is a string representing the node to be added, and the `addToStaticNodes` parameter is a boolean indicating whether the node should be added to the list of static nodes. The method returns a `ResultWrapper` object containing a string representing the added node.
+
+The `admin_removePeer` method removes a given node from the list of connected peers. The `enode` parameter is a string representing the node to be removed, and the `removeFromStaticNodes` parameter is a boolean indicating whether the node should be removed from the list of static nodes. The method returns a `ResultWrapper` object containing a string representing the removed node.
+
+The `admin_peers` method displays a list of connected peers, including information about each peer such as its client ID, host, port, address, and whether it is a bootnode or static node. The `includeDetails` parameter is a boolean indicating whether additional details such as client type, eth details, and last signal should be included. The method returns a `ResultWrapper` object containing an array of `PeerInfo` objects representing the connected peers.
+
+The `admin_nodeInfo` method displays relevant information about the current node, such as its enode, ID, IP address, and listen address. The method returns a `ResultWrapper` object containing a `NodeInfo` object representing the current node.
+
+The `admin_dataDir` method returns the base data directory path, but it is not implemented.
+
+The `admin_setSolc` method is deprecated and not implemented.
+
+The `admin_prune` method runs full pruning if enabled and returns a `ResultWrapper` object containing a `PruningStatus` object representing the status of the pruning operation.
+
+Overall, this interface provides a set of methods for managing nodes and displaying information about the current node in the Nethermind project. These methods can be used by other modules or components in the project to interact with the node and its peers.
+## Questions: 
+ 1. What is the purpose of this code file?
+- This code file defines an interface for an Admin JSON-RPC module in the Nethermind project, which includes methods for adding and removing peers, displaying peer information, displaying node information, and running full pruning.
+
+2. What is the expected input and output for the `admin_addPeer` method?
+- The `admin_addPeer` method expects a string `enode` parameter representing the node to add, and an optional boolean `addToStaticNodes` parameter. It returns a `ResultWrapper<string>` object representing the added node.
+
+3. What is the purpose of the `admin_setSolc` method?
+- The `admin_setSolc` method is deprecated and not implemented, so its purpose is unclear.

@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Synchronization/Blocks/BlocksSyncPeerSelectionStrategy.cs)
+
+The `BlocksSyncPeerAllocationStrategy` class is a part of the Nethermind project and is used to allocate peers for block synchronization. It implements the `IPeerAllocationStrategy` interface, which defines the method for selecting the best peer for synchronization. 
+
+The `Allocate` method takes in a current peer, a list of peers, an instance of `INodeStatsManager`, and an instance of `IBlockTree`. It returns the best peer for synchronization based on certain criteria. The method first checks if the `minBlocksAhead` parameter is set and if the peer's head number is greater than or equal to the current head number plus `minBlocksAhead`. If not, the peer is skipped. 
+
+The method then calculates the average transfer speed of each peer and stores the fastest peer and the peer with the highest total difficulty. If the difference in total difficulty between the best peer and the local node is less than or equal to 16 blocks and the best peer's transfer speed is greater than the average transfer speed of all peers, the best peer is returned. Otherwise, if the speed ratio between the fastest peer and the current peer is greater than 1.1 and the difference in transfer speed is greater than 10, the fastest peer is returned. If none of these conditions are met, the current peer is returned if it exists, otherwise the fastest peer is returned.
+
+The `GetSpeed` method calculates the total transfer speed of a peer by adding the average transfer speed of headers and bodies. If the average transfer speed of either headers or bodies is not available, it is assumed to be zero.
+
+Overall, the `BlocksSyncPeerAllocationStrategy` class is an important part of the Nethermind project as it helps to efficiently allocate peers for block synchronization.
+## Questions: 
+ 1. What is the purpose of this code file?
+- This code file contains a class called `BlocksSyncPeerAllocationStrategy` which implements the `IPeerAllocationStrategy` interface. It is used for allocating peers for block synchronization.
+
+2. What is the significance of the `minBlocksAhead` parameter in the constructor?
+- The `minBlocksAhead` parameter is used to filter out peers that are not ahead of the local node by at least the specified number of blocks. This is to ensure that the local node can download some blocks ahead.
+
+3. What is the purpose of the `fastestPeer` and `bestDiffPeer` variables?
+- The `fastestPeer` variable keeps track of the peer with the highest average transfer speed, while the `bestDiffPeer` variable keeps track of the peer with the highest total difficulty. These variables are used to determine which peer to allocate for block synchronization based on transfer speed and difficulty difference.

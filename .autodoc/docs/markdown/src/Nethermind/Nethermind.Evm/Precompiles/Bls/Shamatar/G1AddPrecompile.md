@@ -1,0 +1,29 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Evm/Precompiles/Bls/Shamatar/G1AddPrecompile.cs)
+
+The code above is a C# implementation of the Ethereum Improvement Proposal (EIP) 2537, which proposes a precompiled contract for the addition of points in the G1 group of the BLS12-381 elliptic curve. The purpose of this precompiled contract is to provide a more efficient way of performing this operation on-chain, as it requires a significant amount of computation.
+
+The code is part of the Nethermind project, which is an Ethereum client implementation written in C#. The code defines a class called `G1AddPrecompile`, which implements the `IPrecompile` interface. This interface defines the methods that a precompiled contract must implement in order to be used by the Ethereum Virtual Machine (EVM).
+
+The `G1AddPrecompile` class has a private constructor and a public static instance called `Instance`. It also has a public `Address` property, which returns the Ethereum address of the precompiled contract. In this case, the address is `10`.
+
+The `BaseGasCost` method returns the base gas cost of the precompiled contract, which is `600L`. The `DataGasCost` method returns the data gas cost of the precompiled contract, which is `0L` in this case, as the contract does not require any input data.
+
+The `Run` method is the main method of the precompiled contract, which performs the addition of two points in the G1 group. The method takes an input data parameter, which is a byte array containing the two points to be added. The method first checks if the length of the input data is correct, which should be `4 * BlsParams.LenFp`, where `BlsParams.LenFp` is the length of a field element in the BLS12-381 curve. If the length is incorrect, the method returns an empty byte array and a `false` boolean value.
+
+If the length is correct, the method calls the `ShamatarLib.BlsG1Add` method, which is a native C++ implementation of the BLS12-381 elliptic curve operations. This method takes the input data as a span of bytes and returns a boolean value indicating whether the operation was successful or not, as well as the result of the operation as a span of bytes.
+
+If the operation was successful, the method returns the result as a byte array and a `true` boolean value. Otherwise, it returns an empty byte array and a `false` boolean value.
+
+In summary, the `G1AddPrecompile` class provides an implementation of the EIP 2537 precompiled contract for the addition of points in the G1 group of the BLS12-381 elliptic curve. The class defines the methods required by the `IPrecompile` interface and uses a native C++ implementation of the elliptic curve operations to perform the addition. This precompiled contract can be used by the Ethereum Virtual Machine to perform this operation more efficiently on-chain.
+## Questions: 
+ 1. What is the purpose of this code?
+    
+    This code defines a precompiled contract for the Ethereum Virtual Machine (EVM) that implements the G1 addition operation for the BLS12-381 elliptic curve.
+
+2. What is the expected input length for this precompiled contract?
+    
+    The expected input length for this precompiled contract is 4 times the length of the Fp field of the BLS12-381 curve.
+
+3. What is the gas cost of running this precompiled contract?
+    
+    The base gas cost of running this precompiled contract is 600 gas units, and the data gas cost is 0 gas units.

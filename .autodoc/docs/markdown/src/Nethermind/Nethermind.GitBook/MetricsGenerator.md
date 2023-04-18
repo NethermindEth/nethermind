@@ -1,0 +1,23 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.GitBook/MetricsGenerator.cs)
+
+The `MetricsGenerator` class is responsible for generating documentation for metrics related to the Nethermind project. It takes in an instance of the `SharedContent` class, which is used to save the generated documentation. 
+
+The `Generate` method is the entry point for generating the documentation. It first finds the directory where the documentation should be saved by calling the `FindDocsDir` method of the `DocsDirFinder` class. It then retrieves all the DLL files in the current application domain that match the pattern "Nethermind.*.dll". For each DLL file, it loads the assembly and retrieves all the exported types that have the name "Metrics". For each of these types, it calls the `GenerateDocFileContent` method to generate the documentation.
+
+The `GenerateDocFileContent` method takes in a `Type` object representing a metrics type and the directory where the documentation should be saved. It first retrieves all the properties of the metrics type and sorts them by name. It then generates a markdown table with two columns: "Metric" and "Description". For each property, it retrieves the `DescriptionAttribute` and adds a row to the table with the name of the property and its description. Finally, it saves the generated documentation to a file using the `Save` method of the `SharedContent` class.
+
+The `GetMetricName` method is a helper method that takes in a property name and generates a metric name in snake_case format. It prefixes the name with "nethermind" and inserts an underscore before each uppercase letter.
+
+Overall, the `MetricsGenerator` class is an important component of the Nethermind project's documentation system. It automates the generation of documentation for metrics related to the project, which saves time and ensures consistency. The generated documentation can be used by developers and users of the project to understand the various metrics that are available and how to use them.
+## Questions: 
+ 1. What is the purpose of the `MetricsGenerator` class?
+    
+    The `MetricsGenerator` class is responsible for generating documentation for metrics in Nethermind modules.
+
+2. What is the `Generate()` method doing?
+    
+    The `Generate()` method is finding all the Nethermind DLLs in the current directory, loading them, and generating documentation for the metrics in each module.
+
+3. What is the purpose of the `GetMetricName()` method?
+    
+    The `GetMetricName()` method is converting a metric property name to a standardized format for use in the generated documentation.

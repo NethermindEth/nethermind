@@ -1,0 +1,38 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Evm/AddressExtensions.cs)
+
+The `ContractAddress` class in the Nethermind project provides two static methods for generating Ethereum contract addresses. 
+
+The first method, `From(Address? deployingAddress, in UInt256 nonce)`, takes an optional `deployingAddress` parameter and a `nonce` parameter. It returns an Ethereum address that is derived from the `deployingAddress` and `nonce` values. The `deployingAddress` parameter is the address of the account that is deploying the contract, and the `nonce` parameter is a unique value that is incremented each time a contract is deployed from that account. The resulting address is deterministic and can be calculated by anyone who knows the `deployingAddress` and `nonce` values. This method is useful for generating contract addresses for contracts that are deployed using the `CREATE` opcode.
+
+Here is an example of how to use this method:
+
+```
+Address deployingAddress = new Address("0x1234567890123456789012345678901234567890");
+UInt256 nonce = UInt256.FromInt32(0);
+Address contractAddress = ContractAddress.From(deployingAddress, nonce);
+```
+
+The second method, `From(Address deployingAddress, Span<byte> salt, Span<byte> initCode)`, takes a `deployingAddress` parameter, a `salt` parameter, and an `initCode` parameter. It returns an Ethereum address that is derived from the `deployingAddress`, `salt`, and `initCode` values. The `deployingAddress` parameter is the address of the account that is deploying the contract, the `salt` parameter is a user-defined value that is used to create a unique contract address, and the `initCode` parameter is the bytecode that defines the contract's initial state. The resulting address is deterministic and can be calculated by anyone who knows the `deployingAddress`, `salt`, and `initCode` values. This method is useful for generating contract addresses for contracts that are deployed using the `CREATE2` opcode.
+
+Here is an example of how to use this method:
+
+```
+Address deployingAddress = new Address("0x1234567890123456789012345678901234567890");
+Span<byte> salt = new byte[] { 0x01, 0x23, 0x45 };
+Span<byte> initCode = new byte[] { 0x60, 0x60, 0x60, 0x40, 0x52 };
+Address contractAddress = ContractAddress.From(deployingAddress, salt, initCode);
+```
+
+Overall, the `ContractAddress` class provides a convenient way to generate deterministic Ethereum contract addresses for use in the Nethermind project.
+## Questions: 
+ 1. What is the purpose of the `ContractAddress` class?
+    
+    The `ContractAddress` class provides two static methods for generating contract addresses on the Ethereum Virtual Machine (EVM).
+
+2. What is the difference between the two `From` methods in the `ContractAddress` class?
+    
+    The first `From` method takes an optional `deployingAddress` parameter and a `nonce` parameter, and generates a contract address based on the hash of the concatenation of the two parameters. The second `From` method takes a `deployingAddress` parameter, a `salt` parameter, and an `initCode` parameter, and generates a contract address based on the hash of the concatenation of the `deployingAddress`, `salt`, and the hash of the `initCode`.
+
+3. What is the purpose of the `ValueKeccak` class?
+    
+    The `ValueKeccak` class provides a method for computing the Keccak-256 hash of a given input value. It is used in both `From` methods of the `ContractAddress` class to generate the contract address.

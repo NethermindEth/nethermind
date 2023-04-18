@@ -1,0 +1,24 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Core/Collections/IListExtensions.cs)
+
+The code in this file provides several extension methods for working with lists and arrays in the Nethermind project. 
+
+The `ForEach` method is an extension method for `IReadOnlyList<T>` that allows a specified action to be performed on each element of the list. This method can be used to perform a specific operation on each element of a list without having to write a loop to iterate through the list.
+
+The `GetItemRoundRobin` method is an extension method for `IList<T>` that returns an item from the list based on a specified index. If the index is greater than the number of items in the list, the index is wrapped around to the beginning of the list. This method can be used to implement round-robin selection of items from a list.
+
+The `BinarySearch` method is an extension method for `IList<TItem>` that performs a binary search on the list to find a specified value. This method takes a `Func<TSearch, TItem, int>` comparer that is used to compare the value with the items in the list. There are three overloads of this method: one that takes a comparer, one that uses the default comparer for the type, and one that takes only the value to search for.
+
+The `TryGetSearchedItem` method is an extension method for `IList<TComparable>` that attempts to find a specified item in the list using a binary search. This method takes a `Func<TComparable, T, int>` comparer that is used to compare the searched item with the items in the list. If the item is found, it is returned and the method returns `true`. If the item is not found, the method returns `false` and the `out` parameter is set to `default`. There are two overloads of this method: one that takes a comparer and one that uses the default comparer for the type.
+
+The `TryGetForBlock` method is an extension method for `IList<long>` that attempts to find a specified block number in the list using a binary search. This method is a specialized version of `TryGetSearchedItem` that uses a `long` type and the default comparer.
+
+Overall, these extension methods provide useful functionality for working with lists and arrays in the Nethermind project. They can be used to perform common operations on lists and to search for specific items in a list efficiently.
+## Questions: 
+ 1. What is the purpose of the `ListExtensions` class?
+- The `ListExtensions` class provides extension methods for `IList` and `IReadOnlyList` interfaces.
+
+2. What is the purpose of the `BinarySearch` method?
+- The `BinarySearch` method performs a binary search on a specified collection and returns the index of the searched item.
+
+3. What is the purpose of the `TryGetSearchedItem` method?
+- The `TryGetSearchedItem` method attempts to retrieve the searched item from a list using a binary search and returns a boolean indicating whether the item was found or not.

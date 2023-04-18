@@ -1,0 +1,22 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Blockchain/Contracts/CallableContract.cs)
+
+The `CallableContract` class is an abstract class that extends the `Contract` class and provides additional functionality for calling functions in a contract. It is part of the Nethermind project and is used to interact with smart contracts on the Ethereum blockchain.
+
+The class has a constructor that takes an `ITransactionProcessor`, an `IAbiEncoder`, and an `Address` object as parameters. The `ITransactionProcessor` is used to process transactions, the `IAbiEncoder` is used to encode and decode function calls, and the `Address` object represents the address where the contract is deployed.
+
+The class provides several methods for calling functions in a contract. The `Call` method takes a `BlockHeader`, a function name, a sender address, a gas limit, and a list of arguments as parameters. It generates a transaction using the `GenerateTransaction` method and then calls the `CallCore` method to execute the transaction. The `CallCore` method uses the `ITransactionProcessor` to execute the transaction and returns the result.
+
+The `TryCall` method is similar to the `Call` method, but it returns a boolean value indicating whether the function call was successful or not. If the function call was successful, it also returns the result of the function call.
+
+The `EnsureSystemAccount` method is used to create a system account if it does not already exist. It takes an `IStateProvider` object as a parameter and creates an account with the `Address.SystemUser` address if it does not already exist.
+
+Overall, the `CallableContract` class provides a convenient way to interact with smart contracts on the Ethereum blockchain. It abstracts away some of the low-level details of working with contracts and provides a simple interface for calling functions and creating system accounts.
+## Questions: 
+ 1. What is the purpose of the `CallableContract` class?
+- The `CallableContract` class is an abstract class that extends the `Contract` class and provides methods for calling functions in a contract with state modification allowed.
+
+2. What is the role of the `_transactionProcessor` field?
+- The `_transactionProcessor` field is an instance of the `ITransactionProcessor` interface that is used to process transactions when calling functions in the contract.
+
+3. What is the purpose of the `TryCall` method?
+- The `TryCall` method is a variation of the `Call` method that returns false instead of throwing an `AbiException` if the function call is not successful. It also takes an additional `out` parameter for the deserialized return value of the function.

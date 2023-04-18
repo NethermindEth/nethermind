@@ -1,0 +1,23 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Core/StorageCell.cs)
+
+The code above defines a struct called `StorageCell` that represents a storage cell in the Ethereum Virtual Machine (EVM). A storage cell is a key-value pair that is used to store persistent data on the blockchain. The `StorageCell` struct has two properties: `Address` and `Index`. The `Address` property represents the address of the contract that the storage cell belongs to, while the `Index` property represents the index of the storage cell within the contract's storage.
+
+The `StorageCell` struct implements the `IEquatable` interface, which allows instances of the struct to be compared for equality. The `Equals` method is overridden to compare the `Index` and `Address` properties of two `StorageCell` instances. The `GetHashCode` method is also overridden to generate a hash code based on the `Address` and `Index` properties.
+
+The `ToString` method is overridden to return a string representation of the `StorageCell` instance in the format of "{Address}.{Index}". This is useful for debugging and logging purposes.
+
+The `DebuggerDisplay` attribute is used to provide a custom display string for instances of the `StorageCell` struct when viewed in the debugger. The display string is "{Address}->{Index}", which shows the `Address` and `Index` properties separated by an arrow.
+
+This code is likely used in the larger Nethermind project to represent storage cells in the EVM. It provides a convenient and efficient way to work with storage cells in C# code. For example, a contract's storage can be accessed using a `Dictionary<StorageCell, UInt256>` where the `StorageCell` key represents the storage cell and the `UInt256` value represents the data stored in the cell. The `StorageCell` struct can also be used to implement various algorithms and data structures that operate on EVM storage.
+## Questions: 
+ 1. What is the purpose of the `StorageCell` struct?
+    
+    The `StorageCell` struct represents a storage cell in Ethereum's state trie, identified by an address and an index.
+
+2. What is the significance of the `DebuggerDisplay` attribute on the `StorageCell` struct?
+    
+    The `DebuggerDisplay` attribute specifies how the `StorageCell` struct should be displayed in the debugger, in this case as "{Address}->{Index}".
+
+3. What is the `UInt256` type used for in this code?
+    
+    The `UInt256` type is used to represent a 256-bit unsigned integer, which is the size of an Ethereum storage slot. It is used to define the `Index` property of the `StorageCell` struct.

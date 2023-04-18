@@ -1,0 +1,21 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Core/Resettables/Resettable.cs)
+
+The code defines two classes, `Resettable` and `Resettable<T>`, that provide functionality for resetting arrays. The `Resettable` class defines some constants that are used by the `Resettable<T>` class. The `Resettable<T>` class is a generic class that provides two methods, `IncrementPosition` and `Reset`, for resetting arrays of type `T`.
+
+The `IncrementPosition` method takes in an array, a current capacity, and a current position. It increments the current position and checks if the current position is greater than or equal to the current capacity minus one. If it is, the current capacity is multiplied by the reset ratio (which is defined in the `Resettable` class) until the current position is less than the current capacity minus one. If the new current capacity is greater than the length of the array, the array is resized using an `ArrayPool` (which is a .NET class that provides arrays that can be reused across multiple threads). The old array is copied to the new array, the old array is cleared, and the old array is returned to the `ArrayPool`.
+
+The `Reset` method takes in an array, a current capacity, a current position, and an optional start capacity (which is also defined in the `Resettable` class). It clears the array and checks if the current position is less than the current capacity divided by the reset ratio and if the current capacity is greater than the start capacity. If it is, the array is returned to the `ArrayPool`, the current capacity is set to the maximum of the start capacity and the current capacity divided by the reset ratio, and a new array is rented from the `ArrayPool`.
+
+These methods can be used to reset arrays that are used in performance-critical code. By reusing arrays instead of creating new ones, memory allocation and garbage collection can be reduced, which can improve performance. For example, the `Resettable<T>` class could be used in a blockchain node to reset arrays that are used to store transaction data.
+## Questions: 
+ 1. What is the purpose of the `Resettable` class and what are its constants used for?
+   
+   The `Resettable` class contains constants used in the `Resettable<T>` class, such as `ResetRatio`, `StartCapacity`, and `EmptyPosition`. These constants are used to manage the resizing and resetting of arrays.
+
+2. What is the purpose of the `IncrementPosition` method and how does it work?
+   
+   The `IncrementPosition` method is used to increment the current position of an array and resize the array if necessary. If the current position is greater than or equal to the current capacity minus one, the current capacity is multiplied by the reset ratio. If the new capacity is greater than the length of the array, a new array is rented from the array pool, the old array is copied to the new array, and the old array is returned to the array pool.
+
+3. What is the purpose of the `Reset` method and how does it work?
+   
+   The `Reset` method is used to reset an array to its initial state and resize the array if necessary. If the current position is less than the current capacity divided by the reset ratio and the current capacity is greater than the start capacity, the array is returned to the array pool and a new array is rented from the array pool with a new capacity equal to the maximum of the start capacity and the current capacity divided by the reset ratio. The current position is set to the empty position constant.

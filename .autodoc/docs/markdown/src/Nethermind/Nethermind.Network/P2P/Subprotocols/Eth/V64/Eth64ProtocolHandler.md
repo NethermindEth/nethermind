@@ -1,0 +1,25 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Network/P2P/Subprotocols/Eth/V64/Eth64ProtocolHandler.cs)
+
+The `Eth64ProtocolHandler` class is a part of the Nethermind project and is used to handle the Ethereum subprotocol for version 64. This class extends the `Eth63ProtocolHandler` class and adds support for the Ethereum Improvement Proposal (EIP) 2364. 
+
+The purpose of this class is to provide a way for nodes to communicate with each other using the Ethereum subprotocol for version 64. This is important because it allows nodes to stay in sync with each other and share information about the state of the blockchain. 
+
+The `Eth64ProtocolHandler` class takes in several parameters, including an `ISession` object, an `IMessageSerializationService` object, an `INodeStatsManager` object, an `ISyncServer` object, an `ITxPool` object, an `IGossipPolicy` object, a `ForkInfo` object, and an `ILogManager` object. These parameters are used to initialize the class and provide it with the necessary information to handle the Ethereum subprotocol for version 64.
+
+The `Name` property returns the name of the subprotocol, which is "eth64". The `ProtocolVersion` property returns the version number of the subprotocol, which is 64.
+
+The `EnrichStatusMessage` method is overridden from the `Eth63ProtocolHandler` class and is used to add the fork ID to the status message. The fork ID is obtained from the `ForkInfo` object and is used to identify the current fork of the Ethereum blockchain. 
+
+Overall, the `Eth64ProtocolHandler` class is an important part of the Nethermind project as it provides support for the Ethereum subprotocol for version 64. This allows nodes to communicate with each other and stay in sync with the state of the blockchain.
+## Questions: 
+ 1. What is the purpose of this code file?
+    
+    This code file contains the implementation of the `Eth64ProtocolHandler` class, which is a subprotocol handler for the Ethereum P2P network.
+
+2. What is the difference between `Eth64ProtocolHandler` and `Eth63ProtocolHandler`?
+    
+    `Eth64ProtocolHandler` is a subclass of `Eth63ProtocolHandler` and adds support for a new Ethereum fork specified by the `ForkInfo` parameter. 
+
+3. What is the significance of the `ForkInfo` parameter in the constructor?
+    
+    The `ForkInfo` parameter is used to specify information about a new Ethereum fork that is supported by this subprotocol handler. This information is used to enrich the status message sent to other nodes in the network.

@@ -1,0 +1,18 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Blockchain.Test/Proofs/WithdrawalTrieTests.cs)
+
+The `WithdrawalTrieTests` class is a set of unit tests for the `WithdrawalTrie` class in the Nethermind project. The `WithdrawalTrie` class is responsible for computing the Merkle root hash of a set of withdrawals, and for generating and verifying Merkle proofs for individual withdrawals.
+
+The first test in the `WithdrawalTrieTests` class, `Should_compute_hash_root()`, tests that the `WithdrawalTrie` class correctly computes the Merkle root hash of a set of withdrawals. It does this by creating a block with 10 withdrawals using the `Build.A.Block.WithWithdrawals(10)` method, and then creating a `WithdrawalTrie` instance with those withdrawals. It then asserts that the computed root hash matches the expected value.
+
+The second test in the `WithdrawalTrieTests` class, `Should_verify_proof()`, tests that the `WithdrawalTrie` class correctly generates and verifies Merkle proofs for individual withdrawals. It does this by creating a block with 10 withdrawals using the `Build.A.Block.WithWithdrawals(10)` method, and then creating a `WithdrawalTrie` instance with those withdrawals and with proof generation enabled. It then iterates over each withdrawal, generates a proof for that withdrawal using the `BuildProof()` method of the `WithdrawalTrie` instance, and verifies the proof using the `VerifyProof()` method. The `VerifyProof()` method takes a Merkle proof and a Merkle root hash, and verifies that the proof is valid for the given root hash.
+
+Overall, the `WithdrawalTrieTests` class tests the functionality of the `WithdrawalTrie` class in computing Merkle root hashes and generating and verifying Merkle proofs for individual withdrawals. These tests ensure that the `WithdrawalTrie` class is working correctly and can be used in the larger Nethermind project to compute and verify Merkle proofs for withdrawals.
+## Questions: 
+ 1. What is the purpose of the `WithdrawalTrie` class?
+- The `WithdrawalTrie` class is used to compute the Merkle root hash of a list of withdrawals.
+
+2. What is the significance of the `VerifyProof` method?
+- The `VerifyProof` method is used to verify a Merkle proof for a withdrawal.
+
+3. What is the purpose of the `Timeout` attribute in the test methods?
+- The `Timeout` attribute is used to specify the maximum time allowed for the test to run before it is considered a failure.

@@ -1,0 +1,27 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/IDebugRpcModule.cs)
+
+The code defines an interface for the Debug RPC module of the Nethermind project. The Debug RPC module provides various methods for debugging and tracing Ethereum transactions and blocks. The module is used to retrieve information about the state of the blockchain, to debug smart contracts, and to diagnose issues with the node.
+
+The interface defines several methods that can be called remotely via JSON-RPC. These methods include:
+
+- `debug_getChainLevel`: Retrieves a representation of tree branches on a given chain level.
+- `debug_deleteChainSlice`: Deletes a slice of a chain from the tree on all branches.
+- `debug_resetHead`: Updates / resets head block - use only when the node got stuck due to DB / memory corruption.
+- `debug_traceTransaction`: Attempts to run the transaction in the exact same manner as it was executed on the network.
+- `debug_traceCall`: Lets you run an eth_call within the context of the given block execution using the final state of parent block as the base.
+- `debug_traceBlock`: Returns the full stack trace of all invoked opcodes of all transactions that were included in the block specified.
+- `debug_getBlockRlp`: Retrieves a block in the RLP-serialized form.
+- `debug_getConfigValue`: Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled.
+
+The methods are annotated with descriptions of their functionality, and some are marked as implemented or not implemented. The interface also defines the expected input and output types for each method.
+
+Overall, this code provides a way for developers to remotely debug and trace Ethereum transactions and blocks using the Nethermind node. It is an important part of the Nethermind project's toolset for developers and node operators.
+## Questions: 
+ 1. What is the purpose of the `IDebugRpcModule` interface?
+- The `IDebugRpcModule` interface defines a set of methods that can be used for debugging and tracing Ethereum transactions and blocks.
+
+2. What is the difference between `debug_traceTransaction` and `debug_traceCall` methods?
+- The `debug_traceTransaction` method replays a specific transaction and all transactions that were executed prior to it, while the `debug_traceCall` method lets you run an `eth_call` within the context of a given block execution.
+
+3. What is the purpose of the `debug_insertReceipts` method?
+- The `debug_insertReceipts` method is used to insert receipts for a specific block after verifying the correctness of the receipts root.

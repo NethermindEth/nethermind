@@ -1,0 +1,21 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Evm/Precompiles/Bls/Shamatar/MapToG1Precompile.cs)
+
+The `MapToG1Precompile` class is a precompile contract that implements the EIP-2537 standard. This precompile is used to map a 256-bit input to a point on the G1 curve of the BLS12-381 elliptic curve. The precompile is used in the Ethereum Virtual Machine (EVM) to enable efficient verification of BLS signatures.
+
+The `MapToG1Precompile` class implements the `IPrecompile` interface, which defines the methods required for a precompile contract. The `Address` property returns the address of the precompile contract, which is `0x11` in this case. The `BaseGasCost` method returns the base gas cost of executing the precompile, which is `5500` in this case. The `DataGasCost` method returns the additional gas cost of executing the precompile based on the size of the input data, which is `0` in this case. The `Run` method executes the precompile and returns the output data and a boolean indicating whether the execution was successful.
+
+The `Run` method first checks that the input data is of the expected length, which is `64` bytes. If the input data is not of the expected length, the method returns an empty byte array and `false`. Otherwise, the method calls the `ShamatarLib.BlsMapToG1` method to map the input data to a point on the G1 curve. The output data is a byte array of length `128`, which represents the x and y coordinates of the point on the curve. If the mapping is successful, the method returns the output data and `true`. Otherwise, the method returns an empty byte array and `false`.
+
+Overall, the `MapToG1Precompile` class provides a precompile contract that enables efficient mapping of input data to points on the G1 curve of the BLS12-381 elliptic curve. This precompile is used in the EVM to enable efficient verification of BLS signatures.
+## Questions: 
+ 1. What is the purpose of this code and what problem does it solve?
+   
+   This code is a precompile for the Ethereum Virtual Machine (EVM) that implements the BLS MapToG1 algorithm, as specified in EIP-2537. It maps a 64-byte input to a point on the G1 elliptic curve, which is useful for cryptographic operations such as signature verification.
+
+2. What is the expected input length for this precompile and what happens if the input is not of the expected length?
+   
+   The expected input length for this precompile is 64 bytes. If the input is not of the expected length, the `Run` method returns an empty byte array and a boolean value of `false`.
+
+3. What is the gas cost of running this precompile and how is it calculated?
+   
+   The base gas cost of running this precompile is 5500 gas units. The `DataGasCost` method always returns 0, indicating that the gas cost does not depend on the input data. The total gas cost of running this precompile is the sum of the base gas cost and the data gas cost.

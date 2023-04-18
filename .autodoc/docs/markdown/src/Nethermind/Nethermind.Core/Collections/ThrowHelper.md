@@ -1,0 +1,32 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Core/Collections/ThrowHelper.cs)
+
+The code above defines a class called `ThrowHelper` that provides methods for throwing exceptions in certain scenarios. The purpose of this class is to provide a centralized location for throwing exceptions with consistent behavior across the project. 
+
+The `IfNullAndNullsAreIllegalThenThrow` method is used to check if a given value is null and throw an exception if nulls are not allowed for the given type. This method takes two parameters: `value` and `argName`. The `value` parameter is the object being checked for null, and the `argName` parameter is the name of the argument being checked. This method uses the `MethodImplOptions.AggressiveInlining` attribute to aggressively inline the method call, which can improve performance by reducing the overhead of method calls. 
+
+The `ThrowArgumentNullException` method is called by the `IfNullAndNullsAreIllegalThenThrow` method when a null value is detected and nulls are not allowed for the given type. This method takes a single parameter, `argName`, which is the name of the argument that was null. This method throws an `ArgumentNullException` with the given argument name. 
+
+The `ThrowNotSupportedException` method is used to throw a `NotImplementedException`. This method is marked with the `DoesNotReturn` attribute, which indicates that the method does not return normally. This method is used when a method or feature is not yet implemented and should not be called. 
+
+Overall, this class provides a simple and consistent way to throw exceptions in certain scenarios. By centralizing exception throwing behavior, the project can ensure that exceptions are thrown consistently and with the appropriate behavior. 
+
+Example usage of the `IfNullAndNullsAreIllegalThenThrow` method:
+
+```
+public void MyMethod(string? myArg)
+{
+    ThrowHelper.IfNullAndNullsAreIllegalThenThrow<string>(myArg, nameof(myArg));
+    // continue with method logic
+}
+```
+
+In this example, the `IfNullAndNullsAreIllegalThenThrow` method is used to check if the `myArg` parameter is null. If `myArg` is null, an `ArgumentNullException` will be thrown with the argument name "myArg". If `myArg` is not null, the method will continue with its logic.
+## Questions: 
+ 1. What is the purpose of the ThrowHelper class?
+- The ThrowHelper class provides methods for throwing ArgumentNullException and NotImplementedException exceptions.
+
+2. What is the IfNullAndNullsAreIllegalThenThrow method checking for?
+- The IfNullAndNullsAreIllegalThenThrow method checks if the given value is null and if null is not allowed for the specified type T.
+
+3. Why are the ThrowArgumentNullException and ThrowNotSupportedException methods marked with the DoesNotReturn and StackTraceHidden attributes?
+- The DoesNotReturn attribute indicates that the method does not return normally, i.e., it always throws an exception. The StackTraceHidden attribute indicates that the method's stack trace should be hidden from the debugger.

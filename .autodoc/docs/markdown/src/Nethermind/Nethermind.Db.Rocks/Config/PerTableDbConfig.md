@@ -1,0 +1,27 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Db.Rocks/Config/PerTableDbConfig.cs)
+
+The `PerTableDbConfig` class is responsible for providing configuration options for a RocksDB database table. It takes in an `IDbConfig` object, a `RocksDbSettings` object, and an optional `columnName` string. The `IDbConfig` object provides the default configuration options for the database, while the `RocksDbSettings` object provides any additional configuration options specific to the table. The `columnName` string is used to differentiate between tables with the same name but different columns.
+
+The class provides several properties that can be used to retrieve specific configuration options. These properties include `CacheIndexAndFilterBlocks`, `BlockCacheSize`, `WriteBufferSize`, `WriteBufferNumber`, `AdditionalRocksDbOptions`, `MaxOpenFiles`, `MaxWriteBytesPerSec`, `RecycleLogFileNum`, `WriteAheadLogSync`, `EnableDbStatistics`, and `StatsDumpPeriodSec`. These properties either return the value specified in the `RocksDbSettings` object or, if not specified, the value specified in the `IDbConfig` object.
+
+The `ReadConfig` method is used internally to retrieve the value of a specific configuration option. It takes in a `propertyName` string and returns the value of the property with that name from either the `RocksDbSettings` object or the `IDbConfig` object. The `GetPrefix` method is used to determine the prefix to use when looking up the property name in the `IDbConfig` object. If the table name starts with "State", the prefix is "State". Otherwise, the prefix is the table name concatenated with "Db".
+
+Overall, the `PerTableDbConfig` class provides a way to specify configuration options for a RocksDB database table that are separate from the default configuration options for the database as a whole. This allows for more fine-grained control over the behavior of individual tables. An example usage of this class might look like:
+
+```
+var dbConfig = new DbConfig();
+var rocksDbSettings = new RocksDbSettings { DbName = "MyTable" };
+var perTableDbConfig = new PerTableDbConfig(dbConfig, rocksDbSettings, "MyColumn");
+
+var blockCacheSize = perTableDbConfig.BlockCacheSize;
+var additionalRocksDbOptions = perTableDbConfig.AdditionalRocksDbOptions;
+```
+## Questions: 
+ 1. What is the purpose of this code?
+- This code defines a class called `PerTableDbConfig` that provides configuration options for a RocksDB database.
+
+2. What are some of the configurable options available through this class?
+- Some of the configurable options include cache size, write buffer size, number of write buffers, and maximum number of open files.
+
+3. What is the purpose of the `ReadConfig` method?
+- The `ReadConfig` method is used to read configuration values from an `IDbConfig` object, using a specified property name and prefix. It returns the value of the property if it exists, or throws an exception if it does not.

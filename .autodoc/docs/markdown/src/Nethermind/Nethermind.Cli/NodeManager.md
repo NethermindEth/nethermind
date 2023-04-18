@@ -1,0 +1,22 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Cli/NodeManager.cs)
+
+The `NodeManager` class is a part of the Nethermind project and is responsible for managing JSON RPC clients. It provides methods for switching between different clients and sending JSON RPC requests to the current client. 
+
+The class has a constructor that takes an instance of `ICliEngine`, `IJsonSerializer`, `ICliConsole`, and `ILogManager`. The `ICliEngine` instance is used to create a new instance of `JsonParser`. The `IJsonSerializer` instance is used to serialize and deserialize JSON objects. The `ICliConsole` instance is used to write messages to the console. The `ILogManager` instance is used to manage logging.
+
+The `NodeManager` class has a private field `_clients` that is a dictionary of `Uri` and `IJsonRpcClient` instances. The `SwitchUri` method is used to switch the current client to a new client based on the provided `Uri`. If the client does not exist in the dictionary, a new `BasicJsonRpcClient` instance is created and added to the dictionary. The `SwitchClient` method is used to switch the current client to a new client instance.
+
+The `PostJint` method is used to send a JSON RPC request to the current client and return the result as a `JsValue`. The method takes a `method` string and a `parameters` array of objects. The method first checks if the current client is null and writes an error message to the console if it is. If the client is not null, the method sends a JSON RPC request to the client using the `Post` method of the client. The method measures the time it takes to complete the request and writes the time to the console. If the result is a boolean, the method returns a `JsValue` representing the boolean. If the result is a string that is not equal to "0x", the method parses the string as JSON and returns the result as a `JsValue`.
+
+The `Post` method is an overloaded method that sends a JSON RPC request to the current client and returns the result as a string or a generic type `T`. The method takes a `method` string and a `parameters` array of objects. The method first checks if the current client is null and writes an error message to the console if it is. If the client is not null, the method sends a JSON RPC request to the client using the `Post` method of the client. The method measures the time it takes to complete the request and writes the time to the console. The method returns the result as a string or a generic type `T`.
+
+Overall, the `NodeManager` class provides a simple interface for managing JSON RPC clients and sending JSON RPC requests to the current client. It is used in the larger Nethermind project to interact with Ethereum nodes and perform various operations on the blockchain.
+## Questions: 
+ 1. What is the purpose of the `NodeManager` class?
+- The `NodeManager` class is responsible for managing JSON RPC clients and switching between them.
+
+2. What is the significance of the `PostJint` method?
+- The `PostJint` method sends a JSON RPC request to the current client and returns the result as a `JsValue`. It also measures the time taken to complete the request and prints it to the console.
+
+3. What are the potential exceptions that can be thrown by the `Post` methods?
+- The `Post` methods can throw `HttpRequestException` if there is an issue with the HTTP request, and any other exception that might occur during the request.

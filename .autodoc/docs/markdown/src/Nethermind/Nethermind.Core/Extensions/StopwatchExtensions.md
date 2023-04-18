@@ -1,0 +1,35 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Core/Extensions/StopwatchExtensions.cs)
+
+This code defines an extension method for the Stopwatch class in the Nethermind.Core.Extensions namespace. The purpose of this extension method is to provide a way to measure elapsed time in microseconds using a Stopwatch object.
+
+The ElapsedMicroseconds method takes a Stopwatch object as its parameter and returns the elapsed time in microseconds as a long integer. The method calculates the elapsed time by multiplying the number of elapsed ticks by a factor of 1000000 divided by the Stopwatch frequency.
+
+This extension method can be used in the larger Nethermind project to measure the performance of various operations and functions. For example, it can be used to measure the time it takes to execute a particular block of code or to compare the performance of different algorithms.
+
+Here is an example of how this extension method can be used:
+
+```
+using System.Diagnostics;
+using Nethermind.Core.Extensions;
+
+Stopwatch stopwatch = new Stopwatch();
+stopwatch.Start();
+
+// Code to be measured goes here
+
+stopwatch.Stop();
+long elapsedMicroseconds = stopwatch.ElapsedMicroseconds();
+```
+
+In this example, a new Stopwatch object is created and started before the code to be measured is executed. After the code has finished executing, the Stopwatch is stopped and the elapsed time in microseconds is calculated using the ElapsedMicroseconds extension method.
+
+Overall, this code provides a useful tool for measuring performance in the Nethermind project and can be used in a variety of contexts to optimize and improve the efficiency of the codebase.
+## Questions: 
+ 1. What is the purpose of this code?
+   This code defines an extension method for the Stopwatch class in the Nethermind.Core.Extensions namespace that calculates the elapsed time in microseconds.
+
+2. What is the significance of the SPDX-License-Identifier comment?
+   The SPDX-License-Identifier comment specifies the license under which the code is released and is used to ensure license compliance and tracking.
+
+3. Why is the ElapsedMicroseconds method returning a long data type?
+   The ElapsedMicroseconds method is returning a long data type to accommodate the potentially large values that can result from the multiplication of the elapsed ticks and the conversion factor.
