@@ -250,8 +250,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         options.SetCreateIfMissing();
         options.SetAdviseRandomOnOpen(true);
+        // Point lookup is in MB and block cache is in bytes
         options.OptimizeForPointLookup(
-            blockCacheSize); // I guess this should be the one option controlled by the DB size property - bind it to LRU cache size
+            blockCacheSizeMb: blockCacheSize / (ulong)1.MB()); // I guess this should be the one option controlled by the DB size property - bind it to LRU cache size
         //options.SetCompression(CompressionTypeEnum.rocksdb_snappy_compression);
         //options.SetLevelCompactionDynamicLevelBytes(true);
 
