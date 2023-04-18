@@ -78,7 +78,7 @@ namespace Nethermind.AccountAbstraction.Source
             IList<Tuple<Address, UserOperation>> sortedUserOperations =
                 combinedUserOperations.OrderByDescending(
                 op =>
-                    CalculateUserOperationPremiumGasPrice(op.Item2, parent.BaseFeePerGas ?? 0))
+                    CalculateUserOperationPremiumGasPrice(op.Item2, parent.BaseFeePerGas))
                 .ToList();
 
             foreach (Tuple<Address, UserOperation> addressedUserOperation in sortedUserOperations)

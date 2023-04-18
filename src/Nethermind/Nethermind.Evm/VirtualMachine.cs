@@ -1416,7 +1416,7 @@ namespace Nethermind.Evm
 
                             if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) goto OutOfGas;
 
-                            UInt256 baseFee = txCtx.Header.BaseFeePerGas ?? 0;
+                            UInt256 baseFee = txCtx.Header.BaseFeePerGas;
                             stack.PushUInt256(in baseFee);
                             break;
                         }

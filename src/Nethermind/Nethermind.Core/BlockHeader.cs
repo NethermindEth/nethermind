@@ -63,7 +63,7 @@ public class BlockHeader
     public UInt256? TotalDifficulty { get; set; }
     public byte[]? AuRaSignature { get; set; }
     public long? AuRaStep { get; set; }
-    public UInt256? BaseFeePerGas { get; set; }
+    public UInt256 BaseFeePerGas { get; set; }
     public Keccak? WithdrawalsRoot { get; set; }
     public UInt256? ExcessDataGas { get; set; }
 

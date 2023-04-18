@@ -37,7 +37,7 @@ public class ExecutionPayload
         PrevRandao = block.MixHash ?? Keccak.Zero;
         ExtraData = block.ExtraData!;
         Timestamp = block.Timestamp;
-        BaseFeePerGas = block.BaseFeePerGas ?? 0;
+        BaseFeePerGas = block.BaseFeePerGas;
         Withdrawals = block.Withdrawals;
         ExcessDataGas = block.ExcessDataGas;
 

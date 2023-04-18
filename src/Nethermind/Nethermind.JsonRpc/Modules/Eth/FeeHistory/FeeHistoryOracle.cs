@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             while (block is not null && blockCount > 0)
             {
                 oldestBlockNumber = block.Number;
-                baseFeePerGas.Push(block.BaseFeePerGas ?? 0);
+                baseFeePerGas.Push(block.BaseFeePerGas);
                 gasUsedRatio.Push(block.GasUsed / (double)block.GasLimit);
                 if (rewards is not null)
                 {
