@@ -12,7 +12,7 @@ namespace Nethermind.State
     /// </summary>
     public readonly struct Snapshot
     {
-        public static readonly Snapshot Empty = new(EmptyPosition,EmptyPosition);
+        public static readonly Snapshot Empty = new(EmptyPosition, EmptyPosition);
 
         public Snapshot(int stateSnapshot, int storageSnapshot)
         {

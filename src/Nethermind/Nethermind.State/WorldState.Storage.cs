@@ -107,7 +107,7 @@ public partial class WorldState
 
     private byte[] GetCurrentValue(in StorageCell storageCell)
     {
-        if(TryGetCachedStorageValue(storageCell, out byte[] bytes))
+        if (TryGetCachedStorageValue(storageCell, out byte[] bytes))
         {
             return bytes!;
         }

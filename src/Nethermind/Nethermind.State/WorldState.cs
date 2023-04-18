@@ -20,7 +20,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public partial class WorldState: IWorldState
+public partial class WorldState : IWorldState
 {
     private readonly ITrieStore _trieStore;
     private readonly StateTree _stateTree;
