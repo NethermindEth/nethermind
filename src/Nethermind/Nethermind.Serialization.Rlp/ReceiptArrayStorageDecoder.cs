@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp;
 
+[Rlp.SkipGlobalRegistration]
 public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
 {
     public static readonly ReceiptArrayStorageDecoder Instance = new();
