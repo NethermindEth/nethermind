@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -125,7 +124,7 @@ public class GCKeeper
         }
     }
 
-    private static long _lastGcTimeStamp;
+    private static long _lastGcTimeMs;
 
     private void ScheduleGC()
     {
@@ -133,13 +132,13 @@ public class GCKeeper
         {
             lock (_gcStrategy)
             {
-                long timeStamp = Stopwatch.GetTimestamp();
-                if (TimeSpan.FromTicks(timeStamp - _lastGcTimeStamp).TotalSeconds <= 3)
+                long timeStamp = Environment.TickCount64;
+                if (TimeSpan.FromMilliseconds(timeStamp - _lastGcTimeMs).TotalSeconds <= 3)
                 {
                     return;
                 }
 
-                _lastGcTimeStamp = timeStamp;
+                _lastGcTimeMs = timeStamp;
 
                 if (_gcScheduleTask.IsCompleted)
                 {
