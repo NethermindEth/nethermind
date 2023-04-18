@@ -325,10 +325,7 @@ namespace Nethermind.Trie
         public void UpdateRootHash()
         {
             if (Capability == TrieNodeResolverCapability.Path)
-            {
-                _logger.Info($"resolve state root: update: {RootRef.FullPath.ToHexString()}");
                 RootRef?.ResolveNode(TrieStore);
-            }
             RootRef?.ResolveKey(TrieStore, true);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
