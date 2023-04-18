@@ -145,7 +145,7 @@ namespace Nethermind.Init.Steps
                     TrieStoreByPath noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
                     IStateProvider diagStateProvider = new StateProvider(noPruningStore, codeDb, getApi.LogManager)
                     {
-                        StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
+                        StateRoot = new Keccak(Bytes.FromHexString("0x08427234fae09f6ff3a8f01ee69a30b4376d98390126d1140f7b545955baaec2"))
                     };
                     TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
                     _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
