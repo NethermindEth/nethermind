@@ -135,7 +135,7 @@ namespace Nethermind.Init.Steps
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
             stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-            _logger.Info($"Current Block: Number:{getApi.BlockTree!.Head?.Number} StateRoot:{getApi.BlockTree!.Head?.StateRoot} Hash:{getApi.BlockTree!.Head?.Hash}");
+            _logger.Info($"Current Block: Number:{getApi.BlockTree!.Head} StateRoot:{getApi.BlockTree!.Head?.StateRoot} Hash:{getApi.BlockTree!.Head?.Hash}");
 
             void VerifyTrie()
             {
