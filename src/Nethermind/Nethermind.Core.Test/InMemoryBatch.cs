@@ -27,13 +27,14 @@ namespace Nethermind.Core
             GC.SuppressFinalize(this);
         }
 
-        public byte[]? this[ReadOnlySpan<byte> key]
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
-            get => _store[key];
-            set
-            {
-                _currentItems[key.ToArray()] = value;
-            }
+            _currentItems[key.ToArray()] = value;
+        }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return _store.Get(key, flags);
         }
     }
 }

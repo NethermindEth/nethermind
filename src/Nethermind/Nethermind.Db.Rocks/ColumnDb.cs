@@ -27,24 +27,22 @@ public class ColumnDb : IDbWithSpan
 
     public string Name { get; }
 
-    public byte[]? this[ReadOnlySpan<byte> key]
+    public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        get
+        UpdateReadMetrics();
+        return _rocksDb.Get(key, _columnFamily);
+    }
+
+    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+    {
+        UpdateWriteMetrics();
+        if (value is null)
         {
-            UpdateReadMetrics();
-            return _rocksDb.Get(key, _columnFamily);
+            _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
         }
-        set
+        else
         {
-            UpdateWriteMetrics();
-            if (value is null)
-            {
-                _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
-            }
-            else
-            {
-                _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
-            }
+            _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
         }
     }
 
@@ -84,19 +82,20 @@ public class ColumnDb : IDbWithSpan
             _underlyingBatch.Dispose();
         }
 
-        public byte[]? this[ReadOnlySpan<byte> key]
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            get => _underlyingBatch[key];
-            set
+            return _underlyingBatch.Get(key, flags);
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (value is null)
             {
-                if (value is null)
-                {
-                    _underlyingBatch._rocksBatch.Delete(key, _columnDb._columnFamily);
-                }
-                else
-                {
-                    _underlyingBatch._rocksBatch.Put(key, value, _columnDb._columnFamily);
-                }
+                _underlyingBatch._rocksBatch.Delete(key, _columnDb._columnFamily);
+            }
+            else
+            {
+                _underlyingBatch._rocksBatch.Put(key, value, _columnDb._columnFamily);
             }
         }
     }

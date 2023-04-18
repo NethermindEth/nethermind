@@ -22,19 +22,6 @@ public class TestMemDb : MemDb
     public Func<byte[], byte[]>? ReadFunc { get; set; }
     public Action<byte[]>? RemoveFunc { get; set; }
 
-    public override byte[]? this[ReadOnlySpan<byte> key]
-    {
-        get
-        {
-            return Get(key);
-        }
-        set
-        {
-            _writeKeys.Add(key.ToArray());
-            base[key] = value;
-        }
-    }
-
     public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         _readKeys.Add((key.ToArray(), flags));
@@ -43,9 +30,15 @@ public class TestMemDb : MemDb
         return base.Get(key, flags);
     }
 
+    public virtual void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+    {
+        _writeKeys.Add(key.ToArray());
+        base.Set(key, value, flags);
+    }
+
     public override Span<byte> GetSpan(ReadOnlySpan<byte> key)
     {
-        return this[key];
+        return Get(key);
     }
 
     public override void Remove(ReadOnlySpan<byte> key)

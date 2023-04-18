@@ -315,50 +315,54 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     public byte[]? this[ReadOnlySpan<byte> key]
     {
-        get
+        get => Get(key, ReadFlags.None);
+        set => Set(key, value, WriteFlags.None);
+    }
+
+    public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+    {
+        if (_isDisposing)
         {
-            if (_isDisposing)
-            {
-                throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
-            }
+            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+        }
 
-            UpdateReadMetrics();
+        UpdateReadMetrics();
 
-            try
+        try
+        {
+            return _db.Get(key);
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+    {
+        if (_isDisposing)
+        {
+            throw new ObjectDisposedException($"Attempted to write to a disposed database {Name}");
+        }
+
+        UpdateWriteMetrics();
+
+        try
+        {
+            if (value is null)
             {
-                return _db.Get(key);
+                _db.Remove(key, null, WriteOptions);
             }
-            catch (RocksDbSharpException e)
+            else
             {
-                CreateMarkerIfCorrupt(e);
-                throw;
+                _db.Put(key, value, null, WriteOptions);
             }
         }
-        set
+        catch (RocksDbSharpException e)
         {
-            if (_isDisposing)
-            {
-                throw new ObjectDisposedException($"Attempted to write to a disposed database {Name}");
-            }
-
-            UpdateWriteMetrics();
-
-            try
-            {
-                if (value is null)
-                {
-                    _db.Remove(key, null, WriteOptions);
-                }
-                else
-                {
-                    _db.Put(key, value, null, WriteOptions);
-                }
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
+            CreateMarkerIfCorrupt(e);
+            throw;
         }
     }
 
@@ -636,28 +640,26 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             }
         }
 
-        public byte[]? this[ReadOnlySpan<byte> key]
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            get
-            {
-                // Not checking _isDisposing here as for some reason, sometimes is is read after dispose
-                return _dbOnTheRocks[key];
-            }
-            set
-            {
-                if (_isDisposed)
-                {
-                    throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
-                }
+            // Not checking _isDisposing here as for some reason, sometimes is is read after dispose
+            return _dbOnTheRocks.Get(key, flags);
+        }
 
-                if (value is null)
-                {
-                    _rocksBatch.Delete(key);
-                }
-                else
-                {
-                    _rocksBatch.Put(key, value);
-                }
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
+            }
+
+            if (value is null)
+            {
+                _rocksBatch.Delete(key);
+            }
+            else
+            {
+                _rocksBatch.Put(key, value);
             }
         }
     }
