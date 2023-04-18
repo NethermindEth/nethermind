@@ -47,22 +47,25 @@ public class PayloadAttributes
 
         return sb.ToString();
     }
+}
 
-    public string ComputePayloadId(BlockHeader parentHeader)
+public static class PayloadAttributesExtensions
+{
+    public static string ComputePayloadId(this PayloadAttributes payloadAttributes, BlockHeader parentHeader)
     {
-        bool hasWithdrawals = Withdrawals is not null;
+        bool hasWithdrawals = payloadAttributes.Withdrawals is not null;
         Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20 + (hasWithdrawals ? 32 : 0)];
 
         parentHeader.Hash!.Bytes.CopyTo(inputSpan[..32]);
-        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, 8), Timestamp);
-        PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
-        SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
+        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, 8), payloadAttributes.Timestamp);
+        payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
+        payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
 
         if (hasWithdrawals)
         {
-            var withdrawalsRootHash = Withdrawals.Count == 0
+            var withdrawalsRootHash = payloadAttributes.Withdrawals.Count == 0
                 ? PatriciaTree.EmptyTreeHash
-                : new WithdrawalTrie(Withdrawals).RootHash;
+                : new WithdrawalTrie(payloadAttributes.Withdrawals).RootHash;
 
             withdrawalsRootHash.Bytes.CopyTo(inputSpan[116..]);
         }
@@ -71,10 +74,7 @@ public class PayloadAttributes
 
         return inputHash.BytesAsSpan[..8].ToHexString(true);
     }
-}
 
-public static class PayloadAttributesExtensions
-{
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload.Withdrawals is null ? 1 : 2;
 
