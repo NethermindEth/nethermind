@@ -1,0 +1,30 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Synchronization/FastSync/BranchProgress.cs)
+
+The `BranchProgress` class is used to represent the sync progress of a second level branch saved in the database. It generates a log view that shows the progress of the sync process. The class contains methods that report the synced level of the branch and update the progress of the sync process. 
+
+The `BranchProgress` class has a constructor that takes two parameters: `syncBlockNumber` and `logger`. The `syncBlockNumber` parameter is the block number from which the sync process starts, and the `logger` parameter is an instance of the `ILogger` interface used to log messages. The constructor initializes the `_syncProgress` array with 256 elements of `NodeProgressState` type, which represents the progress state of each node in the branch. 
+
+The `ReportSynced` method is used to report the synced state of a node. It takes two parameters: `syncItem` and `nodeProgressState`. The `syncItem` parameter is an instance of the `StateSyncItem` class that contains information about the synced node, and the `nodeProgressState` parameter is the progress state of the node. The `ReportSynced` method calls the `ReportSynced` method with the appropriate parameters based on the level of the node.
+
+The `ReportSynced` method is an overloaded method that takes four parameters: `level`, `parentIndex`, `childIndex`, and `nodeProgressState`. The `level` parameter is the level of the node, the `parentIndex` parameter is the index of the parent node, the `childIndex` parameter is the index of the child node, and the `nodeProgressState` parameter is the progress state of the node. The `ReportSynced` method updates the `_syncProgress` array with the progress state of the node and calculates the progress of the sync process. 
+
+The `UpdateState` method is used to update the progress state of a node in the `_syncProgress` array. It takes two parameters: `index` and `newState`. The `index` parameter is the index of the node in the `_syncProgress` array, and the `newState` parameter is the new progress state of the node. The `UpdateState` method updates the progress state of the node only if the current progress state is `Unknown` or `Requested`.
+
+The `ReportSyncedLevel1` method is used to report the synced state of a level 1 node. It takes two parameters: `childIndex` and `nodeProgressState`. The `childIndex` parameter is the index of the child node, and the `nodeProgressState` parameter is the progress state of the node. The `ReportSyncedLevel1` method updates the progress state of all the child nodes of the parent node with the progress state of the node.
+
+The `ReportSyncedLevel2` method is used to report the synced state of a level 2 node. It takes three parameters: `parentIndex`, `childIndex`, and `nodeProgressState`. The `parentIndex` parameter is the index of the parent node, the `childIndex` parameter is the index of the child node, and the `nodeProgressState` parameter is the progress state of the node. The `ReportSyncedLevel2` method updates the progress state of the child node with the progress state of the node.
+
+The `Progress` property is used to get or set the progress of the sync process. The `LastProgress` property is used to get the last progress of the sync process. The `CurrentSyncBlock` property is used to get the block number from which the sync process starts. 
+
+The `BranchProgress` class generates a log view that shows the progress of the sync process. The log view contains a progress bar that represents the progress of the sync process. The progress bar is made up of the following characters: `?` for `Unknown`, `0` for `Empty`, `1` for `AlreadySaved`, `+` for `Saved`, and `*` for `Requested`. The progress bar is updated every time a node is synced. 
+
+The `BranchProgress` class is used in the larger project to monitor the progress of the sync process. It provides a way to track the progress of the sync process and identify any issues that may arise during the sync process. The `BranchProgress` class is used in conjunction with other classes in the `Nethermind.Synchronization.FastSync` namespace to implement the fast sync feature of the Nethermind project.
+## Questions: 
+ 1. What is the purpose of the `BranchProgress` class?
+- The `BranchProgress` class represents sync progress as a percentage of second level branches saved in the database and generates a log view of the progress.
+
+2. What is the significance of the `NodeProgressState` enum?
+- The `NodeProgressState` enum is used to track the progress of syncing nodes and has five possible values: `Unknown`, `Empty`, `AlreadySaved`, `Saved`, and `Requested`.
+
+3. How is the sync progress calculated and reported?
+- The sync progress is calculated as the percentage of saved branches out of the total number of branches and is reported as a log message with details of the progress represented by symbols such as `?`, `0`, `1`, `+`, and `*`.

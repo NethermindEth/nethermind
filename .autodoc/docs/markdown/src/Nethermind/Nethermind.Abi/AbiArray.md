@@ -1,0 +1,30 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Abi/AbiArray.cs)
+
+The `AbiArray` class is a part of the Nethermind project and is used to represent an array type in the Ethereum ABI (Application Binary Interface). The Ethereum ABI is a standard way of encoding and decoding data for smart contracts on the Ethereum blockchain. The `AbiArray` class extends the `AbiType` class and provides functionality for encoding and decoding arrays of a specific type.
+
+The `AbiArray` class has a single constructor that takes an `AbiType` object as a parameter. This object represents the type of the elements in the array. The constructor sets the `ElementType` property to the provided `AbiType` object and sets the `Name` and `CSharpType` properties based on the `ElementType`.
+
+The `AbiArray` class overrides the `IsDynamic`, `Name`, and `CSharpType` properties of the `AbiType` class to reflect that arrays are dynamic types in the Ethereum ABI.
+
+The `AbiArray` class also overrides the `Decode` and `Encode` methods of the `AbiType` class to provide functionality for encoding and decoding arrays. The `Decode` method takes a byte array, a position, and a boolean indicating whether the data is packed. It decodes the length of the array from the byte array and then decodes each element of the array using the `DecodeSequence` method of the `AbiType` class. The `Encode` method takes an object, which should be an array or a list, and a boolean indicating whether the data should be packed. It encodes the length of the array and then encodes each element of the array using the `EncodeSequence` method of the `AbiType` class.
+
+The `AbiArray` class has a private `ElementTypes` property that returns an `IEnumerable` of `AbiType` objects. This property is used by the `EncodeSequence` method of the `AbiType` class to encode each element of the array.
+
+Overall, the `AbiArray` class provides functionality for encoding and decoding arrays of a specific type in the Ethereum ABI. It is used in the larger Nethermind project to provide support for the Ethereum ABI in smart contracts. Below is an example of how the `AbiArray` class can be used to encode and decode an array of integers:
+
+```
+AbiArray intArray = new AbiArray(new AbiInt());
+int[] array = new int[] { 1, 2, 3 };
+byte[] encoded = intArray.Encode(array, false);
+(object decoded, int length) = intArray.Decode(encoded, 0, false);
+int[] decodedArray = (int[])decoded;
+```
+## Questions: 
+ 1. What is the purpose of this code?
+    - This code defines a class called `AbiArray` which is a subclass of `AbiType`. It represents an array type in the Ethereum ABI (Application Binary Interface) and provides methods for encoding and decoding array values.
+
+2. What is the significance of the `IsDynamic` property being set to `true`?
+    - The `IsDynamic` property being set to `true` indicates that the size of the array is not fixed and can vary at runtime. This means that the array values are stored in a separate location in memory from the rest of the ABI-encoded data.
+
+3. What is the purpose of the `EncodeSequence` and `DecodeSequence` methods?
+    - The `EncodeSequence` and `DecodeSequence` methods are used to encode and decode arrays of values of a given type. They take an array of objects and encode or decode each object individually using the `Encode` and `Decode` methods of the corresponding `AbiType`. The resulting encoded or decoded values are then concatenated into a single byte array.

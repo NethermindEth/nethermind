@@ -1,0 +1,20 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.JsonRpc/IJsonRpcConfig.cs)
+
+The code defines an interface called `IJsonRpcConfig` which is used to configure the JSON RPC service in the Nethermind project. The interface extends the `IConfig` interface which means that it inherits some properties from it. The `IConfig` interface is used to define the configuration settings for the Nethermind project.
+
+The `IJsonRpcConfig` interface has several properties that are used to configure the JSON RPC service. These properties include `Enabled`, `Host`, `Timeout`, `Port`, `WebSocketsPort`, `RpcRecorderState`, `RpcRecorderBaseFilePath`, `EnabledModules`, `AdditionalRpcUrls`, `GasCap`, `ReportIntervalSeconds`, `BufferResponses`, `CallsFilterFilePath`, `MaxRequestBodySize`, `EthModuleConcurrentInstances`, `JwtSecretFile`, `UnsecureDevNoRpcAuthentication`, `MaxLoggedRequestParametersCharacters`, `MethodsLoggingFiltering`, `EngineHost`, `EnginePort`, `EngineEnabledModules`, `MaxBatchSize`, and `MaxBatchResponseBodySize`.
+
+Each property has a description that explains what it does and how it should be used. For example, the `Enabled` property is used to enable or disable the JSON RPC service on node startup. The `Host` property is used to define the host for JSON RPC calls. The `Port` property is used to define the port number for JSON RPC calls. The `EnabledModules` property is used to define which RPC modules should be enabled. The `RpcRecorderState` property is used to define whether the JSON RPC diagnostic recording is enabled on node startup.
+
+The `IJsonRpcConfig` interface is used in the `Nethermind.JsonRpc.Modules.Eth` namespace which is used to define the JSON RPC modules for the Ethereum network. The JSON RPC modules are used to interact with the Ethereum network using JSON RPC calls.
+
+Overall, the `IJsonRpcConfig` interface is an important part of the Nethermind project as it is used to configure the JSON RPC service which is used to interact with the Ethereum network. The interface provides a way to define the configuration settings for the JSON RPC service and allows developers to customize the service to meet their needs.
+## Questions: 
+ 1. What is the purpose of this code file?
+- This code file defines an interface called `IJsonRpcConfig` that contains properties related to configuring the JSON RPC service for the Nethermind project.
+
+2. What are some of the default values for the JSON RPC configuration properties?
+- Some default values include `Enabled` being set to `false`, `Host` being set to `"127.0.0.1"`, `Timeout` being set to `20000`, `Port` being set to `8545`, and `EnabledModules` being set to `"[Eth, Subscribe, Trace, TxPool, Web3, Personal, Proof, Net, Parity, Health, Rpc]"`.
+
+3. What is the purpose of the `RpcRecorderState` property?
+- The `RpcRecorderState` property defines whether the JSON RPC diagnostic recording is enabled on node startup and allows for different levels of recording (`None`, `Request`, `Response`, or `All`). It is recommended to not enable this unless diagnosing issues with JSON RPC.

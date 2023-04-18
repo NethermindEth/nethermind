@@ -1,0 +1,39 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Serialization.Json/BigIntegerConverter.cs)
+
+The `BigIntegerConverter` class is a custom JSON converter for serializing and deserializing `BigInteger` objects. It is part of the Nethermind project and is used to convert `BigInteger` objects to and from JSON format. 
+
+The `BigInteger` class is used to represent arbitrarily large integers. It is used in the Nethermind project to represent Ethereum addresses, block numbers, and other large numbers that are used in the Ethereum blockchain. 
+
+The `BigIntegerConverter` class has two constructors, one that takes no arguments and one that takes a `NumberConversion` parameter. The `NumberConversion` enum is used to specify how the `BigInteger` object should be converted to and from JSON format. The default value is `NumberConversion.Hex`, which means that the `BigInteger` object will be serialized to a hexadecimal string with a "0x" prefix. 
+
+The `WriteJson` method is called when a `BigInteger` object is serialized to JSON format. If the `BigInteger` object is zero, it is serialized as the string "0x0". Otherwise, the `BigInteger` object is serialized to a hexadecimal string with a "0x" prefix, a decimal string, or a raw integer value, depending on the value of the `NumberConversion` parameter. 
+
+The `ReadJson` method is called when a JSON string is deserialized to a `BigInteger` object. If the JSON value is a long or an int, it is cast to a `BigInteger` object. If the JSON value is the string "0x0", it is deserialized as a `BigInteger` object with a value of zero. If the JSON value is a hexadecimal string with a "0x" prefix, it is deserialized as a `BigInteger` object with the corresponding value. If the JSON value is a decimal string, it is deserialized as a `BigInteger` object with the corresponding value. 
+
+Overall, the `BigIntegerConverter` class is an important part of the Nethermind project, as it allows `BigInteger` objects to be serialized and deserialized to and from JSON format. This is useful for storing and retrieving data in the Ethereum blockchain, as many values in the blockchain are represented as `BigInteger` objects. 
+
+Example usage:
+
+```csharp
+using Nethermind.Serialization.Json;
+
+// Serialize a BigInteger object to JSON format
+BigInteger value = BigInteger.Parse("12345678901234567890");
+string json = JsonConvert.SerializeObject(value, new BigIntegerConverter());
+
+// Deserialize a JSON string to a BigInteger object
+string json = "0x1234567890abcdef";
+BigInteger value = JsonConvert.DeserializeObject<BigInteger>(json, new BigIntegerConverter());
+```
+## Questions: 
+ 1. What is the purpose of this code?
+    
+    This code defines a `BigIntegerConverter` class that can be used to serialize and deserialize `BigInteger` objects to and from JSON format.
+
+2. What is the `NumberConversion` enum used for?
+    
+    The `NumberConversion` enum is used to specify the format in which the `BigInteger` value should be serialized to JSON. It can be set to `Hex`, `Decimal`, or `Raw`.
+
+3. What is the purpose of the `ReadJson` method?
+    
+    The `ReadJson` method is used to deserialize a `BigInteger` value from a JSON string. It checks the format of the input string and converts it to a `BigInteger` object accordingly.

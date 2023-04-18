@@ -1,0 +1,22 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Evm.Test/Eip1108Tests.cs)
+
+The code is a set of tests for the EIP-1108 precompiles in the Nethermind Ethereum Virtual Machine (EVM). EIP-1108 is a proposal to reduce the gas cost of certain precompiles in the EVM. The tests are designed to ensure that the precompiles are working correctly and that the gas costs are as expected before and after the Istanbul hard fork.
+
+The tests are implemented as a set of NUnit tests, which are a popular testing framework for .NET applications. The tests are run against a virtual machine, which is an implementation of the EVM in C#. The virtual machine is provided by the Nethermind project.
+
+The tests are divided into four methods, each of which tests a different precompile. The precompiles being tested are Bn256Add, Bn256Mul, and Bn256Pairing. These precompiles are used for elliptic curve operations in zero-knowledge proofs. The tests are designed to ensure that the gas costs of these precompiles are as expected before and after the Istanbul hard fork.
+
+The tests use the Prepare.EvmCode helper method to create EVM bytecode that calls the precompiles being tested. The tests then execute the bytecode using the Execute method provided by the virtual machine. The tests check that the status code returned by the Execute method is StatusCode.Success, which indicates that the bytecode executed successfully. The tests also check that the gas cost of the execution is as expected.
+
+The tests are run twice for each precompile, once before the Istanbul hard fork and once after. The tests before the hard fork have a negative block number adjustment, which causes the virtual machine to simulate execution before the hard fork. The tests after the hard fork have a block number adjustment of zero, which causes the virtual machine to simulate execution after the hard fork.
+
+Overall, these tests are an important part of ensuring that the EIP-1108 precompiles are working correctly in the Nethermind EVM. By testing the gas costs before and after the Istanbul hard fork, the tests ensure that the precompiles are compatible with the latest version of the Ethereum protocol.
+## Questions: 
+ 1. What is the purpose of the `Eip1108Tests` class?
+- The `Eip1108Tests` class is a test suite for testing the behavior of certain precompiled contracts before and after the Istanbul hard fork.
+
+2. What is the significance of the `_blockNumberAdjustment` field?
+- The `_blockNumberAdjustment` field is used to adjust the block number for the purpose of testing the behavior of precompiled contracts before and after the Istanbul hard fork.
+
+3. What is the purpose of the `AssertGas` method?
+- The `AssertGas` method is used to assert that the gas cost of executing a certain piece of EVM code matches an expected value.

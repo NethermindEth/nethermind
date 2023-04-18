@@ -1,0 +1,23 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Db/ITunableDb.cs)
+
+The code above defines an interface called `ITunableDb` that extends the `IDb` interface. This interface is used to represent a database that can be tuned for different performance characteristics. The `Tune` method is used to adjust the tuning of the database based on the `TuneType` parameter passed to it. 
+
+The `TuneType` enum defines different tuning options that can be used to optimize the database for different use cases. The `Default` option is used to set the database to its default tuning. The `WriteBias` option is used to optimize the database for write-heavy workloads. The `HeavyWrite` option is used to optimize the database for very write-heavy workloads. The `AggressiveHeavyWrite` option is used to optimize the database for extremely write-heavy workloads. Finally, the `DisableCompaction` option is used to disable compaction of the database, which can be useful for certain use cases where compaction is not necessary or desirable.
+
+This interface is likely used in the larger Nethermind project to provide a common interface for different types of databases used throughout the project. By using this interface, different types of databases can be swapped in and out of the project as needed, and the tuning of the database can be adjusted based on the specific needs of the project. 
+
+Here is an example of how this interface might be used in code:
+
+```
+ITunableDb database = new MyDatabase();
+database.Tune(ITunableDb.TuneType.WriteBias);
+```
+
+In this example, a new instance of a database that implements the `ITunableDb` interface is created and stored in the `database` variable. The `Tune` method is then called on this database instance with the `WriteBias` tuning option, which optimizes the database for write-heavy workloads.
+## Questions: 
+ 1. What is the purpose of the `ITunableDb` interface?
+   - The `ITunableDb` interface extends the `IDb` interface and adds a `Tune` method that takes a `TuneType` enum as a parameter.
+2. What is the `TuneType` enum used for?
+   - The `TuneType` enum is used as a parameter for the `Tune` method to specify different tuning options for the database, such as disabling compaction or prioritizing heavy writes.
+3. What is the licensing for this code?
+   - The code is licensed under the LGPL-3.0-only license, as indicated by the SPDX-License-Identifier comment at the top of the file.

@@ -1,0 +1,26 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Consensus/Producers/TxPoolTxSource.cs)
+
+The `TxPoolTxSource` class is a part of the Nethermind project and is used to collect pending transactions from the transaction pool. It implements the `ITxSource` interface and provides a method `GetTransactions` that returns a collection of transactions that can be included in the next block. 
+
+The `GetTransactions` method takes two parameters: `parent` of type `BlockHeader` and `gasLimit` of type `long`. The `parent` parameter is the header of the parent block and `gasLimit` is the maximum amount of gas that can be used in the block. The method returns an `IEnumerable<Transaction>` that contains the transactions that can be included in the next block.
+
+The `TxPoolTxSource` class has several dependencies that are injected through its constructor. These dependencies include an instance of `ITxPool`, `ISpecProvider`, `ITransactionComparerProvider`, `ILogManager`, and `ITxFilterPipeline`. These dependencies are used to retrieve pending transactions from the transaction pool, get the specification for the current block, compare transactions, log messages, and filter transactions.
+
+The `GetTransactions` method first calculates the block number by adding 1 to the parent block number. It then gets the specification for the block using the `ISpecProvider` dependency. The base fee for the block is calculated using the `BaseFeeCalculator.Calculate` method, which takes the parent block header and the specification for the block as parameters. The pending transactions are retrieved from the transaction pool using the `GetPendingTransactionsBySender` method of the `ITxPool` dependency. 
+
+The transactions are then ordered using the `GetOrderedTransactions` method, which takes the pending transactions and a comparer as parameters. The comparer is obtained using the `GetComparer` method, which takes the parent block header and a `BlockPreparationContext` as parameters. The `BlockPreparationContext` contains the base fee and the block number. The comparer is used to sort the transactions in order of priority.
+
+The ordered transactions are then filtered and checked for validity using the `Execute` method of the `ITxFilterPipeline` dependency. If a transaction is valid, it is added to the collection of transactions that can be included in the next block. If the transaction is a blob transaction, the number of blobs in the transaction is checked to ensure that it does not exceed the maximum number of blobs allowed per block. If the transaction is not a blob transaction, it is added to the collection of transactions.
+
+The `GetTransactions` method returns the collection of transactions that can be included in the next block. The method also logs messages to indicate the number of transactions that were selected and the number of pending transactions that were checked.
+
+Overall, the `TxPoolTxSource` class is an important part of the Nethermind project as it provides a way to collect pending transactions from the transaction pool and select the transactions that can be included in the next block. It uses several dependencies to retrieve and filter transactions and ensures that the selected transactions are valid and do not exceed the maximum block size.
+## Questions: 
+ 1. What is the purpose of the `GetTransactions` method?
+- The `GetTransactions` method returns a collection of pending transactions from the transaction pool that can potentially be included in a block.
+
+2. What is the significance of the `TxType.Blob` check in the `GetTransactions` method?
+- The `TxType.Blob` check is used to determine if a transaction is a blob transaction, which is a special type of transaction that contains multiple transactions within it. If a transaction is a blob transaction, the code checks if there is enough space in the block to include all the transactions within the blob.
+
+3. What is the purpose of the `Order` method?
+- The `Order` method is used to order pending transactions by priority, where priority is determined by the transaction's sender and the transaction's position in the transaction pool. The method returns a sorted list of transactions that can potentially be included in a block.

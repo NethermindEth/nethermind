@@ -1,0 +1,23 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Blockchain/Metrics.cs)
+
+The code defines a static class called Metrics that contains various properties that are used to track and report on various metrics related to the blockchain. These metrics include the total number of transactions processed, the total number of blocks processed, the total number of chain reorganizations, the number of blocks awaiting processing, and the total difficulty on the chain, among others.
+
+Each property is decorated with one or more attributes that provide additional information about the metric being tracked. For example, the Mgas property is decorated with the CounterMetric attribute, which indicates that this property is a counter that tracks the total number of MGas processed. The Description attribute provides a human-readable description of the metric being tracked.
+
+The Metrics class is designed to be used by other components of the Nethermind project to track and report on various blockchain-related metrics. For example, the GasUsed and GasLimit properties could be used by a gas tracker component to monitor the gas usage of the blockchain and ensure that it stays within certain limits.
+
+The class also includes properties that are used to report on metrics that are part of the Ethereum Improvement Proposal (EIP) 2159, which defines common Prometheus metrics names for blockchain clients. These properties include BlockchainHeight, which reports the current height of the canonical chain, and BestKnownBlockNumber, which reports the estimated highest block available.
+
+Overall, the Metrics class provides a convenient and standardized way for components of the Nethermind project to track and report on various blockchain-related metrics. By using this class, developers can ensure that their components are reporting on metrics in a consistent and standardized way, which can make it easier to monitor and optimize the performance of the blockchain.
+## Questions: 
+ 1. What is the purpose of the Metrics class?
+    
+    The Metrics class is used to define and store various metrics related to blockchain processing, such as the number of transactions processed, blocks processed, and chain reorganizations.
+
+2. What is the significance of the different metric types used in this code (CounterMetric, GaugeMetric, etc.)?
+    
+    The different metric types used in this code (CounterMetric, GaugeMetric, etc.) are used to track different types of metrics. CounterMetric is used to track metrics that are incremented over time, GaugeMetric is used to track metrics that can go up or down, and so on.
+
+3. What is the purpose of the EIP-2159 related metrics in this code?
+    
+    The EIP-2159 related metrics in this code are used to provide common Prometheus metrics names for clients. These metrics track the current height of the canonical chain and the estimated highest block available.

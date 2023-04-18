@@ -1,0 +1,18 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Core.Test/Collections/LinkedHashSetTests.cs)
+
+The `LinkedHashSetTests` class is a test suite for the `LinkedHashSet` class in the `Nethermind.Core.Collections` namespace. The `LinkedHashSet` class is a collection that represents a set of unique elements that are linked in the order in which they were added. The purpose of this test suite is to ensure that the `LinkedHashSet` class behaves correctly and consistently according to its specification.
+
+The test suite contains several test methods that test various aspects of the `LinkedHashSet` class. The `new_is_empty` method tests that a new `LinkedHashSet` instance is empty. The `initializes_from_enumerable` method tests that a `LinkedHashSet` instance can be initialized with an enumerable collection of elements. The `initializes_with_capacity` method tests that a `LinkedHashSet` instance can be initialized with a capacity and that elements can be added to it. The `ignores_adding_duplicates` method tests that adding duplicate elements to a `LinkedHashSet` instance has no effect. The `can_clear` method tests that a `LinkedHashSet` instance can be cleared. The `can_copy` method tests that a `LinkedHashSet` instance can be copied to an array. The `contains_added_elements` method tests that a `LinkedHashSet` instance contains all the elements that were added to it. The `not_contains_not_added_elements` method tests that a `LinkedHashSet` instance does not contain an element that was not added to it. The `removes_elements` method tests that elements can be removed from a `LinkedHashSet` instance. The `not_removes_unknown_elements` method tests that removing an unknown element from a `LinkedHashSet` instance has no effect. The `except_with`, `intersect_with`, `symmetric_except_with`, and `union_with` methods test that the `ExceptWith`, `IntersectWith`, `SymmetricExceptWith`, and `UnionWith` methods of a `LinkedHashSet` instance behave correctly. The `set_equals`, `overlaps`, `is_subset_of`, `is_superset_of`, `is_proper_subset_of`, and `is_proper_superset_of` methods test that the `SetEquals`, `Overlaps`, `IsSubsetOf`, `IsSupersetOf`, `IsProperSubsetOf`, and `IsProperSupersetOf` methods of a `LinkedHashSet` instance behave correctly.
+
+Each test method creates a new `LinkedHashSet` instance and performs some operations on it. The `FluentAssertions` library is used to assert that the `LinkedHashSet` instance behaves as expected. The `NUnit` framework is used to run the test suite.
+
+Overall, the `LinkedHashSetTests` class is an important part of the Nethermind project as it ensures that the `LinkedHashSet` class behaves correctly and consistently, which is crucial for the correctness and reliability of the project.
+## Questions: 
+ 1. What is the purpose of the `LinkedHashSet` class?
+- The `LinkedHashSet` class is a collection that represents a set of unique elements in the order in which they were added.
+
+2. What are some examples of methods that can be used with `LinkedHashSet`?
+- Some methods that can be used with `LinkedHashSet` include `Add`, `Remove`, `Clear`, `CopyTo`, `Contains`, and various set operations such as `ExceptWith`, `IntersectWith`, `SymmetricExceptWith`, and `UnionWith`.
+
+3. What is the purpose of the `ChangeSetTest` method?
+- The `ChangeSetTest` method is used to test the behavior of `LinkedHashSet` when performing set operations such as `ExceptWith`, `IntersectWith`, `SymmetricExceptWith`, and `UnionWith`. It takes in an expected set of integers and an action to perform on a `LinkedHashSet`, and then checks that the resulting set matches the expected set.

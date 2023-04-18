@@ -1,0 +1,31 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Specs/ChainSpecStyle/ChainSpecLoaderExtensions.cs)
+
+The `ChainSpecLoaderExtensions` class provides two extension methods for the `IChainSpecLoader` interface: `LoadEmbeddedOrFromFile` and `LoadFromFile`. These methods are used to load a chain specification (chain spec) from either an embedded resource or a file, respectively. 
+
+The `LoadEmbeddedOrFromFile` method first attempts to load the chain spec from an embedded resource. It does this by calling the `GetResourceName` method to get the name of the embedded resource based on the provided file name. If the resource is found, the method reads the contents of the resource and passes it to the `Load` method of the `chainSpecLoader` instance to create a `ChainSpec` object. If the resource is not found, the method logs an info message and falls back to loading the chain spec from a file by calling the `LoadFromFile` method.
+
+The `LoadFromFile` method attempts to load the chain spec from a file. It first checks if the file exists by calling `File.Exists` with the provided file path. If the file does not exist, the method throws a `FileNotFoundException` with a message that includes a list of other JSON files in the same directory as the missing file. If the file exists, the method reads the contents of the file and passes it to the `Load` method of the `chainSpecLoader` instance to create a `ChainSpec` object.
+
+Both methods take an `ILogger` instance as a parameter to log messages during the loading process. 
+
+These methods are useful for loading chain specs in different scenarios. For example, the `LoadEmbeddedOrFromFile` method can be used to load a default chain spec that is embedded in the application binary, while the `LoadFromFile` method can be used to load a custom chain spec from a file specified by the user. 
+
+Example usage:
+
+```
+IChainSpecLoader chainSpecLoader = new ChainSpecLoader();
+ILogger logger = new ConsoleLogger(LogLevel.Info);
+ChainSpec chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile("mainnet.json", logger);
+```
+## Questions: 
+ 1. What is the purpose of this code?
+   
+   This code provides extension methods for loading a ChainSpec either from an embedded resource or from a file.
+
+2. What is a ChainSpec and why would a developer need to load it?
+
+   A ChainSpec is a JSON file that specifies the configuration of a blockchain network. Developers would need to load it to configure and run a node on that network.
+
+3. What is the difference between `LoadEmbeddedOrFromFile` and `LoadFromFile` methods?
+
+   `LoadEmbeddedOrFromFile` method first tries to load the ChainSpec from an embedded resource, and if it's not found, it falls back to loading it from a file. `LoadFromFile` method only loads the ChainSpec from a file.

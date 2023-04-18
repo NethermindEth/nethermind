@@ -1,0 +1,25 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Consensus/NoPoS.cs)
+
+The code above defines a class called `NoPoS` that implements the `IPoSSwitcher` interface. The purpose of this class is to provide a "no-op" implementation of the Proof of Stake (PoS) consensus algorithm switcher. In other words, it provides a way to disable PoS and use only Proof of Work (PoW) consensus in the Nethermind project.
+
+The `NoPoS` class has a private constructor and a public static property called `Instance` that returns a new instance of the class. This is done to ensure that only one instance of the class is created throughout the lifetime of the application.
+
+The `NoPoS` class implements several methods and properties of the `IPoSSwitcher` interface. However, all of these methods and properties simply return default values or throw a `NotImplementedException`. This is because the `NoPoS` class is designed to disable PoS and not provide any actual implementation of the algorithm.
+
+For example, the `ForkchoiceUpdated` method simply throws a `NotImplementedException`, indicating that this method is not implemented and should not be called. Similarly, the `TerminalTotalDifficulty` and `FinalTotalDifficulty` properties return `null`, indicating that there is no total difficulty associated with the terminal block or the final block.
+
+The `GetBlockConsensusInfo` method returns a tuple of two boolean values, `(false, false)`, indicating that the block is not a terminal block and is not post-merge. The `IsPostMerge` method always returns `false`, indicating that the block is not post-merge.
+
+Overall, the `NoPoS` class provides a way to disable PoS and use only PoW consensus in the Nethermind project. It does this by providing a "no-op" implementation of the `IPoSSwitcher` interface, which simply returns default values or throws a `NotImplementedException`.
+## Questions: 
+ 1. What is the purpose of the `NoPoS` class and how does it relate to the Nethermind project?
+   
+   The `NoPoS` class is a part of the Nethermind project and implements the `IPoSSwitcher` interface. It provides methods for updating and querying information related to the consensus algorithm used by the project.
+
+2. What is the significance of the `TerminalBlockReached` event and why is it disabled with a `#pragma` directive?
+   
+   The `TerminalBlockReached` event is used to signal when the blockchain has reached a terminal block, which is a block that cannot be further extended. It is disabled with a `#pragma` directive because it is not used in this implementation of the consensus algorithm.
+
+3. What is the purpose of the `GetBlockConsensusInfo` method and how is it used in the consensus algorithm?
+   
+   The `GetBlockConsensusInfo` method returns a tuple indicating whether a given block is a terminal block or a post-merge block. It is used by the consensus algorithm to determine the validity of blocks and to select the best chain to follow.

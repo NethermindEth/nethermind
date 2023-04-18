@@ -1,0 +1,33 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Trie/TrieStats.cs)
+
+The `TrieStats` class is responsible for keeping track of various statistics related to the trie data structure used in the Nethermind project. The trie is a tree-like data structure used to store key-value pairs, where keys are usually byte arrays and values can be any type of data. The trie is used in Nethermind to store various types of data related to Ethereum accounts, such as account balances, contract code, and storage data.
+
+The `TrieStats` class contains various fields and properties that keep track of different statistics related to the trie. These include the number of different types of nodes in the trie (branch, extension, and leaf nodes), the number of accounts and contracts stored in the trie, the size of the trie in bytes, and the number of missing nodes (nodes that should exist but are not present in the trie). The class also contains arrays that keep track of the number of nodes at each level of the trie.
+
+The `ToString` method of the `TrieStats` class returns a string representation of the various statistics tracked by the class. This method is likely used for debugging and monitoring purposes, to help developers understand the performance and behavior of the trie data structure in the context of the larger Nethermind project.
+
+Here is an example of how the `TrieStats` class might be used in the context of the Nethermind project:
+
+```csharp
+var trie = new Trie();
+// insert some key-value pairs into the trie
+trie.Put(new byte[] { 0x01 }, new byte[] { 0x02 });
+trie.Put(new byte[] { 0x03 }, new byte[] { 0x04 });
+// get statistics about the trie
+var stats = trie.GetStats();
+Console.WriteLine(stats.ToString());
+```
+
+This code creates a new `Trie` object, inserts two key-value pairs into the trie, and then gets the statistics for the trie using the `GetStats` method. The `ToString` method of the `TrieStats` object returned by `GetStats` is then printed to the console, providing information about the size and structure of the trie.
+## Questions: 
+ 1. What is the purpose of the TrieStats class?
+    
+    The TrieStats class is used to store statistics related to a trie data structure, including node counts, sizes, and levels.
+
+2. What is the significance of the Levels constant and the arrays _stateLevels, _storageLevels, and _codeLevels?
+    
+    The Levels constant represents the maximum number of levels in the trie data structure. The arrays _stateLevels, _storageLevels, and _codeLevels store the number of nodes at each level for the corresponding type of node (state, storage, or code).
+
+3. What is the purpose of the MissingNodes property and how is it calculated?
+    
+    The MissingNodes property represents the total number of missing nodes in the trie data structure, which is calculated as the sum of the MissingState, MissingCode, and MissingStorage properties. These properties track the number of missing nodes for each type of node (state, code, or storage).

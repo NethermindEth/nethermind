@@ -1,0 +1,35 @@
+[View code on GitHub](https://github.com/NethermindEth/nethermind/src/Nethermind/Nethermind.Synchronization/Pivot.cs)
+
+The `Pivot` class is a part of the Nethermind project and is used for blockchain synchronization. It implements the `IPivot` interface and provides information about a pivot block. A pivot block is a block that is used as a reference point for synchronization. 
+
+The `Pivot` class has a constructor that takes an instance of `ISyncConfig` as a parameter. The `ISyncConfig` interface provides configuration options for synchronization. The constructor initializes the `PivotNumber`, `PivotHash`, `PivotTotalDifficulty`, and `PivotDestinationNumber` properties of the `Pivot` class. 
+
+The `PivotNumber` property is a long integer that represents the number of the pivot block. The `PivotHash` property is a nullable `Keccak` object that represents the hash of the pivot block. The `Keccak` class is a cryptographic hash function used in Ethereum. The `PivotParentHash` property is a nullable `Keccak` object that represents the hash of the parent block of the pivot block. In this implementation, it always returns null. The `PivotTotalDifficulty` property is a nullable `UInt256` object that represents the total difficulty of the pivot block. The `UInt256` class is used to represent unsigned 256-bit integers. The `PivotDestinationNumber` property is a long integer that represents the destination block number for synchronization. 
+
+The `Pivot` class is used in the larger project for synchronization of the blockchain. It provides information about the pivot block that is used as a reference point for synchronization. The `ISyncConfig` interface provides configuration options for synchronization, and the `Pivot` class uses these options to initialize its properties. 
+
+Example usage of the `Pivot` class:
+
+```
+ISyncConfig syncConfig = new SyncConfig();
+Pivot pivot = new Pivot(syncConfig);
+
+Console.WriteLine($"Pivot number: {pivot.PivotNumber}");
+Console.WriteLine($"Pivot hash: {pivot.PivotHash}");
+Console.WriteLine($"Pivot total difficulty: {pivot.PivotTotalDifficulty}");
+Console.WriteLine($"Pivot destination number: {pivot.PivotDestinationNumber}");
+``` 
+
+This code creates an instance of `SyncConfig` and passes it to the constructor of the `Pivot` class. It then prints the values of the `PivotNumber`, `PivotHash`, `PivotTotalDifficulty`, and `PivotDestinationNumber` properties of the `Pivot` object.
+## Questions: 
+ 1. What is the purpose of the `Pivot` class?
+    
+    The `Pivot` class is an implementation of the `IPivot` interface and represents a pivot block used in blockchain synchronization.
+
+2. What is the significance of the `ISyncConfig` parameter in the `Pivot` constructor?
+
+    The `ISyncConfig` parameter is used to initialize the `Pivot` object with the pivot number, hash, and total difficulty parsed from the synchronization configuration.
+
+3. Why are `PivotParentHash` and `PivotDestinationNumber` properties returning null and 0L respectively?
+
+    It is likely that `PivotParentHash` and `PivotDestinationNumber` are not relevant for the specific use case of this `Pivot` implementation and have been set to null and 0L as default values.
