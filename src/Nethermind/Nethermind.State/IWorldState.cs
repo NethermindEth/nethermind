@@ -27,7 +27,7 @@ namespace Nethermind.State
 
         void SetTransientState(in StorageCell storageCell, byte[] newValue);
         void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? stateTracer, bool isGenesis = false);
-        new Snapshot TakeSnapshot(bool newTransactionStart = false);
+        Snapshot TakeSnapshot(bool newTransactionStart = false);
         Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
     }
 }

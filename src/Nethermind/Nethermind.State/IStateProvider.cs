@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.State
 {
-    public interface IStateProvider : IReadOnlyStateProvider, IJournal<int>
+    public interface IStateProvider : IReadOnlyStateProvider
     {
         void RecalculateStateRoot();
 
@@ -46,10 +46,6 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="codeHash"></param>
         void TouchCode(Keccak codeHash);
-
-        int TakeSnapshot(bool newTransactionStart = false);
-
-        int IJournal<int>.TakeSnapshot() => TakeSnapshot();
 
         void SetNonce(Address address, in UInt256 nonce);
     }
