@@ -1,12 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.State.Proofs;
+using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Producers;
 
@@ -41,6 +46,30 @@ public class PayloadAttributes
         sb.Append('}');
 
         return sb.ToString();
+    }
+
+    public string ComputePayloadId(BlockHeader parentHeader)
+    {
+        bool hasWithdrawals = Withdrawals is not null;
+        Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20 + (hasWithdrawals ? 32 : 0)];
+
+        parentHeader.Hash!.Bytes.CopyTo(inputSpan[..32]);
+        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, 8), Timestamp);
+        PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
+        SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
+
+        if (hasWithdrawals)
+        {
+            var withdrawalsRootHash = Withdrawals.Count == 0
+                ? PatriciaTree.EmptyTreeHash
+                : new WithdrawalTrie(Withdrawals).RootHash;
+
+            withdrawalsRootHash.Bytes.CopyTo(inputSpan[116..]);
+        }
+
+        ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);
+
+        return inputHash.BytesAsSpan[..8].ToHexString(true);
     }
 }
 

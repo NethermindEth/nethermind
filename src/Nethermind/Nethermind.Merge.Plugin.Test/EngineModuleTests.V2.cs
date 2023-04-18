@@ -721,6 +721,23 @@ public partial class EngineModuleTests
             $"PayloadAttributes {{Timestamp: {attrs.Timestamp}, PrevRandao: {attrs.PrevRandao}, SuggestedFeeRecipient: {attrs.SuggestedFeeRecipient}, Withdrawals count: {attrs.Withdrawals.Count}}}");
     }
 
+    [TestCaseSource(nameof(PayloadIdTestCases))]
+    public void Should_compute_payload_id_with_withdrawals((IList<Withdrawal>? Withdrawals, string PayloadId) input)
+    {
+        var blockHeader = Build.A.BlockHeader.TestObject;
+        var payloadAttributes = new PayloadAttributes
+        {
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero,
+            Timestamp = 0,
+            Withdrawals = input.Withdrawals
+        };
+
+        var payloadId = payloadAttributes.ComputePayloadId(blockHeader);
+
+        payloadId.Should().Be(input.PayloadId);
+    }
+
     private static async Task<GetPayloadV2Result> BuildAndGetPayloadResultV2(
         IEngineRpcModule rpc, MergeTestBlockchain chain, PayloadAttributes payloadAttributes)
     {
@@ -863,5 +880,15 @@ public partial class EngineModuleTests
             new Func<CallInfo, Block?>(i => block),
             Enumerable.Repeat(result, 5)
         );
+    }
+
+    protected static IEnumerable<(
+        IList<Withdrawal>? Withdrawals,
+        string payloadId
+        )> PayloadIdTestCases()
+    {
+        yield return (null, "0xd0666188af58eb6f");
+        yield return (Array.Empty<Withdrawal>(), "0xb5f89745e4cfaec0");
+        yield return (new[] { Build.A.Withdrawal.TestObject }, "0x0628b8a79468163e");
     }
 }
