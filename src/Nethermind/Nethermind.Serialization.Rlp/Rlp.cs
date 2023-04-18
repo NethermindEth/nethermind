@@ -79,6 +79,11 @@ namespace Nethermind.Serialization.Rlp
                     continue;
                 }
 
+                if (type.GetCustomAttribute(typeof(SkipGlobalRegistration)) is not null)
+                {
+                    continue;
+                }
+
                 Type[]? implementedInterfaces = type.GetInterfaces();
                 foreach (Type? implementedInterface in implementedInterfaces)
                 {
@@ -1482,5 +1487,8 @@ namespace Nethermind.Serialization.Rlp
             return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(BlockInfo)}");
         }
 
+        public class SkipGlobalRegistration : Attribute
+        {
+        }
     }
 }

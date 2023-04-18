@@ -11,7 +11,8 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class CompactLogEntryDecoder
+    [Rlp.SkipGlobalRegistration]
+    public class CompactLogEntryDecoder : IRlpDecoder<LogEntry>
     {
         public static CompactLogEntryDecoder Instance { get; } = new();
 
