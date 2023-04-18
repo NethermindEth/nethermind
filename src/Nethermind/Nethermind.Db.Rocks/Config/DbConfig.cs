@@ -16,7 +16,7 @@ public class DbConfig : IDbConfig
     public ulong WriteBufferSize { get; set; } = (ulong)16.MiB();
     public uint WriteBufferNumber { get; set; } = 4;
     public ulong BlockCacheSize { get; set; } = 0;
-    public bool CacheIndexAndFilterBlocks { get; set; } = false;
+    public bool CacheIndexAndFilterBlocks { get; set; } = true;
     public int? MaxOpenFiles { get; set; }
     public long? MaxWriteBytesPerSec { get; set; }
     public IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
@@ -24,7 +24,7 @@ public class DbConfig : IDbConfig
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 4;
     public ulong ReceiptsDbBlockCacheSize { get; set; } = 0;
-    public bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; } = false;
+    public bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; } = true;
     public int? ReceiptsDbMaxOpenFiles { get; set; }
     public long? ReceiptsDbMaxWriteBytesPerSec { get; set; }
     public IDictionary<string, string>? ReceiptsDbAdditionalRocksDbOptions { get; set; }
@@ -32,7 +32,7 @@ public class DbConfig : IDbConfig
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint BlocksDbWriteBufferNumber { get; set; } = 4;
     public ulong BlocksDbBlockCacheSize { get; set; } = 0;
-    public bool BlocksDbCacheIndexAndFilterBlocks { get; set; } = false;
+    public bool BlocksDbCacheIndexAndFilterBlocks { get; set; } = true;
     public int? BlocksDbMaxOpenFiles { get; set; }
     public long? BlocksDbMaxWriteBytesPerSec { get; set; }
     public IDictionary<string, string>? BlocksDbAdditionalRocksDbOptions { get; set; }
@@ -40,7 +40,7 @@ public class DbConfig : IDbConfig
     public ulong HeadersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint HeadersDbWriteBufferNumber { get; set; } = 4;
     public ulong HeadersDbBlockCacheSize { get; set; } = 0;
-    public bool HeadersDbCacheIndexAndFilterBlocks { get; set; } = false;
+    public bool HeadersDbCacheIndexAndFilterBlocks { get; set; } = true;
     public int? HeadersDbMaxOpenFiles { get; set; }
     public long? HeadersDbMaxWriteBytesPerSec { get; set; }
     public IDictionary<string, string>? HeadersDbAdditionalRocksDbOptions { get; set; }
@@ -48,7 +48,7 @@ public class DbConfig : IDbConfig
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint BlockInfosDbWriteBufferNumber { get; set; } = 4;
     public ulong BlockInfosDbBlockCacheSize { get; set; } = 0;
-    public bool BlockInfosDbCacheIndexAndFilterBlocks { get; set; } = false;
+    public bool BlockInfosDbCacheIndexAndFilterBlocks { get; set; } = true;
     public int? BlockInfosDbMaxOpenFiles { get; set; }
     public long? BlockInfosDbMaxWriteBytesPerSec { get; set; }
     public IDictionary<string, string>? BlockInfosDbAdditionalRocksDbOptions { get; set; }
@@ -56,7 +56,7 @@ public class DbConfig : IDbConfig
     public ulong PendingTxsDbWriteBufferSize { get; set; } = (ulong)4.MiB();
     public uint PendingTxsDbWriteBufferNumber { get; set; } = 4;
     public ulong PendingTxsDbBlockCacheSize { get; set; } = 0;
-    public bool PendingTxsDbCacheIndexAndFilterBlocks { get; set; } = false;
+    public bool PendingTxsDbCacheIndexAndFilterBlocks { get; set; } = true;
     public int? PendingTxsDbMaxOpenFiles { get; set; }
     public long? PendingTxsDbMaxWriteBytesPerSec { get; set; }
     public IDictionary<string, string>? PendingTxsDbAdditionalRocksDbOptions { get; set; }
@@ -64,7 +64,7 @@ public class DbConfig : IDbConfig
     public ulong CodeDbWriteBufferSize { get; set; } = (ulong)2.MiB();
     public uint CodeDbWriteBufferNumber { get; set; } = 4;
     public ulong CodeDbBlockCacheSize { get; set; } = 0;
-    public bool CodeDbCacheIndexAndFilterBlocks { get; set; } = false;
+    public bool CodeDbCacheIndexAndFilterBlocks { get; set; } = true;
     public int? CodeDbMaxOpenFiles { get; set; }
     public long? CodeDbMaxWriteBytesPerSec { get; set; }
     public IDictionary<string, string>? CodeDbAdditionalRocksDbOptions { get; set; }
@@ -72,7 +72,7 @@ public class DbConfig : IDbConfig
     public ulong BloomDbWriteBufferSize { get; set; } = (ulong)1.KiB();
     public uint BloomDbWriteBufferNumber { get; set; } = 4;
     public ulong BloomDbBlockCacheSize { get; set; } = 0;
-    public bool BloomDbCacheIndexAndFilterBlocks { get; set; } = false;
+    public bool BloomDbCacheIndexAndFilterBlocks { get; set; } = true;
     public int? BloomDbMaxOpenFiles { get; set; }
     public long? BloomDbMaxWriteBytesPerSec { get; set; }
     public IDictionary<string, string>? BloomDbAdditionalRocksDbOptions { get; set; }
@@ -80,7 +80,7 @@ public class DbConfig : IDbConfig
     public ulong WitnessDbWriteBufferSize { get; set; } = (ulong)1.KiB();
     public uint WitnessDbWriteBufferNumber { get; set; } = 4;
     public ulong WitnessDbBlockCacheSize { get; set; } = 0;
-    public bool WitnessDbCacheIndexAndFilterBlocks { get; set; } = false;
+    public bool WitnessDbCacheIndexAndFilterBlocks { get; set; } = true;
     public int? WitnessDbMaxOpenFiles { get; set; }
     public long? WitnessDbMaxWriteBytesPerSec { get; set; }
     public IDictionary<string, string>? WitnessDbAdditionalRocksDbOptions { get; set; }

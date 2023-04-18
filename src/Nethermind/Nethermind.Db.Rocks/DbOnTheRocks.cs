@@ -221,10 +221,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     {
         _maxThisDbSize = 0;
         BlockBasedTableOptions tableOptions = new();
-        tableOptions.SetBlockSize(16 * 1024);
+        tableOptions.SetBlockSize(1024);
         tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
         tableOptions.SetCacheIndexAndFilterBlocks(dbConfig.CacheIndexAndFilterBlocks);
-        tableOptions.SetFormatVersion(4);
+        tableOptions.SetIndexType(BlockBasedTableIndexType.TwoLevelIndex);
+        _rocksDbNative.rocksdb_block_based_options_set_partition_filters(tableOptions.Handle, true);
+        _rocksDbNative.rocksdb_block_based_options_set_metadata_block_size(tableOptions.Handle, 4096);
+        tableOptions.SetFormatVersion(5);
 
         /*
         ColumnFamilyOptions* ColumnFamilyOptions::OptimizeForPointLookup(
@@ -244,10 +247,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
          */
 
         // Rewrote OptimizeForPointLookup to be able to use shared block cache.
-        _rocksDbNative.rocksdb_block_based_options_set_data_block_index_type(tableOptions.Handle, 1);
         tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, false));
-        _rocksDbNative.rocksdb_block_based_options_set_data_block_hash_ratio(tableOptions.Handle, 0.75);
-        tableOptions.SetWholeKeyFiltering(true);
+
+        // TODO: Need to double check again if these do or don't do anything. It does increase db size thought.
+        // _rocksDbNative.rocksdb_block_based_options_set_data_block_index_type(tableOptions.Handle, 1);
+        // _rocksDbNative.rocksdb_block_based_options_set_data_block_hash_ratio(tableOptions.Handle, 0.75);
+
+        _rocksDbNative.rocksdb_options_set_memtable_whole_key_filtering(options.Handle, true);
         _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, 0.02);
 
         ulong blockCacheSize = dbConfig.BlockCacheSize;
@@ -309,6 +315,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         options.IncreaseParallelism(Environment.ProcessorCount);
         options.SetRecycleLogFileNum(dbConfig
             .RecycleLogFileNum); // potential optimization for reusing allocated log files
+
+        // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
+        _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
 
         //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
         WriteOptions = new WriteOptions();
