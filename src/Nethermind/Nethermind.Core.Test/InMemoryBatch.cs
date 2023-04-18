@@ -22,7 +22,7 @@ namespace Nethermind.Core
         {
             foreach (KeyValuePair<byte[], byte[]?> keyValuePair in _currentItems)
             {
-                _store.Set(keyValuePair.Key, keyValuePair.Value, _writeFlags) ;
+                _store.Set(keyValuePair.Key, keyValuePair.Value, _writeFlags);
             }
 
             GC.SuppressFinalize(this);
