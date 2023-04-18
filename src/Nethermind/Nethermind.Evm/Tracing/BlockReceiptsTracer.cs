@@ -13,6 +13,9 @@ namespace Nethermind.Evm.Tracing
 {
     public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>
     {
+        public BlockReceiptsTracer() { }
+        public BlockReceiptsTracer(ITxTracer customTracer) => _currentTxTracer = customTracer;
+
         private Block _block = null!;
         public bool IsTracingReceipt => true;
         public bool IsTracingActions => _currentTxTracer.IsTracingActions;

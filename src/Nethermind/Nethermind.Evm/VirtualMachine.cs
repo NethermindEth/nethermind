@@ -209,7 +209,7 @@ namespace Nethermind.Evm
                                 // Reject code starting with 0xEF if EIP-3541 is enabled And not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
                                 else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(callResult.Output, spec, callResult.FromVersion))
                                 {
-                                    _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+                                    _txTracer.ReportActionError(callResult.FromVersion > 0 ? EvmExceptionType.InvalidEofCode : EvmExceptionType.InvalidCode);
                                 }
                                 else
                                 {
