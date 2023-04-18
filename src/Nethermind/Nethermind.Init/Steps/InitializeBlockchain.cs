@@ -135,6 +135,7 @@ namespace Nethermind.Init.Steps
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 
             stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+            _logger.Info($"Current Block: {getApi.BlockTree!.Head?.Number} {getApi.BlockTree!.Head?.StateRoot} {getApi.BlockTree!.Head?.Hash}");
 
             void VerifyTrie()
             {
@@ -144,7 +145,7 @@ namespace Nethermind.Init.Steps
                     TrieStoreByPath noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
                     IStateProvider diagStateProvider = new StateProvider(noPruningStore, codeDb, getApi.LogManager)
                     {
-                        StateRoot = new Keccak("0x2219f534eb26a90587be60d5bbc3e06c0dd13f1932bd9d61c06011b1d1e140e4")
+                        StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
                     };
                     TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
                     _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);

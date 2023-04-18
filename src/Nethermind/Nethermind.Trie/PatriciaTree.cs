@@ -1235,12 +1235,15 @@ namespace Nethermind.Trie
                         break;
                     case TrieNodeResolverCapability.Path:
                         rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
+                        _logger.Info($"Starting Visitor - Resolve RootNode - rh:{rootHash} crh:{RootHash}");
                         try
                         {
+                            _logger.Info($"rootRef Node:  {rootRef.NodeType}");
                             if (rootRef.NodeType == NodeType.Unknown)
                             {
                                 rootRef!.ResolveNode(TrieStore);
                                 rootRef!.ResolveKey(TrieStore, true);
+                                _logger.Info($"rootRef resolve:  {rootRef.Keccak}");
                                 if (rootRef.Keccak != rootHash)
                                     throw new TrieException("Root ref hash mismatch!");
                             }
