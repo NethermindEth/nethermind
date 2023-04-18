@@ -256,6 +256,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         _rocksDbNative.rocksdb_options_set_memtable_whole_key_filtering(options.Handle, true);
         _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, 0.02);
+        options.SetOptimizeFiltersForHits(1);
 
         ulong blockCacheSize = dbConfig.BlockCacheSize;
         if (sharedCache != null && blockCacheSize == 0)
