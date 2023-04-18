@@ -16,7 +16,7 @@ namespace Nethermind.Core.Test;
 public class TestMemDb : MemDb
 {
     private List<(byte[], ReadFlags)> _readKeys = new();
-    private List<byte[]> _writeKeys = new();
+    private List<(byte[], WriteFlags)> _writeKeys = new();
     private List<byte[]> _removedKeys = new();
 
     public Func<byte[], byte[]>? ReadFunc { get; set; }
@@ -30,9 +30,9 @@ public class TestMemDb : MemDb
         return base.Get(key, flags);
     }
 
-    public virtual void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+    public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
-        _writeKeys.Add(key.ToArray());
+        _writeKeys.Add((key.ToArray(), flags));
         base.Set(key, value, flags);
     }
 
@@ -65,7 +65,12 @@ public class TestMemDb : MemDb
 
     public void KeyWasWritten(byte[] key, int times = 1)
     {
-        _writeKeys.Count(it => Bytes.AreEqual(it, key)).Should().Be(times);
+        _writeKeys.Count(it => Bytes.AreEqual(it.Item1, key)).Should().Be(times);
+    }
+
+    public void KeyWasWrittenWithFlags(byte[] key, WriteFlags flags, int times = 1)
+    {
+        _writeKeys.Count(it => Bytes.AreEqual(it.Item1, key) && it.Item2 == flags).Should().Be(times);
     }
 
     public void KeyWasRemoved(Func<byte[], bool> cond, int times = 1)
