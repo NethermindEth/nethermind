@@ -246,6 +246,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_filter_changes_missing()
+    {
+        using Context ctx = await Context.Create();
+        string serialized2 = ctx.Test.TestEthRpc("eth_getFilterChanges", "0");
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Filter not found\"},\"id\":67}", serialized2);
+    }
+
+    [Test]
     public async Task Eth_uninstall_filter()
     {
         using Context ctx = await Context.Create();

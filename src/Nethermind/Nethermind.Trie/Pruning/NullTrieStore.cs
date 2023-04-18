@@ -35,7 +35,7 @@ namespace Nethermind.Trie.Pruning
             return new(NodeType.Unknown, hash);
         }
 
-        public byte[] LoadRlp(Keccak hash)
+        public byte[] LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None)
         {
             return Array.Empty<byte>();
         }

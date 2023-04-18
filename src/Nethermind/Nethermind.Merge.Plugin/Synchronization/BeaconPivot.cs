@@ -144,7 +144,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 }
             }
 
-            if (_logger.IsInfo) _logger.Info($"Loaded Beacon Pivot: {CurrentBeaconPivot?.ToString(BlockHeader.Format.FullHashAndNumber)}");
+            if (CurrentBeaconPivot != null)
+            {
+                if (_logger.IsInfo) _logger.Info($"Loaded Beacon Pivot: {CurrentBeaconPivot?.ToString(BlockHeader.Format.FullHashAndNumber)}");
+            }
         }
     }
 

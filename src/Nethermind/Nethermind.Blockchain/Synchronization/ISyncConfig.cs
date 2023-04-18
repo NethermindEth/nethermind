@@ -86,6 +86,15 @@ namespace Nethermind.Blockchain.Synchronization
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
         public bool FixReceipts { get; set; }
 
+        [ConfigItem(Description = "[ONLY TO FIX INCORRECT TOTAL DIFFICULTY ISSUE] Recalculates total difficulty starting from FixTotalDifficultyStartingBlock to FixTotalDifficultyLastBlock.", DefaultValue = "false")]
+        public bool FixTotalDifficulty { get; set; }
+
+        [ConfigItem(Description = "[ONLY TO FIX INCORRECT TOTAL DIFFICULTY ISSUE] First block which total difficulty will be recalculated.", DefaultValue = "1")]
+        public long FixTotalDifficultyStartingBlock { get; set; }
+
+        [ConfigItem(Description = "[ONLY TO FIX INCORRECT TOTAL DIFFICULTY ISSUE] Last block which total difficulty will be recalculated. If set to null equals to best known block", DefaultValue = "null")]
+        public long? FixTotalDifficultyLastBlock { get; set; }
+
         [ConfigItem(Description = "Disable some optimization and run a more extensive sync. Useful for broken sync state but normally not needed", DefaultValue = "false")]
         public bool StrictMode { get; set; }
 

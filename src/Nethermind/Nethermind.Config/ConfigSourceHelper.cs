@@ -23,7 +23,7 @@ namespace Nethermind.Config
                     //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
                     var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
 
-                    //In case of collection of objects (more complex config models) we parse entire collection 
+                    //In case of collection of objects (more complex config models) we parse entire collection
                     if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
                     {
                         var objCollection = JsonConvert.DeserializeObject(valueString, valueType);
@@ -63,7 +63,14 @@ namespace Nethermind.Config
                 }
                 else
                 {
-                    value = GetValue(valueType, valueString);
+                    try
+                    {
+                        value = GetValue(valueType, valueString);
+                    }
+                    catch (InvalidCastException)
+                    {
+                        value = JsonConvert.DeserializeObject(valueString, valueType);
+                    }
                 }
 
                 return value;

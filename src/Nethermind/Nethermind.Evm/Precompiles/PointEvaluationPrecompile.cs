@@ -15,7 +15,7 @@ public class PointEvaluationPrecompile : IPrecompile
     public static readonly IPrecompile Instance = new PointEvaluationPrecompile();
 
     private static readonly ReadOnlyMemory<byte> PointEvaluationSuccessfulResponse =
-                                                    BitConverter.GetBytes((long)KzgPolynomialCommitments.FieldElementsPerBlob)
+                                                    BitConverter.GetBytes((long)Ckzg.Ckzg.FieldElementsPerBlob)
                                             .Concat(KzgPolynomialCommitments.BlsModulus.ToLittleEndian())
                                             .ToArray();
 
@@ -51,6 +51,6 @@ public class PointEvaluationPrecompile : IPrecompile
         Metrics.PointEvaluationPrecompile++;
         return IsValid(inputData)
             ? (PointEvaluationSuccessfulResponse, true)
-            : (ReadOnlyMemory<byte>.Empty, false);
+            : (default, false);
     }
 }

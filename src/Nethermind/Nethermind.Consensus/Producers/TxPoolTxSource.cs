@@ -59,6 +59,7 @@ namespace Nethermind.Consensus.Producers
 
             // TODO: removing transactions from TX pool here seems to be a bad practice since they will
             // not come back if the block is ignored?
+            int blobsCounter = 0;
             foreach (Transaction tx in transactions)
             {
                 i++;
@@ -71,13 +72,28 @@ namespace Nethermind.Consensus.Producers
                 }
 
                 bool success = _txFilterPipeline.Execute(tx, parent);
-                if (success)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
+                if (!success) continue;
 
-                    selectedTransactions++;
-                    yield return tx;
+                if (tx.Type == TxType.Blob)
+                {
+                    int txAmountOfBlobs = tx.BlobVersionedHashes?.Length ?? 0;
+                    if ((blobsCounter + txAmountOfBlobs) > Eip4844Constants.MaxBlobsPerBlock)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, no more blob space.");
+                        continue;
+                    }
+
+                    blobsCounter += txAmountOfBlobs;
+                    if (_logger.IsTrace) _logger.Trace($"Selected shard blob tx {tx.ToShortString()} to be potentially included in block, total blobs included: {blobsCounter}.");
                 }
+                else
+                {
+                    if (_logger.IsTrace)
+                        _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
+                }
+
+                selectedTransactions++;
+                yield return tx;
             }
 
             if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedTransactions} out of {i} pending transactions checked.");
