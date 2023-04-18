@@ -13,10 +13,13 @@ namespace Nethermind.Core
         public Address Address { get; }
         public UInt256 Index { get; }
 
-        public StorageCell(Address address, in UInt256 index)
+        public bool IsTransient { get; }
+
+        public StorageCell(Address address, in UInt256 index, bool isTransient = false)
         {
             Address = address;
             Index = index;
+            IsTransient = isTransient;
         }
 
         public bool Equals(StorageCell other)
@@ -38,13 +41,14 @@ namespace Nethermind.Core
         {
             unchecked
             {
-                return (Address.GetHashCode() * 397) ^ Index.GetHashCode();
+                return (Address.GetHashCode() * 397) ^ HashCode.Combine(Index, IsTransient);
             }
         }
 
         public override string ToString()
         {
-            return $"{Address}.{Index}";
+            string isTransient = IsTransient ? "Transient" : "Persistent";
+            return $"{Address}.{Index}.{isTransient}";
         }
     }
 }

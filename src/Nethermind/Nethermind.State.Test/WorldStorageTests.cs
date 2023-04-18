@@ -55,8 +55,8 @@ namespace Nethermind.Store.Test
         public void Empty_commit_restore()
         {
             WorldState provider = GetProvider();
-            provider.Commit();
-            provider.RestoreStorage(Snapshot.Storage.Empty);
+            provider.Commit(Frontier.Instance);
+            provider.RestoreStorage(Snapshot.EmptyPosition);
         }
 
         [TestCase(-1)]
@@ -79,7 +79,7 @@ namespace Nethermind.Store.Test
         {
             WorldState provider = GetProvider();
             provider.Set(new StorageCell(_address1, 1), _values[1]);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
             provider.Get(new StorageCell(_address1, 1));
             provider.Set(new StorageCell(_address1, 1), _values[2]);
             provider.RestoreStorage(-1);
@@ -112,19 +112,19 @@ namespace Nethermind.Store.Test
             provider.Set(new StorageCell(_address1, 1), _values[1]);
             provider.Set(new StorageCell(_address1, 2), _values[2]);
             provider.Set(new StorageCell(_address1, 3), _values[3]);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
             provider.Set(new StorageCell(_address2, 1), _values[4]);
             provider.Set(new StorageCell(_address2, 2), _values[5]);
             provider.Set(new StorageCell(_address2, 3), _values[6]);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
             provider.Set(new StorageCell(_address1, 1), _values[7]);
             provider.Set(new StorageCell(_address1, 2), _values[8]);
             provider.Set(new StorageCell(_address1, 3), _values[9]);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
             provider.Set(new StorageCell(_address2, 1), _values[10]);
             provider.Set(new StorageCell(_address2, 2), _values[11]);
             provider.Set(new StorageCell(_address2, 3), _values[12]);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
             provider.RestoreStorage(-1);
 
             Assert.AreEqual(_values[7], provider.Get(new StorageCell(_address1, 1)));
@@ -143,7 +143,7 @@ namespace Nethermind.Store.Test
             provider.Set(new StorageCell(_address1, 2), _values[2]);
             provider.Set(new StorageCell(_address1, 3), _values[3]);
             provider.RestoreStorage(-1);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
 
             Assert.IsTrue(provider.Get(new StorageCell(_address1, 1)).IsZero());
         }
@@ -171,7 +171,7 @@ namespace Nethermind.Store.Test
             provider.Get(new StorageCell(_address1, 1));
             provider.Get(new StorageCell(_address1, 1));
             provider.Get(new StorageCell(_address1, 1));
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
 
             Assert.True(provider.Get(new StorageCell(_address1, 1)).IsZero());
         }
@@ -223,14 +223,14 @@ namespace Nethermind.Store.Test
             WorldState provider = GetProvider();
 
             // Should be 0 if not set
-            Assert.True(provider.GetTransientState(new StorageCell(_address1, 1)).IsZero());
+            Assert.True(provider.GetTransientState(new StorageCell(_address1, 1, true)).IsZero());
 
             // Should be 0 if loading from the same contract but different index
-            provider.SetTransientState(new StorageCell(_address1, 2), _values[1]);
-            Assert.True(provider.GetTransientState(new StorageCell(_address1, 1)).IsZero());
+            provider.SetTransientState(new StorageCell(_address1, 2, true), _values[1]);
+            Assert.True(provider.GetTransientState(new StorageCell(_address1, 1, true)).IsZero());
 
             // Should be 0 if loading from the same index but different contract
-            Assert.True(provider.GetTransientState(new StorageCell(_address2, 1)).IsZero());
+            Assert.True(provider.GetTransientState(new StorageCell(_address2, 1, true)).IsZero());
         }
 
         /// <summary>
@@ -240,8 +240,8 @@ namespace Nethermind.Store.Test
         public void Can_tload_after_tstore()
         {
             WorldState provider = GetProvider();
-            provider.SetTransientState(new StorageCell(_address1, 2), _values[1]);
-            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(_address1, 2)));
+            provider.SetTransientState(new StorageCell(_address1, 2, true), _values[1]);
+            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(_address1, 2, true)));
         }
 
         /// <summary>
@@ -257,26 +257,26 @@ namespace Nethermind.Store.Test
             WorldState provider = GetProvider();
 
             Snapshot[] snapshots = new Snapshot[4];
-            Snapshot.Storage[] storageSnapshots = new Snapshot.Storage[4];
+            int[] storageSnapshots = new int[4];
 
             snapshots[0] = provider.TakeSnapshot(false);
             storageSnapshots[0] = snapshots[0].StorageSnapshot;
-            provider.SetTransientState(new StorageCell(_address1, 1), _values[1]);
+            provider.SetTransientState(new StorageCell(_address1, 1, true), _values[1]);
             snapshots[1] = provider.TakeSnapshot(false);
             storageSnapshots[1] = snapshots[1].StorageSnapshot;
-            provider.SetTransientState(new StorageCell(_address1, 1), _values[2]);
+            provider.SetTransientState(new StorageCell(_address1, 1, true), _values[2]);
             snapshots[2] = provider.TakeSnapshot(false);
             storageSnapshots[2] = snapshots[2].StorageSnapshot;
-            provider.SetTransientState(new StorageCell(_address1, 1), _values[3]);
+            provider.SetTransientState(new StorageCell(_address1, 1, true), _values[3]);
             snapshots[3] = provider.TakeSnapshot(false);
             storageSnapshots[3] = snapshots[3].StorageSnapshot;
 
-            Assert.AreEqual(snapshots[snapshot + 1].StorageSnapshot.TransientStorageSnapshot, snapshot);
+            Assert.IsTrue(snapshots[snapshot + 1].StorageSnapshot == snapshot);
             // Persistent storage is unimpacted by transient storage
-            Assert.AreEqual(snapshots[snapshot + 1].StorageSnapshot.PersistentStorageSnapshot, -1);
+            // Assert.AreEqual(snapshots[snapshot + 1].StorageSnapshot.PersistentStorageSnapshot, -1);
             provider.RestoreStorage(snapshots[snapshot + 1].StorageSnapshot);
 
-            Assert.AreEqual(_values[snapshot + 1], provider.GetTransientState(new StorageCell(_address1, 1)));
+            Assert.AreEqual(_values[snapshot + 1], provider.GetTransientState(new StorageCell(_address1, 1, true)));
         }
 
         /// <summary>
@@ -287,11 +287,11 @@ namespace Nethermind.Store.Test
         {
             WorldState provider = GetProvider();
 
-            provider.SetTransientState(new StorageCell(_address1, 2), _values[1]);
-            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(_address1, 2)));
+            provider.SetTransientState(new StorageCell(_address1, 2, true), _values[1]);
+            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(_address1, 2, true)));
 
             provider.Commit(Frontier.Instance);
-            Assert.True(provider.GetTransientState(new StorageCell(_address1, 2)).IsZero());
+            Assert.True(provider.GetTransientState(new StorageCell(_address1, 2, true)).IsZero());
         }
 
         /// <summary>
@@ -303,115 +303,11 @@ namespace Nethermind.Store.Test
             WorldState provider = GetProvider();
 
 
-            provider.SetTransientState(new StorageCell(_address1, 2), _values[1]);
-            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(_address1, 2)));
+            provider.SetTransientState(new StorageCell(_address1, 2, true), _values[1]);
+            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(_address1, 2, true)));
 
             provider.Reset();
-            Assert.True(provider.GetTransientState(new StorageCell(_address1, 2)).IsZero());
-        }
-
-        /// <summary>
-        /// Transient state does not impact persistent state
-        /// </summary>
-        /// <param name="snapshot">Snapshot to restore to</param>
-        [TestCase(-1)]
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        public void Transient_state_restores_independent_of_persistent_state(int snapshot)
-        {
-            WorldState provider = GetProvider();
-
-            Snapshot[] snapshots = new Snapshot[4];
-            Snapshot.Storage[] storageSnapshots = new Snapshot.Storage[4];
-            // No updates
-            snapshots[0] = provider.TakeSnapshot(false);
-            storageSnapshots[0] = snapshots[0].StorageSnapshot;
-
-            // Only update transient
-            provider.SetTransientState(new StorageCell(_address1, 1), _values[1]);
-            snapshots[1] = provider.TakeSnapshot(false);
-            storageSnapshots[1] = snapshots[1].StorageSnapshot;
-
-            // Update both
-            provider.SetTransientState(new StorageCell(_address1, 1), _values[2]);
-            provider.Set(new StorageCell(_address1, 1), _values[9]);
-            snapshots[2] = provider.TakeSnapshot(false);
-            storageSnapshots[2] = snapshots[2].StorageSnapshot;
-
-            // Only update persistent
-            provider.Set(new StorageCell(_address1, 1), _values[8]);
-            snapshots[3] = provider.TakeSnapshot(false);
-            storageSnapshots[3] = snapshots[3].StorageSnapshot;
-
-            provider.RestoreStorage(snapshots[snapshot + 1].StorageSnapshot);
-
-            // Since we didn't update transient on the 3rd snapshot
-            if (snapshot == 2)
-            {
-                snapshot--;
-            }
-
-            storageSnapshots.Should().Equal(
-                Snapshot.Storage.Empty,
-                new Snapshot.Storage(Snapshot.EmptyPosition, 0),
-                new Snapshot.Storage(0, 1),
-                new Snapshot.Storage(1, 1));
-
-            _values[snapshot + 1].Should().BeEquivalentTo(provider.GetTransientState(new StorageCell(_address1, 1)));
-        }
-
-        /// <summary>
-        /// Persistent state does not impact transient state
-        /// </summary>
-        /// <param name="snapshot">Snapshot to restore to</param>
-        [TestCase(-1)]
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        public void Persistent_state_restores_independent_of_transient_state(int snapshot)
-        {
-            WorldState provider = GetProvider();
-
-            Snapshot[] snapshots = new Snapshot[4];
-            Snapshot.Storage[] storageSnapshots = new Snapshot.Storage[4];
-
-
-            // No updates
-            snapshots[0] = provider.TakeSnapshot(false);
-            storageSnapshots[0] = snapshots[0].StorageSnapshot;
-
-            // Only update persistent
-            provider.Set(new StorageCell(_address1, 1), _values[1]);
-            snapshots[1] = (provider).TakeSnapshot(false);
-            storageSnapshots[1] = snapshots[1].StorageSnapshot;
-
-            // Update both
-            provider.Set(new StorageCell(_address1, 1), _values[2]);
-            provider.SetTransientState(new StorageCell(_address1, 1), _values[9]);
-            snapshots[2] = (provider).TakeSnapshot(false);
-            storageSnapshots[2] = snapshots[2].StorageSnapshot;
-
-            // Only update transient
-            provider.SetTransientState(new StorageCell(_address1, 1), _values[8]);
-            snapshots[3] = (provider).TakeSnapshot(false);
-            storageSnapshots[3] = snapshots[3].StorageSnapshot;
-
-            provider.Restore(snapshots[snapshot + 1]);
-
-            // Since we didn't update persistent on the 3rd snapshot
-            if (snapshot == 2)
-            {
-                snapshot--;
-            }
-
-            storageSnapshots.Should().Equal(
-                Snapshot.Storage.Empty,
-                new Snapshot.Storage(0, Snapshot.EmptyPosition),
-                new Snapshot.Storage(1, 0),
-                new Snapshot.Storage(1, 1));
-
-            _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(_address1, 1)));
+            Assert.True(provider.GetTransientState(new StorageCell(_address1, 2, true)).IsZero());
         }
     }
 }

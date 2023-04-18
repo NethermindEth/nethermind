@@ -1658,7 +1658,7 @@ namespace Nethermind.Evm
                             if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
                             stack.PopUInt256(out UInt256 storageIndex);
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex, true);
 
                             byte[] value = _state.GetTransientState(storageCell);
                             stack.PushBytes(value);
@@ -1692,7 +1692,7 @@ namespace Nethermind.Evm
                                 newValue = BytesZero;
                             }
 
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex, true);
                             byte[] currentValue = newValue.ToArray();
                             _state.SetTransientState(storageCell, currentValue);
 

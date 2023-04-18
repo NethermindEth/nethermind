@@ -12,33 +12,16 @@ namespace Nethermind.State
     /// </summary>
     public readonly struct Snapshot
     {
-        public static readonly Snapshot Empty = new(EmptyPosition, Storage.Empty);
+        public static readonly Snapshot Empty = new(EmptyPosition,EmptyPosition);
 
-        public Snapshot(int stateSnapshot, Storage storageSnapshot)
+        public Snapshot(int stateSnapshot, int storageSnapshot)
         {
             StateSnapshot = stateSnapshot;
             StorageSnapshot = storageSnapshot;
         }
 
-        /// <summary>
-        /// Tracks snapshot positions for Persistent and Transient storage
-        /// </summary>
-        public readonly struct Storage
-        {
-            public static readonly Storage Empty = new(EmptyPosition, EmptyPosition);
-
-            public int PersistentStorageSnapshot { get; }
-            public int TransientStorageSnapshot { get; }
-
-            public Storage(int storageSnapshot, int transientStorageSnapshot)
-            {
-                PersistentStorageSnapshot = storageSnapshot;
-                TransientStorageSnapshot = transientStorageSnapshot;
-            }
-        }
-
         public int StateSnapshot { get; }
-        public Storage StorageSnapshot { get; }
+        public int StorageSnapshot { get; }
 
         public const int EmptyPosition = -1;
     }
