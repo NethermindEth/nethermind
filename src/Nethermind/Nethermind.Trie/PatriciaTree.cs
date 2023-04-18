@@ -332,6 +332,7 @@ namespace Nethermind.Trie
 
         private void SetRootHash(Keccak? value, bool resetObjects)
         {
+            _logger.Info($"Set RootHash: {value}");
             _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
             if (_rootHash == Keccak.EmptyTreeHash)
             {
@@ -341,6 +342,7 @@ namespace Nethermind.Trie
             {
                 RootRef = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
             }
+            _logger.Info($"New RootHash: {RootRef?.Keccak}");
         }
 
         public byte[]? GetInternal(Span<byte> rawKey, Keccak? rootHash = null)
