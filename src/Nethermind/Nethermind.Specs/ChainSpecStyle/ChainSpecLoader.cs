@@ -350,7 +350,7 @@ public class ChainSpecLoader : IChainSpecLoader
         Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
         UInt256 baseFee = chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero;
         if (chainSpecJson.Params.Eip1559Transition is not null)
-            baseFee = chainSpecJson.Params.Eip1559Transition == 0
+            baseFee = chainSpecJson.Params.Eip1559Transition == 1
                 ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
                 : UInt256.Zero;
 
