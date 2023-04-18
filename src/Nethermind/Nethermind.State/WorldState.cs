@@ -3,22 +3,27 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.State.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
 namespace Nethermind.State;
 
-public class WorldState : PartialStorageProviderBase, IWorldState
+public partial class WorldState : PartialStorageProviderBase, IWorldState
 {
-    private readonly StateProvider _stateProvider;
     private readonly TransientStorageProvider _transientStorageProvider;
 
     private readonly ITrieStore _trieStore;
@@ -34,130 +39,9 @@ public class WorldState : PartialStorageProviderBase, IWorldState
     {
         _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         _logManager = logManager;
-        _stateProvider = new StateProvider(trieStore, codeDb, logManager);
+        _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+        _stateTree = new StateTree(trieStore, logManager);
         _transientStorageProvider = new TransientStorageProvider(logManager);
-    }
-
-    public Keccak StateRoot
-    {
-        get => _stateProvider.StateRoot;
-        set => _stateProvider.StateRoot = value;
-    }
-
-    public Account GetAccount(Address address)
-    {
-        return _stateProvider.GetAccount(address);
-    }
-
-    public void RecalculateStateRoot()
-    {
-        _stateProvider.RecalculateStateRoot();
-    }
-
-
-    public void DeleteAccount(Address address)
-    {
-        _stateProvider.DeleteAccount(address);
-    }
-
-    public void CreateAccount(Address address, in UInt256 balance)
-    {
-        _stateProvider.CreateAccount(address, in balance);
-    }
-
-    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce)
-    {
-        _stateProvider.CreateAccount(address, in balance, in nonce);
-    }
-
-    public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec releaseSpec, bool isGenesis = false)
-    {
-        _stateProvider.InsertCode(address, code, releaseSpec, isGenesis);
-    }
-
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-    {
-        _stateProvider.AddToBalance(address, in balanceChange, spec);
-    }
-
-    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-    {
-        _stateProvider.SubtractFromBalance(address, in balanceChange, spec);
-    }
-
-    public void UpdateStorageRoot(Address address, Keccak storageRoot)
-    {
-        _stateProvider.UpdateStorageRoot(address, storageRoot);
-    }
-
-    public void IncrementNonce(Address address)
-    {
-        _stateProvider.IncrementNonce(address);
-    }
-
-    public void DecrementNonce(Address address)
-    {
-        _stateProvider.DecrementNonce(address);
-    }
-
-    public void TouchCode(Keccak codeHash)
-    {
-        _stateProvider.TouchCode(codeHash);
-    }
-
-    public UInt256 GetNonce(Address address)
-    {
-        return _stateProvider.GetNonce(address);
-    }
-
-    public UInt256 GetBalance(Address address)
-    {
-        return _stateProvider.GetBalance(address);
-    }
-
-    public Keccak GetStorageRoot(Address address)
-    {
-        return _stateProvider.GetStorageRoot(address);
-    }
-
-    public byte[] GetCode(Address address)
-    {
-        return _stateProvider.GetCode(address);
-    }
-
-    public byte[] GetCode(Keccak codeHash)
-    {
-        return _stateProvider.GetCode(codeHash);
-    }
-
-    public Keccak GetCodeHash(Address address)
-    {
-        return _stateProvider.GetCodeHash(address);
-    }
-
-    public void Accept(ITreeVisitor visitor, Keccak stateRoot, VisitingOptions? visitingOptions = null)
-    {
-        _stateProvider.Accept(visitor, stateRoot, visitingOptions);
-    }
-
-    public bool AccountExists(Address address)
-    {
-        return _stateProvider.AccountExists(address);
-    }
-
-    public bool IsDeadAccount(Address address)
-    {
-        return _stateProvider.IsDeadAccount(address);
-    }
-
-    public bool IsEmptyAccount(Address address)
-    {
-        return _stateProvider.IsEmptyAccount(address);
-    }
-
-    public void SetNonce(Address address, in UInt256 nonce)
-    {
-        _stateProvider.SetNonce(address, nonce);
     }
 
     public override void ClearStorage(Address address)
@@ -176,17 +60,14 @@ public class WorldState : PartialStorageProviderBase, IWorldState
     {
         base.Commit((IStorageTracer)NullStateTracer.Instance);
         _transientStorageProvider.Commit();
-        _stateProvider.Commit(releaseSpec, isGenesis);
+        CommitState(releaseSpec, isGenesis);
     }
 
-    public void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer, bool isGenesis = false)
-    {
-        _stateProvider.Commit(releaseSpec, stateTracer, isGenesis);
-    }
+
 
     public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false)
     {
-        _stateProvider.Commit(releaseSpec, tracer, isGenesis);
+        CommitState(releaseSpec, tracer, isGenesis);
         base.Commit(tracer ?? (IStorageTracer)NullStateTracer.Instance);
         _transientStorageProvider.Commit(tracer ?? (IStorageTracer)NullStateTracer.Instance);
     }
@@ -208,7 +89,7 @@ public class WorldState : PartialStorageProviderBase, IWorldState
         // only needed here as there is no control over cached storage size otherwise
         _storages.Reset();
 
-        _stateProvider.CommitTree(blockNumber);
+        CommitStateTree(blockNumber);
     }
 
     /// <summary>
@@ -249,17 +130,16 @@ public class WorldState : PartialStorageProviderBase, IWorldState
         _originalValues.Clear();
         _committedThisRound.Clear();
         _transientStorageProvider.Reset();
-        _stateProvider.Reset();
+        ResetState();
     }
 
     public void Restore(Snapshot snapshot)
     {
-        _stateProvider.Restore(snapshot.StateSnapshot);
+        RestoreStateSnapshot(snapshot.StateSnapshot);
         base.Restore(snapshot.StorageSnapshot.PersistentStorageSnapshot);
         _transientStorageProvider.Restore(snapshot.StorageSnapshot.TransientStorageSnapshot);
     }
 
-    internal void RestoreState(int snapshot) => _stateProvider.Restore(snapshot);
     internal void RestoreStorage(Snapshot.Storage snapshot)
     {
         base.Restore(snapshot.PersistentStorageSnapshot);
@@ -268,13 +148,6 @@ public class WorldState : PartialStorageProviderBase, IWorldState
     internal void RestoreStorage(int snapshot)
     {
         RestoreStorage(new Snapshot.Storage(snapshot, Snapshot.EmptyPosition));
-    }
-
-    public new void Restore(int snapshot)
-    {
-        _stateProvider.Restore(snapshot);
-        base.Restore(snapshot);
-        _transientStorageProvider.Restore(snapshot);
     }
 
     public void SetTransientState(in StorageCell storageCell, byte[] newValue)
@@ -308,8 +181,8 @@ public class WorldState : PartialStorageProviderBase, IWorldState
     {
         int persistentSnapshot = base.TakeSnapshot(newTransactionStart);
         int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
-        Snapshot.Storage storageSnapshot = new(persistentSnapshot, transientSnapshot);
-        return new Snapshot(_stateProvider.TakeSnapshot(false), storageSnapshot);
+        Snapshot.Storage storageSnapshot = new Snapshot.Storage(persistentSnapshot, transientSnapshot);
+        return new Snapshot(_stateCurrentPosition, storageSnapshot);
     }
 
     /// <summary>
@@ -407,12 +280,12 @@ public class WorldState : PartialStorageProviderBase, IWorldState
         foreach (Address address in toUpdateRoots)
         {
             // since the accounts could be empty accounts that are removing (EIP-158)
-            if (_stateProvider.AccountExists(address))
+            if (AccountExists(address))
             {
                 Keccak root = RecalculateRootHash(address);
 
                 // _logger.Warn($"Recalculating storage root {address}->{root} ({toUpdateRoots.Count})");
-                _stateProvider.UpdateStorageRoot(address, root);
+                UpdateStorageRoot(address, root);
             }
         }
 
@@ -435,13 +308,9 @@ public class WorldState : PartialStorageProviderBase, IWorldState
 
     private StorageTree GetOrCreateStorage(Address address)
     {
-        if (!_storages.ContainsKey(address))
-        {
-            StorageTree storageTree = new(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
-            return _storages[address] = storageTree;
-        }
-
-        return _storages[address];
+        if (_storages.TryGetValue(address, out StorageTree storageTree)) return storageTree;
+        storageTree = new StorageTree(_trieStore, GetStorageRoot(address), _logManager);
+        return _storages[address] = storageTree;
     }
 
     private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
