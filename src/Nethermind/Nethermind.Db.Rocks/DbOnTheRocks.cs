@@ -227,6 +227,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         tableOptions.SetIndexType(BlockBasedTableIndexType.TwoLevelIndex);
         _rocksDbNative.rocksdb_block_based_options_set_partition_filters(tableOptions.Handle, true);
         _rocksDbNative.rocksdb_block_based_options_set_metadata_block_size(tableOptions.Handle, 4096);
+        _rocksDbNative.rocksdb_block_based_options_set_cache_index_and_filter_blocks_with_high_priority(tableOptions.Handle, true);
         tableOptions.SetFormatVersion(5);
 
         /*
