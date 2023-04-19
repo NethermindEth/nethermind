@@ -82,7 +82,7 @@ namespace Nethermind.Config.Test
             => Configs.Where(config => config.Contains("sepolia"));
 
         [ConfigFileGroup("chiado")]
-        protected IEnumerable<string> Chiadoonfigs
+        protected IEnumerable<string> ChiadoConfigs
             => Configs.Where(config => config.Contains("chiado"));
 
         [ConfigFileGroup("goerli")]
@@ -118,7 +118,7 @@ namespace Nethermind.Config.Test
             => PoaCoreConfigs
                 .Union(XDaiConfigs)
                 .Union(GnosisConfigs)
-                .Union(Chiadoonfigs)
+                .Union(ChiadoConfigs)
                 .Union(VoltaConfigs)
                 .Union(EnergyConfigs)
                 .Union(KovanConfigs);
