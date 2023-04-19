@@ -72,7 +72,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Eip_158_touch_zero_value_system_account_is_not_deleted()
         {
-            TrieStore trieStore = new(new MemDb(), Logger);
+            TrieStoreByPath trieStore = new(new MemDb(), Logger);
             StateProvider provider = new(trieStore, _codeDb, Logger);
             var systemUser = Address.SystemUser;
 

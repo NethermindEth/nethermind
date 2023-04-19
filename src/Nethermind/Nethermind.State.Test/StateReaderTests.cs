@@ -16,7 +16,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
-using Nethermind.Trie.ByPath;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Store.Test
 {
@@ -25,7 +25,7 @@ namespace Nethermind.Store.Test
     {
         private static readonly Keccak Hash1 = Keccak.Compute("1");
         private readonly Address _address1 = new(Hash1);
-        private static readonly ILogManager Logger = LimboLogs.Instance;
+        private static readonly ILogManager Logger = NUnitLogManager.Instance;
 
         private static (string, ITrieStore)[] _variants;
         public static (string name, ITrieStore trieStore)[] Variants
@@ -36,18 +36,16 @@ namespace Nethermind.Store.Test
             return new (string, ITrieStore)[]
             {
                 ("Keccak Store", new TrieStore(new MemDb(), Logger)),
-                ("Path Store", new TrieStoreByPath(new MemDb(), Trie.Pruning.No.Pruning, Persist.EveryBlock, Logger))
+                ("Path Store", new TrieStoreByPath(new MemDb(), No.Pruning, Persist.EveryBlock, Logger))
             };
         }
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public async Task Can_ask_about_balance_in_parallel((string Name, ITrieStore TrieStore) testCase)
+        public async Task CanAskAboutBalanceInParallel((string Name, ITrieStore TrieStore) testCase)
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
-            MemDb stateDb = new();
-            StateProvider provider =
-                new(testCase.TrieStore, Substitute.For<IDb>(), Logger);
+            StateProvider provider = new StateProvider(testCase.TrieStore, Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
@@ -85,7 +83,7 @@ namespace Nethermind.Store.Test
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public async Task Can_ask_about_storage_in_parallel((string Name, ITrieStore TrieStore) testCase)
+        public async Task CanAskAboutStorageInParallel((string Name, ITrieStore TrieStore) testCase)
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
@@ -146,7 +144,7 @@ namespace Nethermind.Store.Test
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public void Non_existing((string Name, ITrieStore TrieStore) testCase)
+        public void NonExisting((string Name, ITrieStore TrieStore) testCase)
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
@@ -200,14 +198,13 @@ namespace Nethermind.Store.Test
 
         [Test]
         [TestCaseSource(nameof(Variants))]
-        public async Task Get_storage((string Name, ITrieStore TrieStore) testCase)
+        public async Task GetStorage((string Name, ITrieStore TrieStore) testCase)
         {
             IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
 
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new(_address1, UInt256.One);
 
-            TrieStoreByPath trieStore = new(dbProvider.StateDb, Logger);
             StateProvider state = new(testCase.TrieStore, dbProvider.CodeDb, Logger);
             StorageProvider storage = new(testCase.TrieStore, state, Logger);
 
@@ -227,7 +224,7 @@ namespace Nethermind.Store.Test
 
             StateReader reader = new(testCase.TrieStore, dbProvider.CodeDb, Logger);
 
-            var retrieved = reader.GetStorage(state.StateRoot, _address1, storageCell.Index);
+            byte[] retrieved = reader.GetStorage(state.StateRoot, _address1, storageCell.Index);
             retrieved.Should().BeEquivalentTo(initialValue);
 
             /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
@@ -243,7 +240,7 @@ namespace Nethermind.Store.Test
             processorStateProvider.StateRoot = state.StateRoot;
 
             StorageProvider processorStorageProvider =
-                new(trieStore, processorStateProvider, LimboLogs.Instance);
+                new(testCase.TrieStore, processorStateProvider, LimboLogs.Instance);
 
             processorStorageProvider.Set(storageCell, newValue);
             processorStorageProvider.Commit();
@@ -255,7 +252,7 @@ namespace Nethermind.Store.Test
                We will try to retrieve the value by taking the state root from the processor.*/
 
             retrieved =
-                reader.GetStorage(storageCell.Address, storageCell.Index);
+                reader.GetStorage(processorStateProvider.StateRoot, storageCell.Address, storageCell.Index);
             retrieved.Should().BeEquivalentTo(newValue);
 
             /* If it failed then it means that the blockchain bridge cached the previous call value */
