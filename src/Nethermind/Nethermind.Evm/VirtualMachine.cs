@@ -2391,8 +2391,7 @@ namespace Nethermind.Evm
                             {
                                 if (!spec.SubroutinesEnabled)
                                 {
-                                    EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
-                                    return CallResult.InvalidInstructionException;
+                                    goto InvalidInstruction;
                                 }
 
                                 // why do we even need the cost of it?
@@ -2418,8 +2417,7 @@ namespace Nethermind.Evm
                             {
                                 if (!spec.SubroutinesEnabled)
                                 {
-                                    EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
-                                    return CallResult.InvalidInstructionException;
+                                    goto InvalidInstruction;
                                 }
 
                                 if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) goto OutOfGas;
@@ -2454,8 +2452,7 @@ namespace Nethermind.Evm
                             {
                                 if (!spec.SubroutinesEnabled)
                                 {
-                                    EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
-                                    return CallResult.InvalidInstructionException;
+                                    goto InvalidInstruction;
                                 }
 
                                 if (!UpdateGas(GasCostOf.High, ref gasAvailable)) goto OutOfGas;
@@ -2476,8 +2473,7 @@ namespace Nethermind.Evm
                         {
                             if (!spec.IsEofEvmModeOn || !spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
                             {
-                                EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
+                                goto InvalidInstruction;
                             }
 
                             if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
@@ -2502,8 +2498,7 @@ namespace Nethermind.Evm
                         {
                             if (!spec.IsEofEvmModeOn && !spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
                             {
-                                EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
+                                goto InvalidInstruction;
                             }
 
                             if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
@@ -2521,8 +2516,7 @@ namespace Nethermind.Evm
                         }
                     default:
                         {
-                            EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);
-                            return CallResult.InvalidInstructionException;
+                            goto InvalidInstruction;
                         }
                 }
 
