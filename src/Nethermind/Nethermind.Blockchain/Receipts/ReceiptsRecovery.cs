@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Receipts
             return ReceiptsRecoveryResult.Fail;
         }
 
-        public IReceiptsRecovery.IRecoveryContext CreateRecoveryContext(Block block, bool forceRecoverSender = true)
+        public IReceiptsRecovery.IRecoveryContext CreateRecoveryContext(Block block, bool forceRecoverSender = false)
         {
             var releaseSpec = _specProvider.GetSpec(block.Header);
             return new RecoveryContext(releaseSpec, block, forceRecoverSender, _ecdsa);
@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.BlockNumber = _block.Number;
                 receipt.TxHash = transaction.Hash;
                 receipt.Index = _transactionIndex;
-                receipt.Sender = transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : null);
+                receipt.Sender ??= transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : null);
                 receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
 
                 // how would it be in CREATE2?
@@ -129,7 +129,10 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.BlockNumber = _block.Number;
                 receipt.TxHash = transaction.Hash!.ToStructRef();
                 receipt.Index = _transactionIndex;
-                receipt.Sender = (transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : Address.Zero))!.ToStructRef();
+                if (receipt.Sender.Bytes == Address.Zero.Bytes)
+                {
+                    receipt.Sender = (transaction.SenderAddress ?? (_forceRecoverSender ? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId) : Address.Zero))!.ToStructRef();
+                }
                 receipt.Recipient = (transaction.IsContractCreation ? Address.Zero : transaction.To)!.ToStructRef();
 
                 // how would it be in CREATE2?

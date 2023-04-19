@@ -841,6 +841,43 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
+            public void DecodeZeroPrefixedKeccakStructRef(out KeccakStructRef keccak, Span<byte> buffer)
+            {
+                int prefix = PeekByte();
+                if (prefix == 128)
+                {
+                    ReadByte();
+                    keccak = new KeccakStructRef(Keccak.Zero.Bytes);
+                }
+                else if (prefix > 128 + 32)
+                {
+                    ReadByte();
+                    throw new DecodeKeccakRlpException(prefix, Position, Data.Length);
+                }
+                else if (prefix == 128 + 32)
+                {
+                    ReadByte();
+                    Span<byte> keccakSpan = Read(32);
+                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+                    {
+                        keccak = new KeccakStructRef(Keccak.OfAnEmptyString.Bytes);
+                    }
+                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+                    {
+                        keccak = new KeccakStructRef(Keccak.EmptyTreeHash.Bytes);
+                    }
+                    else
+                    {
+                        keccak = new KeccakStructRef(keccakSpan);
+                    }
+                }
+                else
+                {
+                    ReadOnlySpan<byte> theSpan = DecodeByteArraySpan();
+                    theSpan.CopyTo(buffer.Slice(32 - theSpan.Length));
+                    keccak = new KeccakStructRef(buffer);
+                }
+            }
 
             public Address? DecodeAddress()
             {
