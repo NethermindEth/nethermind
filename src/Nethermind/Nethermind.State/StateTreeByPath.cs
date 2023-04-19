@@ -54,7 +54,6 @@ namespace Nethermind.State
             TrieType = TrieType.State;
         }
 
-        [DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
             byte[] addressKeyBytes = Keccak.Compute(address.Bytes).Bytes;

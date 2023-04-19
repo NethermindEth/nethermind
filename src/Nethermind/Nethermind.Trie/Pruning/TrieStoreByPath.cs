@@ -520,7 +520,7 @@ namespace Nethermind.Trie.Pruning
 
        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore keyValueStore = null)
         {
-            _logger.Info($"Saving Node Directly: {blockNumber}");
+            // _logger.Info($"Saving Node Directly: {blockNumber}");
             keyValueStore ??= _keyValueStore;
 
             byte[]? fullPath = trieNode.FullPath;

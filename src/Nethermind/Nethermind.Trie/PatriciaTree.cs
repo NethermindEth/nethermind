@@ -9,6 +9,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -1250,12 +1251,13 @@ namespace Nethermind.Trie
                         }
                         break;
                     case TrieNodeResolverCapability.Path:
+                        // _logger.Info("Try to get root node from cache");
                         rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
-
+                        // _logger.Info($"Try to get root node from cache: {rootRef}");
                         ////
-                        TrieNode? testNode = new TrieNode(NodeType.Unknown, Array.Empty<byte>(), rootHash);
-                        testNode!.ResolveNode(TrieStore);
-                        testNode!.ResolveKey(TrieStore, true);
+                        // TrieNode? testNode = new TrieNode(NodeType.Unknown, Array.Empty<byte>(), rootHash){StoreNibblePathPrefix = StoreNibblePathPrefix.ToArray()};
+                        // testNode!.ResolveNode(TrieStore);
+                        // testNode!.ResolveKey(TrieStore, true);
                         // _logger.Info($"Test Root Node: Key:{testNode.Key} Keccak:{testNode.Keccak} FullPath:{testNode.FullPath}");
                         ///
                         // _logger.Info($"Starting Visitor - Resolve RootNode - rh:{rootHash} crh:{RootHash}");
