@@ -143,6 +143,8 @@ namespace Nethermind.Init
                 return;
             }
 
+            if (dbConfig.SkipMemoryHintSetting) return;
+
             DbMemory = _remainingMemory;
             long remaining = DbMemory;
             DbNeeds dbNeeds = GetHeaderNeeds(cpuCount, syncConfig);
@@ -275,8 +277,8 @@ namespace Nethermind.Init
                 preferredBuffers,
                 1.MB(), // min buffer size
                 64.MB(), // max buffer size
-                0.MB(), // min block cache
-                0.GB(), // max block cache
+                0, // min block cache
+                0, // max block cache
                 1m); // db memory %
         }
 
@@ -290,7 +292,7 @@ namespace Nethermind.Init
                 8.MB(), // max buffer size
                 1.MB(), // min block cache
                 512.MB(), // max block cache
-                0.05m); // db memory %
+                0.02m); // db memory %
         }
 
         private DbNeeds GetHeaderNeeds(uint cpuCount, ISyncConfig syncConfig)
@@ -302,7 +304,7 @@ namespace Nethermind.Init
                 8.MB(), // max buffer size
                 1.MB(), // min block cache
                 1.GB(), // max block cache
-                0.05m); // db memory %
+                0.02m); // db memory %
         }
 
         private DbNeeds GetBlocksNeeds(uint cpuCount, ISyncConfig syncConfig)
@@ -314,7 +316,7 @@ namespace Nethermind.Init
                 64.MB(), // max buffer size
                 8.MB(), // min block cache
                 2.GB(), // max block cache
-                0.1m); // db memory %
+                0.04m); // db memory %
         }
 
         private DbNeeds GetReceiptsNeeds(uint cpuCount, ISyncConfig syncConfig)
@@ -326,7 +328,7 @@ namespace Nethermind.Init
                 64.MB(), // max buffer size
                 8.MB(), // min block cache
                 2.GB(), // max block cache
-                0.05m); // db memory %
+                0.01m); // db memory %
         }
 
         private DbNeeds GetPendingTxNeeds(uint cpuCount, ISyncConfig syncConfig)
@@ -347,8 +349,8 @@ namespace Nethermind.Init
                 preferredBuffers,
                 1.MB(), // min buffer size
                 4.MB(), // max buffer size
-                2.MB(), // min block cache
-                32.MB(), // max block cache
+                0, // min block cache
+                0, // max block cache
                 0); // db memory %
         }
 
