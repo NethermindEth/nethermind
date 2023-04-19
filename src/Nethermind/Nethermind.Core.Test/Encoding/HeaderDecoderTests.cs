@@ -107,6 +107,7 @@ public class HeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
             .WithWithdrawalsRoot(Keccak.Zero)
             .WithExcessDataGas(excessDataGas).TestObject;
 
