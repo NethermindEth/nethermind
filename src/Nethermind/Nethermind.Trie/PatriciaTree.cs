@@ -368,23 +368,23 @@ namespace Nethermind.Trie
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
             if(Capability == TrieNodeResolverCapability.Hash) return GetInternal(rawKey, rootHash);
-            _logger.Info($"{Capability} {rootHash}");
+            // _logger.Info($"{Capability} {rootHash}");
 
             if (rootHash is null)
             {
                 if (RootRef is null)
                 {
-                    _logger.Info("RootRef is also null");
+                    // _logger.Info("RootRef is also null");
                     return null;
                 }
 
                 if (RootRef?.IsDirty == true)
                 {
-                    _logger.Info("RootRef.IsDirty is also null");
+                    // _logger.Info("RootRef.IsDirty is also null");
                     return GetInternal(rawKey);
                 }
 
-                _logger.Info($"set RootHash to {RootHash}");
+                // _logger.Info($"set/ RootHash to {RootHash}");
                 rootHash = RootHash;
             }
 
@@ -392,9 +392,9 @@ namespace Nethermind.Trie
             Span<byte> nibbleBytes = stackalloc byte[StoreNibblePathPrefix.Length + rawKey.Length * 2];
             StoreNibblePathPrefix.CopyTo(nibbleBytes);
             Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes.Slice(StoreNibblePathPrefix.Length));
-            _logger.Info("TrieStore.FindCachedOrUnknown");
+            // _logger.Info("TrieStore.FindCachedOrUnknown");
             TrieNode node = TrieStore.FindCachedOrUnknown(nibbleBytes, StoreNibblePathPrefix, rootHash);
-            _logger.Info($"TrieStore.FindCachedOrUnknown: {node}");
+            // _logger.Info($"TrieStore.FindCachedOrUnknown: {node}");
             if (node.NodeType == NodeType.Leaf) return node.Value;
 
             // if not in cached nodes - then check persisted nodes`
@@ -1256,24 +1256,24 @@ namespace Nethermind.Trie
                         TrieNode? testNode = new TrieNode(NodeType.Unknown, Array.Empty<byte>(), rootHash);
                         testNode!.ResolveNode(TrieStore);
                         testNode!.ResolveKey(TrieStore, true);
-                        _logger.Info($"Test Root Node: Key:{testNode.Key} Keccak:{testNode.Keccak} FullPath:{testNode.FullPath}");
+                        // _logger.Info($"Test Root Node: Key:{testNode.Key} Keccak:{testNode.Keccak} FullPath:{testNode.FullPath}");
                         ///
-                        _logger.Info($"Starting Visitor - Resolve RootNode - rh:{rootHash} crh:{RootHash}");
+                        // _logger.Info($"Starting Visitor - Resolve RootNode - rh:{rootHash} crh:{RootHash}");
                         try
                         {
-                            _logger.Info($"fetched rootRef node type: {rootRef?.NodeType}");
+                            // _logger.Info($"fetched rootRef node type: {rootRef?.NodeType}");
                             if (rootRef!.NodeType == NodeType.Unknown)
                             {
                                 rootRef!.ResolveNode(TrieStore);
                                 rootRef!.ResolveKey(TrieStore, true);
-                                _logger.Info($"rootRef resolved keccak to:  {rootRef.Keccak}");
+                                // _logger.Info($"rootRef resolved keccak to:  {rootRef.Keccak}");
                                 if (rootRef.Keccak != rootHash)
                                 {
-                                    _logger.Info($"ERROR: wanted: {rootHash} got: {rootRef.Keccak}");
+                                    // _logger.Info($"ERROR: wanted: {rootHash} got: {rootRef.Keccak}");
                                     throw new TrieException("Root ref hash mismatch!");
                                 }
                             }
-                            _logger.Info($"root node found:  {rootRef.Keccak}");
+                            // _logger.Info($"root node found:  {rootRef.Keccak}");
 
                         }
                         catch (TrieException)
