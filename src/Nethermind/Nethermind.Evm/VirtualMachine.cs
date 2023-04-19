@@ -2435,7 +2435,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RJUMPV | Instruction.JUMPSUB:
                         {
-                            if (spec.IsEofEvmModeOn  && spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
+                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
                             {
                                 if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
                                 var case_v = stack.PopByte();
