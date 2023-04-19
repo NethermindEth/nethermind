@@ -134,7 +134,7 @@ namespace Nethermind.Evm
         {
             if (length.IsZero)
             {
-                return ReadOnlyMemory<byte>.Empty;
+                return default;
             }
 
             if (location > int.MaxValue)
@@ -151,7 +151,7 @@ namespace Nethermind.Evm
         {
             if (length.IsZero)
             {
-                return ReadOnlyMemory<byte>.Empty;
+                return default;
             }
 
             if (location > int.MaxValue)
@@ -161,7 +161,7 @@ namespace Nethermind.Evm
 
             if (_memory is null || location + length > _memory.Length)
             {
-                return ReadOnlyMemory<byte>.Empty;
+                return default;
             }
 
             return _memory.AsMemory((int)location, (int)length);

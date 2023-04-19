@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -15,18 +16,36 @@ namespace Nethermind.Blockchain.Receipts
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
 
-        private readonly TxReceipt[] _receipts;
+        private readonly TxReceipt[]? _receipts;
         private int _position;
+        private readonly IReceiptsRecovery.IRecoveryContext? _recoveryContext;
+        private readonly bool _compactEncoding;
 
-        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb)
+        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb, IReceiptsRecovery.IRecoveryContext? receiptsRecoveryContext)
         {
             _decoderContext = receiptsData.AsRlpValueContext();
-            _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
             _blocksDb = blocksDb;
             _receipts = null;
             _position = 0;
+            _recoveryContext = receiptsRecoveryContext;
+
+            if (_decoderContext.Length > 0 && _decoderContext.PeekByte() == ReceiptArrayStorageDecoder.CompactEncoding)
+            {
+                _compactEncoding = true;
+                _decoderContext.ReadByte();
+            }
+            else
+            {
+                _compactEncoding = false;
+            }
+
+            _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
         }
 
+        /// <summary>
+        /// Note: This code path assume the receipts already have other info recovered. Its used only by cache.
+        /// </summary>
+        /// <param name="receipts"></param>
         public ReceiptsIterator(TxReceipt[] receipts)
         {
             _decoderContext = new Rlp.ValueDecoderContext();
@@ -42,7 +61,15 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (_decoderContext.Position < _length)
                 {
-                    ReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    if (_compactEncoding)
+                    {
+                        CompactReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    }
+                    else
+                    {
+                        ReceiptStorageDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.Storage, out current);
+                    }
+                    _recoveryContext?.RecoverReceiptData(ref current);
                     return true;
                 }
             }

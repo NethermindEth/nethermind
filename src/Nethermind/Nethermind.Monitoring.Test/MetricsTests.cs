@@ -80,7 +80,7 @@ namespace Nethermind.Monitoring.Test
             {
                 foreach (Type metric in metrics)
                 {
-                    monitoringService.RegisterMetrics(metric);
+                    metricsController.RegisterMetrics(metric);
                 }
 
                 metricsController.UpdateMetrics(null);

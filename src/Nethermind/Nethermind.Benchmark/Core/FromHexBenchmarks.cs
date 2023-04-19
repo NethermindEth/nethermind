@@ -32,7 +32,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark(Baseline = true)]
         public byte[] Current()
         {
-            return Bytes.FromHexStringOld(hex);
+            return Bytes.FromHexString(hex);
         }
 
         [Benchmark]

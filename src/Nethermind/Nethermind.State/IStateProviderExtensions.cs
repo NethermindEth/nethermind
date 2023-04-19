@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
@@ -26,7 +27,11 @@ namespace Nethermind.State
         public static TrieStats CollectStats(this IStateProvider stateProvider, IKeyValueStore codeStorage, ILogManager logManager)
         {
             TrieStatsCollector collector = new(codeStorage, logManager);
-            stateProvider.Accept(collector, stateProvider.StateRoot, new VisitingOptions { MaxDegreeOfParallelism = Environment.ProcessorCount });
+            stateProvider.Accept(collector, stateProvider.StateRoot, new VisitingOptions
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount,
+                FullScanMemoryBudget = 16.GiB(), // Gonna guess that if you are running this, you have a decent setup.
+            });
             return collector.Stats;
         }
     }

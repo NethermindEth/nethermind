@@ -148,6 +148,12 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
+        public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain
+        {
+            add { }
+            remove { }
+        }
+
         public int DeleteChainSlice(in long startNumber, long? endNumber = null)
         {
             var bestKnownNumber = BestKnownNumber;

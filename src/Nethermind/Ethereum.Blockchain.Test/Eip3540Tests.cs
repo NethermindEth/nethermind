@@ -13,15 +13,15 @@ public class Eip3540Tests : GeneralStateTestBase
 {
     //ToDo: Eip3540 is in development phase on another branch.This will be uncommented after merging that branch.
 
-    // [TestCaseSource(nameof(LoadTests))]
-    // public void Test(GeneralStateTest test)
-    // {
-    //     Assert.True(RunTest(test).Pass);
-    // }
+    [TestCaseSource(nameof(LoadTests))]
+    public void Test(GeneralStateTest test)
+    {
+        Assert.True(RunTest(test).Pass);
+    }
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP3540");
+        var loader = new TestsSourceLoader(new LoadEipTestsStrategy(), "stEOF/stEIP3540");
         return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     }
 }

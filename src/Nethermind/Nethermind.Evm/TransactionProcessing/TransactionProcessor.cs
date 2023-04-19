@@ -319,18 +319,19 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 recipientOrNull = recipient;
 
-                ExecutionEnvironment env = new();
-                env.TxExecutionContext = new TxExecutionContext(block, caller, effectiveGasPrice, transaction.BlobVersionedHashes);
-                env.Value = value;
-                env.TransferValue = value;
-                env.Caller = caller;
-                env.CodeSource = recipient;
-                env.ExecutingAccount = recipient;
-                env.InputData = data ?? Array.Empty<byte>();
-                env.CodeInfo = machineCode is null
-                    ? _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec)
-                    : CodeInfoFactory.CreateCodeInfo(machineCode, spec);
-
+                ExecutionEnvironment env = new
+                (
+                    txExecutionContext: new TxExecutionContext(block, caller, effectiveGasPrice, transaction.BlobVersionedHashes),
+                    value: value,
+                    transferValue: value,
+                    caller: caller,
+                    codeSource: recipient,
+                    executingAccount: recipient,
+                    inputData: data ?? Array.Empty<byte>(),
+                    codeInfo: machineCode is null
+                        ? _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec)
+                        : CodeInfoFactory.CreateCodeInfo(machineCode, spec)
+                );
                 ExecutionType executionType =
                     transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Transaction;
                 using (EvmState state =
@@ -385,11 +386,11 @@ namespace Nethermind.Evm.TransactionProcessing
                             unspentGas -= codeDepositGasCost;
                         }
 
-                        if (CodeDepositHandler.CodeIsInvalid(substate.Output.Span, spec, substate.FromVersion))
-                        {
-                            _stateProvider.IncrementNonce(caller);
-                            throw new InvalidCodeException();
-                        }
+                        // if (CodeDepositHandler.CodeIsInvalid(substate.Output.Span, spec, substate.FromVersion))
+                        // {
+                        //     _stateProvider.IncrementNonce(caller);
+                        //     throw new InvalidCodeException();
+                        // }
                     }
 
                     foreach (Address toBeDestroyed in substate.DestroyList)

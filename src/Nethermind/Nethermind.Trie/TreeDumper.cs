@@ -18,6 +18,8 @@ namespace Nethermind.Trie
             _builder.Clear();
         }
 
+        public bool IsFullDbScan => true;
+
         public bool ShouldVisit(Keccak nextNode)
         {
             return true;

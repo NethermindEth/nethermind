@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Test
         }
 
         protected virtual TestAllTracerWithOutput CreateTracer() => new();
-        protected virtual BlockReceiptsTracer CreateBlockTracer() => new();
+        protected virtual BlockReceiptsTracer CreateBlockTracer(ITxTracer tracer = null) => new(tracer ?? NullTxTracer.Instance);
 
         protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
         {
@@ -268,5 +268,6 @@ namespace Nethermind.Evm.Test
         {
             Assert.AreEqual(codeHash, TestState.GetCodeHash(address), "code hash");
         }
+
     }
 }

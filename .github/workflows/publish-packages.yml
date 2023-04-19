@@ -18,8 +18,8 @@ jobs:
     - name: Get release metadata
       id: release
       run: |
-        read tag_name prerelase < <(echo $(curl -s ${{ env.RELEASE_URL }} | jq -r '.tag_name, .prerelease'))
-        echo "PRERELEASE=$prerelase" >> $GITHUB_OUTPUT
+        read tag_name prerelease < <(echo $(curl -s ${{ env.RELEASE_URL }} | jq -r '.tag_name, .prerelease'))
+        echo "PRERELEASE=$prerelease" >> $GITHUB_OUTPUT
         echo "VERSION=$tag_name" >> $GITHUB_OUTPUT
 
   publish-ppa:

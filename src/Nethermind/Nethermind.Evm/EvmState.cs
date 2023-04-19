@@ -65,7 +65,7 @@ namespace Nethermind.Evm
                 Interlocked.Increment(ref _dataStackPoolDepth);
                 if (_dataStackPoolDepth > _maxCallStackDepth)
                 {
-                    throw new Exception();
+                    EvmStack.ThrowEvmStackOverflowException();
                 }
 
                 return new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32];
@@ -81,7 +81,7 @@ namespace Nethermind.Evm
                 Interlocked.Increment(ref _returnStackPoolDepth);
                 if (_returnStackPoolDepth > _maxCallStackDepth)
                 {
-                    throw new Exception();
+                    EvmStack.ThrowEvmStackOverflowException();
                 }
 
                 return new ReturnState[EvmStack.ReturnStackSize];
@@ -232,7 +232,7 @@ namespace Nethermind.Evm
 
         public Address To => Env.CodeSource;
         internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
-        public ExecutionEnvironment Env { get; }
+        public readonly ExecutionEnvironment Env;
 
         internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
         public bool IsTopLevel { get; } // TODO: move to CallEnv
@@ -246,9 +246,16 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            if (DataStack is not null) _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
+            if (DataStack is not null)
+            {
+                // Only Dispose once
+                _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
+                DataStack = null;
+                ReturnStack = null;
+            }
             Restore(); // we are trying to restore when disposing
             Memory?.Dispose();
+            Memory = null;
         }
 
         public void InitStacks()

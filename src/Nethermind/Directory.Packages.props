@@ -9,7 +9,7 @@
     <PackageVersion Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="6.0.5" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.13.5" />
     <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.13.5" />
-    <PackageVersion Include="Ckzg.Bindings" Version="0.1.1.57" />
+    <PackageVersion Include="Ckzg.Bindings" Version="0.1.2.112" />
     <PackageVersion Include="Colorful.Console" Version="1.2.15" />
     <PackageVersion Include="CommandLineParser" Version="2.9.1" />
     <PackageVersion Include="ConcurrentHashSet" Version="1.3.0" />
@@ -24,7 +24,6 @@
     <PackageVersion Include="Google.Protobuf.Tools" Version="3.22.0" />
     <PackageVersion Include="Grpc" Version="2.46.6" />
     <PackageVersion Include="Grpc.Tools" Version="2.51.0" />
-    <PackageVersion Include="HardwareInformation" Version="5.0.2" />
     <PackageVersion Include="HexMate" Version="0.0.3" />
     <PackageVersion Include="Jint" Version="2.11.58" />
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
@@ -38,6 +37,8 @@
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="7.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="7.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="7.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="7.0.3" />
+    <PackageVersion Include="Microsoft.TestPlatform.TestHost" Version="17.4.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.4.1" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.17.0" />
     <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.0" />
@@ -60,7 +61,7 @@
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.0.0" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="6.0.0" />
-    <PackageVersion Include="RocksDB" Version="7.7.3.33461" />
+    <PackageVersion Include="RocksDB" Version="8.0.0.37452" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Seq.Api" Version="2023.1.0" />
     <PackageVersion Include="Shouldly" Version="4.1.0" />

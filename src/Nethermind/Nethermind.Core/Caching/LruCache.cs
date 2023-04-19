@@ -123,7 +123,17 @@ namespace Nethermind.Core.Caching
         public bool Contains(TKey key) => _cacheMap.ContainsKey(key);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public IDictionary<TKey, TValue> Clone() => _cacheMap.ToDictionary(i => i.Key, i => i.Value.Value.Value);
+        public KeyValuePair<TKey, TValue>[] ToArray()
+        {
+            int i = 0;
+            KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
+            foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+            {
+                array[i++] = new KeyValuePair<TKey, TValue>(kvp.Key, kvp.Value.Value.Value);
+            }
+
+            return array;
+        }
 
         private void Replace(TKey key, TValue value)
         {
