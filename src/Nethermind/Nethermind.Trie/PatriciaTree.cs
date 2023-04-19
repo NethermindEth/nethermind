@@ -26,6 +26,8 @@ namespace Nethermind.Trie
 
         public const int OneNodeAvgMemoryEstimate = 384;
         public const int StoragePrefixLength = Keccak.Size + 1;
+        public const int StorageKeyLength = Keccak.Size;
+
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
@@ -332,7 +334,6 @@ namespace Nethermind.Trie
 
         private void SetRootHash(Keccak? value, bool resetObjects)
         {
-            _logger.Info($"Set RootHash: {value}");
             _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
             if (_rootHash == Keccak.EmptyTreeHash)
             {
@@ -342,7 +343,6 @@ namespace Nethermind.Trie
             {
                 RootRef = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
             }
-            _logger.Info($"New RootHash: {RootRef?.Keccak}");
         }
 
         public byte[]? GetInternal(Span<byte> rawKey, Keccak? rootHash = null)
@@ -368,26 +368,40 @@ namespace Nethermind.Trie
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
             if(Capability == TrieNodeResolverCapability.Hash) return GetInternal(rawKey, rootHash);
+            _logger.Info($"{Capability} {rootHash}");
 
-            if (RootRef is null) return null;
             if (rootHash is null)
             {
+                if (RootRef is null)
+                {
+                    _logger.Info("RootRef is also null");
+                    return null;
+                }
+
                 if (RootRef?.IsDirty == true)
                 {
+                    _logger.Info("RootRef.IsDirty is also null");
                     return GetInternal(rawKey);
                 }
+
+                _logger.Info($"set RootHash to {RootHash}");
                 rootHash = RootHash;
             }
 
             // try and get cached nodes
-            Span<byte> nibbleBytes = stackalloc byte[StoreNibblePathPrefix.Length + 64];
+            Span<byte> nibbleBytes = stackalloc byte[StoreNibblePathPrefix.Length + rawKey.Length * 2];
             StoreNibblePathPrefix.CopyTo(nibbleBytes);
             Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes.Slice(StoreNibblePathPrefix.Length));
-            TrieNode node = TrieStore.FindCachedOrUnknown(rootHash, nibbleBytes, StoreNibblePathPrefix);
+            _logger.Info("TrieStore.FindCachedOrUnknown");
+            TrieNode node = TrieStore.FindCachedOrUnknown(nibbleBytes, StoreNibblePathPrefix, rootHash);
+            _logger.Info($"TrieStore.FindCachedOrUnknown: {node}");
             if (node.NodeType == NodeType.Leaf) return node.Value;
 
             // if not in cached nodes - then check persisted nodes`
-            byte[] nodePath = rawKey.Length == 32 ? Nibbles.ToBytes(nibbleBytes) : Nibbles.ToEncodedStorageBytes(nibbleBytes);
+            byte[] nodePath = nibbleBytes.Length is TrieStoreByPath.AccountLeafNibblesLength or TrieStoreByPath.StorageLeafNibblesLength
+                ? Nibbles.ToBytes(nibbleBytes)
+                : Nibbles.ToEncodedStorageBytes(nibbleBytes);
+
             byte[]? nodeData = TrieStore[nodePath];
             if (nodeData is null) return null;
 

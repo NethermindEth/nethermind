@@ -36,8 +36,6 @@ namespace Nethermind.State
             return _state.GetStorage(index, address, stateRoot);
         }
 
-        public byte[]? GetStorage(Address address, in UInt256 index) => _state.GetStorage(index, address);
-
         public UInt256 GetBalance(Keccak stateRoot, Address address)
         {
             return GetState(stateRoot, address)?.Balance ?? UInt256.Zero;

@@ -28,6 +28,17 @@ namespace Nethermind.State
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
+        static StateTreeByPath()
+        {
+            Span<byte> buffer = stackalloc byte[32];
+            for (int i = 0; i < CacheSizeInt; i++)
+            {
+                UInt256 index = (UInt256)i;
+                index.ToBigEndian(buffer);
+                Cache[index] = Keccak.Compute(buffer).Bytes;
+            }
+        }
+
         [DebuggerStepThrough]
         public StateTreeByPath()
             : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, TrieNodeResolverCapability.Path)
@@ -73,69 +84,30 @@ namespace Nethermind.State
             return rlp;
         }
 
-        private byte[]? GetStorage(byte[] key, Keccak? rootHash = null)
-        {
-            // TODO: refactor in the PatriciaTree.Get when supporting random lenght keys in flat storage.
-            byte[]? bytes = null;
-            if (rootHash is not null && RootHash != rootHash)
-            {
-                Span<byte> nibbleBytes = stackalloc byte[64 + 64];
-                Nibbles.BytesToNibbleBytes(key, nibbleBytes);
-                byte[]? nodeBytes = TrieStore.LoadRlp(nibbleBytes, rootHash);
-                if (nodeBytes is not null)
-                {
-                    TrieNode node = new TrieNode(NodeType.Unknown, nodeBytes);
-                    node.ResolveNode(TrieStore);
-                    bytes = node.Value;
-                }
-            }
-
-            if (bytes is null && RootHash == rootHash)
-            {
-                if (RootRef?.IsPersisted == true)
-                {
-                    byte[]? nodeData = TrieStore[key];
-                    if (nodeData is not null)
-                    {
-                        TrieNode node = new(NodeType.Unknown, nodeData);
-                        node.ResolveNode(TrieStore);
-                        bytes = node.Value;
-                    }
-                }
-                else
-                {
-                    bytes = GetInternal(key);
-                }
-            }
-
-            return bytes;
-        }
-
-
         public byte[]? GetStorage(in UInt256 index, in Address accountAddress, Keccak? root = null)
         {
-            Span<byte> key = stackalloc byte[Capability == TrieNodeResolverCapability.Hash ? 32 : 32 + 32];
+            int storageKeyLength = StorageKeyLength;
+            if (Capability == TrieNodeResolverCapability.Path) storageKeyLength += StoragePrefixLength;
+
+            Span<byte> key = stackalloc byte[storageKeyLength];
             switch (Capability)
             {
                 case TrieNodeResolverCapability.Hash:
                     GetStorageKey(index, key);
                     break;
                 case TrieNodeResolverCapability.Path:
-                    accountAddress.Bytes.CopyTo(key);
-                    GetStorageKey(index, key.Slice(32));
+                    Keccak.Compute(accountAddress.Bytes).Bytes.CopyTo(key);
+                    key[32] = StorageTree.StorageDifferentiatingByte;
+                    GetStorageKey(index, key.Slice(33));
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
 
 
-            byte[]? value = GetStorage(key.ToArray(), root);
 
-
-            if (value is null)
-            {
-                return new byte[] { 0 };
-            }
+            byte[]? value = Get(key, root);
+            if (value is null) return new byte[] { 0 };
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
@@ -143,15 +115,19 @@ namespace Nethermind.State
 
         public void SetStorage(in UInt256 index, byte[] value, in Address accountAddress)
         {
-            Span<byte> key = stackalloc byte[Capability == TrieNodeResolverCapability.Hash ? 32 : 32 + 32];
+            int storageKeyLength = StorageKeyLength;
+            if (Capability == TrieNodeResolverCapability.Path) storageKeyLength += StoragePrefixLength;
+
+            Span<byte> key = stackalloc byte[storageKeyLength];
             switch (Capability)
             {
                 case TrieNodeResolverCapability.Hash:
                     GetStorageKey(index, key);
                     break;
                 case TrieNodeResolverCapability.Path:
-                    accountAddress.Bytes.CopyTo(key);
-                    GetStorageKey(index, key.Slice(32));
+                    Keccak.Compute(accountAddress.Bytes).Bytes.CopyTo(key);
+                    key[32] = StorageTree.StorageDifferentiatingByte;
+                    GetStorageKey(index, key.Slice(33));
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();

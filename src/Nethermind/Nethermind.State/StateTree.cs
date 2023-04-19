@@ -28,6 +28,17 @@ namespace Nethermind.State
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
+        static StateTree()
+        {
+            Span<byte> buffer = stackalloc byte[32];
+            for (int i = 0; i < CacheSizeInt; i++)
+            {
+                UInt256 index = (UInt256)i;
+                index.ToBigEndian(buffer);
+                Cache[index] = Keccak.Compute(buffer).Bytes;
+            }
+        }
+
         [DebuggerStepThrough]
         public StateTree()
             : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)

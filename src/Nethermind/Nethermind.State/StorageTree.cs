@@ -52,28 +52,26 @@ namespace Nethermind.State
             : base(trieStore, rootHash, false, true, logManager)
         {
             TrieType = TrieType.Storage;
-            if (trieStore.Capability == TrieNodeResolverCapability.Path)
-            {
-                AccountAddress = accountAddress ?? throw new ArgumentException("this cannot be null while using path based trie store");
-                Span<byte> path = AccountPath = new byte[StoragePrefixLength];
-                Keccak.Compute(accountAddress.Bytes).Bytes.CopyTo(path);
-                AccountPath[^1] = StorageDifferentiatingByte;
-                StorageBytePathPrefix = AccountPath;
-            }
+            if (trieStore.Capability == TrieNodeResolverCapability.Hash) return;
+            AccountAddress = accountAddress ?? throw new ArgumentException("this cannot be null while using path based trie store");
+            Span<byte> path = AccountPath = new byte[StoragePrefixLength];
+            Keccak.Compute(accountAddress.Bytes).Bytes.CopyTo(path);
+            AccountPath[^1] = StorageDifferentiatingByte;
+            StorageBytePathPrefix = AccountPath;
+            RootHash = rootHash;
         }
 
         public StorageTree(ITrieStore trieStore, Keccak rootHash, ILogManager? logManager, Keccak? accountPath)
             : base(trieStore, rootHash, false, true, logManager)
         {
             TrieType = TrieType.Storage;
-            if (trieStore.Capability == TrieNodeResolverCapability.Path)
-            {
-                Debug.Assert(accountPath != null, nameof(accountPath) + " != null");
-                Span<byte> path = AccountPath = new byte[StoragePrefixLength];
-                accountPath.Bytes.CopyTo(path);
-                path[^1] = StorageDifferentiatingByte;
-                StorageBytePathPrefix = AccountPath;
-            }
+            if (trieStore.Capability == TrieNodeResolverCapability.Hash) return;
+            Debug.Assert(accountPath != null, nameof(accountPath) + " != null");
+            Span<byte> path = AccountPath = new byte[StoragePrefixLength];
+            accountPath.Bytes.CopyTo(path);
+            path[^1] = StorageDifferentiatingByte;
+            StorageBytePathPrefix = AccountPath;
+            RootHash = rootHash;
         }
 
         private static void GetKey(in UInt256 index, in Span<byte> key)
