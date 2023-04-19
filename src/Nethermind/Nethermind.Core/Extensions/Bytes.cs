@@ -189,11 +189,18 @@ namespace Nethermind.Core.Extensions
             return bytes.AsSpan().WithoutLeadingZeros();
         }
 
+        public static Span<byte> WithoutLeadingZerosOrEmpty(this byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0) return Array.Empty<byte>();
+            return bytes.AsSpan().WithoutLeadingZeros();
+        }
+
         public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
             if (bytes.Length == 0) return new byte[] { 0 };
 
             int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
+            // Keep one or it will be interpreted as null
             return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
         }
 

@@ -26,6 +26,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IReadOnlyList<T>, IDispo
     public ArrayPoolList(ArrayPool<T> arrayPool, int capacity)
     {
         _arrayPool = arrayPool;
+        if (capacity == 0) capacity = 16; // minimum with arraypool is 16 anyway...
         _array = arrayPool.Rent(capacity);
         _capacity = _array.Length;
     }
