@@ -16,6 +16,7 @@ on:
         - ethereum/consensus
         - ethereum/engine
         - ethereum/graphql
+        - ethereum/pyspec
         - ethereum/rpc
         - ethereum/rpc-compat
         - ethereum/sync
@@ -72,9 +73,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
       - name: Set up Go environment
-        uses: actions/setup-go@v3.0.0
+        uses: actions/setup-go@v4
         with:
-          go-version: '>=1.17.0'
+          go-version: stable
       - name: Check out Hive repository
         uses: actions/checkout@v3
         with:
