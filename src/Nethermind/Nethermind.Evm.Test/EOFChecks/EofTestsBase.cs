@@ -104,6 +104,8 @@ namespace Nethermind.Evm.Test
 
         public void EOF_contract_header_parsing_tests(TestCase testcase, IReleaseSpec spec)
         {
+            if (!testcase.isEofCode) return;
+
             var result = EvmObjectFormat.IsValidEof(
                 testcase.Bytecode, out EofHeader? header
             );
@@ -141,6 +143,7 @@ namespace Nethermind.Evm.Test
         public record TestCase(int Index)
         {
             public byte[] Bytecode;
+            public bool isEofCode = true;
             public DeploymentContext Ctx;
             public (byte Status, string Msg) Result;
         }

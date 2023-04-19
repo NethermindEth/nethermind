@@ -41,8 +41,6 @@ namespace Nethermind.Evm.Test
                                         .RJUMP(0)
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .RJUMP(-13)
-                                .STOP()
                                 .Done
                                 )
                     },
@@ -59,12 +57,10 @@ namespace Nethermind.Evm.Test
                                     0, 0, 2,
                         Prepare.EvmCode
                                 .RJUMP(1)
-                                .INVALID()
+                                .NOP()
                                 .JUMPDEST()
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .RJUMP(-13)
-                                .STOP()
                                 .Done
                                 )
                     },
@@ -81,42 +77,16 @@ namespace Nethermind.Evm.Test
                                     0, 0, 2,
                                     Prepare.EvmCode // p 1 rji 0 1 00 p 0 p 1 ms rj 00 13
                                 .RJUMPI(1, new byte[] { 1 })
-                                .INVALID()
-                                .JUMPDEST()
+                                .NOP()
+                                .NOP()
                                 .MSTORE8(0, new byte[] { 1 })
                                 .RETURN(0, 1)
-                                .RJUMP(-13)
-                                .STOP()
-                                        .MSTORE8(0, new byte[] { 1 })
-                                        .RJUMP(-9)
                                 .Done
                                 )
                     },
                             Data: Bytes.FromHexString("deadbeef")
                         ).Bytecode,
                     Result = (StatusCode.Success, null)
-                };
-
-                yield return new TestCase(4)
-                {
-                    Bytecode = new ScenarioCase(
-                            Functions: new[] {
-                                new FunctionCase(
-                                    0, 0, 2,
-                        Prepare.EvmCode
-                                .RJUMPI(1, new byte[] { 1 })
-                                .INVALID()
-                                .JUMPDEST()
-                                .MSTORE8(0, new byte[] { 1 })
-                                .RETURN(0, 1)
-                                .RJUMP(-13)
-                                .STOP()
-                                .Done
-                                )
-                    },
-                            Data: Bytes.FromHexString("deadbeef")
-                        ).Bytecode,
-                    Result = (StatusCode.Failure, "Static Jump Opcode RJUMPI not valid in Non-Eof bytecodes")
                 };
 
                 yield return new TestCase(5)
@@ -146,8 +116,8 @@ namespace Nethermind.Evm.Test
                     bytecodes: new[] {
                         Prepare.EvmCode
                                 .RJUMPV(new short[] { 1, 2, 4 }, 1)
-                                .INVALID()
-                                .INVALID()
+                                .NOP()
+                                .NOP()
                                 .PushData(2)
                                 .PushData(3)
                                 .MSTORE8(0, new byte[] { 1 })
@@ -528,7 +498,7 @@ namespace Nethermind.Evm.Test
         public void EOF_validation_tests([ValueSource(nameof(Eip4200TxTestCases))] TestCase testcase)
         {
             var TargetReleaseSpec = new OverridableReleaseSpec(Cancun.Instance)
-        {
+            {
                 IsEip4750Enabled = false,
                 IsEip5450Enabled = false,
             };
