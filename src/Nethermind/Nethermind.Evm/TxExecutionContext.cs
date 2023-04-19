@@ -12,13 +12,15 @@ namespace Nethermind.Evm
         public Address Origin { get; }
         public UInt256 GasPrice { get; }
         public byte[][]? BlobVersionedHashes { get; }
+        public byte[][]? Initcodes { get; }
 
-        public TxExecutionContext(BlockHeader blockHeader, Address origin, in UInt256 gasPrice, byte[][] blobVersionedHashes)
+        public TxExecutionContext(BlockHeader blockHeader, Address origin, in UInt256 gasPrice, byte[][] blobVersionedHashes, byte[][] initocde)
         {
             Header = blockHeader;
             Origin = origin;
             GasPrice = gasPrice;
             BlobVersionedHashes = blobVersionedHashes;
+            Initcodes = initocde;
         }
     }
 }

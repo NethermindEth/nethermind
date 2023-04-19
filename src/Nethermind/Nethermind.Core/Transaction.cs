@@ -17,7 +17,8 @@ namespace Nethermind.Core
     public class Transaction
     {
         public const int BaseTxGasCost = 21000;
-
+        public const int MaxInitcodeSize = 1 << 64;
+        public const int MaxInitcodeCount = 1 << 64;
         public ulong? ChainId { get; set; }
 
         /// <summary>
@@ -115,6 +116,8 @@ namespace Nethermind.Core
         public AccessList? AccessList { get; set; } // eip2930
         public UInt256? MaxFeePerDataGas { get; set; } // eip4844
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
+
+        public byte[]?[]? Initcodes { get; set; } //mega-eof create4 tx
 
         // Network form of blob transaction fields
         public byte[]? BlobKzgs { get; set; }
