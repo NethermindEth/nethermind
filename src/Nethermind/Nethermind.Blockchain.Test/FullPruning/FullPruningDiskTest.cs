@@ -145,7 +145,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 currentItems.Count.Should().BeGreaterThan(0);
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(10));
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
         }
 
         private static async Task WriteFileStructure(PruningTestBlockchain chain)
