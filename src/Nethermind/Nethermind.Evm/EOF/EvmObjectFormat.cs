@@ -140,7 +140,9 @@ internal static class EvmObjectFormat
                 container.Slice(offset, TWO_BYTE_LENGTH).ReadEthUInt16();
 
             header = null;
-
+            var offsets = new HeaderOffsets();
+            offsets.TypeSectionHeaderOffset = KIND_TYPE_OFFSET;
+            offsets.CodeSectionHeaderOffset = KIND_CODE_OFFSET;
             // we need to be able to parse header + minimum section lenghts
             if (container.Length < MINIMUM_SIZE)
             {
@@ -234,7 +236,8 @@ internal static class EvmObjectFormat
                 codeSectionsSizeUpToNow += codeSection.Size;
             }
 
-            if (container[KIND_DATA_OFFSET + dynamicOffset] != KIND_DATA)
+            offsets.DataSectionHeaderOffset = KIND_DATA_OFFSET + dynamicOffset;
+            if (container[offsets.CodeSectionHeaderOffset] != KIND_DATA)
             {
                 if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
                 return false;
@@ -249,6 +252,7 @@ internal static class EvmObjectFormat
             };
 
 
+            offsets.ContainerSectionHeaderOffset= KIND_CONTAINER_OFFSET + dynamicOffset;
             int containersSectionsSizeUpToNow = 0;
             SectionHeader[]? containerSections = null;
             if (container[KIND_CONTAINER_OFFSET + dynamicOffset] == KIND_CONTAINER)
@@ -275,6 +279,7 @@ internal static class EvmObjectFormat
                 }
             }
 
+            offsets.EndOfHeaderOffset = TERMINATOR_OFFSET + dynamicOffset;
             if (container[TERMINATOR_OFFSET + dynamicOffset] != TERMINATOR)
             {
                 if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
@@ -283,6 +288,7 @@ internal static class EvmObjectFormat
 
             header = new EofHeader
             {
+                offsets = offsets,
                 Version = VERSION,
                 TypeSection = typeSection,
                 CodeSections = codeSections,

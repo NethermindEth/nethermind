@@ -20,6 +20,7 @@ public class EofCodeInfo : ICodeInfo
     public ReadOnlyMemory<byte> DataSection { get; }
     public ReadOnlyMemory<byte> ContainerSection { get; }
     public (int, int) SectionOffset(int sectionId) => (_header.CodeSections[sectionId].Start - _header.TypeSection.EndOffset, _header.CodeSections[sectionId].Size);
+    public (int, int) ContainerOffset(int sectionId) => (_header.ContainerSection[sectionId].Start - _header.DataSection.EndOffset, _header.ContainerSection[sectionId].Size);
 
     public bool ValidateJump(int destination, bool isSubroutine)
     {

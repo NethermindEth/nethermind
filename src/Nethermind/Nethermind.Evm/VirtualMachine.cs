@@ -176,7 +176,7 @@ namespace Nethermind.Evm
                     {
                         if (_txTracer.IsTracingActions)
                         {
-                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Bytes.Length, spec);
 
                             if (callResult.IsException)
                             {
@@ -203,19 +203,23 @@ namespace Nethermind.Evm
                                     }
                                     else
                                     {
-                                        _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output);
+                                        _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output.Bytes);
                                     }
                                 }
                                 // Reject code starting with 0xEF if EIP-3541 is enabled And not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
-                                else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(callResult.Output, spec, callResult.FromVersion))
+                                else if (currentState.ExecutionType.IsAnyCreateLegacy() && CodeDepositHandler.CodeIsInvalid(callResult.Output.Bytes, spec, callResult.FromVersion))
                                 {
                                     _txTracer.ReportActionError(callResult.FromVersion > 0 ? EvmExceptionType.InvalidEofCode : EvmExceptionType.InvalidCode);
+                                }
+                                else if (currentState.ExecutionType.IsAnyCreateEof() && CodeDepositHandler.CodeIsInvalid(callResult.Output.Bytes, spec, callResult.FromVersion))
+                                {
+                                    _txTracer.ReportActionError(EvmExceptionType.InvalidEofCode);
                                 }
                                 else
                                 {
                                     if (currentState.ExecutionType.IsAnyCreate())
                                     {
-                                        _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
+                                        _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output.Bytes);
                                     }
                                     else
                                     {
@@ -226,7 +230,7 @@ namespace Nethermind.Evm
                         }
 
                         return new TransactionSubstate(
-                            callResult.Output,
+                            callResult.Output.Bytes,
                             currentState.Refund,
                             (IReadOnlyCollection<Address>)currentState.DestroyList,
                             (IReadOnlyCollection<LogEntry>)currentState.Logs,
@@ -251,47 +255,153 @@ namespace Nethermind.Evm
                             previousCallOutputDestination = UInt256.Zero;
                             _returnDataBuffer = Array.Empty<byte>();
                             previousCallOutput = ZeroPaddedSpan.Empty;
-
-                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            bool invalidCode = CodeDepositHandler.CodeIsInvalid(callResult.Output, spec, callResult.FromVersion);
-                            if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+                            if (previousState.ExecutionType.IsAnyCreateLegacy())
                             {
-                                Keccak codeHash = _state.UpdateCode(callResult.Output);
-                                _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
-                                currentState.GasAvailable -= codeDepositGasCost;
-
-                                if (_txTracer.IsTracingActions)
+                                long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Bytes.Length, spec);
+                                bool invalidCode = CodeDepositHandler.CodeIsInvalid(callResult.Output.Bytes, spec, callResult.FromVersion);
+                                if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                                 {
-                                    _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output);
+                                    Keccak codeHash = _state.UpdateCode(callResult.Output.Bytes);
+                                    _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
+                                    currentState.GasAvailable -= codeDepositGasCost;
+
+                                    if (_txTracer.IsTracingActions)
+                                    {
+                                        _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+                                    }
+                                }
+                                else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+                                {
+                                    currentState.GasAvailable -= gasAvailableForCodeDeposit;
+                                    worldState.Restore(previousState.Snapshot);
+                                    if (!previousState.IsCreateOnPreExistingAccount)
+                                    {
+                                        _state.DeleteAccount(callCodeOwner);
+                                    }
+
+                                    previousCallResult = BytesZero;
+                                    previousStateSucceeded = false;
+
+                                    if (_txTracer.IsTracingActions)
+                                    {
+                                        _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+                                    }
+                                }
+                                else if (_txTracer.IsTracingActions)
+                                {
+                                    _txTracer.ReportActionEnd(0L, callCodeOwner, callResult.Output.Bytes);
                                 }
                             }
-                            else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+                            else if (previousState.ExecutionType.IsAnyCreateEof())
                             {
-                                currentState.GasAvailable -= gasAvailableForCodeDeposit;
-                                worldState.Restore(previousState.Snapshot);
-                                if (!previousState.IsCreateOnPreExistingAccount)
+                                int containerIndex = callResult.Output.Index.Value;
+                                byte[] auxExtraData = callResult.Output.Bytes;
+                                (int start, int size) = previousState.Env.CodeInfo.ContainerOffset(containerIndex);
+                                ReadOnlySpan<byte> container = previousState.Env.CodeInfo.CodeSection.Slice(start, size).Span;
+                                bool invalidCode = !EvmObjectFormat.IsValidEof(container, out EofHeader? header);
+                                byte[] bytecodeResultArray = null;
+
+                                if (!invalidCode)
                                 {
-                                    _state.DeleteAccount(callCodeOwner);
+                                    Span<byte> bytecodeResult = new byte[size + auxExtraData.Length];
+                                    var (typesectionOffsets, codesectionOffsets, datasectionOffsets, containersectionOffsets) = header.Value.offsets;
+
+                                    // copy magic eof prefix
+                                    int movingOffset= 0;
+                                    ReadOnlySpan<byte> magicSpan = container.Slice(0, EvmObjectFormat.MAGIC.Length + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH);
+                                    magicSpan.CopyTo(bytecodeResult);
+                                    movingOffset += magicSpan.Length;
+
+                                    // copy typesection header
+                                    ReadOnlySpan<byte> typesectionHeaderSpan = container.Slice(typesectionOffsets.start, typesectionOffsets.size);
+                                    typesectionHeaderSpan.CopyTo(bytecodeResult.Slice(movingOffset));
+                                    movingOffset += typesectionHeaderSpan.Length;
+
+                                    // copy codesection header
+                                    ReadOnlySpan<byte> codesectionHeaderSpan = container.Slice(codesectionOffsets.start, codesectionOffsets.size);
+                                    codesectionHeaderSpan.CopyTo(bytecodeResult.Slice(movingOffset));
+                                    movingOffset += codesectionHeaderSpan.Length;
+
+                                    // copy codesection header
+                                    bytecodeResult[movingOffset++] = EvmObjectFormat.Eof1.KIND_DATA;
+                                    byte[] newDataSectionLength = (auxExtraData.Length + header.Value.DataSection.Size).ToBigEndianByteArray();
+                                    newDataSectionLength.CopyTo(bytecodeResult.Slice(movingOffset));
+                                    movingOffset += newDataSectionLength.Length;
+
+                                    // copy codesection header
+                                    ReadOnlySpan<byte> containerectionHeaderSpan = container.Slice(containersectionOffsets.start, containersectionOffsets.size);
+                                    containerectionHeaderSpan.CopyTo(bytecodeResult.Slice(movingOffset));
+                                    movingOffset += containerectionHeaderSpan.Length;
+
+                                    bytecodeResult[movingOffset++] = EvmObjectFormat.Eof1.TERMINATOR;
+
+                                    // copy type section
+                                    ReadOnlySpan<byte> typesectionSpan = container.Slice(header.Value.TypeSection.Start, header.Value.TypeSection.Size);
+                                    typesectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
+                                    movingOffset += typesectionSpan.Length;
+
+                                    // copy code section
+                                    ReadOnlySpan<byte> codesectionSpan = container.Slice(header.Value.CodeSections[0].Start, header.Value.CodeSectionsSize);
+                                    codesectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
+                                    movingOffset += codesectionSpan.Length;
+
+                                    // copy data section
+                                    ReadOnlySpan<byte> datasectionSpan = container.Slice(header.Value.DataSection.Start, header.Value.DataSection.Size);
+                                    datasectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
+                                    movingOffset += datasectionSpan.Length;
+
+                                    // copy aux data to dataSection
+                                    auxExtraData.CopyTo(bytecodeResult.Slice(movingOffset));
+                                    movingOffset += auxExtraData.Length;
+
+                                    // copy container section
+                                    ReadOnlySpan<byte> containersectionSpan = container.Slice(header.Value.ContainerSection?[0].Start ?? 0, header.Value.ExtraContainersSize);
+                                    containersectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
+                                    movingOffset += containersectionSpan.Length;
+
+                                    bytecodeResultArray = bytecodeResult.ToArray();
                                 }
 
-                                previousCallResult = BytesZero;
-                                previousStateSucceeded = false;
-
-                                if (_txTracer.IsTracingActions)
+                                long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray.Length, spec);
+                                if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                                 {
-                                    _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+                                    Keccak codeHash = _state.UpdateCode(bytecodeResultArray);
+                                    _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
+                                    currentState.GasAvailable -= codeDepositGasCost;
+
+                                    if (_txTracer.IsTracingActions)
+                                    {
+                                        _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+                                    }
                                 }
-                            }
-                            else if (_txTracer.IsTracingActions)
-                            {
-                                _txTracer.ReportActionEnd(0L, callCodeOwner, callResult.Output);
+                                else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+                                {
+                                    currentState.GasAvailable -= gasAvailableForCodeDeposit;
+                                    worldState.Restore(previousState.Snapshot);
+                                    if (!previousState.IsCreateOnPreExistingAccount)
+                                    {
+                                        _state.DeleteAccount(callCodeOwner);
+                                    }
+
+                                    previousCallResult = BytesZero;
+                                    previousStateSucceeded = false;
+
+                                    if (_txTracer.IsTracingActions)
+                                    {
+                                        _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+                                    }
+                                }
+                                else if (_txTracer.IsTracingActions)
+                                {
+                                    _txTracer.ReportActionEnd(0L, callCodeOwner, callResult.Output.Bytes);
+                                }
                             }
                         }
                         else
                         {
-                            _returnDataBuffer = callResult.Output;
+                            _returnDataBuffer = callResult.Output.Bytes;
                             previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
-                            previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
+                            previousCallOutput = callResult.Output.Bytes.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
                             previousCallOutputDestination = (ulong)previousState.OutputDestination;
                             if (previousState.IsPrecompile)
                             {
@@ -316,9 +426,9 @@ namespace Nethermind.Evm
                     else
                     {
                         worldState.Restore(previousState.Snapshot);
-                        _returnDataBuffer = callResult.Output;
+                        _returnDataBuffer = callResult.Output.Bytes;
                         previousCallResult = StatusCode.FailureBytes;
-                        previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
+                        previousCallOutput = callResult.Output.Bytes.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
 
@@ -2449,7 +2559,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RJUMP | Instruction.BEGINSUB:
                         {
-                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
+                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
                                 short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
@@ -2471,7 +2581,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RJUMPI | Instruction.RETURNSUB:
                         {
-                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
+                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
                                 Span<byte> condition = stack.PopBytes();
@@ -2502,7 +2612,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RJUMPV | Instruction.JUMPSUB:
                         {
-                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
+                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
                                 var case_v = stack.PopByte();
@@ -2540,7 +2650,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.CALLF:
                         {
-                            if (!spec.IsEofEvmModeOn || !spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
+                            if (!spec.IsEofEvmModeOn || !spec.FunctionSections || !env.CodeInfo.IsEof())
                             {
                                 goto InvalidInstruction;
                             }
@@ -2565,7 +2675,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RETF:
                         {
-                            if (!spec.IsEofEvmModeOn && !spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
+                            if (!spec.IsEofEvmModeOn || !spec.FunctionSections || !env.CodeInfo.IsEof())
                             {
                                 goto InvalidInstruction;
                             }
@@ -2585,7 +2695,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.DATASIZE:
                         {
-                            if (spec.IsEip3540Enabled)
+                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) goto OutOfGas;
 
@@ -2596,7 +2706,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.DATALOAD:
                         {
-                            if (spec.IsEip3540Enabled)
+                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) goto OutOfGas;
 
@@ -2610,7 +2720,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.DATALOADN:
                         {
-                            if (spec.IsEip3540Enabled)
+                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) goto OutOfGas;
 
@@ -2623,7 +2733,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.DATACOPY:
                         {
-                            if (spec.IsEip3540Enabled)
+                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.DataCopy, ref gasAvailable)) goto OutOfGas;
 
@@ -2665,17 +2775,14 @@ namespace Nethermind.Evm
                                     auxData = env.InputData.Slice((int)aux_data_offset, (int)aux_data_size).Span;
                                 }
 
-                                stack.PushByte(sectionIdx);
-                                stack.PushBytes(auxData);
-
-                                break;
+                                return new CallResult(sectionIdx, auxData.ToArray(), null, env.CodeInfo.EofVersion());
                             }
                             else return CallResult.InvalidInstructionException;
                         }
                     case Instruction.CREATE3:
                     case Instruction.CREATE4:
                         {
-                            if (spec.IsEip3540Enabled)
+                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
                             {
                                 var currentContext = instruction == Instruction.CREATE3 ? ExecutionType.Create3 : ExecutionType.Create4;
                                 if (!UpdateGas(currentContext == ExecutionType.Create3 ? GasCostOf.Create3 : GasCostOf.Create4, ref gasAvailable)) // still undecided in EIP
@@ -2694,9 +2801,31 @@ namespace Nethermind.Evm
                                 stack.PopUInt256(out var dataoffset);
                                 stack.PopUInt256(out var datasize);
 
-                                (int initcodeOffset, int initcodeSize) = env.CodeInfo.SectionOffset(initCodeIdx);
-                                ReadOnlySpan<byte> initcode = codeSection.Slice(initcodeOffset, initcodeSize);
-                                UInt256 gasCost = UInt256.MaxValue; // Note(Ayman) : DUMMY VALUE waiting for actual value in spec
+
+                                ReadOnlySpan<byte> initcode = ReadOnlySpan<byte>.Empty;
+                                int initcodeSize = 0;
+                                if(currentContext is ExecutionType.Create3)
+                                {
+                                    (int initcodeOffset, initcodeSize) = env.CodeInfo.ContainerOffset(initCodeIdx);
+                                    initcode = codeSection.Slice(initcodeOffset, initcodeSize);
+                                }
+                                else if(currentContext is ExecutionType.Create4)
+                                {
+                                    if(initCodeIdx >= txCtx.Initcodes.Length)
+                                    {
+                                        // TODO: need a test for this
+                                        _returnDataBuffer = Array.Empty<byte>();
+                                        stack.PushZero();
+                                        break;
+                                    }
+                                    initcode = txCtx.Initcodes[initCodeIdx];
+                                    initcodeSize = initcode.Length;
+                                }
+
+                                long gasCost = GasCostOf.Create +
+                                    (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling((UInt256)initcodeSize) : 0) +
+                                    GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling((UInt256)initcodeSize);
+                                if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
                                 if (spec.IsEip3860Enabled)
                                 {
@@ -2710,6 +2839,9 @@ namespace Nethermind.Evm
                                 if (!EvmObjectFormat.IsValidEof(initcode, out _))
                                 {
                                     // handle invalid Eof code
+                                    _returnDataBuffer = Array.Empty<byte>();
+                                    stack.PushZero();
+                                    break;
                                 }
 
                                 UInt256 balance = _state.GetBalance(env.ExecutingAccount);
@@ -2955,7 +3087,7 @@ AccessViolation:
             public CallResult(EvmState stateToExecute)
             {
                 StateToExecute = stateToExecute;
-                Output = Array.Empty<byte>();
+                Output = (null, Array.Empty<byte>());
                 PrecompileSuccess = null;
                 ShouldRevert = false;
                 ExceptionType = EvmExceptionType.None;
@@ -2964,7 +3096,7 @@ AccessViolation:
             private CallResult(EvmExceptionType exceptionType)
             {
                 StateToExecute = null;
-                Output = StatusCode.FailureBytes;
+                Output = (null, StatusCode.FailureBytes);
                 PrecompileSuccess = null;
                 ShouldRevert = false;
                 ExceptionType = exceptionType;
@@ -2973,7 +3105,18 @@ AccessViolation:
             public CallResult(byte[] output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
             {
                 StateToExecute = null;
-                Output = output;
+                Output = (null, output);
+                PrecompileSuccess = precompileSuccess;
+                ShouldRevert = shouldRevert;
+                ExceptionType = exceptionType;
+                FromVersion = fromVersion;
+                IsEmpty = output.Length == 0 && precompileSuccess.HasValue == false;
+            }
+
+            public CallResult(int containerIndex, byte[] output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+            {
+                StateToExecute = null;
+                Output = (containerIndex, output);
                 PrecompileSuccess = precompileSuccess;
                 ShouldRevert = shouldRevert;
                 ExceptionType = exceptionType;
@@ -2982,7 +3125,7 @@ AccessViolation:
             }
 
             public EvmState? StateToExecute { get; }
-            public byte[] Output { get; }
+            public (int? Index, byte[] Bytes) Output { get; }
             public int FromVersion { get; }
             public EvmExceptionType ExceptionType { get; }
             public bool ShouldRevert { get; }

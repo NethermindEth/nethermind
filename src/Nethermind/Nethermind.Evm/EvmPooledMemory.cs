@@ -43,6 +43,12 @@ namespace Nethermind.Evm
             _memory![(long)location] = value;
         }
 
+
+        public void Save(in UInt256 location, Span<byte> value)
+        {
+            Save(location, (ReadOnlySpan<byte>)value);
+        }
+
         public void Save(in UInt256 location, ReadOnlySpan<byte> value)
         {
             if (value.Length == 0)
@@ -288,5 +294,6 @@ namespace Nethermind.Evm
                 _lastZeroedSize = (int)Size;
             }
         }
+
     }
 }

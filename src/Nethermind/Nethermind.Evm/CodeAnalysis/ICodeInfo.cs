@@ -16,5 +16,6 @@ public interface ICodeInfo
     ReadOnlyMemory<byte> DataSection => Memory<byte>.Empty;
     ReadOnlyMemory<byte> ContainerSection => Memory<byte>.Empty;
     (int, int) SectionOffset(int idx) => idx == 0 ? (0, MachineCode.Length) : throw new ArgumentOutOfRangeException();
+    (int, int) ContainerOffset(int idx) => idx == 0 ? (0, 0) : throw new ArgumentOutOfRangeException();
     bool ValidateJump(int destination, bool isSubroutine);
 }
