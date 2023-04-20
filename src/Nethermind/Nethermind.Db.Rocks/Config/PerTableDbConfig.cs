@@ -51,7 +51,7 @@ public class PerTableDbConfig
 
     private string GetPrefix()
     {
-        return _tableName.StartsWith("State") ? "State" : string.Concat(_tableName, "Db");
+        return _tableName.StartsWith("State") ? "StateDb" : string.Concat(_tableName, "Db");
     }
 
     private static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string prefix)
