@@ -221,8 +221,14 @@ namespace Nethermind.Blockchain.Test.Receipts
         public void EnsureCanonical_should_use_blocknumber_if_finalized()
         {
             (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should()
-                .BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().NotBeNull();
+            }
         }
 
         [Test]
@@ -265,7 +271,15 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock();
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().NotBeNull();
+            }
 
             Block newHead = Build.A.Block.WithNumber(1).TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
@@ -283,7 +297,15 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptConfig.TxLookupLimit = 1000;
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock();
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().NotBeNull();
+            }
 
             Block newHead = Build.A.Block.WithNumber(_receiptConfig.TxLookupLimit.Value + 1).TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
