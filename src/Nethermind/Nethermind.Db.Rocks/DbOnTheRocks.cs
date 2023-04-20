@@ -221,7 +221,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     {
         _maxThisDbSize = 0;
         BlockBasedTableOptions tableOptions = new();
-        tableOptions.SetBlockSize(1024);
+        tableOptions.SetBlockSize((ulong) (dbConfig.BlockSize ?? 16 * 1024));
         tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
         tableOptions.SetCacheIndexAndFilterBlocks(dbConfig.CacheIndexAndFilterBlocks);
         tableOptions.SetIndexType(BlockBasedTableIndexType.TwoLevelIndex);

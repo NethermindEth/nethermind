@@ -192,9 +192,9 @@ namespace Nethermind.Init
             dbNeeds = GetStateNeeds(cpuCount, syncConfig);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
-            dbConfig.WriteBufferNumber = dbGets.Buffers;
-            dbConfig.WriteBufferSize = (ulong)dbGets.SingleBufferMem;
-            dbConfig.BlockCacheSize = (ulong)dbGets.CacheMem;
+            dbConfig.StateDbWriteBufferNumber = dbGets.Buffers;
+            dbConfig.StateDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
+            dbConfig.StateDbBlockCacheSize = (ulong)dbGets.CacheMem;
 
             dbConfig.SharedBlockCacheSize = (ulong)remaining;
         }

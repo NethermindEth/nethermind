@@ -140,14 +140,14 @@ namespace Nethermind.Runner.Test
         [TestCase("fast")]
         public void Caches_in_fast_blocks(string configWildcard)
         {
-            Test<IDbConfig, bool>(configWildcard, c => c.HeadersDbCacheIndexAndFilterBlocks, false);
-            Test<IDbConfig, bool>(configWildcard, c => c.ReceiptsDbCacheIndexAndFilterBlocks, false);
-            Test<IDbConfig, bool>(configWildcard, c => c.BlocksDbCacheIndexAndFilterBlocks, false);
-            Test<IDbConfig, bool>(configWildcard, c => c.BlockInfosDbCacheIndexAndFilterBlocks, false);
+            Test<IDbConfig, bool>(configWildcard, c => c.HeadersDbCacheIndexAndFilterBlocks, true);
+            Test<IDbConfig, bool>(configWildcard, c => c.ReceiptsDbCacheIndexAndFilterBlocks, true);
+            Test<IDbConfig, bool>(configWildcard, c => c.BlocksDbCacheIndexAndFilterBlocks, true);
+            Test<IDbConfig, bool>(configWildcard, c => c.BlockInfosDbCacheIndexAndFilterBlocks, true);
         }
 
-        [TestCase("^archive", false)]
-        [TestCase("archive", false)]
+        [TestCase("^archive", true)]
+        [TestCase("archive", true)]
         public void Cache_state_index(string configWildcard, bool expectedValue)
         {
             Test<IDbConfig, bool>(configWildcard, c => c.CacheIndexAndFilterBlocks, expectedValue);
