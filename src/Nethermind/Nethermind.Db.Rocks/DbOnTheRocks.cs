@@ -250,9 +250,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // Rewrote OptimizeForPointLookup to be able to use shared block cache.
         tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, false));
 
-        // TODO: Need to double check again if these do or don't do anything. It does increase db size thought.
-        // _rocksDbNative.rocksdb_block_based_options_set_data_block_index_type(tableOptions.Handle, 1);
-        // _rocksDbNative.rocksdb_block_based_options_set_data_block_hash_ratio(tableOptions.Handle, 0.75);
+        // In theory, this should reduce CPU, but I don't see any different.
+        // It seems increase disk space use by about 1 GB, which again, could be just noise. I'll just keep this.
+        // That said, on lower block size, it'll probably be useless.
+        _rocksDbNative.rocksdb_block_based_options_set_data_block_index_type(tableOptions.Handle, 1);
+        _rocksDbNative.rocksdb_block_based_options_set_data_block_hash_ratio(tableOptions.Handle, 0.75);
 
         _rocksDbNative.rocksdb_options_set_memtable_whole_key_filtering(options.Handle, true);
         _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, 0.02);
