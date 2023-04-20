@@ -140,7 +140,8 @@ namespace Nethermind.Trie.Pruning
                 _committedNodes.AddNode(blockNumber, node);
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
 
-                Persist(node, blockNumber, null);
+                if (_committedNodes.MaxNumberOfBlocks == 0)
+                    Persist(node, blockNumber, null);
 
                 CommittedNodesCount++;
             }
@@ -163,26 +164,19 @@ namespace Nethermind.Trie.Pruning
                         if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
                         set.Seal();
                     }
-
-                    bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
-                    if (shouldPersistSnapshot)
+                    if (blockNumber == 0) // special case for genesis
                     {
-                        long persistTarget = Math.Min(Math.Max(LastPersistedBlockNumber, set.BlockNumber - _committedNodes.MaxNumberOfBlocks) + 1, set.BlockNumber);
-
-                        do
-                        {
-                            if (_commitSetQueue.TryPeek(out BlockCommitSet frontSet) && frontSet.BlockNumber <= persistTarget)
-                            {
-                                Persist(frontSet);
-                                AnnounceReorgBoundaries();
-                                _commitSetQueue.TryDequeue(out _);
-                                if (_logger.IsTrace) _logger.Trace($"Current committed block {blockNumber} | persist target {persistTarget} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
-                            }
-                        } while (LastPersistedBlockNumber < persistTarget);
+                        Persist(0);
+                        AnnounceReorgBoundaries();
                     }
                     else
                     {
-                        _committedNodes.Prune();
+                        long persistTarget = Math.Max(LastPersistedBlockNumber, set.BlockNumber - _committedNodes.MaxNumberOfBlocks);
+                        if (persistTarget > LastPersistedBlockNumber)
+                        {
+                            Persist(persistTarget);
+                            AnnounceReorgBoundaries();
+                        }
                     }
                     _committedNodes?.SetRootHashForBlock(set.BlockNumber, set.Root?.Keccak);
 
@@ -266,18 +260,31 @@ namespace Nethermind.Trie.Pruning
             return new TrieNode(NodeType.Unknown, keccak);
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak keccak, Span<byte> nodePath, Span<byte> storagePrefix)
+        public TrieNode? FindCachedOrUnknown(Keccak keccak, Span<byte> nodePath, Span<byte> storagePrefix)
         {
             TrieNode node = _committedNodes.GetNode(storagePrefix.ToArray().Concat(nodePath.ToArray()).ToArray(), keccak);
-            node ??= new TrieNode(NodeType.Unknown, nodePath, keccak){StoreNibblePathPrefix = storagePrefix.ToArray()};
-            return node;
+            if (node is null)
+            {
+                return new TrieNode(NodeType.Unknown, nodePath, keccak)
+                {
+                    StoreNibblePathPrefix = storagePrefix.ToArray()
+                };
+            }
+
+            return node.FullRlp is null ? null : node;
         }
 
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, Span<byte> storagePrefix, Keccak rootHash)
+        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, Span<byte> storagePrefix, Keccak rootHash)
         {
             TrieNode node = _committedNodes.GetNode(rootHash, storagePrefix.ToArray().Concat(nodePath.ToArray()).ToArray());
-            node ??= new TrieNode(NodeType.Unknown, nodePath);
-            return node;
+            if (node is null)
+            {
+                return new TrieNode(NodeType.Unknown, nodePath)
+                {
+                    StoreNibblePathPrefix = storagePrefix.ToArray()
+                };
+            }
+            return node.FullRlp is null ? null : node;
         }
 
         //public void Dump() => _dirtyNodes.Dump();
@@ -363,6 +370,44 @@ namespace Nethermind.Trie.Pruning
 
                 LastPersistedBlockNumber = commitSet.BlockNumber;
                 LastPersistedRoot = commitSet.Root?.Keccak;
+            }
+            finally
+            {
+                // For safety we prefer to commit half of the batch rather than not commit at all.
+                // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
+                _currentBatch?.Dispose();
+                _currentBatch = null;
+            }
+        }
+
+        /// <summary>
+        /// Persists all transient (not yet persisted) starting from <paramref name="commitSet"/> root.
+        /// Already persisted nodes are skipped. After this action we are sure that the full state is available
+        /// for the block represented by this commit set.
+        /// </summary>
+        /// <param name="commitSet">A commit set of a block which root is to be persisted.</param>
+        private void Persist(long persistUntilBlock)
+        {
+            try
+            {
+                _currentBatch ??= _keyValueStore.StartBatch();
+                // if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
+
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                _committedNodes.PersistUntilBlock(persistUntilBlock, _currentBatch);
+                stopwatch.Stop();
+                Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
+
+                // if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
+
+                BlockCommitSet frontSet = null;
+                while (_commitSetQueue.TryPeek(out frontSet) && frontSet.BlockNumber <= persistUntilBlock)
+                {
+                    LastPersistedBlockNumber = frontSet.BlockNumber;
+                    LastPersistedRoot = frontSet.Root?.Keccak;
+                    _commitSetQueue.TryDequeue(out _);
+                    if (_logger.IsTrace) _logger.Trace($"Persist target {persistUntilBlock} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
+                }
             }
             finally
             {

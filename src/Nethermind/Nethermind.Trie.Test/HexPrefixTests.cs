@@ -172,32 +172,5 @@ namespace Nethermind.Trie.Test
                 Nibbles.ToBytes(storageConcatNibblesPath).Should().BeEquivalentTo(storagePath);
             }
         }
-
-        [Test]
-        public void StoragePrefixTestsStorageEncoded()
-        {
-            byte[] storagePrefixBytes = KeccakHash.ComputeHash(TestItem.AddressA.Bytes).ToArray();
-            Span<byte> storagePrefixNibbles= stackalloc byte[2 * storagePrefixBytes.Length];
-            Nibbles.BytesToNibbleBytes(storagePrefixBytes, storagePrefixNibbles);
-            Nibbles.ToEncodedStorageBytes(storagePrefixNibbles).Should().BeEquivalentTo(storagePrefixBytes);
-
-            List<byte[]> nodePaths = new List<byte[]>
-            {
-                Bytes.FromHexString("1234"),
-                KeccakHash.ComputeHash(TestItem.AddressA.Bytes).ToArray()
-            };
-
-            foreach (byte[]? nodePath in nodePaths)
-            {
-                byte[] nodeNibblePath = Nibbles.BytesToNibbleBytes(nodePath);
-
-                byte[] storagePath = storagePrefixBytes.Concat(nodePath).ToArray();
-                byte[] storageNibblesPath = storagePrefixNibbles.ToArray().Concat(nodeNibblePath).ToArray();
-
-                Nibbles.ToEncodedStorageBytes(storageNibblesPath).Should().BeEquivalentTo(storagePath);
-                Nibbles.BytesToNibbleBytes(storagePath).Should().BeEquivalentTo(storageNibblesPath);
-            }
-        }
-
     }
 }

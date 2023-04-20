@@ -35,18 +35,18 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
                 this[blockNumber] = nodeDictionary;
             }
 
-            if (trieNode.FullRlp is null)
-            {
-                if (nodeDictionary.TryRemove(trieNode.FullPath, out TrieNode prev))
-                {
-                    MemoryUsed -= prev.GetMemorySize(false);
-                }
-
-                if (trieNode.PathToNode == Array.Empty<byte>())
-                {
-                    nodeDictionary.TryRemove(trieNode.StoreNibblePathPrefix, out _);
-                }
-            }
+            // if (trieNode.FullRlp is null)
+            // {
+            //     if (nodeDictionary.TryRemove(trieNode.FullPath, out TrieNode prev))
+            //     {
+            //         MemoryUsed -= prev.GetMemorySize(false);
+            //     }
+            //
+            //     if (trieNode.PathToNode == Array.Empty<byte>())
+            //     {
+            //         nodeDictionary.TryRemove(trieNode.StoreNibblePathPrefix, out _);
+            //     }
+            // }
 
             TrieNode addFunc(byte[] key)
             {
@@ -109,6 +109,10 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
     {
         if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
         {
+            if (_nodesByBlock.Count == 0)
+            {
+                return null;
+            }
             long blockNo = blocks.Min();
             long minBlockNumberStored = _nodesByBlock.Keys.Min();
 
@@ -158,11 +162,16 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         {
             if (_nodesByBlock.TryRemove(blockNumber, out ConcurrentDictionary<byte[], TrieNode> nodesByPath))
             {
-                Parallel.ForEach(nodesByPath.Values, node =>
+                foreach (TrieNode? node in nodesByPath.Values)
                 {
                     _trieStore.SaveNodeDirectly(blockNumber, node, batch);
                     node.IsPersisted = true;
-                });
+                }
+                // Parallel.ForEach(nodesByPath.Values, node =>
+                // {
+                //     _trieStore.SaveNodeDirectly(blockNumber, node, batch);
+                //     node.IsPersisted = true;
+                // });
             }
             currentBlockNumber++;
         }

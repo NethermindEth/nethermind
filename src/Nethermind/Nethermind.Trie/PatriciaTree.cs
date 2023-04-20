@@ -394,7 +394,8 @@ namespace Nethermind.Trie
             StoreNibblePathPrefix.CopyTo(nibbleBytes);
             Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes.Slice(StoreNibblePathPrefix.Length));
             // _logger.Info("TrieStore.FindCachedOrUnknown");
-            TrieNode node = TrieStore.FindCachedOrUnknown(nibbleBytes, StoreNibblePathPrefix, rootHash);
+            TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes.Slice(StoreNibblePathPrefix.Length), StoreNibblePathPrefix, rootHash);
+            if (node is null) return null;
             // _logger.Info($"TrieStore.FindCachedOrUnknown: {node}");
             if (node.NodeType == NodeType.Leaf) return node.Value;
 

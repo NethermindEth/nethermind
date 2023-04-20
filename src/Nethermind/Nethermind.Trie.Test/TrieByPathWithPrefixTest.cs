@@ -102,8 +102,8 @@ public class TrieByPathWithPrefixTest
     [Test]
     public void Single_leaf_update_next_blocks()
     {
-        MemDb memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
+        MemDb memDb = new MemDb();
+        using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager, 0);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
@@ -371,10 +371,10 @@ public class TrieByPathWithPrefixTest
         }
     }
 
-    public void Test_update_many_next_block(int i)
+    private void Test_update_many_next_block(int i)
     {
         MemDb memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
+        using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager, 0);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
@@ -489,7 +489,6 @@ public class TrieByPathWithPrefixTest
         for (int i = 0; i < 100; i++)
         {
             Console.WriteLine(i);
-            _logger.Trace(i.ToString());
             Test_add_many(i);
             Test_update_many(i);
             Test_update_many_next_block(i);
@@ -533,7 +532,6 @@ public class TrieByPathWithPrefixTest
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
         };;
-        patriciaTree.TrieType = TrieType.Storage;
 
 
 
@@ -718,7 +716,7 @@ public class TrieByPathWithPrefixTest
         byte[] key3 = Bytes.FromHexString("000000200000000cc").PadLeft(32);
 
         MemDb memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager);
+        using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.EveryBlock, _logManager, 0);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
@@ -791,7 +789,7 @@ public class TrieByPathWithPrefixTest
 
         MemDb memDb = new();
 
-        using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
+        using TrieStoreByPath trieStore = new(memDb, No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager, 200);
         StateTreeByPath patriciaTree = new(trieStore, _logManager);
 
         byte[][] accounts = new byte[accountsCount][];
@@ -832,14 +830,20 @@ public class TrieByPathWithPrefixTest
 
                     streamWriter.WriteLine(
                         $"Block {blockNumber} - setting {account.ToHexString()} = {value.ToHexString()}");
+                    _logger.Info(
+                        $"Block {blockNumber} - setting {account.ToHexString()} = {value.ToHexString()}");
                     patriciaTree.Set(account, value);
                 }
             }
 
             streamWriter.WriteLine(
                 $"Commit block {blockNumber} | empty: {isEmptyBlock}");
+            _logger.Info(
+                $"Commit block {blockNumber} | empty: {isEmptyBlock}");
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(blockNumber);
+            _logger.Info(
+                $"Commit block {blockNumber} | empty: {isEmptyBlock} | {patriciaTree.RootHash}");
             rootQueue.Enqueue(patriciaTree.RootHash);
         }
 
@@ -858,6 +862,7 @@ public class TrieByPathWithPrefixTest
                 patriciaTree.RootHash = currentRoot;
                 for (int i = 0; i < accounts.Length; i++)
                 {
+                    _logger.Info($"Get Account: {currentRoot} {accounts[i].ToHexString()}");
                     patriciaTree.Get(accounts[i]);
                 }
 
@@ -874,7 +879,7 @@ public class TrieByPathWithPrefixTest
                     _logger.Info($"Verified negative {verifiedBlocks}");
                 }
             }
-
+            _logger.Info($"verified blocks: {verifiedBlocks}");
             verifiedBlocks++;
         }
     }

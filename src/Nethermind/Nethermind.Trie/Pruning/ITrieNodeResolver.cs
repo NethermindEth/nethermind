@@ -47,7 +47,7 @@ namespace Nethermind.Trie.Pruning
             return capability switch
             {
                 TrieNodeResolverCapability.Hash => new TrieStore(keyValueStore, logManager),
-                TrieNodeResolverCapability.Path => new TrieStoreByPath(keyValueStore, logManager),
+                TrieNodeResolverCapability.Path => new TrieStoreByPath(keyValueStore, 0, logManager),
                 _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
             };
         }
@@ -62,7 +62,7 @@ namespace Nethermind.Trie.Pruning
             return capability switch
             {
                 TrieNodeResolverCapability.Hash => new TrieStore(keyValueStore, pruningStrategy, persistenceStrategy, logManager),
-                TrieNodeResolverCapability.Path => new TrieStoreByPath(keyValueStore, pruningStrategy, persistenceStrategy, logManager),
+                TrieNodeResolverCapability.Path => new TrieStoreByPath(keyValueStore, pruningStrategy, persistenceStrategy, logManager, 0),
                 _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
             };
         }
