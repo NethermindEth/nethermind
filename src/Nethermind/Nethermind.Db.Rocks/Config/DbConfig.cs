@@ -118,7 +118,7 @@ public class DbConfig : IDbConfig
     public bool StateDbCacheIndexAndFilterBlocks { get; set; }
     public int? StateDbMaxOpenFiles { get; set; }
     public long? StateDbMaxWriteBytesPerSec { get; set; }
-    public int? StateBlockSize { get; set; } = 4 * 1024;
+    public int? StateDbBlockSize { get; set; } = 4 * 1024;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;

@@ -118,7 +118,7 @@ public interface IDbConfig : IConfig
     bool StateDbCacheIndexAndFilterBlocks { get; set; }
     int? StateDbMaxOpenFiles { get; set; }
     long? StateDbMaxWriteBytesPerSec { get; set; }
-    int? StateBlockSize { get; set; }
+    int? StateDbBlockSize { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>
