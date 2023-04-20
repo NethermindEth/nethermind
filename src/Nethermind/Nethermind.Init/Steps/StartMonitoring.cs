@@ -52,7 +52,6 @@ public class StartMonitoring : IStep
 
         if (metricsConfig.Enabled)
         {
-            Console.WriteLine($"Monitoring initialized");
             _api.MonitoringService = new MonitoringService(controller, metricsConfig, _api.LogManager);
 
             await _api.MonitoringService.StartAsync().ContinueWith(x =>
@@ -61,7 +60,7 @@ public class StartMonitoring : IStep
                     logger.Error("Error during starting a monitoring.", x.Exception);
             }, cancellationToken);
 
-            AddMetricsUpdateActions();
+            SetupMetrics(metricsConfig);
 
             _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
         }
@@ -79,8 +78,9 @@ public class StartMonitoring : IStep
         }
     }
 
-    private void AddMetricsUpdateActions()
+    private void SetupMetrics(IMetricsConfig config)
     {
+        ProductInfo.Instance = config.NodeName;
         _api.MonitoringService.AddMetricsUpdateAction(() =>
         {
             Db.Metrics.StateDbSize = _api.DbProvider!.StateDb.GetSize();

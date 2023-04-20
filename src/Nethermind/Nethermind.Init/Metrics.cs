@@ -14,6 +14,8 @@ namespace Nethermind.Init
         [MetricsStaticDescriptionTag(nameof(ProductInfo.Commit), typeof(ProductInfo))]
         [MetricsStaticDescriptionTag(nameof(ProductInfo.Runtime), typeof(ProductInfo))]
         [MetricsStaticDescriptionTag(nameof(ProductInfo.BuildTimestamp), typeof(ProductInfo))]
+        [MetricsStaticDescriptionTag(nameof(ProductInfo.Instance), typeof(ProductInfo))]
+        [MetricsStaticDescriptionTag(nameof(ProductInfo.Network), typeof(ProductInfo))]
         public static long Version { get; set; }
     }
 }
