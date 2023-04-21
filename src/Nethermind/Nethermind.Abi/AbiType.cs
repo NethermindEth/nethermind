@@ -55,7 +55,7 @@ namespace Nethermind.Abi
 namespace Nethermind.Blockchain.Contracts.Json
 {
     using Nethermind.Abi;
-    
+
     [JsonDerivedType(typeof(AbiDynamicBytes))]
     [JsonDerivedType(typeof(AbiBytes))]
     [JsonDerivedType(typeof(AbiAddress))]

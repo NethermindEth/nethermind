@@ -62,41 +62,41 @@ public class ChainSpecLoader : IChainSpecLoader
         }
     }
 
-        private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+    private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+    {
+        long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
-            long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
+            var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
+            if (allocation is null) return null;
+            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
+            if (pricing.Length > 0)
             {
-                var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
-                if (allocation is null) return null;
-                KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
-                if (pricing.Length > 0)
-                {
-                    string key = pricing[0].Key;
-                    return long.TryParse(key, out long transition) ? transition : Convert.ToInt64(key, 16);
-                }
+                string key = pricing[0].Key;
+                return long.TryParse(key, out long transition) ? transition : Convert.ToInt64(key, 16);
+            }
 
             return null;
         }
 
-            long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
-            {
+        long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
+        {
             bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o)
             {
                 return o.Value.TryGetSubProperty(innerPath, out JsonElement value) ? value.GetInt64() == expectedValue : false;
             }
 
             return GetTransitions(builtInName, GetForExpectedPricing);
-            }
+        }
 
-            long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
+        long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
+        {
+            bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o)
             {
-                bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o)
-                {
-                    return o.Value.TryGetSubProperty(innerPath, out _);
-                }
+                return o.Value.TryGetSubProperty(innerPath, out _);
+            }
 
             return GetTransitions(builtInName, GetForInnerPathExistence);
-            }
+        }
 
         ValidateParams(chainSpecJson.Params);
 
@@ -313,23 +313,23 @@ public class ChainSpecLoader : IChainSpecLoader
                 BlockRewards = chainSpecJson.Engine.Ethash.BlockReward
             };
 
-                chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
-                if (chainSpecJson.Engine.Ethash.DifficultyBombDelays is not null)
+            chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
+            if (chainSpecJson.Engine.Ethash.DifficultyBombDelays is not null)
+            {
+                foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
                 {
-                    foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
-                    {
-                        long key = reward.Key.StartsWith("0x") ?
-                            long.Parse(reward.Key.AsSpan(2), NumberStyles.HexNumber) :
-                            long.Parse(reward.Key);
+                    long key = reward.Key.StartsWith("0x") ?
+                        long.Parse(reward.Key.AsSpan(2), NumberStyles.HexNumber) :
+                        long.Parse(reward.Key);
 
-                        chainSpec.Ethash.DifficultyBombDelays.Add(key, reward.Value);
-                    }
+                    chainSpec.Ethash.DifficultyBombDelays.Add(key, reward.Value);
                 }
             }
-            else if (chainSpecJson.Engine?.NethDev is not null)
-            {
-                chainSpec.SealEngineType = SealEngineType.NethDev;
-            }
+        }
+        else if (chainSpecJson.Engine?.NethDev is not null)
+        {
+            chainSpec.SealEngineType = SealEngineType.NethDev;
+        }
 
         var customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
 
