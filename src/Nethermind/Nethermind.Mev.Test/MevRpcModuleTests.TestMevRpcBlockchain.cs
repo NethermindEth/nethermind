@@ -206,6 +206,7 @@ namespace Nethermind.Mev.Test
                     State,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
+                    BlockTree,
                     LogManager);
 
                 _tracerFactory = new TracerFactory(
@@ -249,6 +250,7 @@ namespace Nethermind.Mev.Test
                     headerValidator,
                     Always.Valid,
                     SpecProvider,
+                    BlockTree,
                     LogManager);
             }
 

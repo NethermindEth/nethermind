@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -60,6 +61,8 @@ namespace Nethermind.Consensus.Producers
             // TODO: removing transactions from TX pool here seems to be a bad practice since they will
             // not come back if the block is ignored?
             int blobsCounter = 0;
+            UInt256? dataGasPrice = null;
+
             foreach (Transaction tx in transactions)
             {
                 i++;
@@ -74,10 +77,18 @@ namespace Nethermind.Consensus.Producers
                 bool success = _txFilterPipeline.Execute(tx, parent);
                 if (!success) continue;
 
-                if (tx.Type == TxType.Blob)
+                if (tx.SupportsBlobs)
                 {
+                    dataGasPrice ??= IntrinsicGasCalculator.GetDataGasPrice(parent.ExcessDataGas.GetValueOrDefault());
                     int txAmountOfBlobs = tx.BlobVersionedHashes?.Length ?? 0;
-                    if ((blobsCounter + txAmountOfBlobs) > Eip4844Constants.MaxBlobsPerBlock)
+                    if (dataGasPrice > tx.MaxFeePerDataGas)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, data gas fee is too low.");
+                        continue;
+                    }
+
+                    if (IntrinsicGasCalculator.CalculateDataGas(blobsCounter + txAmountOfBlobs) >
+                        Eip4844Constants.MaxDataGasPerBlock)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Declining {tx.ToShortString()}, no more blob space.");
                         continue;
@@ -97,7 +108,6 @@ namespace Nethermind.Consensus.Producers
             }
 
             if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedTransactions} out of {i} pending transactions checked.");
-
         }
 
         protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<Address, Transaction[]> pendingTransactions, IComparer<Transaction> comparer) =>

@@ -140,7 +140,7 @@ namespace Ethereum.Test.Base
             ITxValidator txValidator = new TxValidator(TestBlockchainIds.ChainId);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
-            IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
+            IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, blockTree, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
@@ -155,11 +155,13 @@ namespace Ethereum.Test.Base
                         specProvider,
                         stateProvider,
                         virtualMachine,
+                        blockTree,
                         _logManager),
                     stateProvider),
                 stateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                blockTree,
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(

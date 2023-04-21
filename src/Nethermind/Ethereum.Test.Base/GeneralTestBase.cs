@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -20,6 +22,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -72,10 +75,15 @@ namespace Ethereum.Test.Base
                 specProvider,
                 _logManager);
 
+            IDb blockInfoDb = new MemDb();
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb,
+                new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, _logManager);
+
             TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
                 virtualMachine,
+                blockTree,
                 _logManager);
 
             InitializeTestState(test, stateProvider, specProvider);
@@ -89,8 +97,8 @@ namespace Ethereum.Test.Base
             header.MixHash = test.CurrentRandom;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            var txValidator = new TxValidator((MainnetSpecProvider.Instance.ChainId));
-            var spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
+            TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));
+            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
             if (test.Transaction.ChainId == null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
             bool isValid = txValidator.IsWellFormed(test.Transaction, spec);

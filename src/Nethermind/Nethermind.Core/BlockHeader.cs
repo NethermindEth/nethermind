@@ -68,8 +68,8 @@ public class BlockHeader
     public UInt256? ExcessDataGas { get; set; }
 
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
-        || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
-        || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
+                           || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
+                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
 
     public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
 

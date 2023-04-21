@@ -180,6 +180,7 @@ namespace Nethermind.Synchronization.Test
                 mergeHeaderValidator,
                 Always.Valid,
                 MainnetSpecProvider.Instance,
+                localBlockTree,
                 LimboLogs.Instance);
 
             ctx.SyncServer = new SyncServer(
@@ -360,6 +361,7 @@ namespace Nethermind.Synchronization.Test
                 headerValidatorWithInterceptor,
                 Always.Valid,
                 MainnetSpecProvider.Instance,
+                localBlockTree,
                 LimboLogs.Instance);
 
             ctx.SyncServer = new SyncServer(
@@ -401,6 +403,7 @@ namespace Nethermind.Synchronization.Test
                 headerValidator,
                 Always.Valid,
                 MainnetSpecProvider.Instance,
+                localBlockTree,
                 LimboLogs.Instance);
 
             ctx.SyncServer = new SyncServer(

@@ -67,6 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Blockchain.ReceiptStorage,
                     dbProvider,
                     Blockchain.SpecProvider,
+                    Blockchain.BlockTree,
                     Blockchain.LogManager,
                     transactionsExecutor);
 

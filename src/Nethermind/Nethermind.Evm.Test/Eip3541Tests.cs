@@ -100,7 +100,7 @@ namespace Nethermind.Evm.Test
                     break;
             }
 
-            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, LimboLogs.Instance);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, BlockFinder, LimboLogs.Instance);
             long blockNumber = eip3541Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, createContract);
 
