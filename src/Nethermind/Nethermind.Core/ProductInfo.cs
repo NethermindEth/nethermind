@@ -51,4 +51,8 @@ public static class ProductInfo
     public static string Network { get; set; } = "";
 
     public static string Instance { get; set; } = "";
+
+    public static string SyncType { get; set; } = "";
+
+    public static string PruningMode { get; set; } = "";
 }

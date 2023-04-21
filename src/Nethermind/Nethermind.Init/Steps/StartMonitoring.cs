@@ -7,7 +7,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
@@ -60,7 +62,7 @@ public class StartMonitoring : IStep
                     logger.Error("Error during starting a monitoring.", x.Exception);
             }, cancellationToken);
 
-            SetupMetrics(metricsConfig);
+            SetupMetrics();
 
             _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
         }
@@ -78,9 +80,8 @@ public class StartMonitoring : IStep
         }
     }
 
-    private void SetupMetrics(IMetricsConfig config)
+    private void SetupMetrics()
     {
-        ProductInfo.Instance = config.NodeName;
         _api.MonitoringService.AddMetricsUpdateAction(() =>
         {
             Db.Metrics.StateDbSize = _api.DbProvider!.StateDb.GetSize();
@@ -92,8 +93,27 @@ public class StartMonitoring : IStep
         });
     }
 
-    private static void PrepareProductInfoMetrics()
+    private void PrepareProductInfoMetrics()
     {
+        IPruningConfig pruningConfig = _api.Config<IPruningConfig>();
+        IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
+        ISyncConfig syncConfig = _api.Config<ISyncConfig>();
+        ProductInfo.Instance = metricsConfig.NodeName;
+
+        if (syncConfig.SnapSync)
+        {
+            ProductInfo.SyncType = "Snap";
+        }
+        else if (syncConfig.FastSync)
+        {
+            ProductInfo.SyncType = "Fast";
+        }
+        else
+        {
+            ProductInfo.SyncType = "Full";
+        }
+
+        ProductInfo.PruningMode = pruningConfig.Mode.ToString();
         Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
     }
 
