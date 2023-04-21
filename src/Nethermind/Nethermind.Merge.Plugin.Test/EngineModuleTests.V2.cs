@@ -34,8 +34,8 @@ public partial class EngineModuleTests
         "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133",
         "0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68",
         "0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51",
-        "0x6454408c425ddd96")]
-    public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash,
+        "0x5009aaf2fdcd600e")]
+    public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash, 
         string stateRoot, string payloadId)
     {
         using MergeTestBlockchain chain =
@@ -746,6 +746,23 @@ public partial class EngineModuleTests
             $"PayloadAttributes {{Timestamp: {attrs.Timestamp}, PrevRandao: {attrs.PrevRandao}, SuggestedFeeRecipient: {attrs.SuggestedFeeRecipient}, Withdrawals count: {attrs.Withdrawals.Count}}}");
     }
 
+    [TestCaseSource(nameof(PayloadIdTestCases))]
+    public void Should_compute_payload_id_with_withdrawals((IList<Withdrawal>? Withdrawals, string PayloadId) input)
+    {
+        var blockHeader = Build.A.BlockHeader.TestObject;
+        var payloadAttributes = new PayloadAttributes
+        {
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero,
+            Timestamp = 0,
+            Withdrawals = input.Withdrawals
+        };
+
+        var payloadId = payloadAttributes.ComputePayloadId(blockHeader);
+
+        payloadId.Should().Be(input.PayloadId);
+    }
+
     private static async Task<GetPayloadV2Result> BuildAndGetPayloadResultV2(
         IEngineRpcModule rpc, MergeTestBlockchain chain, PayloadAttributes payloadAttributes)
     {
@@ -900,5 +917,15 @@ public partial class EngineModuleTests
             new Func<CallInfo, Block?>(i => block),
             Enumerable.Repeat(result, 5)
         );
+    }
+
+    protected static IEnumerable<(
+        IList<Withdrawal>? Withdrawals,
+        string payloadId
+        )> PayloadIdTestCases()
+    {
+        yield return (null, "0xd0666188af58eb6f");
+        yield return (Array.Empty<Withdrawal>(), "0xb5f89745e4cfaec0");
+        yield return (new[] { Build.A.Withdrawal.TestObject }, "0x0628b8a79468163e");
     }
 }

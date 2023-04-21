@@ -53,14 +53,11 @@ namespace Nethermind.Api
         [ConfigItem(Description = "Overrides for default logs in format LogPath:LogLevel;*", DefaultValue = "null")]
         string? LogRules { get; set; }
 
-        [ConfigItem(Description = "If set to 'false' then transaction receipts will not be stored in the database after a new block is processed. This setting is independent from downloading receipts in fast sync mode.", DefaultValue = "true")]
+        [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "true", HiddenFromDocs = true)]
         bool StoreReceipts { get; set; }
 
-        [ConfigItem(Description = "If set to 'true' then receipts db will be migrated to new schema.", DefaultValue = "false")]
+        [ConfigItem(Description = "Moved to ReceiptConfig.", DefaultValue = "false", HiddenFromDocs = true)]
         bool ReceiptsMigration { get; set; }
-
-        [ConfigItem(Description = "If set to 'true' then reduce receipt db size at expense of rpc performance.", DefaultValue = "true")]
-        bool CompactReceiptStore { get; set; }
 
         [ConfigItem(Description = "Diagnostics modes", DefaultValue = "None")]
         DiagnosticMode DiagnosticMode { get; set; }
