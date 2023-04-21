@@ -46,17 +46,19 @@ public partial class EngineModuleTests
         responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
     }
 
+    [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
     [TestCase(3)]
     [TestCase(4)]
-    public async Task BlobsBundleV1_should_return_blobs_and_kzgs(int blobTxCount)
+    public async Task PayloadV3_should_return_all_the_blobs(int blobTxCount)
     {
         (IEngineRpcModule rpcModule, string payloadId) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
-        BlobsBundleV1 getPayloadResultData =
-            (await rpcModule.engine_getBlobsBundleV1(Bytes.FromHexString(payloadId))).Data!;
-        Assert.That(getPayloadResultData.Blobs.Length, Is.EqualTo(blobTxCount));
-        Assert.That(getPayloadResultData.Kzgs.Length, Is.EqualTo(blobTxCount));
+        BlobsBundleV1 getPayloadResultBlobsBundle =
+            (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.BlobsBundle!;
+        Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
+        Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
+        Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
     }
 
     private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, IList<Withdrawal>? withdrawals)

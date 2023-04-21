@@ -18,12 +18,6 @@ public partial interface IEngineRpcModule : IRpcModule
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayload executionPayload);
 
     [JsonRpcMethod(
-        Description = "Returns blob data of an execution payload with respect to the transaction set contained by the mempool.",
-        IsSharable = true,
-        IsImplemented = true)]
-    Task<ResultWrapper<BlobsBundleV1?>> engine_getBlobsBundleV1(byte[] payloadId);
-
-    [JsonRpcMethod(
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]

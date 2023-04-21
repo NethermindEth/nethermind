@@ -3,20 +3,26 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
+using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
 public class GetPayloadV2Result
 {
-    public GetPayloadV2Result(Block block, UInt256 blockFees)
+    public GetPayloadV2Result(Block block, UInt256 blockFees, BlobsBundleV1? blobsBundle = null)
     {
         BlockValue = blockFees;
         ExecutionPayload = new(block);
+        BlobsBundle = blobsBundle;
     }
 
     public UInt256 BlockValue { get; }
 
     public ExecutionPayload ExecutionPayload { get; }
+
+
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public BlobsBundleV1? BlobsBundle { get; }
 
     public override string ToString() => $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}}}";
 }

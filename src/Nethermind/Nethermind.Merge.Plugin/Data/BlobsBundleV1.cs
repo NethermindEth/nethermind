@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 namespace Nethermind.Merge.Plugin.Data;
 
 /// <summary>
-/// A data object representing a block as being sent from the execution layer to the consensus layer.
+/// Holds blobs of a block.
 ///
 /// See <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/experimental/blob-extension.md#blobsbundlev1">BlobsBundleV1</a>
 /// </summary>
@@ -18,14 +18,13 @@ public class BlobsBundleV1
 {
     public BlobsBundleV1()
     {
-        BlockHash = Keccak.Zero;
     }
 
     public BlobsBundleV1(Block block)
     {
-        BlockHash = block.Hash!;
-        List<Memory<byte>> kzgs = new();
+        List<Memory<byte>> commitments = new();
         List<Memory<byte>> blobs = new();
+        List<Memory<byte>> proofs = new();
         foreach (Transaction? tx in block.Transactions)
         {
             if (tx.Type is not TxType.Blob || tx.BlobKzgs is null || tx.Blobs is null)
@@ -33,22 +32,24 @@ public class BlobsBundleV1
                 continue;
             }
 
-            for (int cc = 0, bc = 0;
+            for (int cc = 0, bc = 0, pc = 0;
                  cc < tx.BlobKzgs.Length;
-                 cc += Ckzg.Ckzg.BytesPerCommitment, bc += Ckzg.Ckzg.BytesPerBlob)
+                 cc += Ckzg.Ckzg.BytesPerCommitment,
+                 bc += Ckzg.Ckzg.BytesPerBlob,
+                 pc += Ckzg.Ckzg.BytesPerCommitment)
             {
-                kzgs.Add(tx.BlobKzgs.AsMemory(cc, cc + Ckzg.Ckzg.BytesPerCommitment));
+                commitments.Add(tx.BlobKzgs.AsMemory(cc, cc + Ckzg.Ckzg.BytesPerCommitment));
                 blobs.Add(tx.Blobs.AsMemory(bc, bc + Ckzg.Ckzg.BytesPerBlob));
+                proofs.Add(tx.BlobProofs.AsMemory(pc, pc + Ckzg.Ckzg.BytesPerProof));
             }
         }
 
-        Kzgs = kzgs.ToArray();
+        Commitments = commitments.ToArray();
         Blobs = blobs.ToArray();
+        Proofs = proofs.ToArray();
     }
 
-    public Memory<byte>[] Kzgs { get; set; } = Array.Empty<Memory<byte>>();
-    public Memory<byte>[] Blobs { get; set; } = Array.Empty<Memory<byte>>();
-
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    public Keccak? BlockHash { get; set; } = null!;
+    public Memory<byte>[]? Commitments { get; set; }
+    public Memory<byte>[]? Blobs { get; set; }
+    public Memory<byte>[]? Proofs { get; set; }
 }

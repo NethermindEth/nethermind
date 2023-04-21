@@ -34,7 +34,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             if (block is null)
             {
                 // The call MUST return -38001: Unknown payload error if the build process identified by the payloadId does not exist.
-                if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId.ToHexString()} failed - unknown payload.");
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Block production for payload with id={payloadId.ToHexString()} failed - unknown payload.");
                 return ResultWrapper<GetPayloadV2Result?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload);
             }
 
@@ -42,7 +44,8 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             Metrics.GetPayloadRequests++;
             Metrics.NumberOfTransactionsInGetPayload = block.Transactions.Length;
-            return ResultWrapper<GetPayloadV2Result?>.Success(new GetPayloadV2Result(block, blockContext!.BlockFees));
+            return ResultWrapper<GetPayloadV2Result?>.Success(new GetPayloadV2Result(block, blockContext!.BlockFees,
+                new BlobsBundleV1(block)));
         }
     }
 }
