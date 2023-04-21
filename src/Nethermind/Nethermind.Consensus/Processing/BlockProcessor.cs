@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -13,11 +15,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -28,6 +32,7 @@ public partial class BlockProcessor : IBlockProcessor
     protected readonly IStateProvider _stateProvider;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IWitnessCollector _witnessCollector;
+    private readonly IBlockFinder _blockFinder;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
     private readonly IBlockValidator _blockValidator;
     private readonly IStorageProvider _storageProvider;
@@ -51,6 +56,7 @@ public partial class BlockProcessor : IBlockProcessor
         IStorageProvider? storageProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
+        IBlockFinder? blockFinder,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null)
     {
@@ -61,6 +67,7 @@ public partial class BlockProcessor : IBlockProcessor
         _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
+        _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
@@ -237,6 +244,12 @@ public partial class BlockProcessor : IBlockProcessor
         _stateProvider.Commit(spec);
         _stateProvider.RecalculateStateRoot();
 
+        if (_specProvider.GetSpec(block.Header).IsEip4844Enabled)
+        {
+            block.Header.ExcessDataGas = IntrinsicGasCalculator.CalculateExcessDataGas(
+                _blockFinder.FindParentHeader(block.Header)?.ExcessDataGas,
+                block.Transactions.Sum(tx => tx.BlobVersionedHashes?.Length ?? 0), spec);
+        }
         block.Header.StateRoot = _stateProvider.StateRoot;
         block.Header.Hash = block.Header.CalculateHash();
 

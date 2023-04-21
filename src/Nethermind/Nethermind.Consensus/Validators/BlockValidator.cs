@@ -4,9 +4,12 @@
 using System;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
@@ -19,6 +22,7 @@ public class BlockValidator : IBlockValidator
     private readonly ITxValidator _txValidator;
     private readonly IUnclesValidator _unclesValidator;
     private readonly ISpecProvider _specProvider;
+    private readonly IBlockFinder _blockFinder;
     private readonly ILogger _logger;
 
     public BlockValidator(
@@ -26,12 +30,14 @@ public class BlockValidator : IBlockValidator
         IHeaderValidator? headerValidator,
         IUnclesValidator? unclesValidator,
         ISpecProvider? specProvider,
+        IBlockFinder? blockFinder,
         ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
         _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
     }
 
@@ -100,7 +106,7 @@ public class BlockValidator : IBlockValidator
         if (!ValidateWithdrawals(block, spec, out _))
             return false;
 
-        if (!ValidateBlobs(block, spec, out _))
+        if (!ValidateBlobsAndExcessDataGas(block, spec, out _))
             return false;
 
         return true;
@@ -140,6 +146,11 @@ public class BlockValidator : IBlockValidator
             if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
             {
                 if (_logger.IsError) _logger.Error($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
+            }
+
+            if (processedBlock.Header.ExcessDataGas != suggestedBlock.Header.ExcessDataGas)
+            {
+                if (_logger.IsError) _logger.Error($"- excess data gas: expected {suggestedBlock.Header.ExcessDataGas}, got {processedBlock.Header.ExcessDataGas}");
             }
 
             for (int i = 0; i < processedBlock.Transactions.Length; i++)
@@ -193,7 +204,7 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateBlobs(Block block, IReleaseSpec spec, out string? error)
+    private bool ValidateBlobsAndExcessDataGas(Block block, IReleaseSpec spec, out string? error)
     {
         if (spec.IsEip4844Enabled && block.ExcessDataGas is null)
         {
@@ -209,19 +220,30 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        int? blobsInBlock = 0;
+        int blobsInBlock = 0;
         for (int txIndex = block.Transactions.Length - 1; txIndex >= 0; txIndex--)
         {
             blobsInBlock += block.Transactions[txIndex].BlobVersionedHashes?.Length ?? 0;
         }
 
-        if (spec.IsEip4844Enabled && blobsInBlock > Eip4844Constants.MaxBlobsPerBlock)
+        if (IntrinsicGasCalculator.CalculateDataGas(blobsInBlock) > Eip4844Constants.MaxDataGasPerBlock)
         {
-            error = $"A block cannot contain more than {Eip4844Constants.MaxBlobsPerBlock} blobs.";
+            error = $"A block cannot have more than {Eip4844Constants.MaxDataGasPerBlock} data gas.";
             if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }
 
+        UInt256? expectedExcessDataGas = IntrinsicGasCalculator.CalculateExcessDataGas(
+            (block.ParentHash is null ? null : _blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.All))
+            ?.ExcessDataGas,
+            blobsInBlock, spec);
+
+        if (block.ExcessDataGas != expectedExcessDataGas)
+        {
+            error = $"ExcessDataGas field is incorrect: {block.ExcessDataGas}, should be {expectedExcessDataGas}.";
+            if (_logger.IsWarn) _logger.Warn(error);
+            return false;
+        }
         error = null;
         return true;
     }

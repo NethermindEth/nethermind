@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.Processing
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
             Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, worldState, Machine, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, worldState, Machine, BlockTree, logManager);
         }
 
         public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, StorageProvider, _codeDb, stateRoot);

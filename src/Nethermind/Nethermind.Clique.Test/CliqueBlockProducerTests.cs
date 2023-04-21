@@ -17,7 +17,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -37,7 +36,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Config;
 
 namespace Nethermind.Clique.Test
@@ -124,7 +122,9 @@ namespace Nethermind.Clique.Test
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
                 StorageProvider storageProvider = new(trieStore, stateProvider, nodeLogManager);
-                TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider, storageProvider, new VirtualMachine(blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
+                TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider, storageProvider,
+                    new VirtualMachine(blockhashProvider, specProvider, nodeLogManager), blockTree,
+                    nodeLogManager);
                 BlockProcessor blockProcessor = new(
                     goerliSpecProvider,
                     Always.Valid,
@@ -134,6 +134,7 @@ namespace Nethermind.Clique.Test
                     storageProvider,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
+                    blockTree,
                     nodeLogManager);
 
                 BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
@@ -144,7 +145,7 @@ namespace Nethermind.Clique.Test
                 StateProvider minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
-                TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
+                TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerStorageProvider, minerVirtualMachine, blockTree, nodeLogManager);
 
                 BlockProcessor minerBlockProcessor = new(
                     goerliSpecProvider,
@@ -155,6 +156,7 @@ namespace Nethermind.Clique.Test
                     minerStorageProvider,
                     NullReceiptStorage.Instance,
                     NullWitnessCollector.Instance,
+                    blockTree,
                     nodeLogManager);
 
                 BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);

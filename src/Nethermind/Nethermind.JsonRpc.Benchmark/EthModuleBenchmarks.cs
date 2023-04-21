@@ -80,11 +80,11 @@ namespace Nethermind.JsonRpc.Benchmark
             blockTree.SuggestBlock(block1);
 
             TransactionProcessor transactionProcessor
-                 = new(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
+                 = new(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, blockTree, LimboLogs.Instance);
 
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
             BlockProcessor blockProcessor = new(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor,
-                stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
+                stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, blockTree, LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(

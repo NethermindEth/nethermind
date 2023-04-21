@@ -9,7 +9,7 @@
     <PackageVersion Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="6.0.5" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.13.5" />
     <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.13.5" />
-    <PackageVersion Include="Ckzg.Bindings" Version="0.1.2.402" />
+    <PackageVersion Include="Ckzg.Bindings" Version="0.1.2.437" />
     <PackageVersion Include="Colorful.Console" Version="1.2.15" />
     <PackageVersion Include="CommandLineParser" Version="2.9.1" />
     <PackageVersion Include="ConcurrentHashSet" Version="1.3.0" />

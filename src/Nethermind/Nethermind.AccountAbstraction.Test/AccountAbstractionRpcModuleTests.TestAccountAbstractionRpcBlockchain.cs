@@ -193,6 +193,7 @@ namespace Nethermind.AccountAbstraction.Test
                     Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
+                    BlockTree,
                     LogManager);
 
                 var parser = new AbiDefinitionParser();
@@ -282,6 +283,7 @@ namespace Nethermind.AccountAbstraction.Test
                     headerValidator,
                     Always.Valid,
                     SpecProvider,
+                    BlockTree,
                     LogManager);
             }
 

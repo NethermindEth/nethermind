@@ -307,9 +307,9 @@ public class TxValidatorTests
     [TestCase(Eip4844Constants.MinBlobsPerTransaction - 1, ExpectedResult = false)]
     [TestCase(Eip4844Constants.MinBlobsPerTransaction, ExpectedResult = true)]
     [TestCase(Eip4844Constants.MinBlobsPerTransaction + 1, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobsPerTransaction - 1, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobsPerTransaction, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobsPerTransaction + 1, ExpectedResult = false)]
+    [TestCase(Eip4844Constants.MaxDataGasPerTransaction / Eip4844Constants.DataGasPerBlob - 1, ExpectedResult = true)]
+    [TestCase(Eip4844Constants.MaxDataGasPerTransaction / Eip4844Constants.DataGasPerBlob, ExpectedResult = true)]
+    [TestCase(Eip4844Constants.MaxDataGasPerTransaction / Eip4844Constants.DataGasPerBlob + 1, ExpectedResult = false)]
     public bool Blobs_count_should_be_within_constraints(int blobsCount)
     {
         byte[] sigData = new byte[65];

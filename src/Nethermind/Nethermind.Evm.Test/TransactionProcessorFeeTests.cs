@@ -6,6 +6,7 @@ using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -45,7 +46,7 @@ public class TransactionProcessorFeeTests
         StorageProvider storageProvider = new(trieStore, _stateProvider, LimboLogs.Instance);
         VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine,
-            LimboLogs.Instance);
+            NullBlockFinder.Instance, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
     }
 

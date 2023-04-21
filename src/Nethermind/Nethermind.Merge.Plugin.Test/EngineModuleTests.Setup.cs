@@ -223,6 +223,7 @@ public partial class EngineModuleTests
                 Storage,
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
+                BlockTree,
                 LogManager);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
@@ -241,6 +242,7 @@ public partial class EngineModuleTests
                 HeaderValidator,
                 Always.Valid,
                 SpecProvider,
+                BlockTree,
                 LogManager);
         }
 

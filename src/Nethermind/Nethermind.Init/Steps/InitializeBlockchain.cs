@@ -221,6 +221,7 @@ namespace Nethermind.Init.Steps
                 getApi.SpecProvider,
                 worldState,
                 virtualMachine,
+                getApi.BlockTree,
                 getApi.LogManager);
 
             InitSealEngine();
@@ -239,6 +240,7 @@ namespace Nethermind.Init.Steps
                 headerValidator,
                 unclesValidator,
                 getApi.SpecProvider,
+                getApi.BlockTree,
                 getApi.LogManager);
 
             IChainHeadInfoProvider chainHeadInfoProvider =
@@ -364,6 +366,7 @@ namespace Nethermind.Init.Steps
                 _api.StorageProvider,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
+                _api.BlockTree,
                 _api.LogManager);
         }
 

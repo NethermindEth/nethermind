@@ -4,6 +4,7 @@
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -23,7 +24,7 @@ namespace Nethermind.Blockchain.Test.Validators
             releaseSpec.MaximumUncleCount = 0;
             ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));
 
-            BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+            BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, NullBlockFinder.Instance, LimboLogs.Instance);
             bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
             Assert.True(noiseRemoved);
 

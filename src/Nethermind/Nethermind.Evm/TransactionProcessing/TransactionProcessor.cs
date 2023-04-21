@@ -14,7 +14,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
@@ -27,6 +26,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _worldState;
         private readonly IVirtualMachine _virtualMachine;
+        private readonly IParentBlockHeaderFinder _blockFinder;
 
         [Flags]
         private enum ExecutionOptions
@@ -62,13 +62,15 @@ namespace Nethermind.Evm.TransactionProcessing
             IStateProvider? stateProvider,
             IStorageProvider? storageProvider,
             IVirtualMachine? virtualMachine,
+            IParentBlockHeaderFinder? blockFinder,
             ILogManager? logManager)
-            : this(specProvider, new WorldState(stateProvider, storageProvider), virtualMachine, logManager) { }
+            : this(specProvider, new WorldState(stateProvider, storageProvider), virtualMachine, blockFinder, logManager) { }
 
         public TransactionProcessor(
             ISpecProvider? specProvider,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
+            IParentBlockHeaderFinder? blockFinder,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -77,6 +79,7 @@ namespace Nethermind.Evm.TransactionProcessing
             _stateProvider = worldState.StateProvider;
             _storageProvider = worldState.StorageProvider;
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
@@ -251,12 +254,16 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : (ulong)gasLimit * effectiveGasPrice;
+            UInt256 blobsGasCost = spec.IsEip4844Enabled
+                ? IntrinsicGasCalculator.CalculateDataGasPrice(transaction, _blockFinder.FindParentHeader(block)?.ExcessDataGas ?? 0)
+                : UInt256.Zero;
+
+            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : ((ulong)gasLimit * effectiveGasPrice + blobsGasCost);
 
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
+                if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value + blobsGasCost > senderBalance ||
                                       senderReservedGasPayment + value > senderBalance))
                 {
                     TraceLogInvalidTx(transaction,
@@ -266,7 +273,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree() &&
-                    senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
+                    (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value + blobsGasCost > senderBalance)
                 {
                     TraceLogInvalidTx(transaction,
                         $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
@@ -412,8 +419,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (_logger.IsTrace) _logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}");
                 _worldState.Restore(snapshot);
             }
-
-            if (_logger.IsTrace) _logger.Trace("Gas spent: " + spentGas);
 
             Address gasBeneficiary = block.GasBeneficiary;
             bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(gasBeneficiary) != true;
