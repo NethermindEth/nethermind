@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
-            TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, LimboLogs.Instance);
+            TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, _blockTree, LimboLogs.Instance);
 
             _poSSwitcher = Substitute.For<IPoSSwitcher>();
             BlockProcessor blockProcessor = new(
@@ -76,6 +76,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 stateProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
+                _blockTree,
                 LimboLogs.Instance);
 
             RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);

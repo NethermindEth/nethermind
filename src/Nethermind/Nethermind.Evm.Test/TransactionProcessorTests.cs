@@ -24,6 +24,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Evm.Test
 {
@@ -56,7 +57,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.CommitTree(0);
 
             VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
-            _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, LimboLogs.Instance);
+            _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, NullBlockFinder.Instance, LimboLogs.Instance);
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
         }
 

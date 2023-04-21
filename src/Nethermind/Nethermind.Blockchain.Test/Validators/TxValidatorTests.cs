@@ -327,7 +327,6 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
 
-
     [TestCaseSource(nameof(BlobVersionedHashInvalidTestCases))]
     [TestCaseSource(nameof(BlobVersionedHashValidTestCases))]
     public bool BlobVersionedHash_should_be_correct(byte[] hash)
@@ -450,19 +449,19 @@ public class TxValidatorTests
                 TestName = "More than minimum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction - 1)
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob - 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction)
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxBlobsPerTransaction + 1)
+            yield return new TestCaseData(MakeTestObject(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob + 1)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Too many BlobVersionedHashes",

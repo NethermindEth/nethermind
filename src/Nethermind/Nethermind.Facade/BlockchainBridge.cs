@@ -253,8 +253,7 @@ namespace Nethermind.Facade
                     blockHeader.Number + 1,
                     blockHeader.GasLimit,
                     Math.Max(blockHeader.Timestamp + 1, _timestamper.UnixTime.Seconds),
-                    Array.Empty<byte>(),
-                    null)
+                    Array.Empty<byte>())
                 : new(
                     blockHeader.ParentHash!,
                     blockHeader.UnclesHash!,
@@ -263,8 +262,7 @@ namespace Nethermind.Facade
                     blockHeader.Number,
                     blockHeader.GasLimit,
                     blockHeader.Timestamp,
-                    blockHeader.ExtraData,
-                    blockHeader.ExcessDataGas);
+                    blockHeader.ExtraData);
 
             IReleaseSpec releaseSpec = _specProvider.GetSpec(callHeader);
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
@@ -273,9 +271,8 @@ namespace Nethermind.Facade
 
             if (releaseSpec.IsEip4844Enabled)
             {
-                // TODO: Calculate ExcessDataGas depending on parent ExcessDataGas and number of blobs in txs
                 callHeader.ExcessDataGas = treatBlockHeaderAsParentBlock
-                    ? 0
+                    ? IntrinsicGasCalculator.CalculateExcessDataGas(blockHeader.ExcessDataGas ?? 0, transaction.BlobVersionedHashes?.Length ?? 0, releaseSpec)
                     : blockHeader.ExcessDataGas;
             }
             callHeader.MixHash = blockHeader.MixHash;

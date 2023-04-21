@@ -8,7 +8,10 @@ namespace Nethermind.Core;
 
 public class Eip4844Constants
 {
-    public const int MaxBlobsPerBlock = 4;
-    public const int MaxBlobsPerTransaction = MaxBlobsPerBlock;
     public const int MinBlobsPerTransaction = 1;
+
+    public const int DataGasPerBlob = 1 << 17;
+    public const int TargetDataGasPerBlock = 1 << 18;
+    public const int MaxDataGasPerBlock = 1 << 19;
+    public const int MaxDataGasPerTransaction = MaxDataGasPerBlock;
 }

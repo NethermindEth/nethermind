@@ -149,7 +149,7 @@ public class TestBlockchain : IDisposable
 
         ReceiptStorage = new InMemoryReceiptStorage();
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
-        TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, LogManager);
+        TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, BlockTree, LogManager);
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 
@@ -160,6 +160,7 @@ public class TestBlockchain : IDisposable
             HeaderValidator,
             Always.Valid,
             SpecProvider,
+            BlockTree,
             LogManager);
 
         PoSSwitcher = NoPoS.Instance;
@@ -298,6 +299,11 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithAura(0, new byte[65]);
         }
 
+        if (SpecProvider.GenesisSpec.IsEip4844Enabled)
+        {
+            genesisBlockBuilder.WithExcessDataGas(0);
+        }
+
         return genesisBlockBuilder.TestObject;
     }
 
@@ -317,6 +323,7 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             NullWitnessCollector.Instance,
+            BlockTree,
             LogManager);
 
     public async Task WaitForNewHead()

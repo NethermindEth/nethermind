@@ -4,7 +4,9 @@
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -18,7 +20,7 @@ public class ShardBlobBlockValidatorTests
     public void Not_null_ExcessDataGas_is_invalid_pre_cancun()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, NullBlockFinder.Instance, LimboLogs.Instance);
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block
             .WithWithdrawalsRoot(TestItem.KeccakA)
             .WithWithdrawals(TestItem.WithdrawalA_1Eth)
@@ -30,7 +32,7 @@ public class ShardBlobBlockValidatorTests
     public void Null_ExcessDataGas_is_invalid_post_cancun()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, NullBlockFinder.Instance, LimboLogs.Instance);
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block
             .WithWithdrawalsRoot(TestItem.KeccakA)
             .WithWithdrawals(TestItem.WithdrawalA_1Eth)
@@ -39,18 +41,18 @@ public class ShardBlobBlockValidatorTests
     }
 
     [TestCase(0, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobsPerBlock - 1, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobsPerBlock, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobsPerBlock + 1, ExpectedResult = false)]
+    [TestCase(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob - 1, ExpectedResult = true)]
+    [TestCase(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob, ExpectedResult = true)]
+    [TestCase(Eip4844Constants.MaxDataGasPerBlock / Eip4844Constants.DataGasPerBlob + 1, ExpectedResult = false)]
     public bool Blobs_per_block_count_is_valid(int blobsCount)
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, NullBlockFinder.Instance, LimboLogs.Instance);
         return blockValidator.ValidateSuggestedBlock(
             Build.A.Block
                 .WithWithdrawalsRoot(TestItem.KeccakA)
                 .WithWithdrawals(TestItem.WithdrawalA_1Eth)
-                .WithExcessDataGas(1)
+                .WithExcessDataGas(IntrinsicGasCalculator.CalculateExcessDataGas(0, blobsCount, specProvider.GenesisSpec)!.Value)
                 .WithTransactions(Build.A.Transaction.WithBlobVersionedHashes(blobsCount).TestObject)
                 .TestObject);
     }
