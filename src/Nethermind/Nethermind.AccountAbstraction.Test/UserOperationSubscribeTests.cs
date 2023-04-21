@@ -25,7 +25,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
-using Nethermind.Monitoring;
 using Nethermind.TxPool;
 using Newtonsoft.Json;
 
