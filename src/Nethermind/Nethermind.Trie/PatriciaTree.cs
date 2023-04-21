@@ -1257,6 +1257,7 @@ namespace Nethermind.Trie
                         _logger.Info($"Try to get root node from cache: {rootRef}");
                         ////
                         TrieNode? testNode = new TrieNode(NodeType.Unknown, Array.Empty<byte>());
+                        _logger.Info($"Test Node - try to resolve : {testNode}");
                         testNode!.ResolveNode(TrieStore);
                         testNode!.ResolveKey(TrieStore, true);
                         _logger.Info($"Test Root Node: Key:{testNode.Key} Keccak:{testNode.Keccak} FullPath:{testNode.FullPath}");
