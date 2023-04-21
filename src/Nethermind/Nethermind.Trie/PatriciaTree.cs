@@ -1256,9 +1256,10 @@ namespace Nethermind.Trie
                         rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
                         _logger.Info($"Try to get root node from cache: {rootRef}");
                         ////
-                        TrieNode? testNode = new TrieNode(NodeType.Unknown, Array.Empty<byte>());
+                        TrieNode? testNode = new TrieNode(NodeType.Unknown, path: Array.Empty<byte>());
                         _logger.Info($"Test Node - try to resolve : {testNode}");
                         testNode!.ResolveNode(TrieStore);
+                        _logger.Info($"Test Node - resolved : {testNode}");
                         testNode!.ResolveKey(TrieStore, true);
                         _logger.Info($"Test Root Node: Key:{testNode.Key} Keccak:{testNode.Keccak} FullPath:{testNode.FullPath}");
                         ///
