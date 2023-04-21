@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
@@ -23,7 +25,49 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public override ParityTraceResult Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
-            JsonSerializerOptions options) => throw new NotImplementedException();
+            JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.StartObject)
+            {
+                throw new ArgumentException($"Cannot deserialize {nameof(ParityTraceActionConverter)}.");
+            }
+
+            var value = new ParityTraceResult();
+
+            reader.Read();
+            while (reader.TokenType != JsonTokenType.EndObject)
+            {
+                if (reader.TokenType != JsonTokenType.PropertyName)
+                {
+                    throw new ArgumentException($"Cannot deserialize {nameof(ParityTraceActionConverter)}.");
+                }
+
+                if (reader.ValueTextEquals("gasUsed"u8))
+                {
+                    reader.Read();
+                    value.GasUsed = JsonSerializer.Deserialize<long>(ref reader, options);
+                }
+                else if (reader.ValueTextEquals("output"u8))
+                {
+                    reader.Read();
+                    value.Output = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
+                }
+                else if (reader.ValueTextEquals("address"u8))
+                {
+                    reader.Read();
+                    value.Address = JsonSerializer.Deserialize<Address?>(ref reader, options);
+                }
+                else if (reader.ValueTextEquals("code"u8))
+                {
+                    reader.Read();
+                    value.Code = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
+                }
+
+                reader.Read();
+            }
+
+            return value;
+        }
 
         public override void Write(
             Utf8JsonWriter writer,

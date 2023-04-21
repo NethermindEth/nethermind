@@ -35,14 +35,21 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
                     {
                         throw new ArgumentException("Cannot deserialize BlockReward.");
                     }
-                    var key = reader.GetInt64();
+                    var key = long.Parse(reader.GetString());
                     reader.Read();
-                    if (reader.TokenType != JsonTokenType.String)
+                    if (reader.TokenType == JsonTokenType.String)
+                    {
+                        value.Add(key, long.Parse(reader.GetString()));
+                    }
+                    else if (reader.TokenType == JsonTokenType.Number)
+                    {
+                        value.Add(key, reader.GetInt64());
+                    }
+                    else
                     {
                         throw new ArgumentException("Cannot deserialize BlockReward.");
                     }
 
-                    value.Add(key, reader.GetInt64());
                     reader.Read();
                 }
             }

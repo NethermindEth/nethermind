@@ -13,36 +13,50 @@ namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
-        private int? _maxDepth;
+        private JsonSerializerOptions _jsonOptions;
+
         public EthereumJsonSerializer(int? maxDepth = null)
         {
-            _maxDepth = maxDepth;
+            if (maxDepth.HasValue)
+            {
+                _jsonOptions = CreateOptions(indented: false, maxDepth.Value);
+            }
+            else
+            {
+                _jsonOptions = JsonOptions;
+            }
         }
 
         public T Deserialize<T>(Stream stream)
         {
-            return JsonSerializer.Deserialize<T>(stream, JsonOptions);
+            return JsonSerializer.Deserialize<T>(stream, _jsonOptions);
         }
 
         public T Deserialize<T>(string json)
         {
-            return JsonSerializer.Deserialize<T>(json, JsonOptions);
+            return JsonSerializer.Deserialize<T>(json, _jsonOptions);
+        }
+
+        public T Deserialize<T>(ref Utf8JsonReader json)
+        {
+            return JsonSerializer.Deserialize<T>(ref json, _jsonOptions);
         }
 
         public string Serialize<T>(T value, bool indented = false)
         {
-            return JsonSerializer.Serialize<T>(value, indented ? JsonOptionsIndented : JsonOptions);
+            return JsonSerializer.Serialize<T>(value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 
-        private static JsonSerializerOptions CreateOptions(bool indented)
+        private static JsonSerializerOptions CreateOptions(bool indented, int maxDepth = 64)
         {
             var options = new JsonSerializerOptions
             {
-                WriteIndented = false,
+                WriteIndented = indented,
                 IncludeFields = true,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 PropertyNameCaseInsensitive = true,
+                MaxDepth = maxDepth,
                 Converters =
                 {
                     new LongConverter(),
@@ -79,57 +93,9 @@ namespace Nethermind.Serialization.Json
             JsonOptionsIndented = CreateOptions(indented: true);
         }
 
-        public static JsonSerializerOptions JsonOptions { get; private set; } = new JsonSerializerOptions
-        {
-            WriteIndented = false,
-            IncludeFields = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true,
-            Converters =
-            {
-                new LongConverter(),
-                new UInt256Converter(),
-                new ULongConverter(),
-                new IntConverter(),
-                new ByteArrayConverter(),
-                new NullableLongConverter(),
-                new NullableULongConverter(),
-                new NullableUInt256Converter(),
-                new NullableIntConverter(),
-                new TxTypeConverter(),
-                new DoubleConverter(),
-                new DoubleArrayConverter(),
-                new BooleanConverter(),
-                new DictionaryAddressKeyConverter()
-            }
-        };
+        public static JsonSerializerOptions JsonOptions { get; private set; } = CreateOptions(indented: false);
 
-        public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            IncludeFields = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true,
-            Converters =
-            {
-                new LongConverter(),
-                new UInt256Converter(),
-                new ULongConverter(),
-                new IntConverter(),
-                new ByteArrayConverter(),
-                new NullableLongConverter(),
-                new NullableULongConverter(),
-                new NullableUInt256Converter(),
-                new NullableIntConverter(),
-                new TxTypeConverter(),
-                new DoubleConverter(),
-                new DoubleArrayConverter(),
-                new BooleanConverter(),
-                new DictionaryAddressKeyConverter()
-            }
-        };
+        public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
 
         [ThreadStatic]
         private static CountingStream _countingStream;
@@ -144,7 +110,7 @@ namespace Nethermind.Serialization.Json
         public long Serialize<T>(Stream stream, T value, bool indented = false)
         {
             CountingStream countingStream = GetStream(stream);
-            JsonSerializer.Serialize(countingStream, value, indented ? JsonOptionsIndented : JsonOptions);
+            JsonSerializer.Serialize(countingStream, value, indented ? JsonOptionsIndented : _jsonOptions);
             long position = countingStream.Position;
             countingStream.Reset();
             return position;

@@ -82,6 +82,8 @@ namespace Nethermind.JsonRpc.Data
 
     public class BlockParameterConverter : JsonConverter<BlockParameter>
     {
+        public override bool HandleNull => true;
+
         public override void Write(Utf8JsonWriter writer, BlockParameter value, JsonSerializerOptions options)
         {
             if (value.Type == BlockParameterType.BlockNumber)

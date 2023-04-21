@@ -15,9 +15,6 @@ namespace Nethermind.JsonRpc.Test.Data
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
-        [TestCase("0x0", 0)]
-        [TestCase("0xA", 10)]
-        [TestCase("0xa", 10)]
         [TestCase("0", 0)]
         [TestCase("100", 100)]
         [TestCase("\"0x0\"", 0)]
