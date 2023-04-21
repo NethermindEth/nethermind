@@ -23,7 +23,8 @@ namespace Nethermind.Serialization.Json
                 return false;
             }
 
-            if (typeToConvert.GetGenericTypeDefinition() != typeof(Dictionary<,>))
+            if (typeToConvert.GetGenericTypeDefinition() != typeof(Dictionary<,>)
+                && typeToConvert.GetGenericTypeDefinition() != typeof(IDictionary<,>))
             {
                 return false;
             }
@@ -66,7 +67,37 @@ namespace Nethermind.Serialization.Json
                 Type typeToConvert,
                 JsonSerializerOptions options)
             {
-                throw new NotImplementedException();
+                if (reader.TokenType != JsonTokenType.StartObject)
+                {
+                    throw new JsonException($"JsonTokenType was of type {reader.TokenType}, only objects are supported");
+                }
+
+                var dictionary = new Dictionary<Address, TValue>();
+                while (reader.Read())
+                {
+                    if (reader.TokenType == JsonTokenType.EndObject)
+                    {
+                        break;
+                    }
+
+                    if (reader.TokenType != JsonTokenType.PropertyName)
+                    {
+                        throw new JsonException("JsonTokenType was not PropertyName");
+                    }
+
+                    var propertyName = reader.GetString();
+
+                    if (string.IsNullOrWhiteSpace(propertyName))
+                    {
+                        throw new JsonException("Failed to get property name");
+                    }
+
+                    reader.Read();
+
+                    dictionary.Add(new Address(propertyName), JsonSerializer.Deserialize<TValue>(ref reader, options)!);
+                }
+
+                return (Dictionary<TKey, TValue>)(object)dictionary;
             }
 
             public override void Write(

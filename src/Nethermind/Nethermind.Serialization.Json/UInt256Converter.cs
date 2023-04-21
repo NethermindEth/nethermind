@@ -6,8 +6,10 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -35,7 +37,6 @@ public class UInt256Converter : JsonConverter<UInt256>
 
     public static UInt256 Read(ReadOnlySpan<byte> hex)
     {
-
         if (hex.SequenceEqual("0x0"u8))
         {
             return default;
@@ -44,6 +45,13 @@ public class UInt256Converter : JsonConverter<UInt256>
         if (hex.StartsWith("0x"u8))
         {
             hex = hex[2..];
+        }
+        else if (hex[0] != (byte)'0')
+        {
+            if (UInt256.TryParse(Encoding.UTF8.GetString(hex), out var result))
+            {
+                return result;
+            }
         }
 
         Span<byte> bytes = stackalloc byte[32];

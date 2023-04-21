@@ -71,6 +71,10 @@ namespace Nethermind.Serialization.Json
                 {
                     return value;
                 }
+                if (reader.TryGetDecimal(out decimal val))
+                {
+                    return val;
+                }
 
                 throw new NotSupportedException();
             }
@@ -90,6 +94,9 @@ namespace Nethermind.Serialization.Json
                     writer.WriteNumberValue(typedValue);
                     break;
                 case long typedValue:
+                    writer.WriteNumberValue(typedValue);
+                    break;
+                case decimal typedValue:
                     writer.WriteNumberValue(typedValue);
                     break;
                 case BigInteger typedValue:

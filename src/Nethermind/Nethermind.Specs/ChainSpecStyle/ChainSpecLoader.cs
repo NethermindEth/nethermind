@@ -80,14 +80,22 @@ public class ChainSpecLoader : IChainSpecLoader
 
             long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
             {
-                bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o) => o.Value.TryGetProperty(innerPath, out JsonElement value) ? value.GetInt64() == expectedValue : false;
-                return GetTransitions(builtInName, GetForExpectedPricing);
+            bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o)
+            {
+                return o.Value.TryGetSubProperty(innerPath, out JsonElement value) ? value.GetInt64() == expectedValue : false;
+            }
+
+            return GetTransitions(builtInName, GetForExpectedPricing);
             }
 
             long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
             {
-                bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o) => o.Value.TryGetProperty(innerPath, out _);
-                return GetTransitions(builtInName, GetForInnerPathExistence);
+                bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o)
+                {
+                    return o.Value.TryGetSubProperty(innerPath, out _);
+                }
+
+            return GetTransitions(builtInName, GetForInnerPathExistence);
             }
 
         ValidateParams(chainSpecJson.Params);

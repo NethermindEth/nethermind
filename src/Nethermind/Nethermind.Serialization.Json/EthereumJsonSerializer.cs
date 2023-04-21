@@ -7,6 +7,8 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Nethermind.Core.Collections;
+
 namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
@@ -40,6 +42,7 @@ namespace Nethermind.Serialization.Json
                 IncludeFields = true,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = true,
                 Converters =
                 {
                     new LongConverter(),
@@ -82,6 +85,7 @@ namespace Nethermind.Serialization.Json
             IncludeFields = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNameCaseInsensitive = true,
             Converters =
             {
                 new LongConverter(),
@@ -107,6 +111,7 @@ namespace Nethermind.Serialization.Json
             IncludeFields = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNameCaseInsensitive = true,
             Converters =
             {
                 new LongConverter(),
@@ -185,6 +190,31 @@ namespace Nethermind.Serialization.Json
             public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
             public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
             public override void SetLength(long value) => throw new NotSupportedException();
+        }
+    }
+
+    public static class JsonElementExtensions
+    {
+        public static bool TryGetSubProperty(this JsonElement element, string innerPath, out JsonElement value)
+        {
+            ArgumentNullException.ThrowIfNullOrEmpty(innerPath);
+
+            if (innerPath.Contains('.'))
+            {
+                string[] parts = innerPath.Split('.');
+                JsonElement currentElement = element;
+                for (int i = 0; i < parts.Length - 1; i++)
+                {
+                    if (!currentElement.TryGetProperty(parts[i], out currentElement))
+                    {
+                        value = default;
+                        return false;
+                    }
+                }
+                return currentElement.TryGetProperty(parts[^1], out value);
+            }
+
+            return element.TryGetProperty(innerPath.AsSpan(), out value);
         }
     }
 }
