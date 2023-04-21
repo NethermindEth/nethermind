@@ -980,6 +980,9 @@ namespace Nethermind.Trie
                                 rlpStream.Position--;
                                 Keccak keccak = rlpStream.DecodeKeccak();
                                 TrieNode child = tree.FindCachedOrUnknown(keccak, path, StoreNibblePathPrefix);
+                                child.ResolveNode(tree);
+                                child.ResolveKey(tree, false);
+                                Debug.Assert(keccak == child.Keccak, $"expected and actual keccak not same {keccak} {child.Keccak} ||");
                                 _data![i] = childOrRef = child;
 
                                 if (IsPersisted && !child.IsPersisted)

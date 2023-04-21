@@ -163,6 +163,7 @@ namespace Nethermind.Trie
                                 throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                             }
 
+                            child.ResolveNode(nodeResolver);
                             child.ResolveKey(nodeResolver, false);
                             if (visitor.ShouldVisit(child.Keccak!))
                             {
