@@ -10,7 +10,6 @@ namespace Nethermind.Serialization.Rlp
 {
     public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpStreamDecoder<BlockHeader>
     {
-
         public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

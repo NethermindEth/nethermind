@@ -281,7 +281,7 @@ namespace Nethermind.Synchronization.Test
             Always txValidator = Always.Valid;
             UnclesValidator unclesValidator = new(tree, headerValidator, logManager);
             BlockValidator blockValidator =
-                new(txValidator, headerValidator, unclesValidator, specProvider, logManager);
+                new(txValidator, headerValidator, unclesValidator, specProvider, tree, logManager);
 
             ISyncConfig syncConfig = _synchronizerType == SynchronizerType.Fast
                 ? SyncConfig.WithFastSync
@@ -289,7 +289,7 @@ namespace Nethermind.Synchronization.Test
 
             RewardCalculator rewardCalculator = new(specProvider);
             TransactionProcessor txProcessor =
-                new(specProvider, stateProvider, virtualMachine, logManager);
+                new(specProvider, stateProvider, virtualMachine, tree, logManager);
 
             BlockProcessor blockProcessor = new(
                 specProvider,
@@ -299,6 +299,7 @@ namespace Nethermind.Synchronization.Test
                 stateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                tree,
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
@@ -311,7 +312,7 @@ namespace Nethermind.Synchronization.Test
 
             WorldState devState = new(trieStore, codeDb, logManager);
             VirtualMachine devEvm = new(blockhashProvider, specProvider, logManager);
-            TransactionProcessor devTxProcessor = new(specProvider, devState, devEvm, logManager);
+            TransactionProcessor devTxProcessor = new(specProvider, devState, devEvm, tree, logManager);
 
             BlockProcessor devBlockProcessor = new(
                 specProvider,
@@ -321,6 +322,7 @@ namespace Nethermind.Synchronization.Test
                 devState,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                tree,
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,

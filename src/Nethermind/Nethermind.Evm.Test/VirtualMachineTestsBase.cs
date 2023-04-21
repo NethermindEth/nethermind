@@ -3,10 +3,12 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -48,6 +50,7 @@ namespace Nethermind.Evm.Test
         protected virtual ulong Timestamp => 0UL;
         protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber, Timestamp);
+        protected IBlockFinder BlockFinder => NullBlockFinder.Instance;
 
         protected virtual ILogManager GetLogManager()
         {
@@ -66,7 +69,7 @@ namespace Nethermind.Evm.Test
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
             Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
-            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, logManager);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, NullBlockFinder.Instance, logManager);
         }
 
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
@@ -107,9 +110,11 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
-        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0, byte[][] blobVersionedHashes = null)
+        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code,
+            long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0, byte[][] blobVersionedHashes = null)
         {
-            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code, blockGasLimit: blockGasLimit, timestamp: timestamp, blobVersionedHashes: blobVersionedHashes);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code,
+                blockGasLimit: blockGasLimit, timestamp: timestamp, blobVersionedHashes: blobVersionedHashes);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
@@ -163,7 +168,8 @@ namespace Nethermind.Evm.Test
             return (block, transaction);
         }
 
-        protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code, byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null)
+        protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code,
+            byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
@@ -198,7 +204,8 @@ namespace Nethermind.Evm.Test
             return (block, transaction);
         }
 
-        protected (Block block, Transaction transaction) PrepareInitTx(long blockNumber, long gasLimit, byte[] code, SenderRecipientAndMiner senderRecipientAndMiner = null)
+        protected (Block block, Transaction transaction) PrepareInitTx(long blockNumber, long gasLimit, byte[] code,
+            SenderRecipientAndMiner senderRecipientAndMiner = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
@@ -230,6 +237,7 @@ namespace Nethermind.Evm.Test
                 .WithTransactions(tx is null ? new Transaction[0] : new[] { tx })
                 .WithGasLimit(blockGasLimit)
                 .WithBeneficiary(senderRecipientAndMiner.Miner)
+                .WithExcessDataGas(0)
                 .WithTimestamp(timestamp)
                 .TestObject;
         }

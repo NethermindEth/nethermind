@@ -87,6 +87,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 _receiptStorage,
                 _dbProvider,
                 _specProvider,
+                _blockTree,
                 _logManager,
                 transactionsExecutor);
 
