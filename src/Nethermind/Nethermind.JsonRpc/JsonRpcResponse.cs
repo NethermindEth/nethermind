@@ -66,6 +66,9 @@ namespace Nethermind.JsonRpc
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Error? Error { get; set; }
 
+        [JsonConstructor]
+        public JsonRpcErrorResponse() : base(null) { }
+
         public JsonRpcErrorResponse(Action? disposableAction = null) : base(disposableAction)
         {
         }
