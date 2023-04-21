@@ -210,7 +210,7 @@ namespace Nethermind.Trie.Pruning
         internal byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Keccak rootHash = null)
         {
             byte[] keyPath = path.Length is (AccountLeafNibblesLength or StorageLeafNibblesLength) ? Nibbles.ToBytes(path): Nibbles.ToEncodedStorageBytes(path);
-            // _logger.Info($"LoadRlp {keyPath.ToHexString()} path.Length {path.Length} - {(path.Length != 0 ? path.ToHexString(): Array.Empty<byte>())}");
+            _logger.Info($"LoadRlp {keyPath.ToHexString()} path.Length {path.Length} - {(path.Length != 0 ? path.ToHexString(): Array.Empty<byte>())}");
 
             keyValueStore ??= _keyValueStore;
             byte[]? rlp = _currentBatch?[keyPath] ?? keyValueStore[keyPath];
@@ -220,7 +220,7 @@ namespace Nethermind.Trie.Pruning
                 if (pointsToPath is not null)
                     rlp = pointsToPath;
             }
-            // _logger.Info($"LoadRlp Value : {rlp}");
+            _logger.Info($"LoadRlp Value : {rlp}");
 
 
             if (rlp is null)
