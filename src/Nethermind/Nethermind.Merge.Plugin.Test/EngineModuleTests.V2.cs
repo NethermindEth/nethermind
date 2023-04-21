@@ -35,7 +35,7 @@ public partial class EngineModuleTests
         "0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68",
         "0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51",
         "0x5009aaf2fdcd600e")]
-    public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash, 
+    public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
         using MergeTestBlockchain chain =
