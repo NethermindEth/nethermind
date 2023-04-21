@@ -24,7 +24,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;

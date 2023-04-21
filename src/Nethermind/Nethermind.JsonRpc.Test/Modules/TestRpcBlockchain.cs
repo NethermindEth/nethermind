@@ -30,8 +30,6 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
 using Nethermind.Config;
-using Nethermind.Monitoring;
-using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {

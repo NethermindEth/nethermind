@@ -135,7 +135,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, NullMonitoringService.Instance, LimboLogs.Instance);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
 
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),

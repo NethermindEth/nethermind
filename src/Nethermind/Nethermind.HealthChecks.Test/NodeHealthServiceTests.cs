@@ -23,7 +23,6 @@ using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Extensions;
-using Nethermind.Monitoring;
 
 namespace Nethermind.HealthChecks.Test
 {

@@ -30,7 +30,6 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Monitoring;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;

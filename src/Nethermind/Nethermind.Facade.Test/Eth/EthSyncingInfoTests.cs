@@ -7,7 +7,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
 using NSubstitute;
 using NUnit.Framework;
 
