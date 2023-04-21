@@ -1236,7 +1236,6 @@ namespace Nethermind.Trie
             TrieNode rootRef = null;
             if (!rootHash.Equals(Keccak.EmptyTreeHash))
             {
-
                 switch (Capability)
                 {
                     case TrieNodeResolverCapability.Hash:
@@ -1252,7 +1251,7 @@ namespace Nethermind.Trie
                         }
                         break;
                     case TrieNodeResolverCapability.Path:
-                        _logger.Info("Try to get root node from cache");
+                        _logger.Info($"Try to get root node from cache: {rootHash}");
                         rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
                         _logger.Info($"Try to get root node from cache: {rootRef}");
                         ////
@@ -1274,7 +1273,7 @@ namespace Nethermind.Trie
                                 // _logger.Info($"rootRef resolved keccak to:  {rootRef.Keccak}");
                                 if (rootRef.Keccak != rootHash)
                                 {
-                                    // _logger.Info($"ERROR: wanted: {rootHash} got: {rootRef.Keccak}");
+                                    _logger.Info($"ERROR: wanted: {rootHash} got: {rootRef.Keccak}");
                                     throw new TrieException("Root ref hash mismatch!");
                                 }
                             }
