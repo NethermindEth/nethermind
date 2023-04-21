@@ -298,15 +298,12 @@ namespace Nethermind.Trie
 
         public void ResolveNode(ITrieNodeResolver tree)
         {
-            var logger = new TestLogManager.NUnitLogger(LogLevel.Info);
             try
             {
                 if (NodeType == NodeType.Unknown)
                 {
-                    logger.Info("unknown node");
                     if (FullRlp is null)
                     {
-                        logger.Info("FullRlp is null");
                         //|| PathToNode is temp until storage changes are merged
                         if (tree.Capability == TrieNodeResolverCapability.Hash || PathToNode == null)
                         {
@@ -317,13 +314,10 @@ namespace Nethermind.Trie
                         }
                         else if (tree.Capability == TrieNodeResolverCapability.Path)
                         {
-                            logger.Info("Path");
                             if (PathToNode is null)
                                 throw new TrieException("Unable to resolve node without its path");
 
-                            logger.Info("load rlp");
                             FullRlp = tree.LoadRlp(FullPath);
-                            logger.Info($"load rlp: {FullPath?.ToHexString()}");
                         }
                         IsPersisted = true;
 
