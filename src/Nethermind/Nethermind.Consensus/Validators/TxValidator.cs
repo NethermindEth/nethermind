@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Validators
                    ValidateChainId(transaction) &&
                    Validate1559GasFields(transaction, releaseSpec) &&
                    Validate3860Rules(transaction, releaseSpec) &&
-                   Validate4844Fields(transaction);
+                   Validate4844Fields(transaction, releaseSpec);
         }
 
         private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
@@ -99,7 +99,7 @@ namespace Nethermind.Consensus.Validators
             return !spec.ValidateChainId || signature.V is 27 or 28;
         }
 
-        private static bool Validate4844Fields(Transaction transaction)
+        private static bool Validate4844Fields(Transaction transaction, IReleaseSpec spec)
         {
             // Execution-payload version verification
             if (!transaction.SupportsBlobs)

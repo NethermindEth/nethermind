@@ -194,7 +194,7 @@ namespace Nethermind.Synchronization
 
                     // Recalculate total difficulty as we don't trust total difficulty from gossip
                     block.Header.TotalDifficulty = parent.TotalDifficulty + block.Header.Difficulty;
-                    if (!_blockValidator.ValidateSuggestedBlock(block))
+                    if (!_blockValidator.ValidateSuggestedBlock(block, parent.Header))
                     {
                         ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                     }

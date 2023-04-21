@@ -201,6 +201,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     break;
                 }
 
+                Block? parent = blocks.Length > 0 && blocks[0].ParentHash is not null
+                    ? _blockTree.FindBlock(blocks[0].ParentHash!)
+                    : null;
                 for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {
                     if (cancellation.IsCancellationRequested)
@@ -218,7 +221,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     }
 
                     // can move this to block tree now?
-                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
+                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, parent?.Header))
                     {
                         string message = $"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.";
                         if (_logger.IsWarn) _logger.Warn(message);
@@ -309,6 +312,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         _blockTree.UpdateMainChain(new[] { currentBlock }, false);
                     }
 
+                    parent = currentBlock;
                     currentNumber += 1;
                 }
 

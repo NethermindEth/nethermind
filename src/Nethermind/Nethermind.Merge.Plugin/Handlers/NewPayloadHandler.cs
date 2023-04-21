@@ -142,7 +142,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
-            if (!_blockValidator.ValidateSuggestedBlock(block))
+            if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader))
             {
                 if (_logger.IsInfo) _logger.Info($"Rejecting invalid block received during the sync, block: {block}");
                 return NewPayloadV1Result.Invalid(null);
@@ -382,7 +382,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     {
         block.Header.TotalDifficulty ??= parent.TotalDifficulty + block.Difficulty;
         block.Header.IsPostMerge = true; // I think we don't need to set it again here.
-        bool isValid = _blockValidator.ValidateSuggestedBlock(block);
+        bool isValid = _blockValidator.ValidateSuggestedBlock(block, parent);
         if (!isValid && _logger.IsWarn) _logger.Warn($"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}.");
         return isValid;
     }

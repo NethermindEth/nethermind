@@ -68,6 +68,10 @@ public partial class ShardBlobTxDecoderTests
 
         Transaction? decoded = _txDecoder.Decode(incomingTxRlp, rlpBehaviors);
         Transaction? decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext, rlpBehaviors);
+        Assert.That(KzgPolynomialCommitments.AreProofsValid(
+            (decoded.NetworkWrapper as ShardBlobNetworkWrapper).Blobs,
+            (decoded.NetworkWrapper as ShardBlobNetworkWrapper).Commitments,
+            (decoded.NetworkWrapper as ShardBlobNetworkWrapper).Proofs));
 
         Assert.That(decoded!.Hash, Is.EqualTo(signedHash));
         Assert.That(decodedByValueDecoderContext!.Hash, Is.EqualTo(signedHash));

@@ -39,7 +39,7 @@ public class TestBlockValidator : IBlockValidator
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
-    public bool ValidateSuggestedBlock(Block block)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader? parentBlockHeader)
     {
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }

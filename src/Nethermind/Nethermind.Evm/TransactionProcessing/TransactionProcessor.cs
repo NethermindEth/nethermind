@@ -202,7 +202,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             long intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
-            if (_logger.IsTrace) _logger.Trace($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
+            _logger.Warn($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
 
             if (notSystemTransaction)
             {

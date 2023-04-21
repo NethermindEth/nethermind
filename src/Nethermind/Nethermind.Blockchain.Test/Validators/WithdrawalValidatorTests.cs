@@ -42,7 +42,7 @@ public class WithdrawalValidatorTests
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, NullBlockFinder.Instance, LimboLogs.Instance);
         Withdrawal[] withdrawals = { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth };
         Keccak withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(TestItem.KeccakD).TestObject);
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(TestItem.KeccakD).TestObject, Build.An.EmptyBlockHeader);
         Assert.False(isValid);
     }
 
@@ -53,7 +53,7 @@ public class WithdrawalValidatorTests
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, NullBlockFinder.Instance, LimboLogs.Instance);
         Withdrawal[] withdrawals = { };
         Keccak withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject, Build.An.EmptyBlockHeader);
         Assert.True(isValid);
     }
 
@@ -64,7 +64,7 @@ public class WithdrawalValidatorTests
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, NullBlockFinder.Instance, LimboLogs.Instance);
         Withdrawal[] withdrawals = { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth };
         Keccak withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject, Build.An.EmptyBlockHeader);
         Assert.True(isValid);
     }
 }

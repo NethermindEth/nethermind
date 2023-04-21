@@ -58,7 +58,7 @@ public class BlockValidator : IBlockValidator
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
     /// </returns>
-    public bool ValidateSuggestedBlock(Block block)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader? parentBlockHeader)
     {
         Transaction[] txs = block.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);

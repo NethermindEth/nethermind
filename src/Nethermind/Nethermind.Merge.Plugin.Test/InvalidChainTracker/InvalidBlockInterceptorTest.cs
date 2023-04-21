@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using Antlr4.Runtime.Misc;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,8 +37,8 @@ public class InvalidBlockInterceptorTest
     public void TestValidateSuggestedBlock(bool baseReturnValue, bool isInvalidBlockReported)
     {
         Block block = Build.A.Block.TestObject;
-        _baseValidator.ValidateSuggestedBlock(block).Returns(baseReturnValue);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+        _baseValidator.ValidateSuggestedBlock(block, Arg.Any<BlockHeader>()).Returns(baseReturnValue);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, Build.An.EmptyBlockHeader);
 
         _tracker.Received().SetChildParent(block.Hash, block.ParentHash);
         if (isInvalidBlockReported)
@@ -77,8 +78,8 @@ public class InvalidBlockInterceptorTest
         Block block = Build.A.Block.TestObject;
         block.Header.StateRoot = Keccak.Zero;
 
-        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+        _baseValidator.ValidateSuggestedBlock(block, Build.An.EmptyBlockHeader).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, Build.An.EmptyBlockHeader);
 
         _tracker.DidNotReceive().SetChildParent(block.Hash, block.ParentHash);
         _tracker.DidNotReceive().OnInvalidBlock(block.Hash, block.ParentHash);
@@ -95,8 +96,8 @@ public class InvalidBlockInterceptorTest
             block.Transactions.Take(9).ToArray()
         ));
 
-        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+        _baseValidator.ValidateSuggestedBlock(block, Build.An.EmptyBlockHeader).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, Build.An.EmptyBlockHeader);
 
         _tracker.DidNotReceive().SetChildParent(block.Hash, block.ParentHash);
         _tracker.DidNotReceive().OnInvalidBlock(block.Hash, block.ParentHash);
@@ -113,8 +114,8 @@ public class InvalidBlockInterceptorTest
             block.Withdrawals.Take(8).ToArray()
         ));
 
-        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+        _baseValidator.ValidateSuggestedBlock(block, Build.An.EmptyBlockHeader).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, Build.An.EmptyBlockHeader);
 
         _tracker.DidNotReceive().SetChildParent(block.Hash, block.ParentHash);
         _tracker.DidNotReceive().OnInvalidBlock(block.Hash, block.ParentHash);

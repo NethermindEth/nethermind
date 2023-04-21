@@ -461,7 +461,7 @@ namespace Nethermind.Synchronization.Test
                 return true;
             }
 
-            public bool ValidateSuggestedBlock(Block block)
+            public bool ValidateSuggestedBlock(Block block, BlockHeader? parentBlockHeader)
             {
                 Thread.Sleep(1000);
                 return true;

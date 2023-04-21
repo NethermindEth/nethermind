@@ -44,7 +44,7 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
-    public bool ValidateSuggestedBlock(Block block)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader? parent)
     {
         return _result;
     }

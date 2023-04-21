@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -14,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
 using System.Threading;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
 

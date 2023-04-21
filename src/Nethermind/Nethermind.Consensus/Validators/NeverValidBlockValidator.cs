@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.Validators
             return false;
         }
 
-        public bool ValidateSuggestedBlock(Block block)
+        public bool ValidateSuggestedBlock(Block block, BlockHeader? parent)
         {
             return false;
         }

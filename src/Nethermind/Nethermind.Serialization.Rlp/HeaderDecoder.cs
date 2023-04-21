@@ -222,7 +222,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (header.ExcessDataGas is not null)
             {
-                rlpStream.Encode(header.ExcessDataGas.Value);
+                rlpStream.Encode(header.ExcessDataGas ?? 0);
             }
         }
 

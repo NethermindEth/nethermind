@@ -58,9 +58,9 @@ public class InvalidBlockInterceptor : IBlockValidator
         return result;
     }
 
-    public bool ValidateSuggestedBlock(Block block)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader? parentBlockHeader)
     {
-        bool result = _baseValidator.ValidateSuggestedBlock(block);
+        bool result = _baseValidator.ValidateSuggestedBlock(block, parentBlockHeader);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");

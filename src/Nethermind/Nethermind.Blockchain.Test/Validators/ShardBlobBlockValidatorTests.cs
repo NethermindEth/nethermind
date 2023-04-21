@@ -24,7 +24,7 @@ public class ShardBlobBlockValidatorTests
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block
             .WithWithdrawalsRoot(TestItem.KeccakA)
             .WithWithdrawals(TestItem.WithdrawalA_1Eth)
-            .WithExcessDataGas(1).TestObject);
+            .WithExcessDataGas(1).TestObject, Build.An.EmptyBlockHeader);
         Assert.False(isValid);
     }
 
@@ -36,7 +36,7 @@ public class ShardBlobBlockValidatorTests
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block
             .WithWithdrawalsRoot(TestItem.KeccakA)
             .WithWithdrawals(TestItem.WithdrawalA_1Eth)
-            .TestObject);
+            .TestObject, Build.An.EmptyBlockHeader);
         Assert.False(isValid);
     }
 
@@ -54,6 +54,6 @@ public class ShardBlobBlockValidatorTests
                 .WithWithdrawals(TestItem.WithdrawalA_1Eth)
                 .WithExcessDataGas(IntrinsicGasCalculator.CalculateExcessDataGas(0, blobsCount, specProvider.GenesisSpec)!.Value)
                 .WithTransactions(Build.A.Transaction.WithBlobVersionedHashes(blobsCount).TestObject)
-                .TestObject);
+                .TestObject, Build.An.EmptyBlockHeader);
     }
 }
