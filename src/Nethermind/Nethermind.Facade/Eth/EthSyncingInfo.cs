@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
 
 namespace Nethermind.Facade.Eth
 {
@@ -21,14 +21,12 @@ namespace Nethermind.Facade.Eth
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
             ISyncConfig syncConfig,
-            IMonitoringService monitoringService,
             ILogManager logManager)
         {
             _blockTree = blockTree;
             _syncConfig = syncConfig;
             _logger = logManager.GetClassLogger();
             _receiptStorage = receiptStorage;
-            monitoringService.AddMetricsUpdateAction(MetricsUpdateAction);
         }
 
         public SyncingResult GetFullInfo()
@@ -77,7 +75,7 @@ namespace Nethermind.Facade.Eth
         }
 
         private readonly Stopwatch _syncStopwatch = new();
-        private void MetricsUpdateAction()
+        public TimeSpan UpdateAndGetSyncTime()
         {
             if (!_syncStopwatch.IsRunning)
             {
@@ -85,17 +83,16 @@ namespace Nethermind.Facade.Eth
                 {
                     _syncStopwatch.Start();
                 }
-                Synchronization.Metrics.SyncTime = 0;
-                return;
+                return TimeSpan.Zero;
             }
 
             if (!IsSyncing())
             {
                 _syncStopwatch.Stop();
-                Synchronization.Metrics.SyncTime = 0;
+                return TimeSpan.Zero;
             }
 
-            Synchronization.Metrics.SyncTime = (long)_syncStopwatch.Elapsed.TotalSeconds;
+            return _syncStopwatch.Elapsed;
         }
 
         public bool IsSyncing()

@@ -68,7 +68,6 @@ namespace Nethermind.AccountAbstraction.Test
 
             JsonSerializer jsonSerializer = new();
             jsonSerializer.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
-            IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
 
             SubscriptionFactory subscriptionFactory = new(
                 _logManager,
@@ -76,7 +75,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _txPool,
                 _receiptCanonicalityMonitor,
                 _filterStore,
-                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, monitoringService, _logManager),
+                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, _logManager),
                 _specProvider,
                 jsonSerializer);
 

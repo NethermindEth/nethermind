@@ -51,7 +51,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         private ISpecProvider _specProvider;
         private IReceiptMonitor _receiptCanonicalityMonitor;
         private ISyncConfig _syncConfig;
-        private IMonitoringService _monitoringService = Substitute.For<IMonitoringService>();
 
         [SetUp]
         public void Setup()
@@ -76,7 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _txPool,
                 _receiptCanonicalityMonitor,
                 _filterStore,
-                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, _monitoringService, _logManager),
+                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, _logManager),
                 _specProvider,
                 jsonSerializer);
 
@@ -179,7 +178,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(head).TestObject;
             _blockTree.Head.Returns(block);
 
-            EthSyncingInfo ethSyncingInfo = new(_blockTree, _receiptStorage, _syncConfig, _monitoringService, _logManager);
+            EthSyncingInfo ethSyncingInfo = new(_blockTree, _receiptStorage, _syncConfig, _logManager);
 
             SyncingSubscription syncingSubscription = new(_jsonRpcDuplexClient, _blockTree, ethSyncingInfo, _logManager);
 

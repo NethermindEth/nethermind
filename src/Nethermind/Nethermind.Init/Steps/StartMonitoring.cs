@@ -22,16 +22,17 @@ namespace Nethermind.Init.Steps;
 public class StartMonitoring : IStep
 {
     private readonly IApiWithNetwork _api;
+    private readonly ILogger _logger;
 
     public StartMonitoring(INethermindApi api)
     {
         _api = api;
+        _logger = _api.LogManager.GetClassLogger();
     }
 
     public async Task Execute(CancellationToken cancellationToken)
     {
         IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
-        ILogger logger = _api.LogManager.GetClassLogger();
 
         // hacky
         if (!string.IsNullOrEmpty(metricsConfig.NodeName))
@@ -58,8 +59,8 @@ public class StartMonitoring : IStep
 
             await _api.MonitoringService.StartAsync().ContinueWith(x =>
             {
-                if (x.IsFaulted && logger.IsError)
-                    logger.Error("Error during starting a monitoring.", x.Exception);
+                if (x.IsFaulted && _logger.IsError)
+                    _logger.Error("Error during starting a monitoring.", x.Exception);
             }, cancellationToken);
 
             SetupMetrics();
@@ -68,13 +69,13 @@ public class StartMonitoring : IStep
         }
         else
         {
-            if (logger.IsInfo)
-                logger.Info("Grafana / Prometheus metrics are disabled in configuration");
+            if (_logger.IsInfo)
+                _logger.Info("Grafana / Prometheus metrics are disabled in configuration");
         }
 
-        if (logger.IsInfo)
+        if (_logger.IsInfo)
         {
-            logger.Info(metricsConfig.CountersEnabled
+            _logger.Info(metricsConfig.CountersEnabled
                 ? "System.Diagnostics.Metrics enabled and will be collectable with dotnet-counters"
                 : "System.Diagnostics.Metrics disabled");
         }
@@ -84,12 +85,25 @@ public class StartMonitoring : IStep
     {
         _api.MonitoringService.AddMetricsUpdateAction(() =>
         {
-            Db.Metrics.StateDbSize = _api.DbProvider!.StateDb.GetSize();
-            Db.Metrics.ReceiptsDbSize = _api.DbProvider!.ReceiptsDb.GetSize();
-            Db.Metrics.HeadersDbSize = _api.DbProvider!.HeadersDb.GetSize();
-            Db.Metrics.BlocksDbSize = _api.DbProvider!.BlocksDb.GetSize();
+            try
+            {
+                Db.Metrics.StateDbSize = _api.DbProvider!.StateDb.GetSize();
+                Db.Metrics.ReceiptsDbSize = _api.DbProvider!.ReceiptsDb.GetSize();
+                Db.Metrics.HeadersDbSize = _api.DbProvider!.HeadersDb.GetSize();
+                Db.Metrics.BlocksDbSize = _api.DbProvider!.BlocksDb.GetSize();
 
-            Db.Metrics.DbSize = _api.DbProvider!.RegisteredDbs.Values.Aggregate(0L, (sum, db) => sum + db.GetSize());
+                Db.Metrics.DbSize = _api.DbProvider!.RegisteredDbs.Values.Aggregate(0L, (sum, db) => sum + db.GetSize());
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn)
+                    _logger.Error($"Failed to update DB size metrics {e.Message}");
+            }
+        });
+
+        _api.MonitoringService.AddMetricsUpdateAction(() =>
+        {
+            Synchronization.Metrics.SyncTime = (long?)_api.EthSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
         });
     }
 
