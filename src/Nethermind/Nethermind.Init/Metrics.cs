@@ -18,7 +18,7 @@ namespace Nethermind.Init
         [MetricsStaticDescriptionTag(nameof(ProductInfo.Instance), typeof(ProductInfo))]
         [MetricsStaticDescriptionTag(nameof(ProductInfo.Network), typeof(ProductInfo))]
         [MetricsStaticDescriptionTag(nameof(ProductInfo.SyncType), typeof(ProductInfo))]
-        [MetricsStaticDescriptionTag(nameof(ProductInfo.PruningMode), typeof(PruningMode))]
+        [MetricsStaticDescriptionTag(nameof(ProductInfo.PruningMode), typeof(ProductInfo))]
         public static long Version { get; set; }
     }
 }
