@@ -8,7 +8,7 @@ using System.Globalization;
 
 namespace Nethermind.Init.Cpu;
 
-internal struct Frequency
+internal readonly struct Frequency
 {
     public static readonly Frequency Zero = new Frequency(0.0);
 
