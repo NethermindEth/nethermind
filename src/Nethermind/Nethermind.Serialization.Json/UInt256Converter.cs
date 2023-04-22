@@ -28,7 +28,7 @@ public class UInt256Converter : JsonConverter<UInt256>
         }
         if (reader.TokenType != JsonTokenType.String)
         {
-            ThrowInvalidOperationException();
+            ThrowJsonException();
         }
 
         ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
@@ -80,8 +80,8 @@ public class UInt256Converter : JsonConverter<UInt256>
 
     [DoesNotReturn]
     [StackTraceHidden]
-    private static void ThrowInvalidOperationException()
+    private static void ThrowJsonException()
     {
-        throw new InvalidOperationException();
+        throw new JsonException();
     }
 }

@@ -26,34 +26,24 @@ namespace Nethermind.Core.Test.Json
             TestConverter(0L, (a, b) => a.Equals(b), converter);
         }
 
-        [TestCase((NumberConversion)99)]
-        public void Unknown_not_supported(NumberConversion notSupportedConversion)
-        {
-            //LongConverter converter = new(notSupportedConversion);
-            Assert.Throws<NotSupportedException>(
-                () => TestConverter(int.MaxValue, (a, b) => a.Equals(b), converter));
-            Assert.Throws<NotSupportedException>(
-                () => TestConverter(1L, (a, b) => a.Equals(b), converter));
-        }
-
         [Test]
         public void Regression_0xa00000()
         {
-            long result = JsonSerializer.Deserialize<long>("0xa00000", options);
+            long result = JsonSerializer.Deserialize<long>("\"0xa00000\"", options);
             Assert.AreEqual(10485760, result);
         }
 
         [Test]
         public void Can_read_0x0()
         {
-            long result = JsonSerializer.Deserialize<long>("0x0", options);
+            long result = JsonSerializer.Deserialize<long>("\"0x0\"", options);
             Assert.AreEqual(long.Parse("0"), result);
         }
 
         [Test]
         public void Can_read_0x000()
         {
-            long result = JsonSerializer.Deserialize<long>("0x0000", options);
+            long result = JsonSerializer.Deserialize<long>("\"0x0000\"", options);
             Assert.AreEqual(long.Parse("0"), result);
         }
 

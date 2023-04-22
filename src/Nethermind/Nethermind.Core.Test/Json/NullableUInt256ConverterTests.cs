@@ -29,14 +29,14 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Regression_0xa00000()
         {
-            UInt256? result = JsonSerializer.Deserialize<UInt256?>("0xa00000", options);
+            UInt256? result = JsonSerializer.Deserialize<UInt256?>("\"0xa00000\"", options);
             Assert.AreEqual(UInt256.Parse("10485760"), result);
         }
 
         [Test]
         public void Can_read_0x0()
         {
-            UInt256? result = JsonSerializer.Deserialize<UInt256?>("0x0", options);
+            UInt256? result = JsonSerializer.Deserialize<UInt256?>("\"0x0\"", options);
             Assert.AreEqual(UInt256.Parse("0"), result);
         }
 

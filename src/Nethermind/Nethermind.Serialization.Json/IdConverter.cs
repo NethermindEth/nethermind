@@ -71,7 +71,7 @@ namespace Nethermind.Serialization.Json
                 {
                     return value;
                 }
-                if (reader.TryGetDecimal(out decimal val))
+                if (reader.TryGetDecimal(out decimal val) && val.Scale == 0)
                 {
                     return val;
                 }

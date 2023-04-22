@@ -25,33 +25,24 @@ namespace Nethermind.Core.Test.Json
             TestConverter(0L, (a, b) => a.Equals(b), converter);
         }
 
-        [TestCase((NumberConversion)99)]
-        public void Unknown_not_supported(NumberConversion notSupportedConversion)
-        {
-            Assert.Throws<NotSupportedException>(
-                () => TestConverter(int.MaxValue, (a, b) => a.Equals(b), converter));
-            Assert.Throws<NotSupportedException>(
-                () => TestConverter(1L, (a, b) => a.Equals(b), converter));
-        }
-
         [Test]
         public void Regression_0xa00000()
         {
-            ulong? result = JsonSerializer.Deserialize<ulong?>("0xa00000", options);
+            ulong? result = JsonSerializer.Deserialize<ulong?>("\"0xa00000\"", options);
             Assert.AreEqual(10485760, result);
         }
 
         [Test]
         public void Can_read_0x0()
         {
-            ulong? result = JsonSerializer.Deserialize<ulong?>("0x0", options);
+            ulong? result = JsonSerializer.Deserialize<ulong?>("\"0x0\"", options);
             Assert.AreEqual(ulong.Parse("0"), result);
         }
 
         [Test]
         public void Can_read_0x000()
         {
-            ulong? result = JsonSerializer.Deserialize<ulong?>("0x000", options);
+            ulong? result = JsonSerializer.Deserialize<ulong?>("\"0x000\"", options);
             Assert.AreEqual(ulong.Parse("0"), result);
         }
 
@@ -79,7 +70,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Throws_on_negative_numbers()
         {
-            Assert.Throws<OverflowException>(
+            Assert.Throws<JsonException>(
                 () => JsonSerializer.Deserialize<ulong?>("-1", options));
         }
     }
