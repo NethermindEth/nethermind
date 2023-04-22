@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Security;
 using Nethermind.Native;
 
+
 namespace Nethermind.Secp256k1
 {
     public static partial class Proxy
