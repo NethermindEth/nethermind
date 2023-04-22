@@ -197,7 +197,7 @@ public class BatchedTrieVisitor
             // So we get more than the batch size, then we sort it by level, and take only the maxNodeBatch nodes with
             // the higher level. This is so that higher level is processed first to reduce memory usage. Its inaccurate,
             // and hacky, but it works.
-            ArrayPoolList<Job> preSort = new(_jobArrayPool, _maxBatchSize * 4);
+            using ArrayPoolList<Job> preSort = new(_jobArrayPool, _maxBatchSize * 4);
             lock (theStack)
             {
                 for (int i = 0; i < _maxBatchSize * 4; i++)
@@ -233,7 +233,6 @@ public class BatchedTrieVisitor
                     Interlocked.Increment(ref _queuedJobs);
                 }
             }
-            preSort.Dispose();
         }
 
         return finalBatch;
@@ -250,12 +249,11 @@ public class BatchedTrieVisitor
             {
                 // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
                 // to queue, so we'll just process it inline.
-                ArrayPoolList<(TrieNode, SmallTrieVisitContext)> recursiveResult = new(1);
+                using ArrayPoolList<(TrieNode, SmallTrieVisitContext)> recursiveResult = new(1);
                 trieNode.ResolveNode(_resolver);
                 Interlocked.Increment(ref _activeJobs);
                 trieNode.AcceptResolvedNode(_visitor, _resolver, ctx, recursiveResult);
                 QueueNextNodes(recursiveResult);
-                recursiveResult.Dispose();
                 continue;
             }
 
@@ -277,9 +275,9 @@ public class BatchedTrieVisitor
 
     private void BatchedThread()
     {
+        using ArrayPoolList<(TrieNode, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
+        using ArrayPoolList<int> resolveOrdering = new(_maxBatchSize);
         ArrayPoolList<(TrieNode, SmallTrieVisitContext)>? currentBatch;
-        ArrayPoolList<(TrieNode, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
-        ArrayPoolList<int> resolveOrdering = new(_maxBatchSize);
         while ((currentBatch = GetNextBatch()) != null)
         {
             // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
