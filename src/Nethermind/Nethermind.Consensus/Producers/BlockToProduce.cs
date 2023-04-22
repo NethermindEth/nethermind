@@ -15,19 +15,11 @@ namespace Nethermind.Consensus.Producers
 {
     internal class BlockToProduce : Block
     {
-        private IEnumerable<Transaction>? _transactions;
-
-        public new IEnumerable<Transaction> Transactions
+        // Changes visibility of Transactions property setter to public
+        public new Transaction[] Transactions
         {
-            get => _transactions ?? base.Transactions;
-            set
-            {
-                _transactions = value;
-                if (_transactions is Transaction[] transactionsArray)
-                {
-                    base.Transactions = transactionsArray;
-                }
-            }
+            get => base.Transactions;
+            set => base.Transactions = value;
         }
 
         public BlockToProduce(
@@ -37,7 +29,9 @@ namespace Nethermind.Consensus.Producers
             IEnumerable<Withdrawal>? withdrawals = null)
             : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals)
         {
-            Transactions = transactions;
+            Transactions = transactions is Transaction[] transactionsArray
+                ? transactionsArray
+                : transactions.ToArray();
         }
     }
 }
