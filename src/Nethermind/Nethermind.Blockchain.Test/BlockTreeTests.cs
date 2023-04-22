@@ -1309,6 +1309,34 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
+        public void Should_set_zero_total_difficulty()
+        {
+            MemDb blocksDb = new();
+            MemDb blockInfosDb = new();
+            MemDb headersDb = new();
+            MemDb metadataDb = new();
+
+            long pivotNumber = 0L;
+
+            SyncConfig syncConfig = new();
+            syncConfig.PivotNumber = pivotNumber.ToString();
+
+            CustomSpecProvider specProvider = new(((ForkActivation)0, London.Instance));
+            specProvider.UpdateMergeTransitionInfo(null, 0);
+
+            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb,
+                new ChainLevelInfoRepository(blockInfosDb), specProvider,
+                NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            Block genesis = Build.A.Block.WithDifficulty(0).TestObject;
+            tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
+            tree.FindBlock(genesis.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
+
+            Block A = Build.A.Block.WithParent(genesis).WithDifficulty(0).TestObject;
+            tree.SuggestBlock(A).Should().Be(AddBlockResult.Added);
+            tree.FindBlock(A.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
+        }
+
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_batch_insert_blocks()
         {
             MemDb blocksDb = new();

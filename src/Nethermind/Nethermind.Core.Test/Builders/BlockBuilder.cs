@@ -79,6 +79,7 @@ namespace Nethermind.Core.Test.Builders
             for (int i = 0; i < txCount; i++)
             {
                 txs[i] = new Transaction();
+                txs[i].Hash = txs[i].CalculateHash();
             }
 
             TxReceipt[] receipts = new TxReceipt[txCount];
