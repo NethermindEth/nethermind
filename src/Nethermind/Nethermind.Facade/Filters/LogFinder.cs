@@ -335,17 +335,5 @@ namespace Nethermind.Blockchain.Find
                 }
             }
         }
-
-        private bool TryGetParentBlock(BlockHeader currentBlock, out BlockHeader parentHeader)
-        {
-            if (currentBlock.IsGenesis)
-            {
-                parentHeader = null;
-                return false;
-            }
-
-            parentHeader = _blockFinder.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return true;
-        }
     }
 }
