@@ -3,6 +3,8 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -12,6 +14,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -38,11 +41,6 @@ namespace Nethermind.Network.Test.P2P
         private INodeStatsManager _nodeStatsManager;
 
         private Packet CreatePacket<T>(T message) where T : P2PMessage
-        {
-            return new(message.Protocol, message.PacketType, _serializer.Serialize(message));
-        }
-
-        private Packet CreateZeroPacket<T>(T message) where T : P2PMessage
         {
             return new(new ZeroPacket(_serializer.ZeroSerialize(message))
             {
@@ -95,13 +93,26 @@ namespace Nethermind.Network.Test.P2P
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Wit, 66));
 
-            Packet message = CreatePacket(new HelloMessage()
+            HelloMessage message = new HelloMessage()
             {
-                Capabilities = new List<Capability>() { new Capability(Protocol.Eth, 63) },
+                Capabilities = new List<Capability>()
+                {
+                    new Capability(Protocol.Eth, 63)
+                },
                 NodeId = TestItem.PublicKeyA,
-            });
+            };
 
-            p2PProtocolHandler.HandleMessage(message);
+            IByteBuffer data = _serializer.ZeroSerialize(message);
+            // to account for adaptive packet type
+            data.ReadByte();
+
+            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            {
+                Protocol = message.Protocol,
+                PacketType = (byte)message.PacketType,
+            };
+
+            p2PProtocolHandler.HandleMessage(packet);
 
             _nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation.Should().NotBeNull();
             _session.Received(1).InitiateDisconnect(InitiateDisconnectReason.NoCapabilityMatched, Arg.Any<string>());
@@ -111,7 +122,7 @@ namespace Nethermind.Network.Test.P2P
         public void Pongs_to_ping()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            p2PProtocolHandler.HandleMessage(CreateZeroPacket(PingMessage.Instance));
+            p2PProtocolHandler.HandleMessage(CreatePacket(PingMessage.Instance));
             _session.Received(1).DeliverMessage(Arg.Any<PongMessage>());
         }
 

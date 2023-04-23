@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain.Test.Proofs;
 
 public class WithdrawalTrieTests
 {
-    [Test]
+    [Test, Timeout(Timeout.MaxTestTime)]
     public void Should_compute_hash_root()
     {
         var block = Build.A.Block.WithWithdrawals(10).TestObject;
@@ -24,7 +24,7 @@ public class WithdrawalTrieTests
             trie.RootHash.ToString());
     }
 
-    [Test]
+    [Test, Timeout(Timeout.MaxTestTime)]
     public void Should_verify_proof()
     {
         var count = 10;

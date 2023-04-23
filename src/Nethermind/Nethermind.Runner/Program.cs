@@ -13,6 +13,9 @@ using System.Runtime.Loader;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+
+using DotNetty.Common;
+
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -35,7 +38,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
-using RocksDbSharp;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Runner
@@ -55,6 +57,9 @@ namespace Nethermind.Runner
 
         public static void Main(string[] args)
         {
+#if !DEBUG
+            ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
+#endif
             AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
             {
                 ILogger logger = GetCriticalLogger();
@@ -104,6 +109,7 @@ namespace Nethermind.Runner
         private static void Run(string[] args)
         {
             _logger.Info("Nethermind starting initialization.");
+            _logger.Info($"Client version: {ProductInfo.ClientId}");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
             AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
@@ -155,8 +161,6 @@ namespace Nethermind.Runner
                 NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
                 _logger = logManager.GetClassLogger();
-                if (_logger.IsDebug) _logger.Debug(ProductInfo.ClientId);
-
                 ConfigureSeqLogger(configProvider);
                 SetFinalDbPath(dbBasePath.HasValue() ? dbBasePath.Value() : null, initConfig);
                 LogMemoryConfiguration();
@@ -194,6 +198,10 @@ namespace Nethermind.Runner
                     await ethereumRunner.Start(_processCloseCancellationSource.Token);
 
                     _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                }
+                catch (TaskCanceledException)
+                {
+                    if (_logger.IsTrace) _logger.Trace("Runner Task was canceled");
                 }
                 catch (OperationCanceledException)
                 {
@@ -260,7 +268,7 @@ namespace Nethermind.Runner
         private static void BuildOptionsFromConfigFiles(CommandLineApplication app)
         {
             Type configurationType = typeof(IConfig);
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType)
+            IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindTypes(configurationType)
                 .Where(ct => ct.IsInterface);
 
             foreach (Type configType in configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))

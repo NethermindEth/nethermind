@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
@@ -94,7 +95,8 @@ namespace Nethermind.Network.Test
                 _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
                 _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
                 _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-                _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
+                ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!);
+                _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _syncPeerPool = Substitute.For<ISyncPeerPool>();
                 _gossipPolicy = Substitute.For<IGossipPolicy>();
@@ -109,7 +111,7 @@ namespace Nethermind.Network.Test
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
-                    new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!),
+                    forkInfo,
                     _gossipPolicy,
                     LimboLogs.Instance);
 
@@ -170,7 +172,11 @@ namespace Nethermind.Network.Test
             public Context ReceiveDisconnect()
             {
                 DisconnectMessage message = new(DisconnectReason.Other);
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Disconnect, _serializer.Serialize(message)));
+                IByteBuffer disconnectPacket = _serializer.ZeroSerialize(message);
+
+                // to account for AdaptivePacketType byte
+                disconnectPacket.ReadByte();
+                _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
                 return this;
             }
 
@@ -206,6 +212,7 @@ namespace Nethermind.Network.Test
                 msg.GenesisHash = _blockTree.Genesis.Hash;
                 msg.BestHash = _blockTree.Genesis.Hash;
                 msg.ProtocolVersion = 66;
+                msg.ForkId = new ForkId(0, 0);
 
                 return ReceiveStatus(msg);
             }
@@ -236,6 +243,17 @@ namespace Nethermind.Network.Test
                 return this;
             }
 
+            private Context ReceiveHello(HelloMessage msg)
+            {
+                IByteBuffer helloPacket = _serializer.ZeroSerialize(msg);
+                // to account for AdaptivePacketType byte
+                helloPacket.ReadByte();
+
+                _currentSession.ReceiveMessage(new ZeroPacket(helloPacket) { PacketType = P2PMessageCode.Hello });
+                return this;
+            }
+
+
             public Context ReceiveHello(byte p2pVersion = 5)
             {
                 HelloMessage msg = new();
@@ -244,8 +262,8 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = p2pVersion;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
-                return this;
+
+                return ReceiveHello(msg);
             }
 
             public Context ReceiveHelloNoEth()
@@ -256,8 +274,7 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
-                return this;
+                return ReceiveHello(msg);
             }
 
             public Context ReceiveHelloEth(int protocolVersion)
@@ -268,8 +285,7 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
-                return this;
+                return ReceiveHello(msg);
             }
 
 

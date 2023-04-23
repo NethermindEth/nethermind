@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -460,7 +461,7 @@ namespace Nethermind.Blockchain.Test
         private static Block _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
         private static Block _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_ignore_lower_difficulty()
         {
             When.ProcessingBlocks
@@ -472,7 +473,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessedSkipped(_block3D6).IsKeptOnBranch();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_ignore_same_difficulty()
         {
             When.ProcessingBlocks
@@ -482,7 +483,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessedSkipped(_blockB2D4).IsKeptOnBranch();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_process_sequence()
         {
             When.ProcessingBlocks
@@ -493,11 +494,12 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block4D8).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         [Explicit("Does not work on CI")]
         public void Will_update_metrics_on_processing()
         {
             long metricsBefore = Metrics.LastBlockProcessingTimeInMs;
+
             When.ProcessingBlocks
                 .FullyProcessed(_block0).BecomesGenesis();
 
@@ -505,7 +507,7 @@ namespace Nethermind.Blockchain.Test
             metricsAfter.Should().NotBe(metricsBefore);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_process_fast_sync_transition()
         {
             When.ProcessingBlocks
@@ -516,7 +518,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block4D8).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Can_process_fast_sync()
         {
             BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
@@ -531,7 +533,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(testBlockchain.BlockTree.FindBlock(5)).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_reorganize_just_head_block_twice()
         {
             When.ProcessingBlocks
@@ -543,7 +545,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockE2D300).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_reorganize_there_and_back()
         {
             When.ProcessingBlocks
@@ -557,7 +559,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block5D10).BecomesNewHead();
         }
 
-        [Test, Retry(3)]
+        [Test, Timeout(Timeout.MaxTestTime), Retry(3)]
         public void Can_reorganize_to_longer_path()
         {
             When.ProcessingBlocks
@@ -571,7 +573,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block5D10).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_reorganize_to_same_length()
         {
             When.ProcessingBlocks
@@ -583,7 +585,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockB3D8).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_reorganize_to_shorter_path()
         {
             When.ProcessingBlocks
@@ -594,7 +596,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockC2D100).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         [Retry(3)] // some flakiness
         public void Can_change_branch_on_invalid_block()
         {
@@ -610,7 +612,7 @@ namespace Nethermind.Blockchain.Test
                             "BRANCH A | BLOCK 2 | INVALID |  DISCARD" +
                             "BRANCH A | BLOCK 3 |   VALID |  DISCARD" +
                             "BRANCH A | BLOCK 4 |   VALID |  DISCARD" +
-                            "BRANCH B | BLOCK 2 |   VALID | NEW HEAD")]
+                            "BRANCH B | BLOCK 2 |   VALID | NEW HEAD"), Timeout(Timeout.MaxTestTime)]
         public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue()
         {
             When.ProcessingBlocks
@@ -630,7 +632,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockB2D4).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue_and_recovery_queue_max_has_been_reached()
         {
             When.ProcessingBlocks
@@ -651,7 +653,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_blockB2D4).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         [Ignore("Not implemented yet - scenario when from suggested blocks we can see that previously suggested will not be winning")]
         [Todo(Improve.Performance, "We can skip processing losing branches by implementing code to pass this test")]
         public void Never_process_branches_that_are_known_to_lose_in_the_future()
@@ -673,7 +675,7 @@ namespace Nethermind.Blockchain.Test
                 .ProcessedSkipped(_block2D4).IsKeptOnBranch();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void IsProcessingBlocks_returns_true_when_processing_blocks()
         {
             When.ProcessingBlocks
@@ -687,7 +689,7 @@ namespace Nethermind.Blockchain.Test
                 .IsProcessingBlocks(true, 1);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void IsProcessingBlocks_returns_false_when_max_interval_elapsed()
         {
             When.ProcessingBlocks
@@ -702,7 +704,7 @@ namespace Nethermind.Blockchain.Test
                 .IsProcessingBlocks(true, 1);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void ProcessorIsNotStarted_returns_false()
         {
             When.ProcessorIsNotStarted
@@ -711,7 +713,7 @@ namespace Nethermind.Blockchain.Test
                 .IsProcessingBlocks(false, 10);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void QueueCount_returns_correctly()
         {
             When.ProcessingBlocks

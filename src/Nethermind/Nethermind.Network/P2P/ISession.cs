@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P
         DateTime LastPongUtc { get; set; }
         void ReceiveMessage(Packet packet);
         void ReceiveMessage(ZeroPacket zeroPacket);
-        void DeliverMessage<T>(T message) where T : P2PMessage;
+        int DeliverMessage<T>(T message) where T : P2PMessage;
         void EnableSnappy();
         void AddSupportedCapability(Capability capability);
         bool HasAvailableCapability(Capability capability);

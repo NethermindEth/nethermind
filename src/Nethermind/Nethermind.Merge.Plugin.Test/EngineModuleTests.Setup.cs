@@ -25,9 +25,9 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
@@ -39,8 +39,8 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null) =>
-        new(mergeConfig, mockedPayloadService);
+    protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
+        new(mergeConfig, mockedPayloadService, logManager);
 
     protected async Task<MergeTestBlockchain> CreateShanghaiBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
         => await CreateBlockChain(mergeConfig, mockedPayloadService, Shanghai.Instance);
@@ -48,8 +48,8 @@ public partial class EngineModuleTests
     protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null, IReleaseSpec? releaseSpec = null)
         => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
-    protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider)
-        => await CreateBaseBlockChain(null, null).Build(specProvider);
+    protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider, ILogManager? logManager = null)
+        => await CreateBaseBlockChain(null, null, logManager).Build(specProvider);
 
     private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
     {
@@ -104,6 +104,7 @@ public partial class EngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.SpecProvider, chain.LogManager),
             chain.SpecProvider,
+            new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
     }
 
@@ -133,11 +134,12 @@ public partial class EngineModuleTests
             return this;
         }
 
-        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
+        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null)
         {
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
             PayloadPreparationService = mockedPayloadPreparationService;
+            LogManager = logManager ?? LogManager;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -187,7 +189,8 @@ public partial class EngineModuleTests
                 new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
                 TimerFactory.Default,
                 LogManager,
-                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
+                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
+                50000); // by default we want to avoid cleanup payload effects in testing
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 
@@ -223,6 +226,7 @@ public partial class EngineModuleTests
                 SpecProvider,
                 LogManager);
         }
+
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
         protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)

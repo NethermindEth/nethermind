@@ -38,17 +38,22 @@ public class StartMonitoring : IStep
             _api.LogManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
         }
 
-        if (metricsConfig.Enabled)
+        MetricsController? controller = null;
+        if (metricsConfig.Enabled || metricsConfig.CountersEnabled)
         {
             PrepareProductInfoMetrics();
-            MetricsController metricsController = new(metricsConfig);
+            controller = new(metricsConfig);
 
-            _api.MonitoringService = new MonitoringService(metricsController, metricsConfig, _api.LogManager);
-            IEnumerable<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics));
+            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics));
             foreach (Type metric in metrics)
             {
-                _api.MonitoringService.RegisterMetrics(metric);
+                controller.RegisterMetrics(metric);
             }
+        }
+
+        if (metricsConfig.Enabled)
+        {
+            _api.MonitoringService = new MonitoringService(controller, metricsConfig, _api.LogManager);
 
             await _api.MonitoringService.StartAsync().ContinueWith(x =>
             {
@@ -62,6 +67,13 @@ public class StartMonitoring : IStep
         {
             if (logger.IsInfo)
                 logger.Info("Grafana / Prometheus metrics are disabled in configuration");
+        }
+
+        if (logger.IsInfo)
+        {
+            logger.Info(metricsConfig.CountersEnabled
+                ? "System.Diagnostics.Metrics enabled and will be collectable with dotnet-counters"
+                : "System.Diagnostics.Metrics disabled");
         }
     }
 

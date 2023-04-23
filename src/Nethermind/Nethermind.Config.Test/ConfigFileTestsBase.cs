@@ -28,7 +28,7 @@ namespace Nethermind.Config.Test
         {
             // by pre-caching configs we make the tests do lot less work
 
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(typeof(IConfig)).Where(t => t.IsInterface).ToArray();
+            IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindTypes(typeof(IConfig)).Where(t => t.IsInterface).ToArray();
 
             Parallel.ForEach(Resolve("*"), configFile =>
             {
@@ -73,6 +73,18 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> XDaiConfigs
             => Configs.Where(config => config.Contains("xdai"));
 
+        [ConfigFileGroup("gnosis")]
+        protected IEnumerable<string> GnosisConfigs
+            => Configs.Where(config => config.Contains("gnosis"));
+
+        [ConfigFileGroup("sepolia")]
+        protected IEnumerable<string> SepoliaConfigs
+            => Configs.Where(config => config.Contains("sepolia"));
+
+        [ConfigFileGroup("chiado")]
+        protected IEnumerable<string> ChiadoConfigs
+            => Configs.Where(config => config.Contains("chiado"));
+
         [ConfigFileGroup("goerli")]
         protected IEnumerable<string> GoerliConfigs
             => Configs.Where(config => config.Contains("goerli"));
@@ -88,10 +100,6 @@ namespace Nethermind.Config.Test
         [ConfigFileGroup("spaceneth")]
         protected IEnumerable<string> SpacenethConfigs
             => Configs.Where(config => config.Contains("spaceneth"));
-
-        [ConfigFileGroup("baseline")]
-        protected IEnumerable<string> BaselineConfigs
-            => Configs.Where(config => config.Contains("baseline"));
 
         [ConfigFileGroup("mainnet")]
         protected IEnumerable<string> MainnetConfigs
@@ -109,6 +117,8 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> AuraConfigs
             => PoaCoreConfigs
                 .Union(XDaiConfigs)
+                .Union(GnosisConfigs)
+                .Union(ChiadoConfigs)
                 .Union(VoltaConfigs)
                 .Union(EnergyConfigs)
                 .Union(KovanConfigs);
@@ -125,7 +135,7 @@ namespace Nethermind.Config.Test
         protected IEnumerable<string> EthashConfigs
             => MainnetConfigs.Union(RopstenConfigs);
 
-        private IEnumerable<string> Resolve(string configWildcard)
+        protected IEnumerable<string> Resolve(string configWildcard)
         {
             Dictionary<string, IEnumerable<string>> groups = BuildConfigGroups();
             string[] configWildcards = configWildcard.Split(" ");
@@ -211,19 +221,14 @@ namespace Nethermind.Config.Test
             {
                 if (_configGroups.Count == 0)
                 {
-                    lock (_configGroups)
+                    PropertyInfo[] propertyInfos = GetType()
+                        .GetProperties(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
+                    foreach (PropertyInfo propertyInfo in propertyInfos)
                     {
-                        if (_configGroups.Count == 0)
+                        ConfigFileGroup? groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
+                        if (groupAttribute is not null)
                         {
-                            PropertyInfo[] propertyInfos = GetType().GetProperties(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
-                            foreach (PropertyInfo propertyInfo in propertyInfos)
-                            {
-                                ConfigFileGroup? groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
-                                if (groupAttribute is not null)
-                                {
-                                    _configGroups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this)!);
-                                }
-                            }
+                            _configGroups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this)!);
                         }
                     }
                 }

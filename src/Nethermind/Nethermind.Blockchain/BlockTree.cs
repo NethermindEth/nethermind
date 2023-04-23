@@ -263,8 +263,6 @@ namespace Nethermind.Blockchain
                     .AsRlpStream().DecodeKeccak();
                 _lowestInsertedBeaconHeader = FindHeader(lowestBeaconHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
-
-            if (_logger.IsInfo) _logger.Info($"Loaded LowestInsertedBeaconHeader: {LowestInsertedBeaconHeader}");
         }
 
         private void LoadLowestInsertedHeader()
@@ -888,8 +886,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (blockInfo.TotalDifficulty != UInt256.Zero || header.IsGenesis)
-                        header.TotalDifficulty = blockInfo.TotalDifficulty;
+                    SetTotalDifficultyFromBlockInfo(header, blockInfo);
                 }
 
                 if (requiresCanonical)
@@ -1357,6 +1354,8 @@ namespace Nethermind.Blockchain
                 bool lastProcessedBlock = i == blocks.Count - 1;
                 MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
             }
+
+            OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
         }
 
         public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
@@ -1557,7 +1556,7 @@ namespace Nethermind.Blockchain
                 if (data is not null)
                 {
                     startBlock = FindBlock(new Keccak(data), BlockTreeLookupOptions.None);
-                    _logger.Warn($"Start block loaded from HEAD - {startBlock?.ToString(Block.Format.Short)}");
+                    if (_logger.IsInfo) _logger.Info($"Start block loaded from HEAD - {startBlock?.ToString(Block.Format.Short)}");
                 }
             }
 
@@ -1834,8 +1833,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (blockInfo.TotalDifficulty != UInt256.Zero || block.IsGenesis)
-                        block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
+                    SetTotalDifficultyFromBlockInfo(block.Header, blockInfo);
                 }
 
                 if (requiresCanonical)
@@ -1854,6 +1852,33 @@ namespace Nethermind.Blockchain
             return block;
         }
 
+        private bool IsTotalDifficultyAlwaysZero()
+        {
+            // In some Ethereum tests and possible testnets difficulty of all blocks might be zero
+            // We also checking TTD is zero to ensure that block after genesis have zero difficulty
+            return Genesis?.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0;
+        }
+
+        private void SetTotalDifficultyFromBlockInfo(BlockHeader header, BlockInfo blockInfo)
+        {
+            if (header.IsGenesis)
+            {
+                header.TotalDifficulty = header.Difficulty;
+                return;
+            }
+
+            if (blockInfo.TotalDifficulty != UInt256.Zero)
+            {
+                header.TotalDifficulty = blockInfo.TotalDifficulty;
+                return;
+            }
+
+            if (IsTotalDifficultyAlwaysZero())
+            {
+                header.TotalDifficulty = 0;
+            }
+        }
+
         private void SetTotalDifficulty(BlockHeader header)
         {
             if (header.IsGenesis)
@@ -1863,9 +1888,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            // In some Ethereum tests and possible testnets difficulty of all blocks might be zero
-            // We also checking TTD is zero to ensure that block after genesis have zero difficulty
-            if (Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0)
+            if (IsTotalDifficultyAlwaysZero())
             {
                 header.TotalDifficulty = 0;
                 if (_logger.IsTrace) _logger.Trace($"Block {header} has zero total difficulty");
@@ -1939,6 +1962,8 @@ namespace Nethermind.Blockchain
         }
 
         public event EventHandler<BlockReplacementEventArgs>? BlockAddedToMain;
+
+        public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain;
 
         public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock;
 

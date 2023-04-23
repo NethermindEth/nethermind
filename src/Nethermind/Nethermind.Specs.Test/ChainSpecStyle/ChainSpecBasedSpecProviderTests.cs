@@ -61,9 +61,16 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
         }
 
-        [Test]
+        [TestCase(0, null, false)]
+        [TestCase(0, 0ul, false)]
+        [TestCase(0, 4660ul, false)]
+        [TestCase(1, 4660ul, false)]
+        [TestCase(1, 4661ul, false)]
+        [TestCase(4, 4672ul, true)]
+        [TestCase(4, 4673ul, true)]
+        [TestCase(5, 4680ul, true)]
         [NonParallelizable]
-        public void Timstamp_activation_equal_to_genesis_timestamp_loads_correctly()
+        public void Timstamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
         {
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
@@ -80,34 +87,35 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             expectedSpec.IsEip3198Enabled = false;
             expectedSpec.Eip1559TransitionBlock = 0;
             expectedSpec.DifficultyBombDelay = 0;
+            expectedSpec.IsEip3855Enabled = isEip3855Enabled;
             TestSpecProvider testProvider = TestSpecProvider.Instance;
             testProvider.SpecToReturn = expectedSpec;
             testProvider.TerminalTotalDifficulty = 0;
             testProvider.GenesisSpec = expectedSpec;
             List<ForkActivation> forkActivationsToTest = new()
             {
-                (0, null),
-                (0, 0),
-                (0, 4660),
-                (1, 4660),
-                (1, 4661),
+                (blockNumber, timestamp),
             };
             CompareSpecProviders(testProvider, provider, forkActivationsToTest);
             Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
-            expectedSpec.IsEip3855Enabled = true;
-            List<ForkActivation> forkActivationsToTest3 = new()
-            {
-                (4, 4672),
-                (4, 4673),
-                (5, 4680),
-            };
-            CompareSpecProviders(testProvider, provider, forkActivationsToTest3);
         }
 
-        [Test]
+
+        [TestCase(0, null, false, false, false)]
+        [TestCase(0, 0ul, false, false, false)]
+        [TestCase(0, 4660ul, false, false, false)]
+        [TestCase(1, 4660ul, false, false, false)]
+        [TestCase(1, 4661ul, false, false, false)]
+        [TestCase(1, 4672ul, false, false, false)]
+        [TestCase(2, 4673ul, false, false, true)]
+        [TestCase(3, 4680ul, false, false, true)]
+        [TestCase(4, 4672ul, false, true, false)]
+        [TestCase(5, 4672ul, true, true, false)]
+        [TestCase(5, 4673ul, true, true, false)]
+        [TestCase(6, 4680ul, true, true, false)]
         [NonParallelizable]
-        public void Logs_warning_when_timestampActivation_happens_before_blockActivation()
+        public void Logs_warning_when_timestampActivation_happens_before_blockActivation(long blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
         {
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
@@ -122,7 +130,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
             expectedSpec.Name = "Genesis_with_non_zero_timestamp";
             expectedSpec.IsEip3651Enabled = true;
-            expectedSpec.IsEip3198Enabled = false;
+            expectedSpec.IsEip3198Enabled = isEip3198Enabled;
+            expectedSpec.IsEip3855Enabled = isEip3855Enabled;
             expectedSpec.Eip1559TransitionBlock = 0;
             expectedSpec.DifficultyBombDelay = 0;
             TestSpecProvider testProvider = TestSpecProvider.Instance;
@@ -131,38 +140,17 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             testProvider.GenesisSpec = expectedSpec;
             List<ForkActivation> forkActivationsToTest = new()
             {
-                (0, null),
-                (0, 0),
-                (0, 4660),
-                (1, 4660),
-                (1, 4661),
+                (blockNumber, timestamp),
             };
             CompareSpecProviders(testProvider, provider, forkActivationsToTest);
-            Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
-            Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
-            expectedSpec.IsEip3855Enabled = false; // this will only activate in the block after the last block activation happens
-            List<ForkActivation> forkActivationsToTest2 = new()
+            if (receivesWarning)
             {
-                (1, 4672),
-                (2, 4673),
-                (3, 4680),
-            };
-            CompareSpecProviders(testProvider, provider, forkActivationsToTest2);
-            logger.Received(2).Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
-            expectedSpec.IsEip3198Enabled = true;
-            List<ForkActivation> forkActivationsToTest3 = new()
+                logger.Received(1).Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
+            }
+            else
             {
-                (4, 4672),
-            };
-            CompareSpecProviders(testProvider, provider, forkActivationsToTest3);
-            expectedSpec.IsEip3855Enabled = true; // since the block transition happened the block before, now the timestamp transition activates, even though it should have activated long ago.
-            List<ForkActivation> forkActivationsToTest4 = new()
-            {
-                (5, 4672),
-                (5, 4673),
-                (6, 4680),
-            };
-            CompareSpecProviders(testProvider, provider, forkActivationsToTest4);
+                logger.DidNotReceive().Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
+            }
         }
 
         [Test]
@@ -243,7 +231,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)GoerliSpecProvider.BerlinBlockNumber,
                 (ForkActivation)(GoerliSpecProvider.LondonBlockNumber - 1),
                 (ForkActivation)GoerliSpecProvider.LondonBlockNumber,
-                (ForkActivation)100000000, // far in the future
+                new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp),
+                new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp + 100000000) // far in future
             };
 
             CompareSpecProviders(goerli, provider, forkActivationsToTest);
@@ -252,6 +241,30 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(BlockchainIds.Goerli, provider.ChainId);
             Assert.AreEqual(BlockchainIds.Goerli, provider.NetworkId);
         }
+
+        [Test]
+        public void Chiado_loads_properly()
+        {
+            ChainSpecLoader loader = new(new EthereumJsonSerializer());
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/chiado.json");
+            ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+            ChiadoSpecProvider chiado = ChiadoSpecProvider.Instance;
+
+            List<ForkActivation> forkActivationsToTest = new()
+            {
+                (ForkActivation)0,
+                (ForkActivation)1,
+                (ForkActivation)999_999_999, // far in the future
+            };
+
+            CompareSpecProviders(chiado, provider, forkActivationsToTest, CompareSpecsOptions.IsGnosis);
+            Assert.AreEqual(ChiadoSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
+            Assert.AreEqual(BlockchainIds.Chiado, provider.ChainId);
+            Assert.AreEqual(BlockchainIds.Chiado, provider.NetworkId);
+        }
+
 
         [Test]
         public void Mainnet_loads_properly()
@@ -292,10 +305,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)MainnetSpecProvider.ArrowGlacierBlockNumber,
                 (ForkActivation)(MainnetSpecProvider.GrayGlacierBlockNumber - 1),
                 (ForkActivation)MainnetSpecProvider.GrayGlacierBlockNumber,
-                (ForkActivation)99_000_000, // far in the future
+                MainnetSpecProvider.ShanghaiActivation,
+                new ForkActivation(99_000_000, 99_681_338_455) // far in the future
             };
 
-            CompareSpecProviders(mainnet, provider, forkActivationsToTest);
+            CompareSpecProviders(mainnet, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
 
             Assert.AreEqual(MainnetSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(0_000_000, provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay);
@@ -318,39 +332,67 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(BlockchainIds.Mainnet, provider.NetworkId);
         }
 
+        [Flags]
+        enum CompareSpecsOptions
+        {
+            None = 0,
+            IsMainnet = 1,
+            CheckDifficultyBomb = 2,
+            IsGnosis = 4 // for Gnosis and Chiado testnets
+        }
+
         private static void CompareSpecProviders(
             ISpecProvider oldSpecProvider,
             ISpecProvider newSpecProvider,
             IEnumerable<ForkActivation> forkActivations,
-            bool checkDifficultyBomb = false)
+            CompareSpecsOptions compareSpecsOptions = CompareSpecsOptions.None)
         {
             foreach (ForkActivation activation in forkActivations)
             {
                 IReleaseSpec oldSpec = oldSpecProvider.GetSpec(activation);
                 IReleaseSpec newSpec = newSpecProvider.GetSpec(activation);
                 long? daoBlockNumber = newSpecProvider.DaoBlockNumber;
-                bool isMainnet = daoBlockNumber is not null;
 
-                CompareSpecs(oldSpec, newSpec, activation, isMainnet, checkDifficultyBomb);
+                bool isMainnet = daoBlockNumber is not null;
+                if (isMainnet)
+                    compareSpecsOptions |= CompareSpecsOptions.IsMainnet;
+
+                CompareSpecs(oldSpec, newSpec, activation, compareSpecsOptions);
             }
         }
 
-        private static void CompareSpecs(IReleaseSpec expectedSpec, IReleaseSpec ActualSpec, ForkActivation activation, bool isMainnet,
-            bool checkDifficultyBomb = false)
+        private static void CompareSpecs(IReleaseSpec expectedSpec, IReleaseSpec ActualSpec, ForkActivation activation, CompareSpecsOptions compareSpecsOptions)
         {
+            bool isMainnet = (compareSpecsOptions & CompareSpecsOptions.IsMainnet) != 0;
+            bool checkDifficultyBomb = (compareSpecsOptions & CompareSpecsOptions.CheckDifficultyBomb) != 0;
+            bool isGnosis = (compareSpecsOptions & CompareSpecsOptions.IsGnosis) != 0;
+
             PropertyInfo[] propertyInfos =
                 typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
             foreach (PropertyInfo propertyInfo in propertyInfos
                          .Where(p => p.Name != nameof(IReleaseSpec.Name))
+
+                         // handle mainnet specific exceptions
                          .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.MaximumExtraDataSize))
                          .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
                          .Where(p => isMainnet || checkDifficultyBomb ||
                                      p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
                          .Where(p => isMainnet || checkDifficultyBomb ||
                                      p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
+
+                         // handle RLP decoders
                          .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
                          .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
-                         .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp)))
+                         .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp))
+
+                         // handle gnosis specific exceptions
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaximumUncleCount))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip170Enabled))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip1283Enabled))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.LimitCodeSize))
+                         .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.UseConstantinopleNetGasMetering)))
             {
                 Assert.AreEqual(propertyInfo.GetValue(expectedSpec), propertyInfo.GetValue(ActualSpec),
                     activation + "." + propertyInfo.Name);
@@ -389,7 +431,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 (ForkActivation)999_999_999, // far in the future
             };
 
-            CompareSpecProviders(ropsten, provider, forkActivationsToTest, true);
+            CompareSpecProviders(ropsten, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
             Assert.AreEqual(RopstenSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(RopstenSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
         }
@@ -532,12 +574,63 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         }
 
         [Test]
+        public void Eip150_and_Eip2537_fork_by_block_number()
+        {
+            ChainSpec chainSpec = new()
+            {
+                Parameters = new ChainParameters
+                {
+                    MaxCodeSizeTransition = 10,
+                    Eip2537Transition = 20,
+                    MaxCodeSize = 1
+                }
+            };
+
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+            provider.GetSpec((ForkActivation)9).IsEip170Enabled.Should().BeFalse();
+            provider.GetSpec((ForkActivation)10).IsEip170Enabled.Should().BeTrue();
+            provider.GetSpec((ForkActivation)11).IsEip170Enabled.Should().BeTrue();
+            provider.GetSpec((ForkActivation)11).MaxCodeSize.Should().Be(1);
+            provider.GetSpec((ForkActivation)9).MaxCodeSize.Should().Be(long.MaxValue);
+
+            provider.GetSpec((ForkActivation)19).IsEip2537Enabled.Should().BeFalse();
+            provider.GetSpec((ForkActivation)20).IsEip2537Enabled.Should().BeTrue();
+            provider.GetSpec((ForkActivation)21).IsEip2537Enabled.Should().BeTrue();
+        }
+
+        [Test]
+        public void Eip150_and_Eip2537_fork_by_timestamp()
+        {
+            ChainSpec chainSpec = new()
+            {
+                Parameters = new ChainParameters
+                {
+                    MaxCodeSizeTransitionTimestamp = 10,
+                    Eip2537TransitionTimestamp = 20,
+                    MaxCodeSize = 1
+                }
+            };
+
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+            provider.GetSpec((100, 9)).IsEip170Enabled.Should().BeFalse();
+            provider.GetSpec((100, 10)).IsEip170Enabled.Should().BeTrue();
+            provider.GetSpec((100, 11)).IsEip170Enabled.Should().BeTrue();
+            provider.GetSpec((100, 11)).MaxCodeSize.Should().Be(1);
+            provider.GetSpec((100, 9)).MaxCodeSize.Should().Be(long.MaxValue);
+
+            provider.GetSpec((100, 19)).IsEip2537Enabled.Should().BeFalse();
+            provider.GetSpec((100, 20)).IsEip2537Enabled.Should().BeTrue();
+            provider.GetSpec((100, 21)).IsEip2537Enabled.Should().BeTrue();
+        }
+
+        [Test]
         public void Eip_transitions_loaded_correctly()
         {
             const long maxCodeTransition = 1;
             const long maxCodeSize = 1;
 
-            var currentTimestamp = Timestamper.Default.UnixTime.Seconds;
             ChainSpec chainSpec = new()
             {
                 Ethash =

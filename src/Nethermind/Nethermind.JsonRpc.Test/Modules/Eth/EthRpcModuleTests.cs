@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -243,6 +243,14 @@ public partial class EthRpcModuleTests
         _ = ctx.Test.TestEthRpc("eth_newBlockFilter");
         string serialized2 = ctx.Test.TestEthRpc("eth_getFilterChanges", "0");
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}", serialized2);
+    }
+
+    [Test]
+    public async Task Eth_get_filter_changes_missing()
+    {
+        using Context ctx = await Context.Create();
+        string serialized2 = ctx.Test.TestEthRpc("eth_getFilterChanges", "0");
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Filter not found\"},\"id\":67}", serialized2);
     }
 
     [Test]
@@ -733,6 +741,50 @@ public partial class EthRpcModuleTests
         Assert.True(serialized.StartsWith("{\"jsonrpc\":\"2.0\",\"error\""));
     }
 
+    [Test]
+    public async Task Eth_get_account_notfound()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = ctx.Test.TestEthRpc("eth_getAccount", "0x000000000000000000000000000000000000dead", "latest");
+
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}");
+    }
+
+    [Test]
+    public async Task Eth_get_account_found()
+    {
+        using Context ctx = await Context.Create();
+        string account_address = TestBlockchain.AccountC.ToString();
+
+        string serialized = ctx.Test.TestEthRpc("eth_getAccount", account_address, "latest");
+        string expected = "{\"jsonrpc\":\"2.0\",\"result\":{\"codeHash\":\"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470\",\"storageRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"balance\":\"0x3635c9adc5dea00000\",\"nonce\":\"0x0\"},\"id\":67}";
+
+        serialized.Should().Be(expected);
+    }
+
+    [Test]
+    public async Task Eth_get_account_incorrect_block()
+    {
+        using Context ctx = await Context.Create();
+        string account_address = TestBlockchain.AccountC.ToString();
+
+        string serialized = ctx.Test.TestEthRpc("eth_getAccount", account_address, "0xffff");
+
+        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"header not found\"},\"id\":67}");
+    }
+
+    [Test]
+    public async Task Eth_get_account_no_block_argument()
+    {
+        using Context ctx = await Context.Create();
+        string account_address = TestBlockchain.AccountC.ToString();
+
+        string serialized = ctx.Test.TestEthRpc("eth_getAccount", account_address);
+        string expected = "{\"jsonrpc\":\"2.0\",\"result\":{\"codeHash\":\"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470\",\"storageRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"balance\":\"0x3635c9adc5dea00000\",\"nonce\":\"0x0\"},\"id\":67}";
+
+        serialized.Should().Be(expected);
+    }
+
 
     [Test]
     public async Task Eth_get_block_by_number_with_recovering_sender_from_receipts()
@@ -1030,7 +1082,7 @@ public partial class EthRpcModuleTests
 
         string serialized = ctx.Test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(txForRpc));
 
-        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"InsufficientFunds, Account balance: 0, cumulative cost: 31000\"},\"id\":67}", serialized);
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"InsufficientFunds, Balance is zero, cannot pay gas\"},\"id\":67}", serialized);
     }
 
     public enum AccessListProvided
