@@ -46,6 +46,7 @@ namespace Nethermind.Trie
                         {
                             if (child is not null)
                             {
+                                child.ResolveNode(resolver);
                                 child.ResolveKey(resolver, false);
                                 if (v.ShouldVisit(child.Keccak!))
                                 {
