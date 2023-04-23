@@ -66,7 +66,7 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
             }
 
-            // if we hadn't reached the end of the stream, assume we have basefee to decode
+            // if we didn't reach the end of the stream, assume we have basefee to decode
             if (decoderContext.Position != headerCheck)
             {
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
