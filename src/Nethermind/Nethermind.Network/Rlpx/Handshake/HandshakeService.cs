@@ -251,7 +251,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             Span<byte> tempConcat = stackalloc byte[64];
             Span<byte> ephemeralSharedSecret = Proxy.EcdhSerialized(handshake.RemoteEphemeralPublicKey.Bytes, handshake.EphemeralPrivateKey.KeyBytes);
             Span<byte> nonceHash = ValueKeccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).BytesAsSpan;
-            ephemeralSharedSecret.CopyTo(tempConcat.Slice(0, 32));
+            ephemeralSharedSecret.CopyTo(tempConcat[..32]);
             nonceHash.CopyTo(tempConcat.Slice(32, 32));
             Span<byte> sharedSecret = ValueKeccak.Compute(tempConcat).BytesAsSpan;
             //            byte[] token = Keccak.Compute(sharedSecret).Bytes;

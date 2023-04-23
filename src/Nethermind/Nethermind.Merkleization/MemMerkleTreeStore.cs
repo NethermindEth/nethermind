@@ -12,7 +12,7 @@ public class MemMerkleTreeStore : IKeyValueStore<ulong, byte[]>
 
     public byte[]? this[ulong key]
     {
-        get => _dictionary.ContainsKey(key) ? _dictionary[key] : null;
+        get => _dictionary.TryGetValue(key, out byte[]? value) ? value : null;
         set => _dictionary[key] = value;
     }
 }

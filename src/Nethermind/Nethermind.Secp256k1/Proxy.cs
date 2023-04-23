@@ -357,7 +357,7 @@ namespace Nethermind.Secp256k1
             // Add our uncompressed prefix to our key.
             Span<byte> uncompressedPrefixedPublicKey = stackalloc byte[65];
             uncompressedPrefixedPublicKey[0] = 4;
-            unmanaged.AsSpan().CopyTo(uncompressedPrefixedPublicKey.Slice(1));
+            unmanaged.AsSpan().CopyTo(uncompressedPrefixedPublicKey[1..]);
 
             // Parse our public key from the serialized data.
             if (!PublicKeyParse(publicKey, uncompressedPrefixedPublicKey))

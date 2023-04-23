@@ -208,7 +208,6 @@ namespace Nethermind.Serialization.Rlp
         private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
             int contentLength = 0;
-            int logsLength = 0;
             if (item is null)
             {
                 return (contentLength, 0);
@@ -227,7 +226,7 @@ namespace Nethermind.Serialization.Rlp
             contentLength += Rlp.LengthOf(item.Sender);
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
 
-            logsLength = GetLogsLength(item);
+            int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
 
             return (contentLength, logsLength);

@@ -236,10 +236,7 @@ namespace Nethermind.Blockchain.Find
                                 logList ??= new List<FilterLog>();
                                 Keccak[] topics = log.Topics;
 
-                                if (topics is null)
-                                {
-                                    topics = iterator.DecodeTopics(new Rlp.ValueDecoderContext(log.TopicsRlp));
-                                }
+                                topics ??= iterator.DecodeTopics(new Rlp.ValueDecoderContext(log.TopicsRlp));
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,

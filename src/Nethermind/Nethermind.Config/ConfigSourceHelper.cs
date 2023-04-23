@@ -43,7 +43,7 @@ namespace Nethermind.Config
                             string item = valueItem;
                             if (valueItem.StartsWith('"') && valueItem.EndsWith('"'))
                             {
-                                item = valueItem.Substring(1, valueItem.Length - 2);
+                                item = valueItem[1..^1];
                             }
 
                             var itemValue = GetValue(itemType, item);
