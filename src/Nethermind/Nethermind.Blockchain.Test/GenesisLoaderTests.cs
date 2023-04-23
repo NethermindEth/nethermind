@@ -59,7 +59,7 @@ public class GenesisLoaderTests
         ChainSpec chainSpec = LoadChainSpec(path);
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
         IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Berlin.Instance);

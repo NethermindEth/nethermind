@@ -12,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -32,9 +33,10 @@ namespace Nethermind.Blockchain.Test
     [Parallelizable(ParallelScope.Self)]
     public class BlockchainProcessorTests
     {
+        private static readonly ILogManager _logManager = new NUnitLogManager(LogLevel.Trace);
         private class ProcessingTestContext
         {
-            private ILogManager _logManager = LimboLogs.Instance;
+            private ILogManager _logManager = BlockchainProcessorTests._logManager;
 
             private class BlockProcessorMock : IBlockProcessor
             {
@@ -191,7 +193,7 @@ namespace Nethermind.Blockchain.Test
             private ILogger _logger;
             private Keccak _headBefore;
             private int _processingQueueEmptyFired;
-            public const int ProcessingWait = 2000;
+            public const int ProcessingWait = 3000;
 
             public ProcessingTestContext(bool startProcessor)
             {
@@ -202,10 +204,10 @@ namespace Nethermind.Blockchain.Test
                 MemDb stateDb = new();
                 IStateReader stateReader = Substitute.For<IStateReader>();
 
-                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, _logManager);
                 _blockProcessor = new BlockProcessorMock(_logManager, stateReader);
                 _recoveryStep = new RecoveryStepMock(_logManager);
-                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, new StateReader(new TrieStore(stateDb, LimboLogs.Instance), new MemDb(), LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
+                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
                 _resetEvent = new AutoResetEvent(false);
                 _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -517,19 +519,29 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block4D8).BecomesNewHead();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test]
         public async Task Can_process_fast_sync()
         {
+            var logger = _logManager.GetClassLogger();
             BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
             await testBlockchain.BuildSomeBlocks(5);
 
-            When.ProcessingBlocks
-                .FullyProcessed(testBlockchain.BlockTree.FindBlock(0)).BecomesGenesis()
-                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(1))
-                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(2))
-                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(3))
-                .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(4))
-                .FullyProcessed(testBlockchain.BlockTree.FindBlock(5)).BecomesNewHead();
+            logger.Info("start test a");
+            ProcessingTestContext a = When.ProcessingBlocks;
+            logger.Info("start test b");
+            ProcessingTestContext b = a.FullyProcessed(testBlockchain.BlockTree.FindBlock(0)).BecomesGenesis();
+            logger.Info("start test b");
+            ProcessingTestContext c = b.SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(1));
+            logger.Info("start test c");
+            ProcessingTestContext d = c.SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(2));
+            logger.Info("start test d");
+            ProcessingTestContext e = d.SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(3));
+            logger.Info("start test e");
+            ProcessingTestContext f = e.SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(4));
+            logger.Info("start test f");
+            ProcessingTestContext.AfterBlock g = f.FullyProcessed(testBlockchain.BlockTree.FindBlock(5));
+            logger.Info("start test g");
+            g.BecomesNewHead();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

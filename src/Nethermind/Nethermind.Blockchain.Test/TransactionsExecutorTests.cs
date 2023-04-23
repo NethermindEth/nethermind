@@ -264,7 +264,7 @@ namespace Nethermind.Blockchain.Test
         {
             MemDb stateDb = new();
             MemDb codeDb = new();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+            TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
             StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();

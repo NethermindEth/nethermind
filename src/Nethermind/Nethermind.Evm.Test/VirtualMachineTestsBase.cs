@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
 
             IDb codeDb = new MemDb();
             _stateDb = new MemDb();
-            ITrieStore trieStore = new TrieStore(_stateDb, logManager);
+            ITrieStore trieStore = new TrieStoreByPath(_stateDb, logManager);
             TestState = new StateProvider(trieStore, codeDb, logManager);
             Storage = new StorageProvider(trieStore, TestState, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);

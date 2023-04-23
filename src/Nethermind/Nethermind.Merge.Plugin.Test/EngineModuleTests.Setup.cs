@@ -18,6 +18,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -45,7 +46,7 @@ public partial class EngineModuleTests
         => await CreateBlockChain(mergeConfig, mockedPayloadService, Shanghai.Instance);
 
     protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null, IReleaseSpec? releaseSpec = null)
-        => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+        => await CreateBaseBlockChain(mergeConfig, mockedPayloadService, new NUnitLogManager(LogLevel.Trace)).Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
     protected async Task<MergeTestBlockchain> CreateBlockChain(ISpecProvider specProvider, ILogManager? logManager = null)
         => await CreateBaseBlockChain(null, null, logManager).Build(specProvider);

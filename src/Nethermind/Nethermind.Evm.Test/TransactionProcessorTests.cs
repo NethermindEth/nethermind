@@ -49,14 +49,13 @@ namespace Nethermind.Evm.Test
         public void Setup()
         {
             MemDb stateDb = new();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             TrieStoreByPath trieStoreByPath = new(stateDb, LimboLogs.Instance);
             _stateProvider = new StateProvider(trieStoreByPath, new MemDb(), LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
             _stateProvider.Commit(_specProvider.GenesisSpec);
             _stateProvider.CommitTree(0);
 
-            StorageProvider storageProvider = new(trieStore, _stateProvider, LimboLogs.Instance);
+            StorageProvider storageProvider = new(trieStoreByPath, _stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
             _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);

@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 specProvider,
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
-            TrieStore trieStore = new(
+            TrieStoreByPath trieStore = new(
                 dbProvider.RegisteredDbs[DbNames.State],
                 NoPruning.Instance,
                 Archive.Instance,
