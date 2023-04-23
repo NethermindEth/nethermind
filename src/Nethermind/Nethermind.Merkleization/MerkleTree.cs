@@ -16,9 +16,7 @@ namespace Nethermind.Merkleization;
 public abstract class MerkleTree : IMerkleList
 {
     private const int LeafRow = 32;
-    private const int LeafLevel = 0;
     public const int TreeHeight = 32;
-    private const ulong FirstLeafIndexAsNodeIndex = MaxNodes / 2;
     private const ulong MaxNodes = (1ul << (TreeHeight + 1)) - 1ul;
     private const ulong MaxNodeIndex = MaxNodes - 1;
 
@@ -162,11 +160,6 @@ public abstract class MerkleTree : IMerkleList
     private void SaveValue(in Index index, byte[] hashBytes)
     {
         _keyValueStore[index.NodeIndex] = hashBytes;
-    }
-
-    private void SaveValue(in Index index, Bytes32 hash)
-    {
-        SaveValue(index, hash.AsSpan().ToArray());
     }
 
     private Bytes32 LoadValue(in Index index)

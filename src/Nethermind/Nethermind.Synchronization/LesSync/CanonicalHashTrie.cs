@@ -78,16 +78,6 @@ namespace Nethermind.Synchronization.LesSync
             return storeValue?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? -1L;
         }
 
-        private void SetMaxSectionIndex(long sectionIndex)
-        {
-            //_keyValueStore[MaxSectionKey] = sectionIndex.ToBigEndianByteArrayWithoutLeadingZeros();
-        }
-
-        //private Keccak GetRootHash(long sectionIndex)
-        //{
-        //    //return GetRootHash(_keyValueStore, sectionIndex);
-        //}
-
         private static Keccak GetRootHash(IKeyValueStore db, long sectionIndex)
         {
             byte[]? hash = db[GetRootHashKey(sectionIndex)];

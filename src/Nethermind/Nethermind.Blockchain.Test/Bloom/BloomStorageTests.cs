@@ -208,15 +208,5 @@ namespace Nethermind.Blockchain.Test.Bloom
                 Directory.Delete(basePath, true);
             }
         }
-
-        private IEnumerable<(Core.Bloom Bloom, (long FromBlock, long ToBlock) CurrentIndices)> Unwind(IBloomEnumeration blooms)
-        {
-            foreach (Core.Bloom bloom in blooms)
-            {
-                (long FromBlock, long ToBlock) currentIndices = blooms.CurrentIndices;
-                yield return (bloom, currentIndices);
-                blooms.TryGetBlockNumber(out _);
-            }
-        }
     }
 }
