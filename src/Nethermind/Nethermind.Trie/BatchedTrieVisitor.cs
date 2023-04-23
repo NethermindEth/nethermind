@@ -345,7 +345,7 @@ public class BatchedTrieVisitor
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    struct Job
+    private readonly struct Job
     {
         public readonly ValueKeccak Key;
         public readonly SmallTrieVisitContext Context;
