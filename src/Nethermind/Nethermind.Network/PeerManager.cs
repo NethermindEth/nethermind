@@ -294,7 +294,7 @@ namespace Nethermind.Network
                         if (activePeersCount != previousActivePeersCount)
                         {
                             string countersLog = string.Join(", ", _currentSelection.Counters.Select(x => $"{x.Key.ToString()}: {x.Value}"));
-                            _logger.Trace($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count()}, " +
+                            _logger.Trace($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count}, " +
                                           $"Tried: {_tryCount}, Rounds: {_connectionRounds}, Failed initial connect: {_failedInitialConnect}, Established initial connect: {_newActiveNodes}, " +
                                           $"Current candidate peers: {_peerPool.PeerCount}, Current active peers: {activePeers.Count} " +
                                           $"[InOut: {activePeers.Count(x => x.Value.OutSession is not null && x.Value.InSession is not null)} | " +
