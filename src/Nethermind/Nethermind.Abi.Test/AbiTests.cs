@@ -551,7 +551,7 @@ public class AbiTests
         var abi = new AbiArray(AbiType.UInt256);
         var array = new UInt256[] { 1, 2, 3, UInt256.MaxValue };
         var list = new List<UInt256>() { 1, 2, 3, UInt256.MaxValue };
-        var pool = new ArrayPoolList<UInt256>(4);
+        using var pool = new ArrayPoolList<UInt256>(4);
 
         pool.AddRange(array);
 

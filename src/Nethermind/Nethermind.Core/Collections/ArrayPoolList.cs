@@ -266,6 +266,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IReadOnlyList<T>, IDispo
         if (!_disposed)
         {
             _arrayPool.Return(_array);
+            _array = null!;
             _disposed = true;
         }
     }

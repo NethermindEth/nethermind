@@ -539,7 +539,7 @@ namespace Nethermind.Network
             FilteredByFailedConnection
         }
 
-        private struct PeerStats
+        private readonly struct PeerStats
         {
             public Peer Peer { get; }
             public bool FailedValidation { get; }
