@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Engines;
@@ -90,7 +88,7 @@ namespace Nethermind.Crypto
                 new BufferedBlockCipher(new SicBlockCipher(aesFastEngine)));
 
             ParametersWithIV parametersWithIV = new(_iesParameters, iv);
-            byte[] secret = Proxy.EcdhSerialized(publicKey.Bytes, privateKey.KeyBytes);
+            byte[] secret = SecP256k1.EcdhSerialized(publicKey.Bytes, privateKey.KeyBytes);
             iesEngine.Init(isEncrypt, _optimizedKdf.Derive(secret), parametersWithIV);
             return iesEngine;
         }
