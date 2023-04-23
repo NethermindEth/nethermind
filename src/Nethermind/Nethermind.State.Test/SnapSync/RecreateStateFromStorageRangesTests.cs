@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable disable 
+#nullable disable
 
 using System;
 using System.Collections.Generic;
@@ -29,15 +29,15 @@ namespace Nethermind.Store.Test
     public class RecreateStateFromStorageRangesTests
     {
 
-        private TrieStore _store;
-        private StateTree _inputStateTree;
+        private TrieStoreByPath _store;
+        private StateTreeByPath _inputStateTree;
         private StorageTree _inputStorageTree;
 
         [OneTimeSetUp]
         public void Setup()
         {
-            _store = new TrieStore(new MemDb(), LimboLogs.Instance);
-            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
+            _store = new TrieStoreByPath(new MemDb(), LimboLogs.Instance);
+            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTreesByPath(_store);
         }
 
         [Test]

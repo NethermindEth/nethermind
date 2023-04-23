@@ -17,78 +17,28 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.All)]
+    [TestFixture(TrieNodeResolverCapability.Hash)]
+    [TestFixture(TrieNodeResolverCapability.Path)]
     public class PatriciaTreeTests
     {
+        private readonly TrieNodeResolverCapability _resolverCapability;
 
-        [Test]
-        public void Something()
+        public PatriciaTreeTests(TrieNodeResolverCapability resolverCapability)
         {
-            AccountDecoder accountDecoder = new AccountDecoder();
-
-            PatriciaTree tree1 = new PatriciaTree(new MemDb());
-            PatriciaTree tree2 = new PatriciaTree(new MemDb());
-
-            Span<byte> key1 = stackalloc byte[52];
-            Span<byte> key2 = stackalloc byte[32];
-
-            Account[] accounts =
-            {
-                new Account(1),
-                new Account(2),
-                new Account(3),
-                new Account(4),
-                new Account(5),
-            };
-
-            TestItem.AddressA.Bytes.CopyTo(key1);
-            KeccakHash.ComputeHashBytesToSpan(TestItem.AddressB.Bytes, key1.Slice(20));
-            KeccakHash.ComputeHashBytesToSpan(TestItem.AddressB.Bytes, key2);
-            tree1.Set(key1, accountDecoder.Encode(accounts[0]));
-            tree2.Set(key2, accountDecoder.Encode(accounts[0]));
-
-            TestItem.AddressA.Bytes.CopyTo(key1);
-            KeccakHash.ComputeHashBytesToSpan(TestItem.AddressC.Bytes, key1.Slice(20));
-            KeccakHash.ComputeHashBytesToSpan(TestItem.AddressC.Bytes, key2);
-            tree1.Set(key1, accountDecoder.Encode(accounts[1]));
-            tree2.Set(key2, accountDecoder.Encode(accounts[1]));
-
-            TestItem.AddressA.Bytes.CopyTo(key1);
-            KeccakHash.ComputeHashBytesToSpan(TestItem.AddressD.Bytes, key1.Slice(20));
-            KeccakHash.ComputeHashBytesToSpan(TestItem.AddressB.Bytes, key2);
-            tree1.Set(key1, accountDecoder.Encode(accounts[2]));
-            tree2.Set(key2, accountDecoder.Encode(accounts[2]));
-
-            TestItem.AddressA.Bytes.CopyTo(key1);
-            KeccakHash.ComputeHashBytesToSpan(TestItem.AddressE.Bytes, key1.Slice(20));
-            KeccakHash.ComputeHashBytesToSpan(TestItem.AddressB.Bytes, key2);
-            tree1.Set(key1, accountDecoder.Encode(accounts[3]));
-            tree2.Set(key2, accountDecoder.Encode(accounts[3]));
-
-            TestItem.AddressA.Bytes.CopyTo(key1);
-            KeccakHash.ComputeHashBytesToSpan(TestItem.AddressF.Bytes, key1.Slice(20));
-            KeccakHash.ComputeHashBytesToSpan(TestItem.AddressB.Bytes, key2);
-            tree1.Set(key1, accountDecoder.Encode(accounts[4]));
-            tree2.Set(key2, accountDecoder.Encode(accounts[4]));
-
-            tree1.Commit(0);
-            tree2.Commit(0);
-
-            Console.WriteLine(string.Join(", ", tree1.RootHash));
-            Console.WriteLine(string.Join(", ", tree2.RootHash));
+            _resolverCapability = resolverCapability;
         }
-
 
         [Test]
         public void Create_commit_change_balance_get()
         {
             Account account = new(1);
-            StateTree stateTree = new();
+            IStateTree stateTree = _resolverCapability.CreateStateStore();
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
 
             account = account.WithChangedBalance(2);
-            stateTree.Set(TestItem.AddressA, account);
+            stateTree.Set(TestItem.AddressA, account);g
             stateTree.Commit(0);
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
@@ -99,7 +49,7 @@ namespace Nethermind.Store.Test
         public void Create_create_commit_change_balance_get()
         {
             Account account = new(1);
-            StateTree stateTree = new();
+            IStateTree stateTree = _resolverCapability.CreateStateStore();
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Set(TestItem.AddressB, account);
             stateTree.Commit(0);
@@ -117,7 +67,7 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new();
             Account account = new(1);
-            StateTree stateTree = new(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
+            IStateTree stateTree = _resolverCapability.CreateStateStore(db, LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
 
@@ -138,10 +88,10 @@ namespace Nethermind.Store.Test
         public void Commit_with_skip_root_should_skip_root(bool skipRoot, bool hasRoot)
         {
             MemDb db = new();
-            TrieStore trieStore = new TrieStore(db, LimboLogs.Instance);
+            ITrieStore trieStore = _resolverCapability.CreateTrieStore(db, LimboLogs.Instance);
             Account account = new(1);
 
-            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+            IStateTree stateTree = _resolverCapability.CreateStateStore(trieStore, LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.UpdateRootHash();
             Keccak stateRoot = stateTree.RootHash;
@@ -149,7 +99,7 @@ namespace Nethermind.Store.Test
 
             if (hasRoot)
             {
-                trieStore.LoadRlp(stateRoot).Length.Should().BeGreaterThan(0);
+                trieStore.LoadRlp(Array.Empty<byte>(), stateRoot).Length.Should().BeGreaterThan(0);
             }
             else
             {
