@@ -25,9 +25,17 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync
 {
-    [TestFixture]
+    [TestFixture(TrieNodeResolverCapability.Hash)]
+    [TestFixture(TrieNodeResolverCapability.Path)]
     public class RecreateStateFromStorageRangesTests
     {
+
+        private readonly TrieNodeResolverCapability _resolverCapability;
+
+        public RecreateStateFromStorageRangesTests(TrieNodeResolverCapability resolverCapability)
+        {
+            _resolverCapability = resolverCapability;
+        }
 
         private ITrieStore _store;
         private IStateTree _inputStateTree;
@@ -36,8 +44,15 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [OneTimeSetUp]
         public void Setup()
         {
-            _store = new TrieStoreByPath(new MemDb(), LimboLogs.Instance);
-            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTreesByPath(_store);
+            _store = _resolverCapability.CreateTrieStore(new MemDb(), LimboLogs.Instance);
+            if (_resolverCapability == TrieNodeResolverCapability.Hash)
+            {
+                (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
+            }
+            else
+            {
+                (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTreesByPath(_store);
+            }
         }
 
         [Test]
