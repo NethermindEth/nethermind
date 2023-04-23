@@ -192,6 +192,20 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        {
+            keyValueStore ??= _keyValueStore;
+            byte[] keyPath = path.Length is (AccountLeafNibblesLength or StorageLeafNibblesLength) ? Nibbles.ToBytes(path): Nibbles.ToEncodedStorageBytes(path);
+            byte[]? rlp = _currentBatch?[keyPath] ?? keyValueStore[keyPath];
+
+            if (rlp?[0] == PathMarker)
+            {
+                byte[]? pointsToPath = _currentBatch?[rlp[1..]] ?? keyValueStore[rlp[1..]];
+                rlp = pointsToPath ?? null;
+            }
+            return rlp;
+        }
+
         internal byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore)
         {
             keyValueStore ??= _keyValueStore;
@@ -210,18 +224,7 @@ namespace Nethermind.Trie.Pruning
         internal byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Keccak rootHash = null)
         {
             byte[] keyPath = path.Length is (AccountLeafNibblesLength or StorageLeafNibblesLength) ? Nibbles.ToBytes(path): Nibbles.ToEncodedStorageBytes(path);
-            // _logger.Info($"LoadRlp {keyPath.ToHexString()} path.Length {path.Length} - {(path.Length != 0 ? path.ToHexString(): Array.Empty<byte>())}");
-
-            keyValueStore ??= _keyValueStore;
-            byte[]? rlp = _currentBatch?[keyPath] ?? keyValueStore[keyPath];
-            if (rlp?[0] == PathMarker)
-            {
-                byte[]? pointsToPath = _currentBatch?[rlp[1..]] ?? keyValueStore[rlp[1..]];
-                if (pointsToPath is not null)
-                    rlp = pointsToPath;
-            }
-            // _logger.Info($"LoadRlp Value : {rlp}");
-
+            byte[]? rlp = TryLoadRlp(path, keyValueStore);
 
             if (rlp is null)
             {
@@ -587,8 +590,11 @@ namespace Nethermind.Trie.Pruning
                     // _logger.Info($"Deleting Leaf Node Pointer: {pathToNodeBytes.ToHexString()}");
                     keyValueStore[pathToNodeBytes] = null;
                 }
+                else
+                {
+                    keyValueStore[pathToNodeBytes] = newPath;
+                }
                 // _logger.Info($"Saving Leaf Node Pointer - PathToNode(Key): {pathToNodeBytes.ToHexString()} ActualPathInDb(Value): {newPath?.ToHexString()}");
-                keyValueStore[pathToNodeBytes] = newPath;
             }
 
             if (trieNode.FullRlp is null)
@@ -606,11 +612,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool ExistsInDB(Keccak hash, byte[] pathNibbles)
         {
-            byte[] pathBytes = pathNibbles.Length is AccountLeafNibblesLength or StorageLeafNibblesLength
-                ? Nibbles.ToBytes(pathNibbles)
-                : Nibbles.ToEncodedStorageBytes(pathNibbles);
-
-            byte[] rlp = _currentBatch?[pathBytes] ?? _keyValueStore[pathBytes];
+            byte[]? rlp = TryLoadRlp(pathNibbles.AsSpan(), _keyValueStore);
             if (rlp is not null)
             {
                 TrieNode node = new(NodeType.Unknown, rlp);

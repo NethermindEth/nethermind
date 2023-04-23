@@ -381,7 +381,7 @@ namespace Nethermind.Trie
 
                 if (RootRef?.IsDirty == true)
                 {
-                    // _logger.Info("RootRef.IsDirty is also null");
+                    _logger.Error("RootRef is also null - tree not initialized");
                     return GetInternal(rawKey);
                 }
 
@@ -400,14 +400,9 @@ namespace Nethermind.Trie
             if (node.NodeType == NodeType.Leaf) return node.Value;
 
             // if not in cached nodes - then check persisted nodes`
-            byte[] nodePath = nibbleBytes.Length is TrieStoreByPath.AccountLeafNibblesLength or TrieStoreByPath.StorageLeafNibblesLength
-                ? Nibbles.ToBytes(nibbleBytes)
-                : Nibbles.ToEncodedStorageBytes(nibbleBytes);
-
-            byte[]? nodeData = TrieStore[nodePath];
+            TrieStoreByPath nTs = TrieStore as TrieStoreByPath;
+            byte[]? nodeData = nTs.TryLoadRlp(nibbleBytes, null);
             if (nodeData is null) return null;
-
-            if (nodeData[0] == 128) nodeData = TrieStore[nodeData[1..]];
             node = new TrieNode(NodeType.Unknown, nodeData);
             node.ResolveNode(TrieStore);
             return node.Value;
