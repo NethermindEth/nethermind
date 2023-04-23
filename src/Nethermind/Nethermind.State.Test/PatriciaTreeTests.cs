@@ -38,7 +38,7 @@ namespace Nethermind.Store.Test
             stateTree.Commit(0);
 
             account = account.WithChangedBalance(2);
-            stateTree.Set(TestItem.AddressA, account);g
+            stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
