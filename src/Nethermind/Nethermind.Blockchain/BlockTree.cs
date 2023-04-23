@@ -1184,7 +1184,7 @@ namespace Nethermind.Blockchain
                     _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
                 }
 
-                if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
+                // if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
                 _blockCache.Delete(currentHash);
                 _blockDb.Delete(currentHash);
                 _headerCache.Delete(currentHash);
@@ -1631,7 +1631,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Deleting an invalid block or its descendant {hash}");
+                // if (_logger.IsInfo) _logger.Info($"Deleting an invalid block or its descendant {hash}");
                 _blockInfoDb.Set(DeletePointerAddressInDb, hash.Bytes);
             }
         }
