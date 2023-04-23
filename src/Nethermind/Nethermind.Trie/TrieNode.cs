@@ -982,6 +982,8 @@ namespace Nethermind.Trie
                                 TrieNode child = tree.FindCachedOrUnknown(keccak, path, StoreNibblePathPrefix);
                                 child.ResolveNode(tree);
                                 child.ResolveKey(tree, false);
+                                if (keccak != child.Keccak)
+                                    throw new TrieException($"expected and actual keccak not same {keccak} {child.Keccak} ||");
                                 Debug.Assert(keccak == child.Keccak, $"expected and actual keccak not same {keccak} {child.Keccak} ||");
                                 _data![i] = childOrRef = child;
 

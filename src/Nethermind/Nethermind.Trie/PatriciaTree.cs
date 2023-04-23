@@ -147,7 +147,7 @@ namespace Nethermind.Trie
             bool allowCommits,
             ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger(GetType()) ?? throw new ArgumentNullException(nameof(logManager));
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
@@ -1260,12 +1260,12 @@ namespace Nethermind.Trie
                         // _logger.Info($"Starting Visitor - Resolve RootNode - rh:{rootHash} crh:{RootHash}");
                         try
                         {
-                            TrieNode? testNode = new TrieNode(NodeType.Unknown, path: Array.Empty<byte>());
-                            _logger.Info($"Test Node - try to resolve : {testNode}");
-                            testNode!.ResolveNode(TrieStore);
-                            _logger.Info($"Test Node - resolved : {testNode}");
-                            testNode!.ResolveKey(TrieStore, true);
-                            _logger.Info($"Test Root Node: Key:{testNode.Key} Keccak:{testNode.Keccak} FullPath:{testNode.FullPath}");
+                            // TrieNode? testNode = new TrieNode(NodeType.Unknown, path: Array.Empty<byte>());
+                            // _logger.Info($"Test Node - try to resolve : {testNode}");
+                            // testNode!.ResolveNode(TrieStore);
+                            // _logger.Info($"Test Node - resolved : {testNode}");
+                            // testNode!.ResolveKey(TrieStore, true);
+                            // _logger.Info($"Test Root Node: Key:{testNode.Key} Keccak:{testNode.Keccak} FullPath:{testNode.FullPath}");
 
                             // _logger.Info($"fetched rootRef node type: {rootRef?.NodeType}");
                             if (rootRef!.NodeType == NodeType.Unknown)
@@ -1275,7 +1275,7 @@ namespace Nethermind.Trie
                                 // _logger.Info($"rootRef resolved keccak to:  {rootRef.Keccak}");
                                 if (rootRef.Keccak != rootHash)
                                 {
-                                    _logger.Info($"ERROR: wanted: {rootHash} got: {rootRef.Keccak}");
+                                    _logger.Error($"PT.Accept wanted: {rootHash} got: {rootRef.Keccak}");
                                     throw new TrieException("Root ref hash mismatch!");
                                 }
                             }
