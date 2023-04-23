@@ -595,6 +595,10 @@ namespace Nethermind.Trie.Pruning
 
         private long LatestCommittedBlockNumber { get; set; }
 
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        {
+            throw new NotImplementedException();
+        }
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
 
         private void CreateCommitSet(long blockNumber)

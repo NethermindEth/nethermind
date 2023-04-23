@@ -28,6 +28,7 @@ namespace Nethermind.Trie.Pruning
         /// <returns></returns>
         byte[]? LoadRlp(Keccak hash);
         byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash = null);
+        byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore);
 
         TrieNodeResolverCapability Capability { get; }
 

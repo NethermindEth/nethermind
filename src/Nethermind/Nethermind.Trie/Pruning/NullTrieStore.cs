@@ -24,6 +24,10 @@ namespace Nethermind.Trie.Pruning
             return this;
         }
 
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        {
+            throw new NotImplementedException();
+        }
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached

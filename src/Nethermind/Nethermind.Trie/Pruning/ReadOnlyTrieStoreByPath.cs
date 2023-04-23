@@ -36,6 +36,10 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(Keccak keccak) => _trieStore.IsPersisted(keccak);
 
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        {
+            return _trieStore.TryLoadRlp(path, keyValueStore);
+        }
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Path;
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)

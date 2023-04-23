@@ -400,8 +400,7 @@ namespace Nethermind.Trie
             if (node.NodeType == NodeType.Leaf) return node.Value;
 
             // if not in cached nodes - then check persisted nodes`
-            TrieStoreByPath nTs = TrieStore as TrieStoreByPath;
-            byte[]? nodeData = nTs.TryLoadRlp(nibbleBytes, null);
+            byte[]? nodeData = TrieStore.TryLoadRlp(nibbleBytes, null);
             if (nodeData is null) return null;
             node = new TrieNode(NodeType.Unknown, nodeData);
             node.ResolveNode(TrieStore);
@@ -1246,9 +1245,9 @@ namespace Nethermind.Trie
                         }
                         break;
                     case TrieNodeResolverCapability.Path:
-                        _logger.Info($"Try to get root node from cache: {rootHash}");
+                        // _logger.Info($"Try to get root node from cache: {rootHash}");
                         rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
-                        _logger.Info($"Try to get root node from cache: {rootRef}");
+                        // _logger.Info($"Try to get root node from cache: {rootRef}");
                         ////
 
                         ///
