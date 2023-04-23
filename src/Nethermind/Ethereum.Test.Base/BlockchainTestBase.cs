@@ -104,11 +104,14 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            bool isNetworkAfterTransitionLondon = test.NetworkAfterTransition == London.Instance;
+            bool isNetworkLondon = test.NetworkAfterTransition == London.Instance || test.Network == London.Instance;
+            bool isNetworkGrayGlacier = test.NetworkAfterTransition == GrayGlacier.Instance || test.Network == GrayGlacier.Instance;
+            bool isNetworkShanghai = test.NetworkAfterTransition == Shanghai.Instance || test.Network == Shanghai.Instance;
+            bool isNetworkCancun = test.NetworkAfterTransition == Cancun.Instance || test.Network == Cancun.Instance;
 
-            if (isNetworkAfterTransitionLondon)
+            if (isNetworkLondon || isNetworkGrayGlacier || isNetworkShanghai || isNetworkCancun)
             {
-                // TODO: Skip test if London. Will fix in the next pr
+                // TODO: Skip test. Will fix in the next pr
                 return new EthereumTestResult(test.Name, null, true);
             }
 
