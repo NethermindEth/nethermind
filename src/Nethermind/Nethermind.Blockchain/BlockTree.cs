@@ -1061,8 +1061,7 @@ namespace Nethermind.Blockchain
         {
             if (blockNumber < 0)
             {
-                throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}",
-                    nameof(blockNumber));
+                throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Value must be greater or equal to zero but is {blockNumber}");
             }
 
             ChainLevelInfo level = LoadLevel(blockNumber);
