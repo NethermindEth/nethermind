@@ -749,7 +749,7 @@ namespace Nethermind.Network
 
         private void RemoveActivePeer(PublicKey nodeId, string reason)
         {
-            bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out Peer removedPeer);
+            bool removed = _peerPool.ActivePeers.TryRemove(nodeId, out _);
             if (removed)
             {
                 Interlocked.Decrement(ref Metrics.PeerCount);

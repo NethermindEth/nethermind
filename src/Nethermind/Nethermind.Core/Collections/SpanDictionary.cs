@@ -654,14 +654,14 @@ ReturnNotFound:
                 KeyValuePair<TKey[], TValue>[]? array = (KeyValuePair<TKey[], TValue>[]?)
                     siInfo.GetValue(KeyValuePairsName, typeof(KeyValuePair<TKey[], TValue>[]));
 
-                if (array == null)
+                if (array is null)
                 {
                     throw new SerializationException("The Keys for this Hashtable are missing.");
                 }
 
                 for (int i = 0; i < array.Length; i++)
                 {
-                    if (array[i].Key == null)
+                    if (array[i].Key is null)
                     {
                         throw new SerializationException("One of the serialized keys is null.");
                     }
@@ -915,8 +915,7 @@ ReturnNotFound:
             }
             else
             {
-                object[]? objects = array as object[];
-                if (objects == null)
+                if (array is not object[] objects)
                 {
                     throw new ArgumentException("Target array type is not compatible with the type of items in the collection.");
                 }
@@ -1365,8 +1364,7 @@ ReturnNotFound:
                 }
                 else
                 {
-                    object[]? objects = array as object[];
-                    if (objects == null)
+                    if (array is not object[] objects)
                     {
                         throw new ArgumentException("Target array type is not compatible with the type of items in the collection.");
                     }
@@ -1543,8 +1541,7 @@ ReturnNotFound:
                 }
                 else
                 {
-                    object[]? objects = array as object[];
-                    if (objects == null)
+                    if (array is not object[] objects)
                     {
                         throw new ArgumentException("Target array type is not compatible with the type of items in the collection.");
                     }

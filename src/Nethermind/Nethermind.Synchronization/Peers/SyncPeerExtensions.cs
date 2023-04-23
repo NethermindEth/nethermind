@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.Peers
                 && peerInfo.SyncPeer.ClientType == NodeClientType.OpenEthereum) // only for OE
             {
                 // try get OpenEthereum version
-                Version? openEthereumVersion = peerInfo.SyncPeer.GetOpenEthereumVersion(out int releaseCandidate);
+                Version? openEthereumVersion = peerInfo.SyncPeer.GetOpenEthereumVersion(out _);
                 if (openEthereumVersion is not null)
                 {
                     int versionComparision = openEthereumVersion.CompareTo(_openEthereumSecondRemoveGetNodeDataVersion);

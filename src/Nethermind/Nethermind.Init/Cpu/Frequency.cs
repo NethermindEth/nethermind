@@ -124,8 +124,7 @@ internal struct Frequency
 
     public static bool TryParse(string s, FrequencyUnit unit, out Frequency freq)
     {
-        double result;
-        bool result2 = double.TryParse(s, NumberStyles.Any, DefaultCultureInfo.Instance, out result);
+        bool result2 = double.TryParse(s, NumberStyles.Any, DefaultCultureInfo.Instance, out double result);
         freq = new Frequency(result, unit);
         return result2;
     }

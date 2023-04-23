@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Receipts
                 return receipts;
             }
 
-            return new TxReceipt[] { };
+            return Array.Empty<TxReceipt>();
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => true;

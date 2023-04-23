@@ -80,13 +80,13 @@ namespace Nethermind.Core.Crypto
         private Address ComputeAddress()
         {
             Span<byte> hash = ValueKeccak.Compute(Bytes).BytesAsSpan;
-            return new Address(hash.Slice(12).ToArray());
+            return new Address(hash[12..].ToArray());
         }
 
         public static Address ComputeAddress(ReadOnlySpan<byte> publicKeyBytes)
         {
             Span<byte> hash = ValueKeccak.Compute(publicKeyBytes).BytesAsSpan;
-            return new Address(hash.Slice(12).ToArray());
+            return new Address(hash[12..].ToArray());
         }
 
         public override bool Equals(object? obj)
@@ -112,7 +112,7 @@ namespace Nethermind.Core.Crypto
         public string ToShortString()
         {
             string value = Bytes.ToHexString(false);
-            return $"{value.Substring(0, 6)}...{value.Substring(value.Length - 6)}";
+            return $"{value[..6]}...{value[^6..]}";
         }
 
         public static bool operator ==(PublicKey? a, PublicKey? b)

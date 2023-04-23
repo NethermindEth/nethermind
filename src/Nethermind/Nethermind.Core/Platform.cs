@@ -37,7 +37,7 @@ namespace Nethermind.Core
 
     public class Platform
     {
-        public static String GetPlatformName()
+        public static string GetPlatformName()
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
