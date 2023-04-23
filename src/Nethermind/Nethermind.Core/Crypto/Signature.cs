@@ -31,7 +31,7 @@ namespace Nethermind.Core.Crypto
                 throw new ArgumentException();
             }
 
-            bytes.Slice(0, 64).CopyTo(Bytes.AsSpan());
+            bytes[..64].CopyTo(Bytes.AsSpan());
             V = bytes[64];
         }
 

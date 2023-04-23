@@ -23,7 +23,7 @@ internal static class ProcCpuInfoProvider
         {
             string? content = ProcessHelper.RunAndReadOutput("cat", "/proc/cpuinfo");
             string output = GetCpuSpeed();
-            content = content + output;
+            content += output;
             return ProcCpuInfoParser.ParseOutput(content);
         }
         return null;

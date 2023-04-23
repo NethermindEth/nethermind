@@ -122,7 +122,7 @@ namespace Nethermind.Crypto
             bool success = SecP256k1.RecoverKeyFromCompact(
                 publicKey,
                 message.Bytes,
-                signatureBytes.Slice(0, 64),
+                signatureBytes[..64],
                 signatureBytes[64],
                 false);
 

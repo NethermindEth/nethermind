@@ -279,10 +279,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
 
             Keccak startingHash = msg.StartBlockHash;
-            if (startingHash is null)
-            {
-                startingHash = SyncServer.FindHash(msg.StartBlockNumber);
-            }
+            startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
 
             BlockHeader[] headers =
                 startingHash is null

@@ -106,7 +106,7 @@ namespace Nethermind.Monitoring
         {
             string group = GetValueFromVariableOrDefault("GROUP", "nethermind");
             string endpoint = _pushGatewayUrl.Split("/").LastOrDefault();
-            if (!string.IsNullOrWhiteSpace(endpoint) && endpoint.Contains("-"))
+            if (!string.IsNullOrWhiteSpace(endpoint) && endpoint.Contains('-'))
             {
                 group = endpoint.Split("-")[0] ?? group;
             }

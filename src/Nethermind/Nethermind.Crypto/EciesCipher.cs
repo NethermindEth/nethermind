@@ -76,7 +76,7 @@ namespace Nethermind.Crypto
             return iesEngine.ProcessBlock(ciphertextBody, 0, ciphertextBody.Length, macData);
         }
 
-        private static IesParameters _iesParameters = new IesWithCipherParameters(new byte[] { }, new byte[] { }, KeySize, KeySize);
+        private static IesParameters _iesParameters = new IesWithCipherParameters(Array.Empty<byte>(), Array.Empty<byte>(), KeySize, KeySize);
 
         private IIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
         {

@@ -73,7 +73,7 @@ namespace Nethermind.Config
 
                 if (directImplementation is not null)
                 {
-                    Categories.Add(@interface.Name.Substring(1),
+                    Categories.Add(@interface.Name[1..],
                         Activator.CreateInstance(directImplementation));
 
                     _implementations[@interface] = directImplementation;
