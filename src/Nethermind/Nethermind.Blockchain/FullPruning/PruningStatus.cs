@@ -35,5 +35,5 @@ public enum PruningStatus
     /// <summary>
     /// Pruning failed because of low disk space
     /// </summary>
-    NotEnoughDiscSpace,
+    NotEnoughDiskSpace,
 }
