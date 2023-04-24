@@ -211,7 +211,7 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            if (header.BaseFeePerGas != 0)
+            if (!header.BaseFeePerGas.IsZero)
             {
                 rlpStream.Encode(header.BaseFeePerGas);
             }
@@ -262,7 +262,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.GasUsed)
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
-                                + (item.BaseFeePerGas == 0 ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
+                                + (item.BaseFeePerGas.IsZero ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
                                 + (item.WithdrawalsRoot is null && item.ExcessDataGas is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + (item.ExcessDataGas is null ? 0 : Rlp.LengthOf(item.ExcessDataGas.Value));
 
