@@ -8,7 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Native\Nethermind.Native.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
   </ItemGroup>
@@ -24,9 +23,6 @@
 
   <ItemGroup>
     <Content Include="runtimes\linux-arm64\native\libshamatar.so">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="runtimes\linux-arm\native\libshamatar.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="runtimes\linux-x64\native\libshamatar.so">
