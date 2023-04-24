@@ -106,7 +106,14 @@ namespace Nethermind.Blockchain.Contracts.Json
 
         public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions op)
         {
-            throw new NotSupportedException();
+            writer.WriteStartObject();
+            writer.WriteString("name"u8, value.Name);
+            writer.WriteString("type"u8, value.Type.Name);
+            if (value is AbiEventParameter eventParameter)
+            {
+                writer.WriteBoolean("indexed"u8, eventParameter.Indexed);
+            }
+            writer.WriteEndObject();
         }
 
         public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions op)

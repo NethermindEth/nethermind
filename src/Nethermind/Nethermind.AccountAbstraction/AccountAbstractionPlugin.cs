@@ -391,6 +391,7 @@ namespace Nethermind.AccountAbstraction
         private AbiDefinition LoadEntryPointContract()
         {
             AbiTuple<UserOperationAbi>.EnsureMappingRegistered();
+            AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
 
             AbiDefinitionParser parser = new();
             string json = parser.LoadContract(typeof(EntryPoint));

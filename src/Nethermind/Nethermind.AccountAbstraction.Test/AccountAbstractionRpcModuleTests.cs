@@ -64,6 +64,7 @@ namespace Nethermind.AccountAbstraction.Test
             private AbiDefinition LoadContract(Type contractType)
             {
                 AbiTuple<UserOperationAbi>.EnsureMappingRegistered();
+                AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
 
                 var parser = new AbiDefinitionParser();
                 var json = parser.LoadContract(contractType);

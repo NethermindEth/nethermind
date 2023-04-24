@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                 switch (type)
                 {
                     case AbiDescriptionType.Event:
-                        AbiEventDescription? eventDescription = definitionToken.Deserialize(typeof(AbiEventDescription), op) as AbiEventDescription;
+                        AbiEventDescription? eventDescription = definitionToken.Deserialize<AbiEventDescription>(op);
                         if (eventDescription != null)
                             value.Add(eventDescription);
                         break;
@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                             value.Add(errorDescription);
                         break;
                     default:
-                        AbiFunctionDescription? functionDescription = definitionToken.Deserialize(typeof(AbiFunctionDescription), op) as AbiFunctionDescription;
+                        AbiFunctionDescription? functionDescription = definitionToken.Deserialize<AbiFunctionDescription>(op);
                         if (functionDescription != null)
                             value.Add(functionDescription);
                         break;

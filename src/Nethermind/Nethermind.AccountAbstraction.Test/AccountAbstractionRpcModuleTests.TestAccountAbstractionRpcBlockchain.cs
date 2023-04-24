@@ -195,6 +195,7 @@ namespace Nethermind.AccountAbstraction.Test
                     NullWitnessCollector.Instance,
                     LogManager);
 
+                AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
                 AbiTuple<UserOperationAbi>.EnsureMappingRegistered();
 
                 var parser = new AbiDefinitionParser();
