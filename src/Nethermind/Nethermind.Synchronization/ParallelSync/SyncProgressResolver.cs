@@ -173,6 +173,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
 
+        public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
+
         private bool IsFastBlocks()
         {
             bool isFastBlocks = _syncConfig.FastBlocks;
