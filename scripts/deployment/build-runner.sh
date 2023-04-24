@@ -18,15 +18,12 @@ do
   dotnet publish -c release -r $rid -o $OUTPUT_PATH/$rid --sc true \
     -p:BuildTimestamp=$3 \
     -p:Commit=$2 \
+    -p:DebugType=none \
     -p:Deterministic=true \
     -p:IncludeAllContentForSelfExtract=true \
     -p:PublishSingleFile=true
 
-  rm -rf $OUTPUT_PATH/$rid/*.pdb
-  rm -rf $OUTPUT_PATH/$rid/Data/*
-  rm -rf $OUTPUT_PATH/$rid/Hive
   cp -r configs $OUTPUT_PATH/$rid
-  cp Data/static-nodes.json $OUTPUT_PATH/$rid/Data
   mkdir $OUTPUT_PATH/$rid/keystore
 done
 

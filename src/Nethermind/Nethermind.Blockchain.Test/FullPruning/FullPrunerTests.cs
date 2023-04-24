@@ -285,6 +285,16 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     set => _context[key] = value;
                 }
 
+                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                {
+                    _context.Set(key, value, flags);
+                }
+
+                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+                {
+                    return _context.Get(key, flags);
+                }
+
                 public void Commit()
                 {
                     WaitForFinish.Set();
