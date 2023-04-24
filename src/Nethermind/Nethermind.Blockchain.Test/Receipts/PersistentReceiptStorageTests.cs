@@ -3,11 +3,11 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -226,7 +226,22 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptConfig.TxLookupLimit = -1;
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
+            Thread.Sleep(100);
             _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeNull();
+        }
+
+        [Test]
+        public void Should_not_index_tx_hash_if_blockNumber_is_negative()
+        {
+            _receiptConfig.TxLookupLimit = 10;
+            CreateStorage();
+            _blockTree.BlockAddedToMain +=
+                Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(1).TestObject));
+            Thread.Sleep(100);
+            var calls = _blockTree.ReceivedCalls()
+                .Where(call => !call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.BlockAddedToMain)));
+            calls.Should().BeEmpty();
         }
 
         [Test]
@@ -235,6 +250,8 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptConfig.TxLookupLimit = 1000;
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
+            Thread.Sleep(100);
             _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeNull();
         }
 
