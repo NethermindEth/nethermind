@@ -103,10 +103,10 @@ namespace Nethermind.Blockchain.Contracts.Json
             topLevelToken = document.RootElement;
             if (topLevelToken.ValueKind == JsonValueKind.Object)
             {
-                abiToken = topLevelToken.GetProperty("abi");
-                if (topLevelToken.TryGetProperty("bytecode", out JsonElement bytecodeBase64))
+                abiToken = topLevelToken.GetProperty("abi"u8);
+                if (topLevelToken.TryGetProperty("bytecode"u8, out JsonElement bytecodeBase64))
                     value.SetBytecode(Bytes.FromHexString(bytecodeBase64.GetString()!));
-                if (topLevelToken.TryGetProperty("deployedBytecode", out JsonElement deployedBytecodeBase64))
+                if (topLevelToken.TryGetProperty("deployedBytecode"u8, out JsonElement deployedBytecodeBase64))
                     value.SetDeployedBytecode(Bytes.FromHexString(deployedBytecodeBase64.GetString()!));
             }
             else
