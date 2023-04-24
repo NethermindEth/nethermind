@@ -76,6 +76,14 @@ namespace Nethermind.Abi
 
     public class AbiTuple<T> : AbiType where T : new()
     {
+        public static void EnsureMappingRegistered()
+        {
+            if (!IsMappingRegistered<T>())
+            {
+                AbiType.RegisterMapping<T>(new AbiTuple<T>());
+            }
+        }
+
         private readonly PropertyInfo[] _properties;
         private readonly AbiType[] _elements;
         public override string Name { get; }

@@ -11,11 +11,6 @@ namespace Nethermind.Abi
     {
         public static readonly AbiAddress Instance = new();
 
-        static AbiAddress()
-        {
-            RegisterMapping<Address>(Instance);
-        }
-
         private AbiAddress() : base(160)
         {
         }

@@ -69,8 +69,9 @@ namespace Nethermind.Abi.Test.Json
         [TestCaseSource(nameof(TypeTestCases))]
         public void Can_read_json(string type, AbiType expectedType, Exception expectedException, object[] components)
         {
-            List<IAbiTypeFactory> abiTypeFactories = new List<IAbiTypeFactory>() { new AbiTypeFactory(new AbiTuple<CustomAbiType>()) };
-            var converter = new AbiParameterConverter(abiTypeFactories);
+            AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<CustomAbiType>()));
+
+            var converter = new AbiParameterConverter();
             var model = new { name = "theName", type, components };
             byte[] json = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(model));
             Utf8JsonReader jsonReader = new Utf8JsonReader(json);

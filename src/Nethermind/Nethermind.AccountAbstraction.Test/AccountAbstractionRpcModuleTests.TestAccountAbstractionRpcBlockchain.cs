@@ -194,9 +194,10 @@ namespace Nethermind.AccountAbstraction.Test
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);
+                
+                AbiTuple<UserOperationAbi>.EnsureMappingRegistered();
 
                 var parser = new AbiDefinitionParser();
-                parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
                 var json = parser.LoadContract(typeof(EntryPoint));
                 EntryPointContractAbi = parser.Parse(json);
 

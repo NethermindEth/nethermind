@@ -11,8 +11,8 @@ using Nethermind.Blockchain.Contracts.Json;
 
 namespace Nethermind.Abi
 {
-    //[JsonConverter(typeof(AbiParameterConverter))]
-    //[JsonDerivedType(typeof(AbiEventParameter))]
+    [JsonConverter(typeof(AbiParameterConverter))]
+    [JsonDerivedType(typeof(AbiEventParameter))]
     public class AbiParameter
     {
         public string Name { get; set; } = string.Empty;
@@ -67,11 +67,41 @@ namespace Nethermind.Blockchain.Contracts.Json
 
     public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : AbiParameter, new()
     {
-        private readonly IList<IAbiTypeFactory> _abiTypeFactories;
-
-        protected AbiParameterConverterBase(IList<IAbiTypeFactory> abiTypeFactories)
+        private static readonly object _registerLock = new();
+        private static IList<IAbiTypeFactory> _abiTypeFactories = Array.Empty<IAbiTypeFactory>();
+        
+        public static bool IsFactoryRegistered<TFactory>()
+            where TFactory : IAbiTypeFactory
         {
-            _abiTypeFactories = abiTypeFactories;
+            IList<IAbiTypeFactory> abiTypeFactories = _abiTypeFactories;
+            foreach (var factory in abiTypeFactories)
+            {
+                if (factory is TFactory)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public static void RegisterFactory<TFactory>(TFactory factory)
+            where TFactory : IAbiTypeFactory
+        {
+            lock (_registerLock)
+            {
+                if (IsFactoryRegistered<TFactory>())
+                {
+                    return;
+                }
+
+                List<IAbiTypeFactory> abiTypeFactories = new(_abiTypeFactories)
+                {
+                    factory
+                };
+
+                _abiTypeFactories = abiTypeFactories;
+            }
         }
 
         public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions op)
@@ -172,14 +202,14 @@ namespace Nethermind.Blockchain.Contracts.Json
 
     public class AbiParameterConverter : AbiParameterConverterBase<AbiParameter>
     {
-        public AbiParameterConverter(IList<IAbiTypeFactory> abiTypeFactories) : base(abiTypeFactories)
+        public AbiParameterConverter() : base()
         {
         }
     }
 
     public class AbiEventParameterConverter : AbiParameterConverterBase<AbiEventParameter>
     {
-        public AbiEventParameterConverter(IList<IAbiTypeFactory> abiTypeFactories) : base(abiTypeFactories)
+        public AbiEventParameterConverter() : base()
         {
         }
 

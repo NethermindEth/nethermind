@@ -3,13 +3,17 @@
 
 using System;
 using System.Collections.Generic;
+
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Abi
 {
+    using Nethermind.Int256;
     public partial class AbiType
     {
-        private static readonly IDictionary<Type, AbiType> _typeMappings = new Dictionary<Type, AbiType>();
+        private static readonly object _registerLock = new();
+        private static Dictionary<Type, AbiType> _typeMappings = CreateTypeMappings();
 
         protected static AbiType GetForCSharpType(Type type)
         {
@@ -44,19 +48,45 @@ namespace Nethermind.Abi
             }
         }
 
-        protected static void RegisterMapping<T>(AbiType abiType)
+        protected static bool IsMappingRegistered<T>()
         {
-            _typeMappings[typeof(T)] = abiType;
+            return _typeMappings.ContainsKey(typeof(T));
         }
 
-        static AbiType()
+        protected static void RegisterMapping<T>(AbiType abiType)
         {
-            AbiType type = AbiAddress.Instance;
-            type = AbiBool.Instance;
-            type = AbiDynamicBytes.Instance;
-            type = AbiInt.Int8;
-            type = AbiString.Instance;
-            type = AbiUInt.UInt8;
+            lock (_registerLock)
+            {
+                Dictionary<Type, AbiType> typeMappings = new(_typeMappings)
+                {
+                    [typeof(T)] = abiType
+                };
+
+                _typeMappings = typeMappings;
+            }
+        }
+
+        private static Dictionary<Type, AbiType> CreateTypeMappings()
+        {
+            Dictionary<Type, AbiType> typeMappings = new()
+            {
+                [typeof(bool)] = AbiBool.Instance,
+                [typeof(byte)] = AbiUInt.UInt8,
+                [typeof(sbyte)] = AbiInt.Int8,
+                [typeof(ushort)] = AbiUInt.UInt16,
+                [typeof(short)] = AbiInt.Int16,
+                [typeof(uint)] = AbiUInt.UInt32,
+                [typeof(int)] = AbiInt.Int32,
+                [typeof(ulong)] = AbiUInt.UInt64,
+                [typeof(long)] = AbiInt.Int64,
+                [typeof(UInt256)] = AbiUInt.UInt256,
+                [typeof(Int256)] = AbiInt.Int256,
+                [typeof(Address)] = AbiAddress.Instance,
+                [typeof(string)] = AbiString.Instance,
+                [typeof(byte[])] = AbiDynamicBytes.Instance
+            };
+
+            return typeMappings;
         }
     }
 }

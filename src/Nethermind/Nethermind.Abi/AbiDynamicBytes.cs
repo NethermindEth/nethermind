@@ -13,11 +13,6 @@ namespace Nethermind.Abi
     {
         public static readonly AbiDynamicBytes Instance = new();
 
-        static AbiDynamicBytes()
-        {
-            RegisterMapping<byte[]>(Instance);
-        }
-
         private AbiDynamicBytes()
         {
         }

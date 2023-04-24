@@ -21,15 +21,6 @@ namespace Nethermind.Abi
         public static new readonly AbiUInt UInt96 = new(96);
         public static new readonly AbiUInt UInt256 = new(256);
 
-        static AbiUInt()
-        {
-            RegisterMapping<byte>(UInt8);
-            RegisterMapping<ushort>(UInt16);
-            RegisterMapping<uint>(UInt32);
-            RegisterMapping<ulong>(UInt64);
-            RegisterMapping<UInt256>(UInt256);
-        }
-
         public AbiUInt(int length)
         {
             if (length % 8 != 0)
