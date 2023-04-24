@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -38,7 +39,7 @@ namespace Nethermind.Blockchain.Receipts
                 return receipts;
             }
 
-            return new TxReceipt[] { };
+            return Array.Empty<TxReceipt>();
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => true;
@@ -47,7 +48,7 @@ namespace Nethermind.Blockchain.Receipts
             if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out var receipts))
             {
 #pragma warning disable 618
-                iterator = new ReceiptsIterator(ReceiptStorageDecoder.Instance.Encode(receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes, new MemDb());
+                iterator = new ReceiptsIterator(receipts);
 #pragma warning restore 618
                 return true;
             }

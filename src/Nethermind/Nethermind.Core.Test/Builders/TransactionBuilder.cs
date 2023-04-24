@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
@@ -23,7 +24,7 @@ namespace Nethermind.Core.Test.Builders
                 Nonce = 0,
                 Value = 1,
                 Data = Array.Empty<byte>(),
-                Timestamp = 0
+                Timestamp = 0,
             };
         }
 
@@ -143,6 +144,40 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public TransactionBuilder<T> WithBlobVersionedHashes(int? count)
+        {
+            if (count is null)
+            {
+                return this;
+            }
+
+            TestObjectInternal.BlobVersionedHashes = Enumerable.Range(0, count.Value).Select(x =>
+            {
+                byte[] bvh = new byte[32];
+                bvh[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+                return bvh;
+            }).ToArray();
+            return this;
+        }
+
+        public TransactionBuilder<T> WithBlobs(byte[] blobs)
+        {
+            TestObjectInternal.Blobs = blobs;
+
+            return this;
+        }
+        public TransactionBuilder<T> WithBlobKzgs(byte[] blobKzgs)
+        {
+            TestObjectInternal.BlobKzgs = blobKzgs;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithProofs(byte[] proofs)
+        {
+            TestObjectInternal.BlobProofs = proofs;
+            return this;
+        }
+
         public TransactionBuilder<T> WithSignature(Signature signature)
         {
             TestObjectInternal.Signature = signature;
@@ -170,12 +205,6 @@ namespace Nethermind.Core.Test.Builders
             EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? TestBlockchainIds.ChainId, LimboLogs.Instance);
             ecdsa.Sign(privateKey, TestObjectInternal, true);
             TestObjectInternal.SenderAddress = privateKey.Address;
-            return this;
-        }
-
-        public TransactionBuilder<T> DeliveredBy(PublicKey publicKey)
-        {
-            TestObjectInternal.DeliveredBy = publicKey;
             return this;
         }
 

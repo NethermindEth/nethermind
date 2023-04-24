@@ -62,8 +62,7 @@ namespace Nethermind.Blockchain.Filters
                 var indexes = AddressesBloomExtracts;
                 for (var i = 0; i < indexes.Length; i++)
                 {
-                    var index = indexes[i];
-                    result = bloom.Matches(ref index);
+                    result = bloom.Matches(in indexes[i]);
                     if (result)
                     {
                         break;
@@ -90,8 +89,7 @@ namespace Nethermind.Blockchain.Filters
                 var indexes = AddressesBloomExtracts;
                 for (var i = 0; i < indexes.Length; i++)
                 {
-                    var index = indexes[i];
-                    result = bloom.Matches(ref index);
+                    result = bloom.Matches(in indexes[i]);
                     if (result)
                     {
                         break;

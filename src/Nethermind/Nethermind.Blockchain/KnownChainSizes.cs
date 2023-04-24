@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain
             { BlockchainIds.Rinkeby, new SizeInfo(34700.MB(), 20.MB(), new DateTime(2021, 12, 7)) },
             { BlockchainIds.Ropsten, new SizeInfo(35900.MB(), 25.MB(), new DateTime(2021, 12, 7)) },
             { BlockchainIds.Mainnet, new SizeInfo(90000.MB(), 70.MB(), new DateTime(2022, 04, 7)) },
-            { BlockchainIds.xDai, new SizeInfo(18000.MB(), 48.MB(), new DateTime(2021, 12, 7)) },
+            { BlockchainIds.Gnosis, new SizeInfo(18000.MB(), 48.MB(), new DateTime(2021, 12, 7)) },
             { BlockchainIds.EnergyWeb, new SizeInfo(15300.MB(), 15.MB(), new DateTime(2021, 12, 7)) },
             { BlockchainIds.Volta, new SizeInfo(17500.MB(), 10.MB(), new DateTime(2021, 11, 7)) },
             { BlockchainIds.PoaCore, new SizeInfo(13900.MB(), 4.MB(), new DateTime(2021, 12, 7)) },

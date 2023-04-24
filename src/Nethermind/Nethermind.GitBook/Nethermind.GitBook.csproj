@@ -20,7 +20,7 @@
   </PropertyGroup>
   
   <ItemGroup>
-    <PackageReference Include="Nethermind.Numerics.Int256" Version="1.0.0" />
+    <PackageReference Include="Nethermind.Numerics.Int256" />
   </ItemGroup>
 
 </Project>

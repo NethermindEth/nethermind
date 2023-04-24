@@ -140,7 +140,7 @@ namespace Nethermind.KeyStore
                     break;
                 case "pbkdf2":
                     int c = kdfParams.C.Value;
-                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, kdfParams.C.Value, HashAlgorithmName.SHA256);
+                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, c, HashAlgorithmName.SHA256);
                     derivedKey = deriveBytes.GetBytes(256);
                     break;
                 default:
@@ -188,7 +188,7 @@ namespace Nethermind.KeyStore
         {
             (PrivateKey privateKey, Result result) = GetKey(address, password);
             using var key = privateKey;
-            return (result == Result.Success ? new ProtectedPrivateKey(key, _cryptoRandom) : null, result);
+            return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
         }
 
         public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
@@ -213,7 +213,7 @@ namespace Nethermind.KeyStore
         {
             (PrivateKey privateKey, Result result) = GenerateKey(password);
             using var key = privateKey;
-            return (result == Result.Success ? new ProtectedPrivateKey(key, _cryptoRandom) : null, result);
+            return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
         }
 
         public Result StoreKey(Address address, KeyStoreItem keyStoreItem)

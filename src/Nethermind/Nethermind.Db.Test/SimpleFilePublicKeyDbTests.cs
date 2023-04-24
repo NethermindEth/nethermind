@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.IO;
+
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
@@ -20,15 +24,34 @@ namespace Nethermind.Db.Test
             tempPath.Dispose();
 
             SimpleFilePublicKeyDb filePublicKeyDb = new("Test", Path.GetTempPath(), LimboLogs.Instance);
+
+            Random random = new Random();
+            Dictionary<byte[], byte[]> dict = new Dictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            for (int i = 0; i < 1024; i++)
+            {
+                byte[] key = new byte[random.Next(64, 128)];
+                byte[] value = new byte[random.Next(200, 250)];
+
+                random.NextBytes(key);
+                random.NextBytes(value);
+
+                dict[key] = value;
+            }
+
             using (filePublicKeyDb.StartBatch())
             {
-                filePublicKeyDb[TestItem.PublicKeyA.Bytes] = new byte[] { 1, 2, 3 };
-                filePublicKeyDb[TestItem.PublicKeyB.Bytes] = new byte[] { 4, 5, 6 };
-                filePublicKeyDb[TestItem.PublicKeyC.Bytes] = new byte[] { 1, 2, 3 };
+                foreach (var kv in dict)
+                {
+                    filePublicKeyDb[kv.Key] = kv.Value;
+                }
             }
 
             SimpleFilePublicKeyDb copy = new("Test", Path.GetTempPath(), LimboLogs.Instance);
-            Assert.AreEqual(3, copy.Keys.Count);
+            Assert.AreEqual(dict.Count, copy.Keys.Count);
+            foreach (var kv in dict)
+            {
+                Assert.True(filePublicKeyDb[kv.Key].AsSpan().SequenceEqual(kv.Value));
+            }
         }
     }
 }

@@ -99,8 +99,6 @@ jobs:
       run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Overseer.Test
     - name: Nethermind.Runner.Test
       run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Runner.Test
-    - name: Nethermind.Secp256k1.Test.Linux
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Secp256k1.Test
     - name: Nethermind.Serialization.Ssz.Test
       run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Serialization.Ssz.Test
     - name: Nethermind.Sockets.Test

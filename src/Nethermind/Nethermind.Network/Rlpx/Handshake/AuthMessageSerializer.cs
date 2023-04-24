@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class AuthMessageSerializer : IMessageSerializer<AuthMessage>
+    public class AuthMessageSerializer : IZeroMessageSerializer<AuthMessage>
     {
         public const int SigOffset = 0;
         public const int SigLength = 65;
@@ -34,31 +35,31 @@ namespace Nethermind.Network.Rlpx.Handshake
         // =============
         // 307 (total)
 
-        public byte[] Serialize(AuthMessage msg)
+        public void Serialize(IByteBuffer byteBuffer, AuthMessage msg)
         {
-            byte[] data = new byte[Length];
-            Buffer.BlockCopy(msg.Signature.Bytes, 0, data, SigOffset, SigLength - 1);
-            data[SigLength - 1] = msg.Signature.RecoveryId;
-            Buffer.BlockCopy(msg.EphemeralPublicHash.Bytes, 0, data, EphemeralHashOffset, EphemeralHashLength);
-            Buffer.BlockCopy(msg.PublicKey.Bytes, 0, data, PublicKeyOffset, PublicKeyLength);
-            Buffer.BlockCopy(msg.Nonce, 0, data, NonceOffset, NonceLength);
-            data[IsTokenUsedOffset] = msg.IsTokenUsed ? (byte)0x01 : (byte)0x00;
-            return data;
+            byteBuffer.EnsureWritable(Length, true);
+            byteBuffer.WriteBytes(msg.Signature.Bytes);
+            byteBuffer.WriteByte(msg.Signature.RecoveryId);
+            byteBuffer.WriteBytes(msg.EphemeralPublicHash.Bytes);
+            byteBuffer.WriteBytes(msg.PublicKey.Bytes);
+            byteBuffer.WriteBytes(msg.Nonce);
+            byteBuffer.WriteByte(msg.IsTokenUsed ? 0x01 : 0x00);
         }
 
-        public AuthMessage Deserialize(byte[] msgBytes)
+        public AuthMessage Deserialize(IByteBuffer msgBytes)
         {
-            if (msgBytes.Length != Length)
+            if (msgBytes.ReadableBytes != Length)
             {
-                throw new NetworkingException($"Incorrect incoming {nameof(AuthMessage)} length. Expected {Length} but was {msgBytes.Length}", NetworkExceptionType.Validation);
+                throw new NetworkingException($"Incorrect incoming {nameof(AuthMessage)} length. Expected {Length} but was {msgBytes.ReadableBytes}", NetworkExceptionType.Validation);
             }
 
-            AuthMessage authMessage = new();
-            authMessage.Signature = new Signature(msgBytes.AsSpan(SigOffset, SigLength - 1), msgBytes[64]);
-            authMessage.EphemeralPublicHash = new Keccak(msgBytes.Slice(EphemeralHashOffset, EphemeralHashLength));
-            authMessage.PublicKey = new PublicKey(msgBytes.AsSpan(PublicKeyOffset, PublicKeyLength));
-            authMessage.Nonce = msgBytes.Slice(NonceOffset, NonceLength);
-            authMessage.IsTokenUsed = msgBytes[IsTokenUsedOffset] == 0x01;
+            AuthMessage authMessage = new AuthMessage();
+            Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
+            authMessage.Signature = new Signature(msg[..(SigLength - 1)], msg[64]);
+            authMessage.EphemeralPublicHash = new Keccak(msg.Slice(EphemeralHashOffset, EphemeralHashLength).ToArray());
+            authMessage.PublicKey = new PublicKey(msg.Slice(PublicKeyOffset, PublicKeyLength));
+            authMessage.Nonce = msg.Slice(NonceOffset, NonceLength).ToArray();
+            authMessage.IsTokenUsed = msg[IsTokenUsedOffset] == 0x01;
             return authMessage;
         }
     }

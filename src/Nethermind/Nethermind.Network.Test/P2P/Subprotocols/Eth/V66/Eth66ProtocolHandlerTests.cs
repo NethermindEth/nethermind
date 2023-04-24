@@ -6,6 +6,7 @@ using System.Net;
 using System.Threading;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;

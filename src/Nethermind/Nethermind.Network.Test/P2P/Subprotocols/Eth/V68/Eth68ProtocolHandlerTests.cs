@@ -6,12 +6,14 @@ using System.Collections.Generic;
 using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
@@ -71,7 +73,7 @@ public class Eth68ProtocolHandlerTests
             _transactionPool,
             _pooledTxsRequestor,
             _gossipPolicy,
-            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            new ForkInfo(_specProvider, _genesisBlock.Header.Hash),
             LimboLogs.Instance);
         _handler.Init();
     }
@@ -160,7 +162,7 @@ public class Eth68ProtocolHandlerTests
 
         for (int i = 0; i < txCount; i++)
         {
-            txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+            txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
         }
 
         _handler.SendNewTransactions(txs, false);
@@ -180,7 +182,7 @@ public class Eth68ProtocolHandlerTests
 
         for (int i = 0; i < txCount; i++)
         {
-            txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+            txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
         }
 
         _handler.SendNewTransactions(txs, false);

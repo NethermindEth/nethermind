@@ -392,18 +392,20 @@ namespace Nethermind.TxPool.Test
 
         [TestCase(4, 0, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(4, 11, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(4, 12, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(4, 12, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(5, 0, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(5, 10, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(5, 11, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(5, 11, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(9, 0, nameof(AcceptTxResult.Accepted))]
         [TestCase(9, 6, nameof(AcceptTxResult.Accepted))]
         [TestCase(9, 7, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(9, 45, nameof(AcceptTxResult.InsufficientFunds))]
         [TestCase(11, 0, nameof(AcceptTxResult.Accepted))]
         [TestCase(11, 4, nameof(AcceptTxResult.Accepted))]
         [TestCase(11, 5, nameof(AcceptTxResult.InsufficientFunds))]
         [TestCase(15, 0, nameof(AcceptTxResult.Accepted))]
         [TestCase(16, 0, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(16, 90, nameof(AcceptTxResult.InsufficientFunds))]
         public void should_handle_adding_tx_to_full_txPool_properly(int gasPrice, int value, string expected)
         {
             _txPool = CreatePool(new TxPoolConfig() { Size = 30 });
@@ -437,10 +439,10 @@ namespace Nethermind.TxPool.Test
         }
 
         [TestCase(5, 10, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(5, 11, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(5, 11, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(10, 0, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(10, 5, nameof(AcceptTxResult.FeeTooLow))]
-        [TestCase(10, 6, nameof(AcceptTxResult.InsufficientFunds))]
+        [TestCase(10, 6, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(11, 0, nameof(AcceptTxResult.Accepted))]
         [TestCase(11, 4, nameof(AcceptTxResult.Accepted))]
         [TestCase(11, 5, nameof(AcceptTxResult.InsufficientFunds))]
@@ -1332,7 +1334,7 @@ namespace Nethermind.TxPool.Test
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
 
-            _txPool.SubmitTx(zeroCostTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(zeroCostTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
 
             // Cumulative cost should be 1
             Transaction expensiveTx = Build.A.Transaction
@@ -1343,7 +1345,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(0)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
-            _txPool.SubmitTx(expensiveTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(expensiveTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
         }
 
         [Test]
@@ -1445,6 +1447,38 @@ namespace Nethermind.TxPool.Test
             _txPool.SubmitTx(txA, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
         }
 
+        [TestCase(true, 1, 1, true)]
+        [TestCase(true, 1, 0, true)]
+        [TestCase(true, 0, 0, true)]
+        [TestCase(false, 1, 1, true)]
+        [TestCase(false, 1, 0, false)]
+        [TestCase(false, 0, 0, false)]
+        public void Should_filter_txs_depends_on_priority_contract(bool thereIsPriorityContract, int balance, int fee, bool shouldBeAccepted)
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(specProvider: specProvider, thereIsPriorityContract: thereIsPriorityContract);
+            EnsureSenderBalance(TestItem.AddressF, (UInt256)balance * GasCostOf.Transaction);
+
+            Transaction zeroCostTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas((UInt256)fee)
+                .WithMaxPriorityFeePerGas((UInt256)fee)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyF).TestObject;
+
+            AcceptTxResult result = _txPool.SubmitTx(zeroCostTx, TxHandlingOptions.None);
+            if (shouldBeAccepted)
+            {
+                result.Should().Be(AcceptTxResult.Accepted);
+            }
+            else
+            {
+                result.Should().NotBe(AcceptTxResult.Accepted);
+            }
+        }
+
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
         {
             var peers = new Dictionary<ITxPoolPeer, PrivateKey>();
@@ -1463,17 +1497,15 @@ namespace Nethermind.TxPool.Test
             ITxPoolConfig config = null,
             ISpecProvider specProvider = null,
             ChainHeadInfoProvider chainHeadInfoProvider = null,
-            IIncomingTxFilter incomingTxFilter = null)
+            IIncomingTxFilter incomingTxFilter = null,
+            bool thereIsPriorityContract = false)
         {
             specProvider ??= RopstenSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
 
             _headInfo = chainHeadInfoProvider;
-            if (_headInfo is null)
-            {
-                _headInfo = new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
-            }
+            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
 
             return new TxPool(
                 _ethereumEcdsa,
@@ -1482,7 +1514,8 @@ namespace Nethermind.TxPool.Test
                 new TxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
-                incomingTxFilter);
+                incomingTxFilter,
+                thereIsPriorityContract);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
@@ -1541,17 +1574,38 @@ namespace Nethermind.TxPool.Test
 
         private Transaction GetTransaction(PrivateKey privateKey, Address to = null, UInt256? nonce = null)
         {
-            Transaction transaction = GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, nonce ?? 1000, to, Array.Empty<byte>(), privateKey);
+            Transaction transaction = GetTransaction(nonce ?? UInt256.Zero, GasCostOf.Transaction, (nonce ?? 999) + 1, to, Array.Empty<byte>(), privateKey);
             EnsureSenderBalance(transaction);
             return transaction;
         }
 
         private void EnsureSenderBalance(Transaction transaction)
         {
-            if (transaction.IsEip1559)
-                EnsureSenderBalance(transaction.SenderAddress, transaction.MaxFeePerGas * (UInt256)transaction.GasLimit + transaction.Value);
+            UInt256 requiredBalance;
+            if (transaction.Supports1559)
+            {
+                if (UInt256.MultiplyOverflow(transaction.MaxFeePerGas, (UInt256)transaction.GasLimit, out requiredBalance))
+                {
+                    requiredBalance = UInt256.MaxValue;
+                }
+                if (UInt256.AddOverflow(requiredBalance, transaction.Value, out requiredBalance))
+                {
+                    requiredBalance = UInt256.MaxValue;
+                }
+            }
             else
-                EnsureSenderBalance(transaction.SenderAddress, transaction.GasPrice * (UInt256)transaction.GasLimit + transaction.Value);
+            {
+                if (UInt256.MultiplyOverflow(transaction.GasPrice, (UInt256)transaction.GasLimit, out requiredBalance))
+                {
+                    requiredBalance = UInt256.MaxValue;
+                }
+                if (UInt256.AddOverflow(requiredBalance, transaction.Value, out requiredBalance))
+                {
+                    requiredBalance = UInt256.MaxValue;
+                }
+            }
+
+            EnsureSenderBalance(transaction.SenderAddress, requiredBalance);
         }
 
         private void EnsureSenderBalance(Address address, UInt256 balance)
@@ -1567,7 +1621,6 @@ namespace Nethermind.TxPool.Test
                 .WithGasPrice(gasPrice)
                 .WithData(data)
                 .To(to)
-                .DeliveredBy(privateKey.PublicKey)
                 .SignedAndResolved(_ethereumEcdsa, privateKey)
                 .TestObject;
 

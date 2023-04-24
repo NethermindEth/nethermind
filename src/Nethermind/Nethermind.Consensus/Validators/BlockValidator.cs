@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -99,6 +100,9 @@ public class BlockValidator : IBlockValidator
         if (!ValidateWithdrawals(block, spec, out _))
             return false;
 
+        if (!ValidateBlobs(block, spec, out _))
+            return false;
+
         return true;
     }
 
@@ -186,6 +190,32 @@ public class BlockValidator : IBlockValidator
 
         error = null;
 
+        return true;
+    }
+
+    private bool ValidateBlobs(Block block, IReleaseSpec spec, out string? error)
+    {
+        if (spec.IsEip4844Enabled ^ block.ExcessDataGas is not null)
+        {
+            error = $"ExcessDataGas cannot be null in block {block.Hash} when EIP-4844 activated.";
+            if (_logger.IsWarn) _logger.Warn(error);
+            return false;
+        }
+
+        int? blobsInBlock = 0;
+        for (int txIndex = block.Transactions.Length - 1; txIndex >= 0; txIndex--)
+        {
+            blobsInBlock += block.Transactions[txIndex].BlobVersionedHashes?.Length ?? 0;
+        }
+
+        if (spec.IsEip4844Enabled && blobsInBlock > Eip4844Constants.MaxBlobsPerBlock)
+        {
+            error = $"A block cannot contain more than {Eip4844Constants.MaxBlobsPerBlock} blobs.";
+            if (_logger.IsWarn) _logger.Warn(error);
+            return false;
+        }
+
+        error = null;
         return true;
     }
 

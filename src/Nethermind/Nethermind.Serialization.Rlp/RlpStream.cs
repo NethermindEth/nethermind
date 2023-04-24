@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,6 +20,7 @@ namespace Nethermind.Serialization.Rlp
     {
         private static readonly HeaderDecoder _headerDecoder = new();
         private static readonly BlockDecoder _blockDecoder = new();
+        private static readonly BlockInfoDecoder _blockInfoDecoder = new();
         private static readonly TxDecoder _txDecoder = new();
         private static readonly ReceiptMessageDecoder _receiptDecoder = new();
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
@@ -65,6 +69,11 @@ namespace Nethermind.Serialization.Rlp
         public void Encode(LogEntry value)
         {
             _logEntryDecoder.Encode(this, value);
+        }
+
+        public void Encode(BlockInfo value)
+        {
+            _blockInfoDecoder.Encode(this, value);
         }
 
         public void StartByteArray(int contentLength, bool firstByteLessThan128)
@@ -460,7 +469,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(string value)
+        public void Encode(string? value)
         {
             if (string.IsNullOrEmpty(value))
             {
@@ -670,37 +679,76 @@ namespace Nethermind.Serialization.Rlp
 
         private int DeserializeLength(int lengthOfLength)
         {
-            int result;
-            if (PeekByte() == 0)
+            if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
             {
-                throw new RlpException("Length starts with 0");
+                ThrowArgumentOutOfRangeException(lengthOfLength);
+            }
+
+            // Will use Unsafe.ReadUnaligned as we know the length of the span is same
+            // as what we asked for and then explicitly check lengths, so can skip the
+            // additional bounds checking from BinaryPrimitives.ReadUInt16BigEndian etc
+            ref byte firstElement = ref MemoryMarshal.GetReference(Read(lengthOfLength));
+
+            int result = firstElement;
+            if (result == 0)
+            {
+                ThrowInvalidData();
             }
 
             if (lengthOfLength == 1)
             {
-                result = PeekByte();
+                // Already read above
+                // result = span[0];
             }
             else if (lengthOfLength == 2)
             {
-                result = PeekByte(1) | (PeekByte() << 8);
+                if (BitConverter.IsLittleEndian)
+                {
+                    result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref firstElement));
+                }
+                else
+                {
+                    result = Unsafe.ReadUnaligned<ushort>(ref firstElement);
+                }
             }
             else if (lengthOfLength == 3)
             {
-                result = PeekByte(2) | (PeekByte(1) << 8) | (PeekByte() << 16);
-            }
-            else if (lengthOfLength == 4)
-            {
-                result = PeekByte(3) | (PeekByte(2) << 8) | (PeekByte(1) << 16) |
-                         (PeekByte() << 24);
+                if (BitConverter.IsLittleEndian)
+                {
+                    result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1)))
+                        | (result << 16);
+                }
+                else
+                {
+                    result = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref firstElement, 1))
+                        | (result << 16);
+                }
             }
             else
             {
-                // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                throw new InvalidOperationException($"Invalid length of length = {lengthOfLength}");
+                if (BitConverter.IsLittleEndian)
+                {
+                    result = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref firstElement));
+                }
+                else
+                {
+                    result = Unsafe.ReadUnaligned<int>(ref firstElement);
+                }
             }
 
-            SkipBytes(lengthOfLength);
             return result;
+
+            [DoesNotReturn]
+            static void ThrowInvalidData()
+            {
+                throw new RlpException("Length starts with 0");
+            }
+
+            [DoesNotReturn]
+            static void ThrowArgumentOutOfRangeException(int lengthOfLength)
+            {
+                throw new InvalidOperationException($"Invalid length of length = {lengthOfLength}");
+            }
         }
 
         public virtual byte ReadByte()
@@ -764,6 +812,21 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return new Keccak(keccakSpan.ToArray());
+        }
+
+        public Keccak? DecodeZeroPrefixKeccak()
+        {
+            int prefix = PeekByte();
+            if (prefix == 128)
+            {
+                ReadByte();
+                return null;
+            }
+
+            ReadOnlySpan<byte> theSpan = DecodeByteArraySpan();
+            byte[] keccakByte = new byte[32];
+            theSpan.CopyTo(keccakByte.AsSpan(32 - theSpan.Length));
+            return new Keccak(keccakByte);
         }
 
         public Address? DecodeAddress()
@@ -916,7 +979,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true,
-            T defaultElement = default(T))
+            T defaultElement = default)
         {
             int positionCheck = ReadSequenceLength() + Position;
             int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
@@ -982,10 +1045,10 @@ namespace Nethermind.Serialization.Rlp
             int result = 0;
             for (int i = 4; i > 0; i--)
             {
-                result = result << 8;
+                result <<= 8;
                 if (i <= length)
                 {
-                    result = result | PeekByte(length - i);
+                    result |= PeekByte(length - i);
                 }
             }
 
@@ -1022,10 +1085,10 @@ namespace Nethermind.Serialization.Rlp
             long result = 0;
             for (int i = 8; i > 0; i--)
             {
-                result = result << 8;
+                result <<= 8;
                 if (i <= length)
                 {
-                    result = result | PeekByte(length - i);
+                    result |= PeekByte(length - i);
                 }
             }
 
@@ -1056,10 +1119,10 @@ namespace Nethermind.Serialization.Rlp
             ulong result = 0;
             for (int i = 8; i > 0; i--)
             {
-                result = result << 8;
+                result <<= 8;
                 if (i <= length)
                 {
-                    result = result | PeekByte(length - i);
+                    result |= PeekByte(length - i);
                 }
             }
 

@@ -25,6 +25,8 @@ namespace Nethermind.Analytics
 
         public UInt256 Balance { get; set; } = UInt256.Zero;
 
+        public bool IsFullDbScan => false;
+
         public bool ShouldVisit(Keccak nextNode)
         {
             if (_ignoreThisOne.Count > 16)

@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
                 Span<byte> inputReshuffled = stackalloc byte[PairSize];
                 for (int i = 0; i < inputData.Length / PairSize; i++)
                 {
-                    inputDataSpan.Slice(i * PairSize + 0, 64).CopyTo(inputReshuffled.Slice(0, 64));
+                    inputDataSpan.Slice(i * PairSize + 0, 64).CopyTo(inputReshuffled[..64]);
                     inputDataSpan.Slice(i * PairSize + 64, 32).CopyTo(inputReshuffled.Slice(96, 32));
                     inputDataSpan.Slice(i * PairSize + 96, 32).CopyTo(inputReshuffled.Slice(64, 32));
                     inputDataSpan.Slice(i * PairSize + 128, 32).CopyTo(inputReshuffled.Slice(160, 32));
@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
 
                 if (success)
                 {
-                    result = (output.Slice(0, 32).ToArray(), true);
+                    result = (output[..32].ToArray(), true);
                 }
                 else
                 {

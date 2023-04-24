@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ConcurrentCollections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -38,7 +39,6 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
 
-        private readonly object _dummyObject = new();
         private readonly object _handlerLock = new();
 
         private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <summary>
         /// Requests sent to peers for which responses have not been received yet
         /// </summary>
-        protected readonly ConcurrentDictionary<HeadersSyncBatch, object> _sent = new();
+        protected readonly ConcurrentHashSet<HeadersSyncBatch> _sent = new();
 
         /// <summary>
         /// Responses received from peers but waiting in a queue for some other requests to be handled first
@@ -239,7 +239,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (noBatchesLeft)
             {
-                if (AllHeadersDownloaded || isImmediateSync && AnyHeaderDownloaded)
+                if ((AllHeadersDownloaded || (isImmediateSync && AnyHeaderDownloaded)) && CurrentState != SyncFeedState.Finished)
                 {
                     FinishAndCleanUp();
                 }
@@ -276,12 +276,25 @@ namespace Nethermind.Synchronization.FastBlocks
         private void HandleDependentBatches(CancellationToken cancellationToken)
         {
             long? lowest = LowestInsertedBlockHeader?.Number;
-            while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
+            long processedBatchCount = 0;
+            const long maxBatchToProcess = 4;
+            while (lowest.HasValue && processedBatchCount < maxBatchToProcess && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
             {
                 MarkDirty();
                 InsertHeaders(dependentBatch!);
                 lowest = LowestInsertedBlockHeader?.Number;
                 cancellationToken.ThrowIfCancellationRequested();
+
+                processedBatchCount++;
+            }
+        }
+
+        private bool HasDependencyToProcess
+        {
+            get
+            {
+                long? lowest = LowestInsertedBlockHeader?.Number;
+                return lowest != null && _dependencies.ContainsKey(lowest.Value - 1);
             }
         }
 
@@ -290,7 +303,10 @@ namespace Nethermind.Synchronization.FastBlocks
             _resetLock.EnterReadLock();
             try
             {
-                HandleDependentBatches(cancellationToken);
+                do
+                {
+                    HandleDependentBatches(cancellationToken);
+                } while (_pending.IsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
 
                 if (_pending.TryDequeue(out HeadersSyncBatch? batch))
                 {
@@ -305,7 +321,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (batch is not null)
                 {
-                    _sent.TryAdd(batch, _dummyObject);
+                    _sent.Add(batch);
                     if (batch.StartNumber >= (LowestInsertedBlockHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
                     {
                         batch.Prioritized = true;
@@ -354,7 +370,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     foreach (var sentBatch in _sent)
                     {
-                        all.TryAdd(sentBatch.Key.EndNumber, $"  SENT       {sentBatch.Key}");
+                        all.TryAdd(sentBatch.EndNumber, $"  SENT       {sentBatch}");
                     }
 
                     foreach (KeyValuePair<long, string> keyValuePair in all
@@ -379,7 +395,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _resetLock.EnterReadLock();
             try
             {
-                if (!_sent.ContainsKey(batch))
+                if (!_sent.Contains(batch))
                 {
                     if (_logger.IsDebug) _logger.Debug("Ignoring batch not in sent record");
                     return SyncResponseHandlingResult.Ignored;
@@ -411,7 +427,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 finally
                 {
                     batch.MarkHandlingEnd();
-                    _sent.TryRemove(batch, out _);
+                    _sent.TryRemove(batch);
                 }
             }
             finally
@@ -521,7 +537,11 @@ namespace Nethermind.Synchronization.FastBlocks
                     // response needs to be cached until predecessors arrive
                     if (header.Hash != _nextHeaderHash)
                     {
-                        if (header.Number == (LowestInsertedBlockHeader?.Number ?? _pivotNumber + 1) - 1)
+                        // If the header is at the exact block number, but the hash does not match, then its a different branch.
+                        // However, if the header hash does match the parent of the LowestInsertedBlockHeader, then its just
+                        // `_nextHeaderHash` not updated as the `BlockTree.Insert` has not returned yet.
+                        // We just let it go to the dependency graph.
+                        if (header.Number == (LowestInsertedBlockHeader?.Number ?? _pivotNumber + 1) - 1 && header.Hash != LowestInsertedBlockHeader?.ParentHash)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
                             if (batch.ResponseSourcePeer is not null)
@@ -693,11 +713,10 @@ namespace Nethermind.Synchronization.FastBlocks
             return insertOutcome;
         }
 
-        private void SetExpectedNextHeaderToParent(BlockHeader header)
+        protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
-            ulong nextHeaderDiff = 0;
             _nextHeaderHash = header.ParentHash!;
-            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
+            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out ulong nextHeaderDiff) == true)
             {
                 _nextHeaderDiff = nextHeaderDiff;
             }

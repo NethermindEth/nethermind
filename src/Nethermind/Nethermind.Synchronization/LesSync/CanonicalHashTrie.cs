@@ -78,20 +78,10 @@ namespace Nethermind.Synchronization.LesSync
             return storeValue?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? -1L;
         }
 
-        private void SetMaxSectionIndex(long sectionIndex)
-        {
-            //_keyValueStore[MaxSectionKey] = sectionIndex.ToBigEndianByteArrayWithoutLeadingZeros();
-        }
-
-        //private Keccak GetRootHash(long sectionIndex)
-        //{
-        //    //return GetRootHash(_keyValueStore, sectionIndex);
-        //}
-
         private static Keccak GetRootHash(IKeyValueStore db, long sectionIndex)
         {
             byte[]? hash = db[GetRootHashKey(sectionIndex)];
-            return hash is null ? EmptyTreeHash : new Keccak(hash);
+            return hash == null ? EmptyTreeHash : new Keccak(hash);
         }
 
         private static Keccak GetMaxRootHash(IKeyValueStore db)
@@ -113,7 +103,7 @@ namespace Nethermind.Synchronization.LesSync
         public (Keccak?, UInt256) Get(Span<byte> key)
         {
             byte[]? val = base.Get(key);
-            if (val is null)
+            if (val == null)
             {
                 throw new InvalidDataException("Missing CHT data");
             }
@@ -143,7 +133,10 @@ namespace Nethermind.Synchronization.LesSync
                 throw new ArgumentException("Trying to use a header with a null total difficulty in LES Canonical Hash Trie");
             }
 
-            return _decoder.Encode((header.Hash, header.TotalDifficulty.Value));
+            (Keccak? Hash, UInt256 Value) item = (header.Hash, header.TotalDifficulty.Value);
+            RlpStream stream = new(_decoder.GetLength(item, RlpBehaviors.None));
+            _decoder.Encode(stream, item);
+            return new Rlp(stream.Data);
         }
     }
 }

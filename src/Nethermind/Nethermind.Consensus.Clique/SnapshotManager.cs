@@ -91,7 +91,7 @@ namespace Nethermind.Consensus.Clique
         public Snapshot GetOrCreateSnapshot(long number, Keccak hash)
         {
             Snapshot? snapshot = GetSnapshot(number, hash);
-            if (!(snapshot is null))
+            if (snapshot is not null)
             {
                 return snapshot;
             }
@@ -138,7 +138,7 @@ namespace Nethermind.Consensus.Clique
 
                     // No snapshot for this header, gather the header and move backward
                     headers.Add(header);
-                    number = number - 1;
+                    number--;
                     hash = header.ParentHash;
                 }
 
@@ -240,9 +240,10 @@ namespace Nethermind.Consensus.Clique
 
         private void Store(Snapshot snapshot)
         {
-            Rlp rlp = _decoder.Encode(snapshot);
+            RlpStream stream = new(_decoder.GetLength(snapshot, RlpBehaviors.None));
+            _decoder.Encode(stream, snapshot);
             Keccak key = GetSnapshotKey(snapshot.Hash);
-            _blocksDb.Set(key, rlp.Bytes);
+            _blocksDb.Set(key, stream.Data);
         }
 
         private Snapshot Apply(Snapshot original, List<BlockHeader> headers, ulong epoch)
