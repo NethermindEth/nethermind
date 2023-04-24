@@ -32,7 +32,5 @@ namespace Nethermind.Synchronization.ParallelSync
         UInt256 ChainDifficulty { get; }
 
         UInt256? GetTotalDifficulty(Keccak blockHash);
-
-        void RecalculateProgressPointers();
     }
 }

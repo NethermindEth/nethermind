@@ -239,7 +239,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void RecalculateTreeLevels()
+        private void RecalculateTreeLevels()
         {
             LoadLowestInsertedBodyNumber();
             LoadLowestInsertedHeader();

@@ -158,7 +158,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 // to avoid expensive checks we make this simple check at the beginning
                 else
                 {
-                    Snapshot best = EnsureSnapshot(peerDifficulty.Value, peerBlock.Value, inBeaconControl);
+                    Snapshot best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value, inBeaconControl);
                     best.IsInBeaconHeaders = _beaconSyncStrategy.ShouldBeInBeaconHeaders();
 
                     if (!FastSyncEnabled)
@@ -641,30 +641,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Dispose() => _cancellation.Dispose();
 
-        private Snapshot EnsureSnapshot(in UInt256 peerDifficulty, long peerBlock, bool inBeaconControl)
-        {
-            // need to find them in the reversed order otherwise we may fall behind the processing
-            // and think that we have an invalid snapshot
-            Snapshot best = TakeSnapshot(peerDifficulty, peerBlock, inBeaconControl);
-
-            if (!IsSnapshotValid(best))
-            {
-                string stateString = BuildStateString(best);
-                if (_logger.IsWarn) _logger.Warn($"Invalid snapshot calculation: {stateString}. Recalculating progress pointers...");
-                _syncProgressResolver.RecalculateProgressPointers();
-                best = TakeSnapshot(peerDifficulty, peerBlock, inBeaconControl);
-                if (!IsSnapshotValid(best))
-                {
-                    string recalculatedSnapshot = BuildStateString(best);
-                    string errorMessage = $"Cannot recalculate snapshot progress. Invalid snapshot calculation: {recalculatedSnapshot}";
-                    if (_logger.IsError) _logger.Error(errorMessage);
-                    throw new InvalidAsynchronousStateException(errorMessage);
-                }
-            }
-
-            return best;
-        }
-
         private Snapshot TakeSnapshot(in UInt256 peerDifficulty, long peerBlock, bool inBeaconControl)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
@@ -676,12 +652,14 @@ namespace Nethermind.Synchronization.ParallelSync
             long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? peerBlock;
             UInt256 chainDifficulty = _syncProgressResolver.ChainDifficulty;
 
-            return new(processed, state, block, header, chainDifficulty, Math.Min(peerBlock, 0), peerDifficulty, inBeaconControl, targetBlock);
+            Snapshot best = new(processed, state, block, header, chainDifficulty, peerBlock, peerDifficulty, inBeaconControl, targetBlock);
+            VerifySnapshot(best);
+            return best;
         }
 
-        private bool IsSnapshotValid(Snapshot best)
+        private void VerifySnapshot(Snapshot best)
         {
-            return // none of these values should ever be negative
+            if ( // none of these values should ever be negative
                 best.Block < 0
                 || best.Header < 0
                 || best.State < 0
@@ -693,9 +671,17 @@ namespace Nethermind.Synchronization.ParallelSync
                 // we cannot download state for an unknown header
                 || best.State > best.Header
                 // we can only process blocks for which we have full body
-                || best.Processed > best.Block;
+                || best.Processed > best.Block
             // for any processed block we should have its full state
-            // but we only do limited lookups for state so we need to instead fast sync to now;
+            // || (best.Processed > best.State && best.Processed > best.BeamState))
+            // but we only do limited lookups for state so we need to instead fast sync to now
+            )
+            {
+                string stateString = BuildStateString(best);
+                string errorMessage = $"Invalid best state calculation: {stateString}";
+                if (_logger.IsError) _logger.Error(errorMessage);
+                throw new InvalidAsynchronousStateException(errorMessage);
+            }
         }
 
         private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks)
