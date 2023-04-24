@@ -147,9 +147,7 @@ namespace Nethermind.AccountAbstraction
         {
             get
             {
-                if (_userOperationTxSource is null)
-                {
-                    _userOperationTxSource = new UserOperationTxSource
+                _userOperationTxSource ??= new UserOperationTxSource
                     (
                         _userOperationTxBuilders,
                         _userOperationPools,
@@ -159,7 +157,6 @@ namespace Nethermind.AccountAbstraction
                         _nethermindApi.EngineSigner!,
                         _logger
                     );
-                }
 
                 return _userOperationTxSource;
             }
@@ -169,10 +166,7 @@ namespace Nethermind.AccountAbstraction
         {
             get
             {
-                if (_userOperationBroadcaster is null)
-                {
-                    _userOperationBroadcaster = new UserOperationBroadcaster(_logger);
-                }
+                _userOperationBroadcaster ??= new UserOperationBroadcaster(_logger);
 
                 return _userOperationBroadcaster;
             }

@@ -886,8 +886,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (blockInfo.TotalDifficulty != UInt256.Zero || header.IsGenesis)
-                        header.TotalDifficulty = blockInfo.TotalDifficulty;
+                    SetTotalDifficultyFromBlockInfo(header, blockInfo);
                 }
 
                 if (requiresCanonical)
@@ -1062,8 +1061,7 @@ namespace Nethermind.Blockchain
         {
             if (blockNumber < 0)
             {
-                throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}",
-                    nameof(blockNumber));
+                throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Value must be greater or equal to zero but is {blockNumber}");
             }
 
             ChainLevelInfo level = LoadLevel(blockNumber);
@@ -1834,8 +1832,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (blockInfo.TotalDifficulty != UInt256.Zero || block.IsGenesis)
-                        block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
+                    SetTotalDifficultyFromBlockInfo(block.Header, blockInfo);
                 }
 
                 if (requiresCanonical)
@@ -1854,6 +1851,33 @@ namespace Nethermind.Blockchain
             return block;
         }
 
+        private bool IsTotalDifficultyAlwaysZero()
+        {
+            // In some Ethereum tests and possible testnets difficulty of all blocks might be zero
+            // We also checking TTD is zero to ensure that block after genesis have zero difficulty
+            return Genesis?.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0;
+        }
+
+        private void SetTotalDifficultyFromBlockInfo(BlockHeader header, BlockInfo blockInfo)
+        {
+            if (header.IsGenesis)
+            {
+                header.TotalDifficulty = header.Difficulty;
+                return;
+            }
+
+            if (blockInfo.TotalDifficulty != UInt256.Zero)
+            {
+                header.TotalDifficulty = blockInfo.TotalDifficulty;
+                return;
+            }
+
+            if (IsTotalDifficultyAlwaysZero())
+            {
+                header.TotalDifficulty = 0;
+            }
+        }
+
         private void SetTotalDifficulty(BlockHeader header)
         {
             if (header.IsGenesis)
@@ -1863,9 +1887,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            // In some Ethereum tests and possible testnets difficulty of all blocks might be zero
-            // We also checking TTD is zero to ensure that block after genesis have zero difficulty
-            if (Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0)
+            if (IsTotalDifficultyAlwaysZero())
             {
                 header.TotalDifficulty = 0;
                 if (_logger.IsTrace) _logger.Trace($"Block {header} has zero total difficulty");

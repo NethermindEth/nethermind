@@ -451,7 +451,7 @@ namespace Nethermind.Runner
             configProvider.AddSource(new JsonConfigSource(configFilePath));
             configProvider.Initialize();
             var incorrectSettings = configProvider.FindIncorrectSettings();
-            if (incorrectSettings.Errors.Count() > 0)
+            if (incorrectSettings.Errors.Count > 0)
             {
                 _logger.Warn($"Incorrect config settings found:{Environment.NewLine}{incorrectSettings.ErrorMsg}");
             }

@@ -38,7 +38,8 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
             Assert.That(logEntry.LoggersAddress == decoded.LoggersAddress, "address");
 
-            KeccaksIterator iterator = new(decoded.TopicsRlp);
+            Span<byte> buffer = stackalloc byte[32];
+            KeccaksIterator iterator = new(decoded.TopicsRlp, buffer);
             for (int i = 0; i < logEntry.Topics.Length; i++)
             {
                 iterator.TryGetNext(out KeccakStructRef keccak);

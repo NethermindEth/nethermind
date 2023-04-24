@@ -868,11 +868,11 @@ namespace Nethermind.Evm
 
                             if (sign >= 0)
                             {
-                                BytesZero32.AsSpan(0, position).CopyTo(b.Slice(0, position));
+                                BytesZero32.AsSpan(0, position).CopyTo(b[..position]);
                             }
                             else
                             {
-                                BytesMax32.AsSpan(0, position).CopyTo(b.Slice(0, position));
+                                BytesMax32.AsSpan(0, position).CopyTo(b[..position]);
                             }
 
                             stack.PushBytes(b);

@@ -55,7 +55,7 @@ public class StartBlockProducerAuRa
     {
         get
         {
-            return _stepCalculator ?? (_stepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager));
+            return _stepCalculator ??= new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
         }
     }
 
