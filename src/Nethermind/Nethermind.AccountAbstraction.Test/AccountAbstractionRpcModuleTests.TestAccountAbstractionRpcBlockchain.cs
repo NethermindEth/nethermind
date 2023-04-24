@@ -194,7 +194,7 @@ namespace Nethermind.AccountAbstraction.Test
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);
-                
+
                 AbiTuple<UserOperationAbi>.EnsureMappingRegistered();
 
                 var parser = new AbiDefinitionParser();
