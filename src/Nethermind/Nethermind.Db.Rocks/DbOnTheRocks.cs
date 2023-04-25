@@ -230,7 +230,20 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             Metrics.OtherDbWrites++;
     }
 
-    public long GetSize() => long.Parse(_db.GetProperty("rocksdb.total-sst-files-size"));
+    public long GetSize()
+    {
+        try
+        {
+            return long.TryParse(_db.GetProperty("rocksdb.total-sst-files-size"), out long size) ? size : 0;
+        }
+        catch (RocksDbSharpException e)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"Failed to update DB size metrics {e.Message}");
+        }
+
+        return 0;
+    }
 
     protected virtual void BuildOptions<T>(PerTableDbConfig dbConfig, Options<T> options) where T : Options<T>
     {

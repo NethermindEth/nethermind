@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -23,28 +21,28 @@ public class StartMonitoring : IStep
 {
     private readonly IApiWithNetwork _api;
     private readonly ILogger _logger;
+    private readonly IMetricsConfig _metricsConfig;
 
     public StartMonitoring(INethermindApi api)
     {
         _api = api;
         _logger = _api.LogManager.GetClassLogger();
+        _metricsConfig = _api.Config<IMetricsConfig>();
     }
 
     public async Task Execute(CancellationToken cancellationToken)
     {
-        IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
-
         // hacky
-        if (!string.IsNullOrEmpty(metricsConfig.NodeName))
+        if (!string.IsNullOrEmpty(_metricsConfig.NodeName))
         {
-            _api.LogManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
+            _api.LogManager.SetGlobalVariable("nodeName", _metricsConfig.NodeName);
         }
 
         MetricsController? controller = null;
-        if (metricsConfig.Enabled || metricsConfig.CountersEnabled)
+        if (_metricsConfig.Enabled || _metricsConfig.CountersEnabled)
         {
             PrepareProductInfoMetrics();
-            controller = new(metricsConfig);
+            controller = new(_metricsConfig);
 
             IEnumerable<Type> metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics));
             foreach (Type metric in metrics)
@@ -53,9 +51,9 @@ public class StartMonitoring : IStep
             }
         }
 
-        if (metricsConfig.Enabled)
+        if (_metricsConfig.Enabled)
         {
-            _api.MonitoringService = new MonitoringService(controller, metricsConfig, _api.LogManager);
+            _api.MonitoringService = new MonitoringService(controller, _metricsConfig, _api.LogManager);
 
             await _api.MonitoringService.StartAsync().ContinueWith(x =>
             {
@@ -75,7 +73,7 @@ public class StartMonitoring : IStep
 
         if (_logger.IsInfo)
         {
-            _logger.Info(metricsConfig.CountersEnabled
+            _logger.Info(_metricsConfig.CountersEnabled
                 ? "System.Diagnostics.Metrics enabled and will be collectable with dotnet-counters"
                 : "System.Diagnostics.Metrics disabled");
         }
@@ -83,9 +81,9 @@ public class StartMonitoring : IStep
 
     private void SetupMetrics()
     {
-        _api.MonitoringService.AddMetricsUpdateAction(() =>
+        if (_metricsConfig.EnableDbSizeMetrics)
         {
-            try
+            _api.MonitoringService.AddMetricsUpdateAction(() =>
             {
                 Db.Metrics.StateDbSize = _api.DbProvider!.StateDb.GetSize();
                 Db.Metrics.ReceiptsDbSize = _api.DbProvider!.ReceiptsDb.GetSize();
@@ -97,13 +95,8 @@ public class StartMonitoring : IStep
                 Db.Metrics.ChtDbSize = _api.DbProvider!.ChtDb.GetSize();
                 Db.Metrics.MetadataDbSize = _api.DbProvider!.MetadataDb.GetSize();
                 Db.Metrics.WitnessDbSize = _api.DbProvider!.WitnessDb.GetSize();
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsWarn)
-                    _logger.Warn($"Failed to update DB size metrics {e.Message}");
-            }
-        });
+            });
+        }
 
         _api.MonitoringService.AddMetricsUpdateAction(() =>
         {
