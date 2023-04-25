@@ -178,10 +178,11 @@ namespace Nethermind.Trie.Pruning
                             AnnounceReorgBoundaries();
                         }
                     }
-                    _committedNodes?.SetRootHashForBlock(set.BlockNumber, set.Root?.Keccak);
-
-                    CurrentPackage = null;
                 }
+                _committedNodes?.SetRootHashForBlock(blockNumber, root?.Keccak);
+
+                if (trieType == TrieType.State)
+                    CurrentPackage = null;
             }
             finally
             {
