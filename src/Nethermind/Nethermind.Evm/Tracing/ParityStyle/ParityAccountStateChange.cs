@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 {
                     writer.WriteStartObject();
                     writer.WritePropertyName("+"u8);
-                    _32BytesConverter.Write(writer, change.After, options);
+                    JsonSerializer.Serialize(writer, change.After, options);
                     writer.WriteEndObject();
                 }
                 else
@@ -52,9 +52,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     writer.WritePropertyName("*"u8);
                     writer.WriteStartObject();
                     writer.WritePropertyName("from"u8);
-                    _32BytesConverter.Write(writer, change.Before, options);
+                    JsonSerializer.Serialize(writer, change.Before, options);
                     writer.WritePropertyName("to"u8);
-                    _32BytesConverter.Write(writer, change.After, options);
+                    JsonSerializer.Serialize(writer, change.After, options);
                     writer.WriteEndObject();
                     writer.WriteEndObject();
                 }
