@@ -305,7 +305,7 @@ namespace Nethermind.Trie
                     if (FullRlp is null)
                     {
                         //|| PathToNode is temp until storage changes are merged
-                        if (tree.Capability == TrieNodeResolverCapability.Hash || PathToNode == null)
+                        if (tree.Capability == TrieNodeResolverCapability.Hash)
                         {
                             if (Keccak is null)
                                 throw new TrieException("Unable to resolve node without Keccak");
@@ -534,7 +534,24 @@ namespace Nethermind.Trie
             }
             else if (childOrRef is Keccak reference)
             {
-                child = tree.FindCachedOrUnknown(reference);
+                switch (tree.Capability)
+                {
+                    case TrieNodeResolverCapability.Hash:
+                        child = tree.FindCachedOrUnknown(reference);
+                        break;
+                    case TrieNodeResolverCapability.Path:
+                        int totalLen = PathToNode.Length + (Key?.Length ?? 0) + (IsBranch ? 1 : 0);
+                        Span<byte> childPath = stackalloc byte[totalLen];
+                        PathToNode.CopyTo(childPath);
+                        Key.CopyTo(childPath.Slice(PathToNode.Length));
+                        if (IsBranch) childPath[totalLen - 1] = (byte)childIndex;
+                        child = tree.FindCachedOrUnknown(reference, childPath, StoreNibblePathPrefix);
+                        child.Keccak = reference;
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
             }
             else
             {
