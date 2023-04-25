@@ -381,7 +381,6 @@ namespace Nethermind.Trie
 
                 if (RootRef?.IsDirty == true)
                 {
-                    _logger.Error("RootRef is also null - tree not initialized");
                     return GetInternal(rawKey);
                 }
 

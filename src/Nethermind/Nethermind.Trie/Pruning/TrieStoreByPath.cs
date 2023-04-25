@@ -59,7 +59,7 @@ namespace Nethermind.Trie.Pruning
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
-            _committedNodes = new TrieNodeBlockCache(this, 0, logManager);
+            _committedNodes = new TrieNodeBlockCache(this, historyBlockDepth, logManager);
         }
 
         public long LastPersistedBlockNumber
