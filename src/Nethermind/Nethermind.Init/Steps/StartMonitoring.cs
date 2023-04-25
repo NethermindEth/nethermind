@@ -101,7 +101,7 @@ public class StartMonitoring : IStep
             catch (Exception e)
             {
                 if (_logger.IsWarn)
-                    _logger.Error($"Failed to update DB size metrics {e.Message}");
+                    _logger.Warn($"Failed to update DB size metrics {e.Message}");
             }
         });
 
