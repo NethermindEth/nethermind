@@ -40,8 +40,7 @@ namespace Nethermind.Trie
             }
             set
             {
-                _cache.Set(key, value);
-                _wrappedStore[key] = value;
+                Set(key, value);
             }
         }
 
@@ -65,6 +64,13 @@ namespace Nethermind.Trie
 
             return value;
         }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            _cache.Set(key, value);
+            _wrappedStore.Set(key, value, flags);
+        }
+
 
         public IBatch StartBatch() => _wrappedStore.StartBatch();
 

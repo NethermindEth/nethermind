@@ -56,12 +56,12 @@ public static partial class Ssz
     {
         BitArray value = new BitArray(span.ToArray());
         int length = value.Length - 1;
-        int lastByte = span[span.Length - 1];
+        int lastByte = span[^1];
         int mask = 0x80;
         while ((lastByte & mask) == 0 && mask > 0)
         {
             length--;
-            mask = mask >> 1;
+            mask >>= 1;
         }
         value.Length = length;
         return value;

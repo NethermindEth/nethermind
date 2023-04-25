@@ -111,9 +111,8 @@ namespace Nethermind.Consensus.Ethash
                         if (_epochRefs[epoch] == 1)
                         {
                             // _logger.Warn($"Building data set for epoch {epoch}");
-                            if (_recent.ContainsKey(epoch))
+                            if (_recent.Remove(epoch, out DataSetWithTime reused))
                             {
-                                _recent.Remove(epoch, out DataSetWithTime reused);
                                 _cachedSets[epoch] = reused.DataSet;
                             }
                             else

@@ -43,7 +43,7 @@ namespace Nethermind.Facade.Proxy
                 jsonrpc = 2.0,
                 id,
                 method,
-                @params = (@params ?? Array.Empty<object>()).Where(x => !(x is null))
+                @params = (@params ?? Array.Empty<object>()).Where(x => x is not null)
             });
         }
 

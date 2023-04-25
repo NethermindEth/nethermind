@@ -1505,10 +1505,7 @@ namespace Nethermind.TxPool.Test
                 new TransactionComparerProvider(specProvider, _blockTree);
 
             _headInfo = chainHeadInfoProvider;
-            if (_headInfo is null)
-            {
-                _headInfo = new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
-            }
+            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
 
             return new TxPool(
                 _ethereumEcdsa,

@@ -339,7 +339,7 @@ namespace Nethermind.Core.Extensions
             while (true);
 
             // Fall back to the scalar routine in case of invalid input.
-            return TryDecodeFromUtf16(chars.Slice((int)offset), bytes.Slice((int)(offset / 2)), isOdd: false);
+            return TryDecodeFromUtf16(chars[(int)offset..], bytes[(int)(offset / 2)..], isOdd: false);
         }
 
         /// <summary>

@@ -1543,7 +1543,7 @@ namespace Nethermind.Core.Collections
         {
             ArgumentNullException.ThrowIfNull(key);
 
-            if (!(key is TKey))
+            if (key is not TKey)
             {
                 throw new ArgumentException("The key was of an incorrect type for this dictionary.");
             }
@@ -1664,7 +1664,7 @@ namespace Nethermind.Core.Collections
             {
                 ArgumentNullException.ThrowIfNull(key);
 
-                if (!(key is TKey))
+                if (key is not TKey)
                 {
                     throw new ArgumentException("The key was of an incorrect type for this dictionary.");
                 }
@@ -1680,7 +1680,7 @@ namespace Nethermind.Core.Collections
         {
             if (value != null)
             {
-                if (!(value is TValue))
+                if (value is not TValue)
                 {
                     throw new ArgumentException("The value was of an incorrect type for this dictionary.");
                 }

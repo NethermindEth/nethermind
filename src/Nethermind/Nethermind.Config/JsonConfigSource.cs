@@ -61,10 +61,8 @@ namespace Nethermind.Config
                 {
                     // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
                 }
-                finally
-                {
-                    throw new IOException(missingConfigFileMessage.ToString());
-                }
+
+                throw new IOException(missingConfigFileMessage.ToString());
             }
 
             ApplyJsonConfig(File.ReadAllText(configFilePath));
@@ -98,7 +96,7 @@ namespace Nethermind.Config
         {
             if (!configModule.EndsWith("Config"))
             {
-                configModule = configModule + "Config";
+                configModule += "Config";
             }
 
             _values[configModule] = items;

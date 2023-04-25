@@ -86,7 +86,7 @@ public static partial class Ssz
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Encode(Span<byte> span, UInt128 value)
     {
-        BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(0, 8), (ulong)(value & ulong.MaxValue));
+        BinaryPrimitives.WriteUInt64LittleEndian(span[..8], (ulong)(value & ulong.MaxValue));
         BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(8, 8), (ulong)(value >> 64));
     }
 
@@ -270,7 +270,7 @@ public static partial class Ssz
             throw new InvalidDataException($"{nameof(DecodeUInt128)} expects input of length {expectedLength} and received {span.Length}");
         }
 
-        ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(0, 8));
+        ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span[..8]);
         ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
 
         return new UInt128(s0, s1);

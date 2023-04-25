@@ -20,6 +20,6 @@
   <ItemGroup>
     <PackageReference Include="FastEnum" />
     <PackageReference Include="Polly" />
-    <PackageReference Include="System.IO.Abstractions" />
+    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />
   </ItemGroup>
 </Project>

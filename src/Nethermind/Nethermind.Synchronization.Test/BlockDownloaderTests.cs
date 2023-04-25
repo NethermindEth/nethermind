@@ -1272,7 +1272,7 @@ namespace Nethermind.Synchronization.Test
                 }
 
                 BlockHeader startHeader = _blockTree.FindHeader(blockHashes[0], BlockTreeLookupOptions.None);
-                if (startHeader is null) startHeader = _headers[blockHashes[0]];
+                startHeader ??= _headers[blockHashes[0]];
 
                 BlockHeader[] blockHeaders = new BlockHeader[blockHashes.Count];
                 BlockBody[] blockBodies = new BlockBody[blockHashes.Count];

@@ -979,7 +979,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true,
-            T defaultElement = default(T))
+            T defaultElement = default)
         {
             int positionCheck = ReadSequenceLength() + Position;
             int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
@@ -1045,10 +1045,10 @@ namespace Nethermind.Serialization.Rlp
             int result = 0;
             for (int i = 4; i > 0; i--)
             {
-                result = result << 8;
+                result <<= 8;
                 if (i <= length)
                 {
-                    result = result | PeekByte(length - i);
+                    result |= PeekByte(length - i);
                 }
             }
 
@@ -1085,10 +1085,10 @@ namespace Nethermind.Serialization.Rlp
             long result = 0;
             for (int i = 8; i > 0; i--)
             {
-                result = result << 8;
+                result <<= 8;
                 if (i <= length)
                 {
-                    result = result | PeekByte(length - i);
+                    result |= PeekByte(length - i);
                 }
             }
 
@@ -1119,10 +1119,10 @@ namespace Nethermind.Serialization.Rlp
             ulong result = 0;
             for (int i = 8; i > 0; i--)
             {
-                result = result << 8;
+                result <<= 8;
                 if (i <= length)
                 {
-                    result = result | PeekByte(length - i);
+                    result |= PeekByte(length - i);
                 }
             }
 

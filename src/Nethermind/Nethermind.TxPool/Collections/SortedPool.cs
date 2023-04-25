@@ -86,10 +86,7 @@ namespace Nethermind.TxPool.Collections
         public TValue[] GetSnapshot()
         {
             TValue[]? snapshot = _snapshot;
-            if (snapshot is null)
-            {
-                snapshot = _snapshot = _buckets.SelectMany(b => b.Value).ToArray();
-            }
+            snapshot ??= _snapshot = _buckets.SelectMany(b => b.Value).ToArray();
 
             return snapshot;
         }
