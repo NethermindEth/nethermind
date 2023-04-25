@@ -47,23 +47,31 @@ namespace Nethermind.Evm
                 {
                     if (Output.Length > 0)
                     {
-                        try
-                        {
-                            BigInteger start = Output.Span.Slice(4, 32).ToUnsignedBigInteger();
-                            BigInteger length = Output.Slice((int)start + 4, 32).Span.ToUnsignedBigInteger();
-                            Error = string.Concat("Reverted ",
-                                Output.Slice((int)start + 32 + 4, (int)length).ToArray().ToHexString(true));
-                        }
-                        catch (Exception)
+                        var span = Output.Span;
+                        if (span.Length > 32 + 4)
                         {
                             try
                             {
-                                Error = string.Concat("Reverted ", Output.ToArray().ToHexString(true));
+                                BigInteger start = span.Slice(4, 32).ToUnsignedBigInteger();
+                                BigInteger length = span.Slice((int)start + 4, 32).ToUnsignedBigInteger();
+                                Error = string.Concat("Reverted ",
+                                    Output.Slice((int)start + 32 + 4, (int)length).ToArray().ToHexString(true));
                             }
-                            catch
+                            catch (Exception)
                             {
-                                // ignore
+                                try
+                                {
+                                    Error = string.Concat("Reverted ", span.ToHexString(true));
+                                }
+                                catch
+                                {
+                                    // ignore
+                                }
                             }
+                        }
+                        else
+                        {
+                            Error = string.Concat("Reverted ", span.ToHexString(true));
                         }
                     }
                 }
