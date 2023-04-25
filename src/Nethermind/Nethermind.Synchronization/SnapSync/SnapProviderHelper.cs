@@ -163,9 +163,10 @@ namespace Nethermind.Synchronization.SnapSync
 
             Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
 
+            root.StoreNibblePathPrefix = tree.StoreNibblePathPrefix;
             tree.RootRef = root;
             proofNodesToProcess.Push((null, root, -1, new List<byte>()));
-            sortedBoundaryList.Add(root); ;
+            sortedBoundaryList.Add(root);
 
             bool moreChildrenToRight = false;
 
