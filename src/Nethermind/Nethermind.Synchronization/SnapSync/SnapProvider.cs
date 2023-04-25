@@ -161,6 +161,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
+            if (pathWithAccount is null)
+                throw new TrieException("Not Allowed");
             Debug.Assert(pathWithAccount is not null, "path based storage need the account for the storage tree");
             ITrieStore store = _pathBasedTrieStorePool.Get();
             StorageTree tree = new(store, _logManager, pathWithAccount.Path);
