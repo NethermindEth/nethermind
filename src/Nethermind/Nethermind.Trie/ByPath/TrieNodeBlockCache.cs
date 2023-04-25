@@ -155,6 +155,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
     public void PersistUntilBlock(long blockNumber, IBatch? batch = null)
     {
+        _logger.Info($"PersistUntilBlock: {blockNumber}");
         if (_nodesByBlock.IsEmpty)
             return;
         long currentBlockNumber = _nodesByBlock.Keys.Min();
