@@ -91,8 +91,12 @@ public class StartMonitoring : IStep
                 Db.Metrics.ReceiptsDbSize = _api.DbProvider!.ReceiptsDb.GetSize();
                 Db.Metrics.HeadersDbSize = _api.DbProvider!.HeadersDb.GetSize();
                 Db.Metrics.BlocksDbSize = _api.DbProvider!.BlocksDb.GetSize();
-
-                Db.Metrics.DbSize = _api.DbProvider!.RegisteredDbs.Values.Aggregate(0L, (sum, db) => sum + db.GetSize());
+                Db.Metrics.BloomDbSize = _api.DbProvider!.BloomDb.GetSize();
+                Db.Metrics.CodeDbSize = _api.DbProvider!.CodeDb.GetSize();
+                Db.Metrics.BlockInfosDbSize = _api.DbProvider!.BlockInfosDb.GetSize();
+                Db.Metrics.ChtDbSize = _api.DbProvider!.ChtDb.GetSize();
+                Db.Metrics.MetadataDbSize = _api.DbProvider!.MetadataDb.GetSize();
+                Db.Metrics.WitnessDbSize = _api.DbProvider!.WitnessDb.GetSize();
             }
             catch (Exception e)
             {

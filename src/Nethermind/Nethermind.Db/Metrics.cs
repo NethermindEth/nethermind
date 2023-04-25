@@ -139,8 +139,28 @@ namespace Nethermind.Db
         public static long BlocksDbSize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of all dbs")]
-        public static long DbSize { get; set; }
+        [Description("Size of bloom DB in bytes")]
+        public static long BloomDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of code DB in bytes")]
+        public static long CodeDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of blockInfos DB in bytes")]
+        public static long BlockInfosDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of cht DB in bytes")]
+        public static long ChtDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of metadata DB in bytes")]
+        public static long MetadataDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of witness DB in bytes")]
+        public static long WitnessDbSize { get; set; }
 
         [Description("Metrics extracted from RocksDB Compacion Stats and DB Statistics")]
         public static IDictionary<string, long> DbStats { get; set; } = new ConcurrentDictionary<string, long>();
