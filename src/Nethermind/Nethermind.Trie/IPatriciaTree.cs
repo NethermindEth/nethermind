@@ -10,6 +10,7 @@ public interface IPatriciaTree
 {
     Keccak RootHash { get; set; }
     TrieNode? RootRef { get; set; }
+    byte[] StoreNibblePathPrefix { get; }
     void UpdateRootHash();
     void Commit(long blockNumber, bool skipRoot = false);
 

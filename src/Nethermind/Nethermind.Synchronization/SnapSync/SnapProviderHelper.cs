@@ -174,6 +174,7 @@ namespace Nethermind.Synchronization.SnapSync
                 (TrieNode parent, TrieNode node, int pathIndex, List<byte> path) = proofNodesToProcess.Pop();
 
                 node.PathToNode = path.ToArray();
+                node.StoreNibblePathPrefix = tree.StoreNibblePathPrefix;
                 //Console.WriteLine($"Node {node.PathToNode.ToHexString()} hash: {node.Keccak}");
                 if (node.IsExtension)
                 {
