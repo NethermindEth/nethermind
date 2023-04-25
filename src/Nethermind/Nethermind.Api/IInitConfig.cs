@@ -70,6 +70,9 @@ namespace Nethermind.Api
 
         [ConfigItem(Description = "A hint for the max memory that will allow us to configure the DB and Netty memory allocations.", DefaultValue = "null")]
         long? MemoryHint { get; set; }
+
+        [ConfigItem(Description = "EXPERIMANTAL Use path-based state database.", DefaultValue = "false")]
+        bool UsePathBasedState { get; set; }
     }
 
     public enum DiagnosticMode

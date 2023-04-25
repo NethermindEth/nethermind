@@ -104,60 +104,70 @@ namespace Nethermind.Init.Steps
 
             CachingStore cachedStateDb = getApi.DbProvider.StateDb
                 .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
-            setApi.MainStateDbWithCache = getApi.DbProvider.StateDb;
+            //TODO - temporarily not using cached DB for path based until issues are solved
+            setApi.MainStateDbWithCache = initConfig.UsePathBasedState ? getApi.DbProvider.StateDb : cachedStateDb;
 
             IKeyValueStore codeDb = getApi.DbProvider.CodeDb
                 .WitnessedBy(witnessCollector);
 
             ITrieStore trieStore;
-            TrieStore storageStore;
+            ITrieStore storageStore;
             IKeyValueStoreWithBatching stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
-            if (pruningConfig.Mode.IsMemory())
-            {
-                IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
-                if (pruningConfig.Mode.IsFull())
-                {
-                    PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
-                    getApi.DisposeStack.Push(triggerPersistenceStrategy);
-                    persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
-                }
 
+            if (initConfig.UsePathBasedState)
+            {
+                IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval);
                 setApi.TrieStore = trieStore = new TrieStoreByPath(
                     stateWitnessedBy,
-                    Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
+                    No.Pruning,
                     persistenceStrategy,
                     getApi.LogManager, (int)pruningConfig.PersistenceInterval);
 
-                //TODO - remove seprate store for this
                 storageStore = new TrieStore(
                     stateWitnessedBy,
-                    Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
+                    No.Pruning,
                     persistenceStrategy,
                     getApi.LogManager);
-
-                if (pruningConfig.Mode.IsFull())
-                {
-                    IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-                    fullPruningDb.PruningStarted += (_, args) =>
-                    {
-                        cachedStateDb.PersistCache(args.Context);
-                        //trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
-                    };
-                }
             }
             else
             {
-                setApi.TrieStore = trieStore = new TrieStoreByPath(
-                    stateWitnessedBy,
-                    No.Pruning,
-                    Persist.EveryBlock,
-                    getApi.LogManager, 128);
+                if (pruningConfig.Mode.IsMemory())
+                {
+                    IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
+                    if (pruningConfig.Mode.IsFull())
+                    {
+                        PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
+                        getApi.DisposeStack.Push(triggerPersistenceStrategy);
+                        persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
+                    }
 
-                storageStore = new TrieStore(
-                    stateWitnessedBy,
-                    No.Pruning,
-                    Persist.EveryBlock,
-                    getApi.LogManager);
+                    setApi.TrieStore = trieStore = new TrieStore(
+                        stateWitnessedBy,
+                        Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
+                        persistenceStrategy,
+                        getApi.LogManager);
+
+                    if (pruningConfig.Mode.IsFull())
+                    {
+                        IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
+                        fullPruningDb.PruningStarted += (_, args) =>
+                        {
+                            cachedStateDb.PersistCache(args.Context);
+                            trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
+                        };
+                    }
+                }
+                else
+                {
+                    setApi.TrieStore = trieStore = new TrieStore(
+                        stateWitnessedBy,
+                        No.Pruning,
+                        Persist.EveryBlock,
+                        getApi.LogManager);
+                }
+
+                //TODO - remove seprate store for storage
+                storageStore = setApi.TrieStore;
             }
 
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
