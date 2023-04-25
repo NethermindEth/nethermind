@@ -28,7 +28,7 @@ public class ExecutionPayloadBodyV1Result
         Withdrawals = withdrawals;
     }
 
-    public IList<IList<byte>> Transactions { get; set; }
+    public IList<byte[]> Transactions { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public IList<Withdrawal>? Withdrawals { get; set; }
