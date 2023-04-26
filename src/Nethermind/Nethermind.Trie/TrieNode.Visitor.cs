@@ -217,6 +217,11 @@ namespace Nethermind.Trie
                                             storageTrieVisitContext.IsStorage = true;
                                             storageTrieVisitContext.BranchChildIndex = null;
 
+                                            storageRoot.ResolveNode(nodeResolver);
+                                            storageRoot.ResolveKey(nodeResolver, true);
+                                            if (storageRoot.Keccak != account.StorageRoot)
+                                                throw new ArgumentException("Storage root not matching");
+
                                             storageRoot!.Accept(visitor, nodeResolver, storageTrieVisitContext);
                                         }
                                         else

@@ -546,7 +546,10 @@ namespace Nethermind.Trie
                         Key.CopyTo(childPath.Slice(PathToNode.Length));
                         if (IsBranch) childPath[totalLen - 1] = (byte)childIndex;
                         child = tree.FindCachedOrUnknown(reference, childPath, StoreNibblePathPrefix);
-                        child.Keccak = reference;
+                        child.ResolveNode(tree);
+                        child.ResolveKey(tree, false);
+                        if (reference != child.Keccak)
+                            throw new ArgumentException("node is not resolving");
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -594,6 +597,11 @@ namespace Nethermind.Trie
                     child = tree.FindCachedOrUnknown(reference);
                 else
                     child = tree.FindCachedOrUnknown(reference, childPath, StoreNibblePathPrefix);
+
+                child.ResolveNode(tree);
+                child.ResolveKey(tree, false);
+                if (reference != child.Keccak)
+                    throw new ArgumentException("node is not resolving 2");
             }
             else
             {
@@ -1016,6 +1024,8 @@ namespace Nethermind.Trie
                                 rlpStream.Position--;
                                 Span<byte> fullRlp = rlpStream.PeekNextItem();
                                 TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                                child.ResolveNode(tree);
+                                child.ResolveKey(tree, false);
                                 _data![i] = childOrRef = child;
                                 break;
                             }
@@ -1086,7 +1096,10 @@ namespace Nethermind.Trie
                                     if (IsBranch)
                                         childPath[totalLen - 1] = (byte)i;
                                     child = tree.FindCachedOrUnknown(keccak, childPath, StoreNibblePathPrefix);
-                                    child.Keccak = keccak;
+                                    child.ResolveNode(tree);
+                                    child.ResolveKey(tree, false);
+                                    if (keccak != child.Keccak)
+                                        throw new TrieException($"expected and actual keccak not same {keccak} {child.Keccak} |||");
                                 }
                                 //Console.WriteLine($"At node:{PathToNode?.ToHexString()} / {Keccak}, child: {child?.PathToNode?.ToHexString()} / {child?.Keccak}");
                                 _data![i] = childOrRef = child;
@@ -1103,6 +1116,8 @@ namespace Nethermind.Trie
                                 rlpStream.Position--;
                                 Span<byte> fullRlp = rlpStream.PeekNextItem();
                                 TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                                child.ResolveNode(tree);
+                                child.ResolveKey(tree, false);
                                 _data![i] = childOrRef = child;
                                 break;
                             }
