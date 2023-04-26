@@ -13,12 +13,12 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "If set to 'true' then receipts db will be migrated to new schema.", DefaultValue = "false")]
     bool ReceiptsMigration { get; set; }
 
-    [ConfigItem(Description = "If set to 'true' then reduce receipt db size at expense of rpc performance.", DefaultValue = "false")]
+    [ConfigItem(Description = "If set to 'true' then reduce receipt db size at expense of rpc performance.", DefaultValue = "false", HiddenFromDocs = true)]
     bool CompactReceiptStore { get; set; }
 
-    [ConfigItem(Description = "If set to 'true' then reduce receipt tx index db size at expense of rpc performance.", DefaultValue = "false")]
+    [ConfigItem(Description = "If set to 'true' then reduce receipt tx index db size at expense of rpc performance.", DefaultValue = "false", HiddenFromDocs = true)]
     bool CompactTxIndex { get; set; }
 
-    [ConfigItem(Description = "Number of recent blocks to maintain transaction index. 0 to never remove tx index. -1 to never index.", DefaultValue = "0")]
+    [ConfigItem(Description = "Number of recent blocks to maintain transaction index. 0 to never remove tx index. -1 to never index.", DefaultValue = "0", HiddenFromDocs = true)]
     long? TxLookupLimit { get; set; }
 }
