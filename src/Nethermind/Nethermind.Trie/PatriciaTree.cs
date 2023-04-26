@@ -196,7 +196,7 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    _rootHash = RootRef.Keccak;
+                    SetRootHash(RootRef.Keccak!, false);
                 }
             }
 
@@ -351,9 +351,21 @@ namespace Nethermind.Trie
             else if (resetObjects)
             {
                 TrieNode? tempRoot = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
-                tempRoot.ResolveNode(TrieStore);
-                tempRoot.ResolveKey(TrieStore, true);
-                RootRef = tempRoot.Keccak != _rootHash ? TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix) : tempRoot;
+                try
+                {
+                    tempRoot.ResolveNode(TrieStore);
+                    tempRoot.ResolveKey(TrieStore, true);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
+                finally
+                {
+                    RootRef = tempRoot.Keccak != _rootHash ? TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix) : tempRoot;
+                }
+
+
             }
         }
 
