@@ -76,25 +76,6 @@ namespace Ethereum.Test.Base
             }
         }
 
-        private void SetHeaderDecoderTransitionInfo(BlockchainTest test)
-        {
-            HeaderDecoder.Eip1559TransitionBlock = long.MaxValue;
-            HeaderDecoder.WithdrawalTimestamp = ulong.MaxValue;
-            if (test.Network == London.Instance || test.Network == GrayGlacier.Instance)
-            {
-                HeaderDecoder.Eip1559TransitionBlock = 0;
-            }
-            if (test.NetworkAfterTransition == Shanghai.Instance)
-            {
-                HeaderDecoder.Eip1559TransitionBlock = 0;
-                HeaderDecoder.WithdrawalTimestamp = test.TransitionInfo!.Timestamp!.Value;
-            }
-            else if (test.NetworkAfterTransition == London.Instance || test.NetworkAfterTransition == GrayGlacier.Instance)
-            {
-                HeaderDecoder.Eip1559TransitionBlock = test.TransitionInfo!.BlockNumber;
-            }
-        }
-
         protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null)
         {
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
@@ -122,8 +103,6 @@ namespace Ethereum.Test.Base
             {
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
-
-            SetHeaderDecoderTransitionInfo(test);
 
             DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
