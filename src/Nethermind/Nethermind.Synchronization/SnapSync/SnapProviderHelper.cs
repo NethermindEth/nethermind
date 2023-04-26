@@ -324,12 +324,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             Keccak childKeccak = node.GetChildHash(childIndex);
-            if (childKeccak is null)
-            {
-                return true;
-            }
-
-            return store.IsPersisted(childKeccak);
+            return childKeccak is null || store.IsPersisted(childKeccak);
         }
     }
 }
