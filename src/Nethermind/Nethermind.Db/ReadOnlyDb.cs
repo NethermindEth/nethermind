@@ -70,6 +70,8 @@ namespace Nethermind.Db
             return this.LikeABatch();
         }
 
+        public long GetSize() => _wrappedDb.GetSize();
+
         public void Remove(ReadOnlySpan<byte> key) { }
 
         public bool KeyExists(ReadOnlySpan<byte> key)
