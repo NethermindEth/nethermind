@@ -124,6 +124,12 @@ namespace Nethermind.TxPool
 
         public void BroadcastPersistentTxs()
         {
+            if (_persistentTxs.Count == 0)
+            {
+                if (_logger.IsTrace) _logger.Trace($"There is nothing to broadcast - collection of persistent txs is empty");
+                return;
+            }
+
             DateTimeOffset now = DateTimeOffset.Now;
             if (_lastPersistedTxBroadcast + _minTimeBetweenPersistedTxBroadcast > now)
             {
