@@ -20,7 +20,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             var value = new ChainSpecJson.AuraEngineParamsJson.StepDurationJson();
             if (reader.TokenType == JsonTokenType.String)
             {
-                value.Add(0, long.Parse(reader.GetString()));
+                value.Add(0, JsonSerializer.Deserialize<long>(ref reader, options));
             }
             else if (reader.TokenType == JsonTokenType.Number)
             {
