@@ -22,9 +22,17 @@ public class BlobsBundleV1
 
     public BlobsBundleV1(Block block)
     {
-        List<Memory<byte>> commitments = new();
-        List<Memory<byte>> blobs = new();
-        List<Memory<byte>> proofs = new();
+        int blobsCount = 0;
+        foreach (Transaction? tx in block.Transactions)
+        {
+            blobsCount += tx?.BlobVersionedHashes?.Length ?? 0;
+        }
+
+        Commitments = new Memory<byte>[blobsCount];
+        Blobs = new Memory<byte>[blobsCount];
+        Proofs = new Memory<byte>[blobsCount];
+        int i = 0;
+
         foreach (Transaction? tx in block.Transactions)
         {
             if (tx.Type is not TxType.Blob || tx.BlobKzgs is null || tx.Blobs is null)
@@ -34,19 +42,16 @@ public class BlobsBundleV1
 
             for (int cc = 0, bc = 0, pc = 0;
                  cc < tx.BlobKzgs.Length;
+                 i++,
                  cc += Ckzg.Ckzg.BytesPerCommitment,
                  bc += Ckzg.Ckzg.BytesPerBlob,
-                 pc += Ckzg.Ckzg.BytesPerCommitment)
+                 pc += Ckzg.Ckzg.BytesPerProof)
             {
-                commitments.Add(tx.BlobKzgs.AsMemory(cc, cc + Ckzg.Ckzg.BytesPerCommitment));
-                blobs.Add(tx.Blobs.AsMemory(bc, bc + Ckzg.Ckzg.BytesPerBlob));
-                proofs.Add(tx.BlobProofs.AsMemory(pc, pc + Ckzg.Ckzg.BytesPerProof));
+                Commitments[i] = tx.BlobKzgs.AsMemory(cc, Ckzg.Ckzg.BytesPerCommitment);
+                Blobs[i] = tx.Blobs.AsMemory(bc, Ckzg.Ckzg.BytesPerBlob);
+                Proofs[i] = tx.BlobProofs.AsMemory(pc, Ckzg.Ckzg.BytesPerProof);
             }
         }
-
-        Commitments = commitments.ToArray();
-        Blobs = blobs.ToArray();
-        Proofs = proofs.ToArray();
     }
 
     public Memory<byte>[]? Commitments { get; set; }
