@@ -31,6 +31,7 @@ COPY ["Nethermind.HealthChecks/Nethermind.HealthChecks.csproj", "Nethermind.Heal
 COPY ["Nethermind.Hive/Nethermind.Hive.csproj", "Nethermind.Hive/"]
 COPY ["Nethermind.Init/Nethermind.Init.csproj", "Nethermind.Init/"]
 COPY ["Nethermind.JsonRpc/Nethermind.JsonRpc.csproj", "Nethermind.JsonRpc/"]
+COPY ["Nethermind.JsonRpc.TraceStore/Nethermind.JsonRpc.TraceStore.csproj", "Nethermind.JsonRpc.TraceStore/"]
 COPY ["Nethermind.Logging.NLog/Nethermind.Logging.NLog.csproj", "Nethermind.Logging.NLog/"]
 COPY ["Nethermind.Merge.AuRa/Nethermind.Merge.AuRa.csproj", "Nethermind.Merge.AuRa/"]
 COPY ["Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj", "Nethermind.Merge.Plugin/"]

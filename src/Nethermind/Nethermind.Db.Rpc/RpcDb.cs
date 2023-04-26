@@ -36,12 +36,24 @@ namespace Nethermind.Db.Rpc
             _recordDb.Dispose();
         }
 
+        public long GetSize() => 0;
+
         public string Name { get; } = "RpcDb";
 
         public byte[] this[ReadOnlySpan<byte> key]
         {
-            get => GetThroughRpc(key);
-            set => throw new InvalidOperationException("RPC DB does not support writes");
+            get => Get(key);
+            set => Set(key, value);
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None)
+        {
+            throw new InvalidOperationException("RPC DB does not support writes");
+        }
+
+        public byte[] Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return GetThroughRpc(key);
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();

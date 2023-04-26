@@ -118,7 +118,7 @@ namespace Nethermind.Core.Extensions
 
         public static readonly byte[] Zero32 = new byte[32];
 
-        public static readonly byte[] Empty = new byte[0];
+        public static readonly byte[] Empty = Array.Empty<byte>();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this byte b, int bitNumber)
@@ -224,7 +224,7 @@ namespace Nethermind.Core.Extensions
 
             if (bytes.Length > length)
             {
-                return bytes.Slice(0, length).ToArray();
+                return bytes[..length].ToArray();
             }
 
             byte[] result = new byte[length];
@@ -337,7 +337,7 @@ namespace Nethermind.Core.Extensions
             }
 
             Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+            bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
             return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);
         }
 
@@ -354,7 +354,7 @@ namespace Nethermind.Core.Extensions
             }
 
             Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+            bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
             return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);
         }
 
@@ -376,7 +376,7 @@ namespace Nethermind.Core.Extensions
             }
 
             Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+            bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
             return BinaryPrimitives.ReadInt32BigEndian(fourBytes);
         }
 
@@ -398,7 +398,7 @@ namespace Nethermind.Core.Extensions
             }
 
             Span<byte> eightBytes = stackalloc byte[8];
-            bytes.CopyTo(eightBytes.Slice(8 - bytes.Length));
+            bytes.CopyTo(eightBytes[(8 - bytes.Length)..]);
             return BinaryPrimitives.ReadUInt64BigEndian(eightBytes);
         }
 

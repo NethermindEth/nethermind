@@ -18,11 +18,6 @@ namespace Nethermind.Evm.Test
         private readonly bool _simdDisabled;
         protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
-        private void AssertEip1014(Address address, byte[] code)
-        {
-            AssertCodeHash(address, Keccak.Compute(code));
-        }
-
         public SimdTests(bool simdDisabled)
         {
             _simdDisabled = simdDisabled;
@@ -121,11 +116,6 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput receipt = Execute(code);
             AssertSimd(receipt, result);
-        }
-
-        private void AssertSimd(TestAllTracerWithOutput receipt, string result)
-        {
-            AssertSimd(receipt, Bytes.FromHexString(result));
         }
 
         private void AssertSimd(TestAllTracerWithOutput receipt, ReadOnlySpan<byte> result)

@@ -111,7 +111,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (response.PathsAndSlots.Length == 0 && response.Proofs.Length == 0)
             {
-                _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count()}), {request.StartingHash}");
+                _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Length}), {request.StartingHash}");
 
                 _progressTracker.ReportStorageRangeRequestFinished(request);
 

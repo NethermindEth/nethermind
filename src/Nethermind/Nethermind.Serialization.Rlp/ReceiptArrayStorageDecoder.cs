@@ -114,7 +114,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
 
         if (receiptsData.Length > 0 && receiptsData[0] == CompactEncoding)
         {
-            var decoderContext = new Rlp.ValueDecoderContext(receiptsData.Slice(1));
+            var decoderContext = new Rlp.ValueDecoderContext(receiptsData[1..]);
             return CompactReceiptStorageDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
         }
         else

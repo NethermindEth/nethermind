@@ -200,8 +200,7 @@ namespace Nethermind.Blockchain.Filters
                     };
             }
 
-            var topics = obj as IEnumerable<string>;
-            if (topics is null)
+            if (obj is not IEnumerable<string> topics)
             {
                 return null;
             }

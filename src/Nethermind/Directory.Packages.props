@@ -40,11 +40,11 @@
     <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="7.0.3" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.4.1" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.17.0" />
+    <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.0.0" />
     <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.0" />
     <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="1.0.0" />
     <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.0" />
     <PackageVersion Include="Nethermind.Gmp" Version="1.0.1" />
-    <PackageVersion Include="Nethermind.Numerics.Dirichlet" Version="1.0.0" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.1.0" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.2" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.1.1" />
@@ -68,13 +68,13 @@
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="7.0.0" />
     <PackageVersion Include="System.Diagnostics.TextWriterTraceListener" Version="4.3.0" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="6.27.0" />
-    <PackageVersion Include="System.IO.Abstractions" Version="19.1.18" />
     <PackageVersion Include="System.IO.Compression.ZipFile" Version="4.3.0" />
     <PackageVersion Include="System.Linq.Async" Version="6.0.1" />
     <PackageVersion Include="System.Net.Http" Version="4.3.4" />
     <PackageVersion Include="System.Runtime.Caching" Version="7.0.0" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="7.0.1" />
     <PackageVersion Include="System.Text.Encodings.Web" Version="7.0.0" />
+    <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="19.2.18" />
     <PackageVersion Include="Websocket.Client" Version="4.5.2" />
     <PackageVersion Include="YamlDotNet" Version="13.0.1" />
   </ItemGroup>

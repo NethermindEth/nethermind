@@ -32,8 +32,10 @@ namespace Nethermind.JsonRpc.Modules.Admin
     {
         public NodeInfo()
         {
-            Protocols = new Dictionary<string, EthProtocolInfo>();
-            Protocols.Add("eth", new EthProtocolInfo());
+            Protocols = new Dictionary<string, EthProtocolInfo>
+            {
+                { "eth", new EthProtocolInfo() }
+            };
             Ports = new PortsInfo();
         }
 

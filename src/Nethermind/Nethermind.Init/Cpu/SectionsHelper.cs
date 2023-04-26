@@ -11,7 +11,7 @@ using System.Text.RegularExpressions;
 
 namespace Nethermind.Init.Cpu;
 
-internal static class SectionsHelper
+internal static partial class SectionsHelper
 {
     public static Dictionary<string, string> ParseSection(string? content, char separator)
     {
@@ -33,9 +33,12 @@ internal static class SectionsHelper
         // wmic doubles the carriage return character due to a bug.
         // Therefore, the * quantifier should be used to workaround it.
         return
-            Regex.Split(content ?? "", "(\r*\n){2,}")
+            ParseRegex().Split(content ?? "")
                 .Select(s => ParseSection(s, separator))
                 .Where(s => s.Count > 0)
                 .ToList();
     }
+
+    [GeneratedRegex("(\r*\n){2,}")]
+    private static partial Regex ParseRegex();
 }

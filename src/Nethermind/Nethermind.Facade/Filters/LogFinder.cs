@@ -236,10 +236,7 @@ namespace Nethermind.Blockchain.Find
                                 logList ??= new List<FilterLog>();
                                 Keccak[] topics = log.Topics;
 
-                                if (topics is null)
-                                {
-                                    topics = iterator.DecodeTopics(new Rlp.ValueDecoderContext(log.TopicsRlp));
-                                }
+                                topics ??= iterator.DecodeTopics(new Rlp.ValueDecoderContext(log.TopicsRlp));
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
@@ -334,18 +331,6 @@ namespace Nethermind.Blockchain.Find
                     }
                 }
             }
-        }
-
-        private bool TryGetParentBlock(BlockHeader currentBlock, out BlockHeader parentHeader)
-        {
-            if (currentBlock.IsGenesis)
-            {
-                parentHeader = null;
-                return false;
-            }
-
-            parentHeader = _blockFinder.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return true;
         }
     }
 }
