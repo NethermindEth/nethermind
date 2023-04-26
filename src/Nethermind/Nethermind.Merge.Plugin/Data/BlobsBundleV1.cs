@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -16,10 +13,6 @@ namespace Nethermind.Merge.Plugin.Data;
 /// </summary>
 public class BlobsBundleV1
 {
-    public BlobsBundleV1()
-    {
-    }
-
     public BlobsBundleV1(Block block)
     {
         int blobsCount = 0;
@@ -54,7 +47,7 @@ public class BlobsBundleV1
         }
     }
 
-    public Memory<byte>[]? Commitments { get; set; }
-    public Memory<byte>[]? Blobs { get; set; }
-    public Memory<byte>[]? Proofs { get; set; }
+    public Memory<byte>[] Commitments { get; }
+    public Memory<byte>[] Blobs { get; }
+    public Memory<byte>[] Proofs { get; }
 }

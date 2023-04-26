@@ -26,7 +26,7 @@ public partial class EngineModuleTests
     public async Task ExccessDataGas_should_present_in_cancun_only((IReleaseSpec Spec, bool IsExcessDataGasSet) input)
     {
         (IEngineRpcModule rpcModule, string payloadId) = await BuildAndGetPayloadV3Result(input.Spec);
-        ResultWrapper<GetPayloadV2Result?> getPayloadResult =
+        ResultWrapper<GetPayloadV3Result?> getPayloadResult =
             await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
         Assert.That(getPayloadResult.Data!.ExecutionPayload.ExcessDataGas.HasValue,
             Is.EqualTo(input.IsExcessDataGasSet));
@@ -40,7 +40,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         byte[] payloadId = Bytes.FromHexString("0x0");
-        ResultWrapper<GetPayloadV2Result?> responseFirst = await rpc.engine_getPayloadV3(payloadId);
+        ResultWrapper<GetPayloadV3Result?> responseFirst = await rpc.engine_getPayloadV3(payloadId);
         responseFirst.Should().NotBeNull();
         responseFirst.Result.ResultType.Should().Be(ResultType.Failure);
         responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
