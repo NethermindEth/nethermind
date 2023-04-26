@@ -102,7 +102,7 @@ public static class KzgPolynomialCommitments
     /// <summary>
     /// Method to genereate correct data for tests only, not safe
     /// </summary>
-    public static void KzgifyBlob(Span<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1)
+    public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1)
     {
         Ckzg.Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
         Ckzg.Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
