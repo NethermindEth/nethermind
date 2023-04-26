@@ -384,8 +384,18 @@ namespace Nethermind.Trie.Test.Pruning
 
             public byte[]? this[ReadOnlySpan<byte> key]
             {
-                get => _db[key.ToArray()];
-                set => _db[key.ToArray()] = value;
+                get => Get(key);
+                set => Set(key, value);
+            }
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            {
+                _db[key.ToArray()] = value;
+            }
+
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            {
+                return _db[key.ToArray()];
             }
 
             public IBatch StartBatch()
@@ -403,8 +413,18 @@ namespace Nethermind.Trie.Test.Pruning
 
                 public byte[]? this[ReadOnlySpan<byte> key]
                 {
-                    get => _inBatched[key.ToArray()];
-                    set => _inBatched[key.ToArray()] = value;
+                    get => Get(key);
+                    set => Set(key, value);
+                }
+
+                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                {
+                    _inBatched[key.ToArray()] = value;
+                }
+
+                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+                {
+                    return _inBatched[key.ToArray()];
                 }
             }
         }

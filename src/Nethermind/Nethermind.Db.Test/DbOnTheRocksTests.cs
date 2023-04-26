@@ -32,6 +32,12 @@ namespace Nethermind.Db.Test
             DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
             db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
             Assert.AreEqual(new byte[] { 4, 5, 6 }, db[new byte[] { 1, 2, 3 }]);
+
+            WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
+            RocksDbSharp.Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
+
+            db.Set(new byte[] { 2, 3, 4 }, new byte[] { 5, 6, 7 }, WriteFlags.LowPriority);
+            Assert.AreEqual(new byte[] { 5, 6, 7 }, db[new byte[] { 2, 3, 4 }]);
         }
 
         [Test]

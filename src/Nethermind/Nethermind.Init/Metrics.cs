@@ -3,6 +3,7 @@
 
 using System.ComponentModel;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Monitoring.Metrics;
 
 namespace Nethermind.Init
@@ -14,6 +15,10 @@ namespace Nethermind.Init
         [MetricsStaticDescriptionTag(nameof(ProductInfo.Commit), typeof(ProductInfo))]
         [MetricsStaticDescriptionTag(nameof(ProductInfo.Runtime), typeof(ProductInfo))]
         [MetricsStaticDescriptionTag(nameof(ProductInfo.BuildTimestamp), typeof(ProductInfo))]
+        [MetricsStaticDescriptionTag(nameof(ProductInfo.Instance), typeof(ProductInfo))]
+        [MetricsStaticDescriptionTag(nameof(ProductInfo.Network), typeof(ProductInfo))]
+        [MetricsStaticDescriptionTag(nameof(ProductInfo.SyncType), typeof(ProductInfo))]
+        [MetricsStaticDescriptionTag(nameof(ProductInfo.PruningMode), typeof(ProductInfo))]
         public static long Version { get; set; }
     }
 }
