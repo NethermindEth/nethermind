@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -11,8 +12,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
+
     [Rlp.SkipGlobalRegistration]
-    public class CompactReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
+    public class CompactReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
 
@@ -117,7 +119,6 @@ namespace Nethermind.Serialization.Rlp
         public void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors,
             out TxReceiptStructRef item)
         {
-            // Note: This method runs at 2.5 million times/sec on my machine
             item = new TxReceiptStructRef();
 
             if (decoderContext.IsNextItemNull())
@@ -139,29 +140,20 @@ namespace Nethermind.Serialization.Rlp
                     firstItem.Length == 0 ? new KeccakStructRef() : new KeccakStructRef(firstItem);
             }
 
-            decoderContext.DecodeAddressStructRef(out item.Sender);
+            item.Sender = (decoderContext.DecodeAddress() ?? Address.Zero).ToStructRef();
             item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
 
-            (int PrefixLength, int ContentLength) peekPrefixAndContentLength =
-                decoderContext.PeekPrefixAndContentLength();
-            int logsBytes = peekPrefixAndContentLength.ContentLength + peekPrefixAndContentLength.PrefixLength;
-            item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
-            decoderContext.SkipItem();
-        }
+            int sequenceLength = decoderContext.ReadSequenceLength();
+            int lastCheck = sequenceLength + decoderContext.Position;
+            using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
+            while (decoderContext.Position < lastCheck)
+            {
+                logEntries.Add(CompactLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+            }
+            item.Logs = logEntries.ToArray();
 
-        public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors none,
-            out LogEntryStructRef current)
-        {
-            CompactLogEntryDecoder.Instance.DecodeLogEntryStructRef(ref decoderContext, none, out current);
+            item.Bloom = new Bloom(item.Logs).ToStructRef();
         }
-
-        public Keccak[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
-        {
-            return CompactLogEntryDecoder.Instance.DecodeTopics(valueDecoderContext);
-        }
-
-        // Refstruct decode does not generate bloom
-        public bool CanDecodeBloom => false;
 
         public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

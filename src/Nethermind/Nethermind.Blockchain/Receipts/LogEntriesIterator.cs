@@ -12,16 +12,14 @@ namespace Nethermind.Blockchain.Receipts
         private readonly LogEntry[]? _logs;
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
-        private IReceiptRefDecoder _receiptRefDecoder;
         public long Index { get; private set; }
 
-        public LogEntriesIterator(Span<byte> data, IReceiptRefDecoder receiptRefDecoder)
+        public LogEntriesIterator(Span<byte> data)
         {
             _decoderContext = new Rlp.ValueDecoderContext(data);
             _length = _decoderContext.ReadSequenceLength();
             Index = -1;
             _logs = null;
-            _receiptRefDecoder = receiptRefDecoder;
         }
 
         public LogEntriesIterator(LogEntry[] logs)
@@ -38,7 +36,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (_decoderContext.Position < _length)
                 {
-                    _receiptRefDecoder.DecodeLogEntryStructRef(ref _decoderContext, RlpBehaviors.None, out current);
+                    LogEntryDecoder.DecodeStructRef(ref _decoderContext, RlpBehaviors.None, out current);
                     Index++;
                     return true;
                 }

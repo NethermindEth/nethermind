@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -43,8 +42,7 @@ namespace Nethermind.Blockchain.Filters.Topics
                 return Accepts(entry.Topics);
             }
 
-            Span<byte> buffer = stackalloc byte[32];
-            var iterator = new KeccaksIterator(entry.TopicsRlp, buffer);
+            var iterator = new KeccaksIterator(entry.TopicsRlp);
             for (int i = 0; i < _expressions.Length; i++)
             {
                 if (iterator.TryGetNext(out var keccak))

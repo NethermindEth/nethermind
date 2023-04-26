@@ -181,22 +181,15 @@ namespace Nethermind.Blockchain.Receipts
 
             var result = CanGetReceiptsByHash(blockNumber);
             var receiptsData = _blocksDb.GetSpan(blockHash);
-
-
-            Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = () => null;
+            IReceiptsRecovery.IRecoveryContext? recoveryContext = null;
 
             if (_storageDecoder.IsCompactEncoding(receiptsData))
             {
-                recoveryContextFactory = () =>
-                {
-                    Block block = _blockTree.FindBlock(blockHash);
-                    return _receiptsRecovery.CreateRecoveryContext(block!);
-                };
+                Block block = _blockTree.FindBlock(blockHash);
+                recoveryContext = _receiptsRecovery.CreateRecoveryContext(block!);
             }
 
-            IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
-
-            iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb, recoveryContextFactory, refDecoder) : new ReceiptsIterator();
+            iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb, recoveryContext) : new ReceiptsIterator();
             return result;
         }
 

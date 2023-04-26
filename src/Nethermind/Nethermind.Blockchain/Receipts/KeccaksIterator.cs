@@ -11,15 +11,12 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
-        private readonly Span<byte> _buffer;
         public long Index { get; private set; }
 
-        public KeccaksIterator(Span<byte> data, Span<byte> buffer)
+        public KeccaksIterator(Span<byte> data)
         {
-            if (buffer.Length != 32) throw new ArgumentException("Buffer must be 32 bytes long");
             _decoderContext = new Rlp.ValueDecoderContext(data);
             _length = _decoderContext.ReadSequenceLength();
-            _buffer = buffer;
             Index = -1;
         }
 
@@ -27,7 +24,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_decoderContext.Position < _length)
             {
-                _decoderContext.DecodeZeroPrefixedKeccakStructRef(out current, _buffer);
+                _decoderContext.DecodeKeccakStructRef(out current);
                 Index++;
                 return true;
             }

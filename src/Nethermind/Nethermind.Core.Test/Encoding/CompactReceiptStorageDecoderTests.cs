@@ -146,7 +146,7 @@ namespace Nethermind.Core.Test.Encoding
             Assert.AreEqual(txReceipt.Sender.ToString(), deserialized.Sender.ToString(), "sender");
             Assert.AreEqual(0, deserialized.GasUsed, "gas used");
             Assert.AreEqual(txReceipt.GasUsedTotal, deserialized.GasUsedTotal, "gas used total");
-            deserialized.Bloom.Bytes.Length.Should().Be(0);
+            Assert.AreEqual(txReceipt.Bloom.ToString(), deserialized.Bloom.ToString(), "bloom");
             deserialized.Recipient.Bytes.Length.Should().Be(0);
             Assert.AreEqual(txReceipt.StatusCode, deserialized.StatusCode, "status");
         }
