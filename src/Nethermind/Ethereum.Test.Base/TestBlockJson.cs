@@ -12,7 +12,7 @@ namespace Ethereum.Test.Base
         public string? Rlp { get; set; }
         public LegacyTransactionJson[]? Transactions { get; set; }
         [JsonProperty("expectException")]
-        private string? ExpectedException2 { set { ExpectedException = value; } }
+        private string? ExpectException { set { ExpectedException = value; } }
         [JsonProperty("expectExceptionALL")]
         public string? ExpectedException { get; set; }
     }
