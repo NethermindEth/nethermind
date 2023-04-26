@@ -57,23 +57,23 @@ namespace Ethereum.Test.Base
             };
         }
 
-        private static TransitionInfo ParseTransitionInfo(string transitionInfo)
+        private static ForkActivation ParseTransitionInfo(string transitionInfo)
         {
             const string timestampPrefix = "Time";
             const char kSuffix = 'k';
             if (!transitionInfo.StartsWith(timestampPrefix))
             {
-                return new TransitionInfo { BlockNumber = int.Parse(transitionInfo) };
+                return new ForkActivation(int.Parse(transitionInfo));
             }
 
             transitionInfo = transitionInfo.Remove(0, timestampPrefix.Length);
             if (!transitionInfo.EndsWith(kSuffix))
             {
-                return new TransitionInfo { Timestamp = ulong.Parse(transitionInfo) };
+                return ForkActivation.TimestampOnly(ulong.Parse(transitionInfo));
             }
 
             transitionInfo = transitionInfo.RemoveEnd(kSuffix);
-            return new TransitionInfo { Timestamp = ulong.Parse(transitionInfo) * 1000 };
+            return ForkActivation.TimestampOnly(ulong.Parse(transitionInfo) * 1000);
         }
 
         public static BlockHeader Convert(TestBlockHeaderJson? headerJson)
