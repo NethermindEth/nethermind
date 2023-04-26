@@ -156,6 +156,8 @@ namespace Nethermind.Init.Steps
                 }
             }
 
+            _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}");
+
             if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
             {
                 Task.Run(VerifyTrie);
