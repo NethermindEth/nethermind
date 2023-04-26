@@ -24,7 +24,7 @@ namespace Nethermind.Core.Test.Builders
                 Nonce = 0,
                 Value = 1,
                 Data = Array.Empty<byte>(),
-                Timestamp = 0,
+                Timestamp = 0
             };
         }
 

@@ -82,7 +82,7 @@ namespace Nethermind.Core
         /// </summary>
         public Span<byte> LogsRlp { get; set; }
 
-        public LogEntry[]? Logs { get; set; }
+        public LogEntry[]? Logs { get; }
 
         public string? Error { get; set; }
 

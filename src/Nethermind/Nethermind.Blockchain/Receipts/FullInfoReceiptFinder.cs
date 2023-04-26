@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Block block)
         {
             var receipts = _receiptStorage.Get(block);
-            if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.NeedReinsert)
+            if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.Success)
             {
                 _receiptStorage.Insert(block, receipts);
             }
@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Receipts
             if (_receiptsRecovery.NeedRecover(receipts))
             {
                 var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.NeedReinsert)
+                if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.Success)
                 {
                     _receiptStorage.Insert(block, receipts);
                 }

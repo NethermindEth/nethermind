@@ -792,21 +792,6 @@ namespace Nethermind.Serialization.Rlp
                 return new Keccak(keccakSpan.ToArray());
             }
 
-            public Keccak? DecodeZeroPrefixKeccak()
-            {
-                int prefix = PeekByte();
-                if (prefix == 128)
-                {
-                    ReadByte();
-                    return null;
-                }
-
-                ReadOnlySpan<byte> theSpan = DecodeByteArraySpan();
-                byte[] keccakByte = new byte[32];
-                theSpan.CopyTo(keccakByte.AsSpan(32 - theSpan.Length));
-                return new Keccak(keccakByte);
-            }
-
             public void DecodeKeccakStructRef(out KeccakStructRef keccak)
             {
                 int prefix = ReadByte();
@@ -1418,13 +1403,8 @@ namespace Nethermind.Serialization.Rlp
         }
 
         // Assumes that length is greater then 0
-        public static int LengthOfByteString(int length, byte firstByte)
+        private static int LengthOfByteString(int length, byte firstByte)
         {
-            if (length == 0)
-            {
-                return 1;
-            }
-
             if (length == 1 && firstByte < 128)
             {
                 return 1;

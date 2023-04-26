@@ -120,11 +120,5 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.StatusCode = statusCode;
             return this;
         }
-
-        public ReceiptBuilder WithCalculatedBloom()
-        {
-            TestObjectInternal.Bloom = new Bloom(TestObjectInternal.Logs);
-            return this;
-        }
     }
 }
