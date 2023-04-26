@@ -18,7 +18,6 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -183,7 +182,18 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public void SendNewTransaction(Transaction tx)
         {
-            SendMessage(new[] { tx });
+            if (tx.Hash != null && NotifiedTransactions.Set(tx.Hash))
+            {
+                SendNewTransactionCore(tx);
+            }
+        }
+
+        protected virtual void SendNewTransactionCore(Transaction tx)
+        {
+            if (tx.Type != TxType.Blob) //additional protection from sending full blob-type txs
+            {
+                SendMessage(new[] { tx });
+            }
         }
 
         public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false)
@@ -209,7 +219,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             foreach (Transaction tx in txs)
             {
-                int txSize = tx.GetLength(_txDecoder);
+                int txSize = tx.GetLength();
 
                 if (txSize > packetSizeLeft && txsToSend.Count > 0)
                 {
@@ -218,7 +228,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                 }
 
-                if (tx.Hash is not null)
+                if (tx.Hash is not null && tx.Type != TxType.Blob) //additional protection from sending full blob-type txs
                 {
                     txsToSend.Add(tx);
                     packetSizeLeft -= txSize;

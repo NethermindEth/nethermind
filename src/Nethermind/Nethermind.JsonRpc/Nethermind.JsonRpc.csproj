@@ -8,10 +8,10 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" />
-    <PackageReference Include="System.IO.Abstractions" />
     <PackageReference Include="Jint" />
+    <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="System.Linq.Async" />
+    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />

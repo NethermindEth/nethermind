@@ -27,6 +27,8 @@ namespace Nethermind.Monitoring.Metrics
         public readonly Dictionary<string, Gauge> _gauges = new();
         private readonly bool _useCounters;
 
+        private readonly List<Action> _callbacks = new();
+
         public void RegisterMetrics(Type type)
         {
             if (_metricTypes.Add(type) == false)
@@ -150,10 +152,20 @@ namespace Nethermind.Monitoring.Metrics
 
         public void UpdateMetrics(object state)
         {
+            foreach (Action callback in _callbacks)
+            {
+                callback();
+            }
+
             foreach (Type metricType in _metricTypes)
             {
                 UpdateMetrics(metricType);
             }
+        }
+
+        public void AddMetricsUpdateAction(Action callback)
+        {
+            _callbacks.Add(callback);
         }
 
         private void UpdateMetrics(Type type)

@@ -11,6 +11,7 @@ namespace Nethermind.Core
     {
         private readonly IKeyValueStore _store;
         private readonly ConcurrentDictionary<byte[], byte[]?> _currentItems = new();
+        private WriteFlags _writeFlags = WriteFlags.None;
 
         public InMemoryBatch(IKeyValueStore storeWithNoBatchSupport)
         {
@@ -21,19 +22,21 @@ namespace Nethermind.Core
         {
             foreach (KeyValuePair<byte[], byte[]?> keyValuePair in _currentItems)
             {
-                _store[keyValuePair.Key] = keyValuePair.Value;
+                _store.Set(keyValuePair.Key, keyValuePair.Value, _writeFlags);
             }
 
             GC.SuppressFinalize(this);
         }
 
-        public byte[]? this[ReadOnlySpan<byte> key]
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
-            get => _store[key];
-            set
-            {
-                _currentItems[key.ToArray()] = value;
-            }
+            _currentItems[key.ToArray()] = value;
+            _writeFlags = flags;
+        }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return _store.Get(key, flags);
         }
     }
 }

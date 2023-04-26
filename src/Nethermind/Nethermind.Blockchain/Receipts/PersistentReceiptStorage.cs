@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Receipts
                 Block newMain = e.Block;
 
                 // Delete old tx index
-                if (_receiptConfig.TxLookupLimit > 0)
+                if (_receiptConfig.TxLookupLimit > 0 && newMain.Number > _receiptConfig.TxLookupLimit.Value)
                 {
                     Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
                     if (newOldTx != null)
