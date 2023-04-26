@@ -213,8 +213,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
 
-    - name: Nethermind.Secp256k1.Test
-      run: dotnet test src/Nethermind/Nethermind.Secp256k1.Test -c ${{ env.BUILD_CONFIG }}
     - name: Nethermind.Synchronization.Test
       run: dotnet test src/Nethermind/Nethermind.Synchronization.Test -c ${{ env.BUILD_CONFIG }}
 

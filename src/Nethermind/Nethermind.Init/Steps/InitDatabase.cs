@@ -14,14 +14,13 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
-using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(ApplyMemoryHint))]
     public class InitDatabase : IStep
     {
-        private readonly IBasicApi _api;
+        private readonly INethermindApi _api;
 
         public InitDatabase(INethermindApi api)
         {

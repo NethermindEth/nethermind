@@ -83,7 +83,7 @@ namespace Nethermind.Consensus.AuRa
             }
 
             // rerunning block
-            BlockHeader header = e.Blocks.First().Header;
+            BlockHeader header = e.Blocks[0].Header;
             if (_blockTree.WasProcessed(header.Number, header.Hash))
             {
                 using (var batch = _chainLevelInfoRepository.StartBatch())

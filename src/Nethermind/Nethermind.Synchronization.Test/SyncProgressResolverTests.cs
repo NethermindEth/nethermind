@@ -137,6 +137,7 @@ namespace Nethermind.Synchronization.Test
             IDb stateDb = new MemDb();
             SyncConfig syncConfig = new();
             syncConfig.FastBlocks = true;
+            syncConfig.FastSync = true;
             syncConfig.DownloadBodiesInFastSync = true;
             syncConfig.DownloadReceiptsInFastSync = true;
             syncConfig.PivotNumber = "1";
@@ -156,6 +157,7 @@ namespace Nethermind.Synchronization.Test
             IDb stateDb = new MemDb();
             SyncConfig syncConfig = new();
             syncConfig.FastBlocks = true;
+            syncConfig.FastSync = true;
             syncConfig.DownloadBodiesInFastSync = true;
             syncConfig.DownloadReceiptsInFastSync = true;
             syncConfig.PivotNumber = "1";
@@ -176,6 +178,7 @@ namespace Nethermind.Synchronization.Test
             IDb stateDb = new MemDb();
             SyncConfig syncConfig = new();
             syncConfig.FastBlocks = true;
+            syncConfig.FastSync = true;
             syncConfig.DownloadBodiesInFastSync = true;
             syncConfig.DownloadReceiptsInFastSync = true;
             syncConfig.PivotNumber = "1";

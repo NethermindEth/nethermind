@@ -174,7 +174,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (!jsonRpcConfig.EnabledModules.Contains("engine"))
             {
                 // Disable it
-                jsonRpcConfig.EnabledModules = new string[] { };
+                jsonRpcConfig.EnabledModules = Array.Empty<string>();
             }
 
             jsonRpcConfig.AdditionalRpcUrls = jsonRpcConfig.AdditionalRpcUrls

@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Receipts
                 Block newMain = e.Block;
 
                 // Delete old tx index
-                if (_receiptConfig.TxLookupLimit > 0)
+                if (_receiptConfig.TxLookupLimit > 0 && newMain.Number > _receiptConfig.TxLookupLimit.Value)
                 {
                     Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
                     if (newOldTx != null)
@@ -181,15 +181,22 @@ namespace Nethermind.Blockchain.Receipts
 
             var result = CanGetReceiptsByHash(blockNumber);
             var receiptsData = _blocksDb.GetSpan(blockHash);
-            IReceiptsRecovery.IRecoveryContext? recoveryContext = null;
+
+
+            Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = () => null;
 
             if (_storageDecoder.IsCompactEncoding(receiptsData))
             {
-                Block block = _blockTree.FindBlock(blockHash);
-                recoveryContext = _receiptsRecovery.CreateRecoveryContext(block!);
+                recoveryContextFactory = () =>
+                {
+                    Block block = _blockTree.FindBlock(blockHash);
+                    return _receiptsRecovery.CreateRecoveryContext(block!);
+                };
             }
 
-            iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb, recoveryContext) : new ReceiptsIterator();
+            IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
+
+            iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb, recoveryContextFactory, refDecoder) : new ReceiptsIterator();
             return result;
         }
 
