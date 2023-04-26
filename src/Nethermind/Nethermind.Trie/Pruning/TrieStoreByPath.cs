@@ -149,7 +149,7 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
-            _logger.Info($"Finish Block Commit: {trieType} {blockNumber} {root}");
+            // _logger.Info($"Finish Block Commit: {trieType} {blockNumber} {root}");
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
 
@@ -157,12 +157,12 @@ namespace Nethermind.Trie.Pruning
             {
                 if (trieType == TrieType.State) // storage tries happen before state commits
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue.Count}");
+                    // if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue.Count}");
                     BlockCommitSet set = CurrentPackage;
                     if (set is not null)
                     {
                         set.Root = root;
-                        if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
+                        // if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
                         set.Seal();
                     }
                     if (blockNumber == 0) // special case for genesis
@@ -181,7 +181,7 @@ namespace Nethermind.Trie.Pruning
                     }
                 }
                 _committedNodes?.SetRootHashForBlock(blockNumber, root?.Keccak);
-                _logger.Info($"SetRootHashForBlock {trieType} {blockNumber} {root?.Keccak}");
+                // _logger.Info($"SetRootHashForBlock {trieType} {blockNumber} {root?.Keccak}");
 
                 if (trieType == TrieType.State)
                     CurrentPackage = null;

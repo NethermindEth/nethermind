@@ -276,7 +276,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (processedBlock is null)
                     {
-                        _logger.Info($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+                        _logger.Info($"Failed / skipped processing {block.ToString(Block.Format.FullHashAndNumber)}");
                         BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError));
                     }
                     else

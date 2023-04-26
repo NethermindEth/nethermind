@@ -179,7 +179,7 @@ namespace Nethermind.Trie
 
             if (RootRef is not null && RootRef.IsDirty)
             {
-                _logger.Info("Commiting Changes to TrieStore");
+                // _logger.Info("Commiting Changes to TrieStore");
                 Commit(new NodeCommitInfo(RootRef), skipSelf: skipRoot);
                 while (_currentCommit.TryDequeue(out NodeCommitInfo node))
                 {
