@@ -346,9 +346,10 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                RootRef = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
-                RootRef.ResolveNode(TrieStore);
-                RootRef.ResolveKey(TrieStore, true);
+                TrieNode? tempRoot = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
+                tempRoot.ResolveNode(TrieStore);
+                tempRoot.ResolveKey(TrieStore, true);
+                RootRef = tempRoot.Keccak != _rootHash ? TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix) : tempRoot;
             }
         }
 
