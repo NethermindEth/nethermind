@@ -194,6 +194,10 @@ namespace Nethermind.Trie
                 {
                     SetRootHash(RootRef.Keccak!, true);
                 }
+                else
+                {
+                    _rootHash = RootRef.Keccak;
+                }
             }
 
             TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef);
