@@ -180,9 +180,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
+        private bool ShouldNotifyTransaction(Keccak? hash) => hash is not null && NotifiedTransactions.Set(hash);
+
         public void SendNewTransaction(Transaction tx)
         {
-            if (tx.Hash != null && NotifiedTransactions.Set(tx.Hash))
+            if (ShouldNotifyTransaction(tx.Hash))
             {
                 SendNewTransactionCore(tx);
             }
@@ -205,7 +207,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             foreach (Transaction tx in txs)
             {
-                if (sendFullTx || (tx.Hash != null && NotifiedTransactions.Set(tx.Hash)))
+                if (sendFullTx || ShouldNotifyTransaction(tx.Hash))
                 {
                     yield return tx;
                 }
