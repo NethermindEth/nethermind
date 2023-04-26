@@ -171,6 +171,7 @@ namespace Nethermind.Trie
                         else
                         {
                             TrieNode childNode = (TrieNode)item._data[i];
+                            childNode!.ResolveNode(tree);
                             childNode!.ResolveKey(tree, false);
                             totalLength += childNode.Keccak is null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
                         }

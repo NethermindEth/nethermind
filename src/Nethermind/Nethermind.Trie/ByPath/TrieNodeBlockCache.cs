@@ -35,37 +35,25 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
                 this[blockNumber] = nodeDictionary;
             }
 
-            // if (trieNode.FullRlp is null)
-            // {
-            //     if (nodeDictionary.TryRemove(trieNode.FullPath, out TrieNode prev))
-            //     {
-            //         MemoryUsed -= prev.GetMemorySize(false);
-            //     }
-            //
-            //     if (trieNode.PathToNode == Array.Empty<byte>())
-            //     {
-            //         nodeDictionary.TryRemove(trieNode.StoreNibblePathPrefix, out _);
-            //     }
-            // }
-
-            TrieNode addFunc(byte[] key)
+            TrieNode AddFunc(byte[] key)
             {
                 Interlocked.Increment(ref _nodesCount);
                 MemoryUsed += trieNode.GetMemorySize(false);
                 return trieNode;
             }
 
-            TrieNode updateFunc(byte[] key, TrieNode prev)
+            TrieNode UpdateFunc(byte[] key, TrieNode prev)
             {
                 MemoryUsed += prev.GetMemorySize(false) - trieNode.GetMemorySize(false);
                 return trieNode;
             }
 
 
+            nodeDictionary.AddOrUpdate(trieNode.FullPath, AddFunc, UpdateFunc);
+            // TODO: this causes issues when writing to db - this causes double writes
+            if (trieNode.IsLeaf)
+                nodeDictionary.AddOrUpdate(trieNode.StoreNibblePathPrefix.Concat(trieNode.PathToNode).ToArray(), AddFunc, UpdateFunc);
 
-            nodeDictionary?.AddOrUpdate(trieNode.FullPath, addFunc, updateFunc);
-            if (trieNode.PathToNode == Array.Empty<byte>())
-                nodeDictionary?.AddOrUpdate(trieNode.StoreNibblePathPrefix, k => trieNode, (k, n) => trieNode);
         }
     }
 
@@ -85,14 +73,14 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
     {
         _trieStore = trieStore;
         _maxNumberOfBlocks = maxNumberOfBlocks;
-        _logger = logManager?.GetClassLogger<TrieNodePathCache>() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<TrieNodeBlockCache>() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
     public TrieNode? GetNode(byte[] path, Keccak keccak)
     {
-        foreach (long blockNumer in _nodesByBlock.Keys.OrderByDescending(b => b))
+        foreach (long blockNumber in _nodesByBlock.Keys.OrderByDescending(b => b))
         {
-            ConcurrentDictionary<byte[], TrieNode> nodeDictionary = _nodesByBlock[blockNumer];
+            ConcurrentDictionary<byte[], TrieNode> nodeDictionary = _nodesByBlock[blockNumber];
             if (nodeDictionary.TryGetValue(path, out TrieNode node))
             {
                 if (node.Keccak == keccak)
@@ -107,10 +95,8 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
     public TrieNode? GetNode(Keccak rootHash, byte[] path)
     {
-        // _logger.Info($"Trying to get rootHash: {rootHash} {path.ToHexString()}");
         if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
         {
-            // _logger.Info($"RootHash Mapping: {rootHash} {blocks.Count} {string.Join(", ", blocks.AsEnumerable())}");
             if (_nodesByBlock.Count == 0)
             {
                 return null;
@@ -157,9 +143,8 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
     public void PersistUntilBlock(long blockNumber, IBatch? batch = null)
     {
-        _logger.Info($"PersistUntilBlock: {blockNumber}");
-        if (_nodesByBlock.IsEmpty)
-            return;
+        if (_nodesByBlock.IsEmpty) return;
+
         long currentBlockNumber = _nodesByBlock.Keys.Min();
         while (currentBlockNumber <= blockNumber)
         {

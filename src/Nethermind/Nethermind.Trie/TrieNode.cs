@@ -86,18 +86,20 @@ namespace Nethermind.Trie
         {
             get
             {
-                if (!IsLeaf || PathToNode is null)
+                // this is for the Hash based tree
+                if (PathToNode is null) return null;
+
+                if (!IsLeaf)
                 {
-                    if (StoreNibblePathPrefix.Length == 0)
-                    {
-                        return PathToNode;
-                    }
-                    Span<byte> fullPathToNode = new byte[StoreNibblePathPrefix.Length + (PathToNode?.Length ?? 0)];
+                    if (StoreNibblePathPrefix.Length == 0) return PathToNode;
+
+                    Span<byte> fullPathToNode = new byte[StoreNibblePathPrefix.Length + PathToNode.Length];
                     StoreNibblePathPrefix.CopyTo(fullPathToNode);
-                    PathToNode?.CopyTo(fullPathToNode.Slice(StoreNibblePathPrefix.Length));
+                    PathToNode.CopyTo(fullPathToNode.Slice(StoreNibblePathPrefix.Length));
                     return fullPathToNode.ToArray();
                 }
-                Debug.Assert(PathToNode is not null);
+
+                // TODO: is it actually 64? - does Key+PathToNode=64
                 Span<byte> full = new byte[StoreNibblePathPrefix.Length + 64];
                 StoreNibblePathPrefix.CopyTo(full);
                 PathToNode.CopyTo(full.Slice(StoreNibblePathPrefix.Length));
@@ -277,7 +279,8 @@ namespace Nethermind.Trie
 // #if DEBUG
             return
                 $"[{NodeType}({FullRlp?.Length}){(FullRlp is not null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
-                $"|{Keccak}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|FP:{FullPath?.ToHexString()}|SP:{StoreNibblePathPrefix.ToHexString()}";
+                $"|{Keccak}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}" +
+                $"|FP:{  FullPath?.ToHexString()}|SP:{StoreNibblePathPrefix.ToHexString()}";
 // #else
 //             return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 // #endif
@@ -546,10 +549,10 @@ namespace Nethermind.Trie
                         Key.CopyTo(childPath.Slice(PathToNode.Length));
                         if (IsBranch) childPath[totalLen - 1] = (byte)childIndex;
                         child = tree.FindCachedOrUnknown(reference, childPath, StoreNibblePathPrefix);
-                        child.ResolveNode(tree);
-                        child.ResolveKey(tree, false);
-                        if (reference != child.Keccak)
-                            throw new ArgumentException("node is not resolving");
+                        // child.ResolveNode(tree);
+                        // child.ResolveKey(tree, false);
+                        // if (reference != child.Keccak)
+                        //     throw new ArgumentException("node is not resolving");
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -598,10 +601,10 @@ namespace Nethermind.Trie
                 else
                     child = tree.FindCachedOrUnknown(reference, childPath, StoreNibblePathPrefix);
 
-                child.ResolveNode(tree);
-                child.ResolveKey(tree, false);
-                if (reference != child.Keccak)
-                    throw new ArgumentException("node is not resolving 2");
+                // child.ResolveNode(tree);
+                // child.ResolveKey(tree, false);
+                // if (reference != child.Keccak)
+                //     throw new ArgumentException("node is not resolving 2");
             }
             else
             {
@@ -1005,11 +1008,11 @@ namespace Nethermind.Trie
                                 rlpStream.Position--;
                                 Keccak keccak = rlpStream.DecodeKeccak();
                                 TrieNode child = tree.FindCachedOrUnknown(keccak, path, StoreNibblePathPrefix);
-                                child.ResolveNode(tree);
-                                child.ResolveKey(tree, false);
-                                if (keccak != child.Keccak)
-                                    throw new TrieException($"expected and actual keccak not same {keccak} {child.Keccak} ||");
-                                Debug.Assert(keccak == child.Keccak, $"expected and actual keccak not same {keccak} {child.Keccak} ||");
+                                // child.ResolveNode(tree);
+                                // child.ResolveKey(tree, false);
+                                // if (keccak != child.Keccak)
+                                //     throw new TrieException($"expected and actual keccak not same {keccak} {child.Keccak} ||");
+                                // Debug.Assert(keccak == child.Keccak, $"expected and actual keccak not same {keccak} {child.Keccak} ||");
                                 _data![i] = childOrRef = child;
 
                                 if (IsPersisted && !child.IsPersisted)
@@ -1024,8 +1027,8 @@ namespace Nethermind.Trie
                                 rlpStream.Position--;
                                 Span<byte> fullRlp = rlpStream.PeekNextItem();
                                 TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
-                                child.ResolveNode(tree);
-                                child.ResolveKey(tree, false);
+                                // child.ResolveNode(tree);
+                                // child.ResolveKey(tree, false);
                                 _data![i] = childOrRef = child;
                                 break;
                             }
@@ -1096,10 +1099,10 @@ namespace Nethermind.Trie
                                     if (IsBranch)
                                         childPath[totalLen - 1] = (byte)i;
                                     child = tree.FindCachedOrUnknown(keccak, childPath, StoreNibblePathPrefix);
-                                    child.ResolveNode(tree);
-                                    child.ResolveKey(tree, false);
-                                    if (keccak != child.Keccak)
-                                        throw new TrieException($"expected and actual keccak not same {keccak} {child.Keccak} |||");
+                                    // child.ResolveNode(tree);
+                                    // child.ResolveKey(tree, false);
+                                    // if (keccak != child.Keccak)
+                                    //     throw new TrieException($"expected and actual keccak not same {keccak} {child.Keccak} |||");
                                 }
                                 //Console.WriteLine($"At node:{PathToNode?.ToHexString()} / {Keccak}, child: {child?.PathToNode?.ToHexString()} / {child?.Keccak}");
                                 _data![i] = childOrRef = child;
@@ -1116,8 +1119,8 @@ namespace Nethermind.Trie
                                 rlpStream.Position--;
                                 Span<byte> fullRlp = rlpStream.PeekNextItem();
                                 TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
-                                child.ResolveNode(tree);
-                                child.ResolveKey(tree, false);
+                                // child.ResolveNode(tree);
+                                // child.ResolveKey(tree, false);
                                 _data![i] = childOrRef = child;
                                 break;
                             }

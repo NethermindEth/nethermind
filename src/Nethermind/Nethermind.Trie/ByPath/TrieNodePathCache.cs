@@ -91,7 +91,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
         byte[] path = trieNode.FullPath;
 
         AddNodeInternal(path, trieNode, blockNumber);
-        if (trieNode.IsLeaf && (trieNode.Key.Length is not (TrieStoreByPath.AccountLeafNibblesLength or TrieStoreByPath.StorageLeafNibblesLength) || trieNode.PathToNode.Length == 0))
+        if (trieNode.IsLeaf)
             AddNodeInternal(trieNode.StoreNibblePathPrefix.Concat(trieNode.PathToNode).ToArray(), trieNode, blockNumber);
     }
 

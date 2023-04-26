@@ -23,11 +23,6 @@ namespace Nethermind.Trie.Pruning
     public class TrieStoreByPath : ITrieStore
     {
         private const byte PathMarker = 128;
-        public const int AccountLeafNibblesLength = 64;
-        public const int StorageLeafNibblesLength = PatriciaTree.StoragePrefixLength * 2 + 64;
-
-
-        private static readonly byte[] _rootKeyPath = Nibbles.ToEncodedStorageBytes(Array.Empty<byte>());
 
         private int _isFirst;
 
@@ -75,8 +70,6 @@ namespace Nethermind.Trie.Pruning
                 }
             }
         }
-
-        public Keccak LastPersistedRoot { get; private set; }
 
         public long MemoryUsedByDirtyCache
         {
@@ -198,7 +191,7 @@ namespace Nethermind.Trie.Pruning
         public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
         {
             keyValueStore ??= _keyValueStore;
-            byte[] keyPath = path.Length is (AccountLeafNibblesLength or StorageLeafNibblesLength) ? Nibbles.ToBytes(path): Nibbles.ToEncodedStorageBytes(path);
+            byte[] keyPath = Nibbles.NibblesToByteStorage(path);
             byte[]? rlp = _currentBatch?[keyPath] ?? keyValueStore[keyPath];
 
             if (rlp?[0] == PathMarker)
@@ -224,9 +217,9 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        internal byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Keccak rootHash = null)
+        private byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Keccak rootHash = null)
         {
-            byte[] keyPath = path.Length is (AccountLeafNibblesLength or StorageLeafNibblesLength) ? Nibbles.ToBytes(path): Nibbles.ToEncodedStorageBytes(path);
+            byte[] keyPath = Nibbles.NibblesToByteStorage(path);
             byte[]? rlp = TryLoadRlp(path, keyValueStore);
 
             if (rlp is null)
@@ -254,6 +247,27 @@ namespace Nethermind.Trie.Pruning
             Metrics.LoadedFromDbNodesCount++;
 
             return true;
+        }
+
+        public bool IsPersisted(Keccak keccak, byte[] childPath)
+        {
+            byte[]? rlp = TryLoadRlp(childPath, _keyValueStore);
+
+            if (rlp is null)
+            {
+                return false;
+            }
+            TrieNode node = new TrieNode(NodeType.Unknown, rlp: rlp);
+            node.ResolveNode(this);
+            node.ResolveKey(this, false);
+            if (node.Keccak == keccak)
+            {
+                return true;
+            }
+
+            Metrics.LoadedFromDbNodesCount++;
+
+            return false;
         }
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore)
@@ -375,7 +389,6 @@ namespace Nethermind.Trie.Pruning
                 if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
                 LastPersistedBlockNumber = commitSet.BlockNumber;
-                LastPersistedRoot = commitSet.Root?.Keccak;
             }
             finally
             {
@@ -410,7 +423,6 @@ namespace Nethermind.Trie.Pruning
                 while (_commitSetQueue.TryPeek(out frontSet) && frontSet.BlockNumber <= persistUntilBlock)
                 {
                     LastPersistedBlockNumber = frontSet.BlockNumber;
-                    LastPersistedRoot = frontSet.Root?.Keccak;
                     _commitSetQueue.TryDequeue(out _);
                     if (_logger.IsTrace) _logger.Trace($"Persist target {persistUntilBlock} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
                 }
@@ -569,48 +581,34 @@ namespace Nethermind.Trie.Pruning
             //});
         }
 
-       public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore keyValueStore = null)
+        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null)
         {
-            // _logger.Info($"Saving Node Directly: {blockNumber}");
             keyValueStore ??= _keyValueStore;
 
             byte[]? fullPath = trieNode.FullPath;
             if (fullPath is null) throw new ArgumentNullException();
 
-            // _logger.Info($"FullPath for Node: {fullPath.ToHexString()}");
-            byte[] pathBytes = fullPath.Length is AccountLeafNibblesLength or StorageLeafNibblesLength ? Nibbles.ToBytes(fullPath): Nibbles.ToEncodedStorageBytes(fullPath);
-            // _logger.Info($"Path Bytes for Node: {pathBytes.ToHexString()}");
+            byte[] pathBytes = Nibbles.NibblesToByteStorage(fullPath);
 
-            if (trieNode.IsLeaf && (trieNode.Key.Length is not (AccountLeafNibblesLength or StorageLeafNibblesLength) || trieNode.PathToNode.Length == 0))
+            if (trieNode.IsLeaf)
             {
-                byte[]? nibbs = trieNode.StoreNibblePathPrefix.Concat(trieNode.PathToNode).ToArray();
-                byte[] pathToNodeBytes = Nibbles.ToEncodedStorageBytes(nibbs);
-                byte[] newPath = new byte[pathBytes.Length + 1];
-                Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
-                newPath[0] = PathMarker;
+                byte[] pathToNodeNibbles = trieNode.StoreNibblePathPrefix.Concat(trieNode.PathToNode!).ToArray();
+                byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
+
                 if (trieNode.FullRlp == null)
                 {
-                    // _logger.Info($"Deleting Leaf Node Pointer: {pathToNodeBytes.ToHexString()}");
                     keyValueStore[pathToNodeBytes] = null;
                 }
                 else
                 {
+                    byte[] newPath = new byte[pathBytes.Length + 1];
+                    Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
+                    newPath[0] = PathMarker;
                     keyValueStore[pathToNodeBytes] = newPath;
                 }
-                // _logger.Info($"Saving Leaf Node Pointer - PathToNode(Key): {pathToNodeBytes.ToHexString()} ActualPathInDb(Value): {newPath?.ToHexString()}");
             }
 
-            if (trieNode.FullRlp is null)
-            {
-                // _logger.Info($"Deleting Node - PathBytes(key): {pathBytes.ToHexString()}");
-                keyValueStore[pathBytes] = trieNode.FullRlp;
-            }
-            else
-            {
-                // _logger.Info($"Saving Node - PathBytes(key): {pathBytes.ToHexString()} FullRlp: {trieNode.FullRlp?.ToHexString()}");
-                keyValueStore[pathBytes] = trieNode.FullRlp;
-            }
-
+            keyValueStore[pathBytes] = trieNode.FullRlp;
         }
 
         public bool ExistsInDB(Keccak hash, byte[] pathNibbles)
@@ -619,6 +617,7 @@ namespace Nethermind.Trie.Pruning
             if (rlp is not null)
             {
                 TrieNode node = new(NodeType.Unknown, rlp);
+                node.ResolveNode(this);
                 node.ResolveKey(this, false);
                 return node.Keccak == hash;
             }
