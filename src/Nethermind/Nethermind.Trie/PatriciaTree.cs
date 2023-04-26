@@ -188,7 +188,9 @@ namespace Nethermind.Trie
 
                 // reset objects
                 RootRef!.ResolveKey(TrieStore, true);
+                Keccak? currentRootHash = RootRef.Keccak!;
                 SetRootHash(RootRef.Keccak!, true);
+                RootRef.Keccak = currentRootHash;
             }
 
             TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef);
