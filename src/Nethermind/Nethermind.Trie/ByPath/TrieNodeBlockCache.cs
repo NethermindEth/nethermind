@@ -107,8 +107,10 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
     public TrieNode? GetNode(Keccak rootHash, byte[] path)
     {
+        _logger.Info($"Trying to get rootHash: {rootHash} {path.ToHexString()}");
         if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
         {
+            _logger.Info($"RootHash Mapping: {rootHash} {blocks.Count} {string.Join(", ", blocks.AsEnumerable())}");
             if (_nodesByBlock.Count == 0)
             {
                 return null;

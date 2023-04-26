@@ -180,6 +180,7 @@ namespace Nethermind.Trie.Pruning
                     }
                 }
                 _committedNodes?.SetRootHashForBlock(blockNumber, root?.Keccak);
+                _logger.Info($"SetRootHashForBlock {trieType} {blockNumber} {root?.Keccak}");
 
                 if (trieType == TrieType.State)
                     CurrentPackage = null;
