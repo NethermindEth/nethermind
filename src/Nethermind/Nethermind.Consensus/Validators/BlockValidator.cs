@@ -195,9 +195,16 @@ public class BlockValidator : IBlockValidator
 
     private bool ValidateBlobs(Block block, IReleaseSpec spec, out string? error)
     {
-        if (spec.IsEip4844Enabled ^ block.ExcessDataGas is not null)
+        if (spec.IsEip4844Enabled && block.ExcessDataGas is null)
         {
-            error = $"ExcessDataGas cannot be null in block {block.Hash} when EIP-4844 activated.";
+            error = "ExcessDataGas field is not set.";
+            if (_logger.IsWarn) _logger.Warn(error);
+            return false;
+        }
+
+        if (!spec.IsEip4844Enabled && block.ExcessDataGas is not null)
+        {
+            error = "ExcessDataGas field should not have value.";
             if (_logger.IsWarn) _logger.Warn(error);
             return false;
         }
