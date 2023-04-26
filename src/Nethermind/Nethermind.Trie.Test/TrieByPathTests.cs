@@ -809,8 +809,8 @@ public class TrieByPathTests
         }
     }
 
-    // [TestCase(256, 128, 128, 32)]
-    // [TestCase(128, 128, 8, 8)]
+    [TestCase(256, 128, 128, 32, null)]
+    [TestCase(128, 128, 8, 8, null)]
     [TestCase(4, 16, 4, 4, null)]
     public void Fuzz_accounts_with_reorganizations(
         int accountsCount,
