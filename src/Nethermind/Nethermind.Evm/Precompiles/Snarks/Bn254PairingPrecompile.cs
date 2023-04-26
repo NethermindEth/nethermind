@@ -4,18 +4,18 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Bls;
+using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
+namespace Nethermind.Evm.Precompiles.Snarks
 {
     /// <summary>
     /// https://github.com/herumi/mcl/blob/master/api.md
     /// </summary>
-    public class Bn256PairingPrecompile : IPrecompile
+    public class Bn254PairingPrecompile : IPrecompile
     {
         private const int PairSize = 192;
 
-        public static IPrecompile Instance = new Bn256PairingPrecompile();
+        public static IPrecompile Instance = new Bn254PairingPrecompile();
 
         public Address Address { get; } = Address.FromNumber(8);
 
@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            Metrics.Bn256PairingPrecompile++;
+            Metrics.Bn254PairingPrecompile++;
 
             (byte[], bool) result;
             if (inputData.Length % PairSize > 0)
@@ -56,7 +56,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
                     inputReshuffled.CopyTo(inputDataSpan.Slice(i * PairSize, PairSize));
                 }
 
-                bool success = ShamatarLib.Bn256Pairing(inputDataSpan, output);
+                bool success = Pairings.Bn254Pairing(inputDataSpan, output);
 
                 if (success)
                 {

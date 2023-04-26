@@ -4,48 +4,47 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Bls;
+using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles.Bls.Shamatar
+namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class G2AddPrecompile : IPrecompile
+    public class G1MultiExpPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new G2AddPrecompile();
+        public static IPrecompile Instance = new G1MultiExpPrecompile();
 
-        private G2AddPrecompile()
+        private G1MultiExpPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(13);
+        public Address Address { get; } = Address.FromNumber(12);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 4500L;
-        }
-
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
 
+        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        {
+            int k = inputData.Length / ItemSize;
+            return 12000L * k * Discount.For(k) / 1000;
+        }
+
+        private const int ItemSize = 160;
+
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            const int expectedInputLength = 8 * BlsParams.LenFp;
-            if (inputData.Length != expectedInputLength)
+            if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
             {
                 return (Array.Empty<byte>(), false);
             }
 
-            // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
-            // inputData.PrepareEthInput(inputDataSpan);
-
             (byte[], bool) result;
 
-            Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
-            bool success = ShamatarLib.BlsG2Add(inputData.Span, output);
+            Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
+            bool success = Pairings.BlsG1MultiExp(inputData.Span, output);
             if (success)
             {
                 result = (output.ToArray(), true);

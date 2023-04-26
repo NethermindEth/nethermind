@@ -4,22 +4,22 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Bls;
+using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles.Bls.Shamatar
+namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class G1MultiExpPrecompile : IPrecompile
+    public class G2MultiExpPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new G1MultiExpPrecompile();
+        public static IPrecompile Instance = new G2MultiExpPrecompile();
 
-        private G1MultiExpPrecompile()
+        private G2MultiExpPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(12);
+        public Address Address { get; } = Address.FromNumber(15);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
@@ -29,10 +29,10 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             int k = inputData.Length / ItemSize;
-            return 12000L * k * Discount.For(k) / 1000;
+            return 55000L * k * Discount.For(k) / 1000;
         }
 
-        private const int ItemSize = 160;
+        private const int ItemSize = 288;
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
@@ -43,8 +43,8 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
             (byte[], bool) result;
 
-            Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
-            bool success = ShamatarLib.BlsG1MultiExp(inputData.Span, output);
+            Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
+            bool success = Pairings.BlsG2MultiExp(inputData.Span, output);
             if (success)
             {
                 result = (output.ToArray(), true);

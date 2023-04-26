@@ -4,22 +4,22 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Bls;
+using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
+namespace Nethermind.Evm.Precompiles.Snarks
 {
     /// <summary>
-    /// https://github.com/matter-labs/eip1962/blob/master/eip196_header.h
+    /// https://github.com/herumi/mcl/blob/master/api.md
     /// </summary>
-    public class Bn256AddPrecompile : IPrecompile
+    public class Bn254MulPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new Bn256AddPrecompile();
+        public static IPrecompile Instance = new Bn254MulPrecompile();
 
-        public Address Address { get; } = Address.FromNumber(6);
+        public Address Address { get; } = Address.FromNumber(7);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return releaseSpec.IsEip1108Enabled ? 150L : 500L;
+            return releaseSpec.IsEip1108Enabled ? 6000L : 40000L;
         }
 
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
@@ -27,14 +27,14 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
             return 0L;
         }
 
-        public unsafe (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            Metrics.Bn256AddPrecompile++;
-            Span<byte> inputDataSpan = stackalloc byte[128];
+            Metrics.Bn254MulPrecompile++;
+            Span<byte> inputDataSpan = stackalloc byte[96];
             inputData.PrepareEthInput(inputDataSpan);
 
             Span<byte> output = stackalloc byte[64];
-            bool success = ShamatarLib.Bn256Add(inputDataSpan, output);
+            bool success = Pairings.Bn254Mul(inputDataSpan, output);
 
             (byte[], bool) result;
             if (success)

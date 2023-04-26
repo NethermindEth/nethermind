@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -62,8 +62,8 @@ namespace Nethermind.Evm.Test
             for (int i = 0; i < inputs.Length; i++)
             {
                 byte[] cloned = inputs[i].Clone() as byte[];
-                IPrecompile shamatar = Precompiles.Snarks.Shamatar.Bn256PairingPrecompile.Instance;
-                (ReadOnlyMemory<byte>, bool) resultShamatar = shamatar.Run(cloned, MuirGlacier.Instance);
+                IPrecompile precompile = Bn254PairingPrecompile.Instance;
+                _ = precompile.Run(cloned, MuirGlacier.Instance);
             }
         }
     }

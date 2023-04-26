@@ -4,26 +4,26 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Bls;
+using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles.Bls.Shamatar
+namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class G1AddPrecompile : IPrecompile
+    public class G2MulPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new G1AddPrecompile();
+        public static IPrecompile Instance = new G2MulPrecompile();
 
-        private G1AddPrecompile()
+        private G2MulPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(10);
+        public Address Address { get; } = Address.FromNumber(14);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 600L;
+            return 55000L;
         }
 
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
@@ -33,19 +33,19 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            const int expectedInputLength = 4 * BlsParams.LenFp;
+            const int expectedInputLength = 4 * BlsParams.LenFp + BlsParams.LenFr;
             if (inputData.Length != expectedInputLength)
             {
                 return (Array.Empty<byte>(), false);
             }
 
-            // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
+            // Span<byte> inputDataSpan = stackalloc byte[4 * BlsParams.LenFp + BlsParams.LenFr];
             // inputData.PrepareEthInput(inputDataSpan);
 
             (byte[], bool) result;
 
-            Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
-            bool success = ShamatarLib.BlsG1Add(inputData.Span, output);
+            Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
+            bool success = Pairings.BlsG2Mul(inputData.Span, output);
             if (success)
             {
                 result = (output.ToArray(), true);

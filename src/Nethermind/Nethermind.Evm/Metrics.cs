@@ -45,16 +45,16 @@ namespace Nethermind.Evm
         public static long BlockhashOpcode { get; set; }
 
         [CounterMetric]
-        [Description("Number of BN256_MUL precompile calls.")]
-        public static long Bn256MulPrecompile { get; set; }
+        [Description("Number of BN254_MUL precompile calls.")]
+        public static long Bn254MulPrecompile { get; set; }
 
         [CounterMetric]
-        [Description("Number of BN256_ADD precompile calls.")]
-        public static long Bn256AddPrecompile { get; set; }
+        [Description("Number of BN254_ADD precompile calls.")]
+        public static long Bn254AddPrecompile { get; set; }
 
         [CounterMetric]
-        [Description("Number of BN256_PAIRING precompile calls.")]
-        public static long Bn256PairingPrecompile { get; set; }
+        [Description("Number of BN254_PAIRING precompile calls.")]
+        public static long Bn254PairingPrecompile { get; set; }
 
         [CounterMetric]
         [Description("Number of EC_RECOVERY precompile calls.")]

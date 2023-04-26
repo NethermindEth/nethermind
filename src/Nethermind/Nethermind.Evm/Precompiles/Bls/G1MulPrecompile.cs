@@ -4,41 +4,48 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Bls;
+using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles.Bls.Shamatar
+namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class PairingPrecompile : IPrecompile
+    public class G1MulPrecompile : IPrecompile
     {
-        private const int PairSize = 384;
+        public static IPrecompile Instance = new G1MulPrecompile();
 
-        private PairingPrecompile() { }
+        private G1MulPrecompile()
+        {
+        }
 
-        public Address Address { get; } = Address.FromNumber(16);
+        public Address Address { get; } = Address.FromNumber(11);
 
-        public static IPrecompile Instance = new PairingPrecompile();
-
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 115000L;
+        public long BaseGasCost(IReleaseSpec releaseSpec)
+        {
+            return 12000L;
+        }
 
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            return 23000L * (inputData.Length / PairSize);
+            return 0L;
         }
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            if (inputData.Length % PairSize > 0 || inputData.Length == 0)
+            const int expectedInputLength = 2 * BlsParams.LenFp + BlsParams.LenFr;
+            if (inputData.Length != expectedInputLength)
             {
                 return (Array.Empty<byte>(), false);
             }
 
+            // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
+            // inputData.PrepareEthInput(inputDataSpan);
+
             (byte[], bool) result;
 
-            Span<byte> output = stackalloc byte[32];
-            bool success = ShamatarLib.BlsPairing(inputData.Span, output);
+            Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
+            bool success = Pairings.BlsG1Mul(inputData.Span, output);
             if (success)
             {
                 result = (output.ToArray(), true);

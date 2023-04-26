@@ -4,26 +4,26 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Bls;
+using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles.Bls.Shamatar
+namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class MapToG2Precompile : IPrecompile
+    public class G2AddPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new MapToG2Precompile();
+        public static IPrecompile Instance = new G2AddPrecompile();
 
-        private MapToG2Precompile()
+        private G2AddPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(18);
+        public Address Address { get; } = Address.FromNumber(13);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 110000;
+            return 4500L;
         }
 
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
@@ -33,19 +33,19 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            const int expectedInputLength = 2 * BlsParams.LenFp;
+            const int expectedInputLength = 8 * BlsParams.LenFp;
             if (inputData.Length != expectedInputLength)
             {
                 return (Array.Empty<byte>(), false);
             }
 
-            // Span<byte> inputDataSpan = stackalloc byte[2 * BlsParams.LenFp];
+            // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
             // inputData.PrepareEthInput(inputDataSpan);
 
             (byte[], bool) result;
 
             Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
-            bool success = ShamatarLib.BlsMapToG2(inputData.Span, output);
+            bool success = Pairings.BlsG2Add(inputData.Span, output);
             if (success)
             {
                 result = (output.ToArray(), true);

@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Precompiles.Snarks;
 
 namespace Nethermind.Precompiles.Benchmark
 {
-    public class Bn256AddBenchmark : PrecompileBenchmarkBase
+    public class Bn254AddBenchmark : PrecompileBenchmarkBase
     {
         protected override IEnumerable<IPrecompile> Precompiles => new[]
         {
-            Evm.Precompiles.Snarks.Shamatar.Bn256AddPrecompile.Instance
+            Bn254AddPrecompile.Instance
         };
 
         protected override string InputsDirectory => "bnadd";

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Specs;
-using Nethermind.Evm.Precompiles.Snarks.Shamatar;
+using Nethermind.Evm.Precompiles.Snarks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Test
         {
             _blockNumberAdjustment = -1;
             byte[] code = Prepare.EvmCode
-                .CallWithInput(Bn256AddPrecompile.Instance.Address, 1000L, new byte[128])
+                .CallWithInput(Bn254AddPrecompile.Instance.Address, 1000L, new byte[128])
                 .Done;
             TestAllTracerWithOutput result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Test
         public void Test_add_after_istanbul()
         {
             byte[] code = Prepare.EvmCode
-                .CallWithInput(Bn256AddPrecompile.Instance.Address, 1000L, new byte[128])
+                .CallWithInput(Bn254AddPrecompile.Instance.Address, 1000L, new byte[128])
                 .Done;
             TestAllTracerWithOutput result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
         {
             _blockNumberAdjustment = -1;
             byte[] code = Prepare.EvmCode
-                .CallWithInput(Bn256MulPrecompile.Instance.Address, 50000L, new byte[128])
+                .CallWithInput(Bn254MulPrecompile.Instance.Address, 50000L, new byte[128])
                 .Done;
             TestAllTracerWithOutput result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
@@ -59,7 +59,7 @@ namespace Nethermind.Evm.Test
         public void Test_mul_after_istanbul()
         {
             byte[] code = Prepare.EvmCode
-                .CallWithInput(Bn256MulPrecompile.Instance.Address, 10000L, new byte[128])
+                .CallWithInput(Bn254MulPrecompile.Instance.Address, 10000L, new byte[128])
                 .Done;
             TestAllTracerWithOutput result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
@@ -71,7 +71,7 @@ namespace Nethermind.Evm.Test
         {
             _blockNumberAdjustment = -1;
             byte[] code = Prepare.EvmCode
-                .CallWithInput(Bn256PairingPrecompile.Instance.Address, 200000L, new byte[192])
+                .CallWithInput(Bn254PairingPrecompile.Instance.Address, 200000L, new byte[192])
                 .Done;
             TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
@@ -82,7 +82,7 @@ namespace Nethermind.Evm.Test
         public void Test_pairing_after_istanbul()
         {
             byte[] code = Prepare.EvmCode
-                .CallWithInput(Bn256PairingPrecompile.Instance.Address, 200000L, new byte[192])
+                .CallWithInput(Bn254PairingPrecompile.Instance.Address, 200000L, new byte[192])
                 .Done;
             TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);

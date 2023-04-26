@@ -4,48 +4,41 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Bls;
+using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles.Bls.Shamatar
+namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class MapToG1Precompile : IPrecompile
+    public class PairingPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new MapToG1Precompile();
+        private const int PairSize = 384;
 
-        private MapToG1Precompile()
-        {
-        }
+        private PairingPrecompile() { }
 
-        public Address Address { get; } = Address.FromNumber(17);
+        public Address Address { get; } = Address.FromNumber(16);
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 5500L;
-        }
+        public static IPrecompile Instance = new PairingPrecompile();
+
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 115000L;
 
         public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            return 0L;
+            return 23000L * (inputData.Length / PairSize);
         }
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            const int expectedInputLength = 64;
-            if (inputData.Length != expectedInputLength)
+            if (inputData.Length % PairSize > 0 || inputData.Length == 0)
             {
                 return (Array.Empty<byte>(), false);
             }
 
-            // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
-            // inputData.PrepareEthInput(inputDataSpan);
-
             (byte[], bool) result;
 
-            Span<byte> output = stackalloc byte[128];
-            bool success = ShamatarLib.BlsMapToG1(inputData.Span, output);
+            Span<byte> output = stackalloc byte[32];
+            bool success = Pairings.BlsPairing(inputData.Span, output);
             if (success)
             {
                 result = (output.ToArray(), true);
