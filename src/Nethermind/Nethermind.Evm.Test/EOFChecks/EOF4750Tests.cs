@@ -24,12 +24,41 @@ namespace Nethermind.Evm.Test
         protected ISpecProvider SpecProvider => new TestSpecProvider(Frontier.Instance, new OverridableReleaseSpec(Cancun.Instance)
         {
             IsEip5450Enabled = false,
+            IsEip6206Enabled = false,
         });
 
         public static IEnumerable<TestCase> Eip4750TxTestCases
         {
             get
             {
+                yield return new TestCase(2)
+                {
+                    Bytecode = new ScenarioCase(
+                            Functions: new[] {
+                                new FunctionCase(
+                                    0, 0, 2,
+                                    Prepare.EvmCode
+                                        .PushData(23)
+                                        .PushData(3)
+                                        .CALLF(1)
+                                        .POP()
+                                        .RETF()
+                                        .Done
+                                ),
+                                new FunctionCase(
+                                    2, 1, 2,
+                                    Prepare.EvmCode
+                                        .MUL()
+                                        .ADD(54)
+                                        .RETF()
+                                        .Done
+                                )
+                            },
+                            Data: Bytes.FromHexString("deadbeef")
+                        ).Bytecode,
+                    Result = (StatusCode.Success, null),
+                };
+
                 yield return new TestCase(1)
                 {
                     Bytecode = new ScenarioCase(

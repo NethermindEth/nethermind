@@ -362,6 +362,9 @@ namespace Nethermind.Evm
         public static Prepare CALLF(this Prepare @this, UInt16 sectionId)
             => @this.Op(Instruction.CALLF)
                 .Data(BitConverter.GetBytes(sectionId).Reverse().ToArray());
+        public static Prepare JUMPF(this Prepare @this, UInt16 sectionId)
+            => @this.Op(Instruction.JUMPF)
+                .Data(BitConverter.GetBytes(sectionId).Reverse().ToArray());
         public static Prepare CALLF(this Prepare @this, UInt16 sectionId, params byte[] arguments)
             => @this.PushData(arguments)
                     .Op(Instruction.CALLF)

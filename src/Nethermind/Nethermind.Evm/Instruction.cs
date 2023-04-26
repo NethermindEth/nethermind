@@ -90,6 +90,8 @@ namespace Nethermind.Evm
         BEGINSUB = 0x5c, // SubroutinesEnabled
         RETURNSUB = 0x5d, // SubroutinesEnabled
         JUMPSUB = 0x5e, // SubroutinesEnabled
+        JUMPF = 0xb2,
+
 
         PUSH0 = 0x5f, // IncludePush0Instruction
         PUSH1 = 0x60,
@@ -199,7 +201,7 @@ namespace Nethermind.Evm
         public static int GetImmediateCount(this Instruction instruction, bool IsEofContext, byte jumpvCount = 0)
             => instruction switch
             {
-                Instruction.CALLF => IsEofContext ? EvmObjectFormat.Eof1.TWO_BYTE_LENGTH : 0,
+                Instruction.CALLF or Instruction.JUMPF=> IsEofContext ? EvmObjectFormat.Eof1.TWO_BYTE_LENGTH : 0,
                 Instruction.RJUMP or Instruction.RJUMPI => IsEofContext ? EvmObjectFormat.Eof1.TWO_BYTE_LENGTH : 0,
                 Instruction.RJUMPV => IsEofContext ? jumpvCount * EvmObjectFormat.Eof1.TWO_BYTE_LENGTH + EvmObjectFormat.Eof1.ONE_BYTE_LENGTH : 0,
                 >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
@@ -208,6 +210,7 @@ namespace Nethermind.Evm
         public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
             Instruction.RETF or Instruction.INVALID or Instruction.STOP or Instruction.RETURN or Instruction.REVERT => true,
+            // Instruction.JUMPF => true,
             // Instruction.SELFDESTRUCT => true
             _ => false
         };
@@ -228,7 +231,7 @@ namespace Nethermind.Evm
                 Instruction.PC => !IsEofContext,
                 Instruction.CALLCODE or Instruction.SELFDESTRUCT => !IsEofContext,
                 Instruction.JUMPI or Instruction.JUMP => !IsEofContext,
-                Instruction.CALLF or Instruction.RETF => IsEofContext,
+                Instruction.CALLF or Instruction.RETF or Instruction.JUMPF => IsEofContext,
                 Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB => true,
                 Instruction.CALL or Instruction.DELEGATECALL or Instruction.GAS => !IsEofContext,
 
@@ -317,9 +320,9 @@ namespace Nethermind.Evm
             Instruction.CREATE => (3, 1, 0),
             Instruction.CALL => (6, 1, 0),
             Instruction.RETURN => (2, 0, 0),
-            Instruction.DELEGATECALL => (5, 1, 0),
+            Instruction.DELEGATECALL => (6, 1, 0),
             Instruction.CREATE2 => (4, 1, 0),
-            Instruction.STATICCALL => (5, 1, 0),
+            Instruction.STATICCALL => (6, 1, 0),
             Instruction.REVERT => (2, 0, 0),
             Instruction.INVALID => (0, 0, 0),
 
@@ -352,6 +355,7 @@ namespace Nethermind.Evm
         {
             Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => true,
             Instruction.RETF or Instruction.CALLF => true,
+            Instruction.JUMPF => true,
             _ => false
         };
     }

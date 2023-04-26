@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
+
 namespace Nethermind.Evm.EOF;
 
 public struct EofHeader {

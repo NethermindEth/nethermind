@@ -427,6 +427,24 @@ internal static class EvmObjectFormat
                     }
                 }
 
+                if (opcode is Instruction.JUMPF)
+                {
+                    if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-6206 : JUMPF Argument underflow");
+                        return false;
+                    }
+
+                    var targetSectionId = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
+
+                    BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, ref codeBitmap, ref postInstructionByte);
+                    if (targetSectionId >= header.CodeSectionsSize)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EIP-6206 : JUMPF to unknown code section");
+                        return false;
+                    }
+                }
+
                 if (opcode is Instruction.RJUMPV)
                 {
                     if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
@@ -522,7 +540,7 @@ internal static class EvmObjectFormat
                 }
 
                 pos++;
-                if (opcode is Instruction.RJUMP or Instruction.RJUMPI or Instruction.CALLF)
+                if (opcode is Instruction.RJUMP or Instruction.RJUMPI or Instruction.CALLF or Instruction.JUMPF)
                 {
                     pos += TWO_BYTE_LENGTH;
                 }
@@ -546,6 +564,7 @@ internal static class EvmObjectFormat
             Dictionary<int, int> recordedStackHeight = new();
             int peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE];
             ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
+            int curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
 
             Stack<(int Position, int StackHeigth)> workSet = new();
             workSet.Push((0, peakStackHeight));
@@ -576,7 +595,7 @@ internal static class EvmObjectFormat
                     }
 
                     int posPostOpcode = pos + 1;
-                    if (opcode is Instruction.CALLF)
+                    if (opcode is Instruction.CALLF or Instruction.JUMPF)
                     {
                         ushort sectionIndex = code.Slice(posPostOpcode, TWO_BYTE_LENGTH).ReadEthUInt16();
                         inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
@@ -589,11 +608,27 @@ internal static class EvmObjectFormat
                         return false;
                     }
 
-                    stackHeight += outputs - inputs;
+                    stackHeight += outputs - inputs + (opcode is Instruction.JUMPF ? curr_outputs : 0);
                     peakStackHeight = Math.Max(peakStackHeight, stackHeight);
 
                     switch (opcode)
                     {
+                        case Instruction.JUMPF:
+                            {
+                                if (curr_outputs < outputs)
+                                {
+                                    if (Logger.IsTrace) Logger.Trace($"EIP-6206 : Output Count {outputs} must be less or equal than sectionId {sectionId} output count {curr_outputs}");
+                                    return false;
+                                }
+
+                                if (stackHeight != curr_outputs + inputs - outputs)
+                                {
+                                    if (Logger.IsTrace) Logger.Trace($"EIP-6206 : Stack Height must {curr_outputs + inputs - outputs} but found {stackHeight}");
+                                    return false;
+                                }
+
+                                break;
+                            }
                         case Instruction.RJUMP:
                             {
                                 short offset = code.Slice(posPostOpcode, TWO_BYTE_LENGTH).ReadEthInt16();
@@ -636,7 +671,12 @@ internal static class EvmObjectFormat
 
                     if (opcode.IsTerminating())
                     {
-                        var expectedHeight = opcode is Instruction.RETF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + 1] : stackHeight;
+                        var expectedHeight = opcode switch
+                        {
+                            Instruction.RETF => typesection[sectionId * MINIMUM_TYPESECTION_SIZE + 1],
+                            _ => stackHeight
+                        };
+
                         if (expectedHeight != stackHeight)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {stackHeight}");

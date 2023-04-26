@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
 
@@ -21,7 +22,18 @@ public class EofCodeInfo : ICodeInfo
     public ReadOnlyMemory<byte> ContainerSection { get; }
     public (int, int) SectionOffset(int sectionId) => (_header.CodeSections[sectionId].Start - _header.TypeSection.EndOffset, _header.CodeSections[sectionId].Size);
     public (int, int) ContainerOffset(int sectionId) => (_header.ContainerSection[sectionId].Start - _header.DataSection.EndOffset, _header.ContainerSection[sectionId].Size);
-
+    public (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index)
+    {
+        ReadOnlySpan<byte> typesectionSpan = TypeSection.Span;
+        int TypeSectionSectionOffset = index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE;
+        return
+            (
+                typesectionSpan[TypeSectionSectionOffset + EvmObjectFormat.Eof1.INPUTS_OFFSET],
+                typesectionSpan[TypeSectionSectionOffset + EvmObjectFormat.Eof1.OUTPUTS_OFFSET],
+                typesectionSpan.Slice(TypeSectionSectionOffset + EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_OFFSET, EvmObjectFormat.Eof1.MAX_STACK_HEIGHT_LENGTH).ReadEthUInt16()
+            );
+    }
+    
     public bool ValidateJump(int destination, bool isSubroutine)
     {
         _analyzer ??= CodeInfo.CreateAnalyzer(CodeSection);

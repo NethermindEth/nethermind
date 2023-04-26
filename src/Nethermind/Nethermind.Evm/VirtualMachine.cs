@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -2633,7 +2634,7 @@ namespace Nethermind.Evm
 
                             if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
                             var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
-                            var inputCount = typeSection[index * EvmObjectFormat.Eof1.MINIMUM_TYPESECTION_SIZE];
+                            (int inputCount, _, _) = env.CodeInfo.GetSectionMetadata(index);
 
                             if (vmState.ReturnStackHead > EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT) goto StackOverflow;
 
@@ -2863,6 +2864,27 @@ namespace Nethermind.Evm
                                 return new CallResult(nextState);
                             }
                             else return CallResult.InvalidInstructionException;
+                        }
+                    case Instruction.JUMPF:
+                        {
+                            if (!spec.IsEofEvmModeOn || !spec.JumpfOpcodeEnabled || !env.CodeInfo.IsEof())
+                                goto InvalidInstruction;
+
+                            if (!UpdateGas(GasCostOf.Jumpf, ref gasAvailable)) // still undecided in EIP
+                                goto OutOfGas;
+
+                            var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthUInt16();
+                            (_, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
+
+                            if (stack.Head > MaxCallDepth - maxStackHeight)
+                            {
+                                return CallResult.StackOverflowException;
+                            }
+
+                            sectionIndex = index;
+                            (programCounter, _) = env.CodeInfo.SectionOffset(index);
+
+                            break;
                         }
                     default:
                         {
