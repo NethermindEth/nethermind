@@ -56,10 +56,11 @@ namespace Nethermind.Blockchain.Receipts
             _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
 
-            _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
+            if (_receiptConfig.TxLookupLimit != 0)
+                _blockTree.BlockAddedToMain += RemoveTxIndexes;
         }
 
-        private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+        private void RemoveTxIndexes(object? sender, BlockReplacementEventArgs e)
         {
             if (e.PreviousBlock != null)
             {
