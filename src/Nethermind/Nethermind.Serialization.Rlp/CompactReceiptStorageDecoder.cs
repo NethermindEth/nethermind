@@ -12,8 +12,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-
-    [Rlp.SkipGlobalRegistration]
     public class CompactReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
