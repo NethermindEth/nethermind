@@ -48,8 +48,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 SyncModeSelector = Substitute.For<ISyncModeSelector>()
             };
 
-            configProvider.GetConfig<IReceiptConfig>().StoreReceipts.Returns(true);
-            configProvider.GetConfig<IReceiptConfig>().ReceiptsMigration.Returns(true);
+            configProvider.GetConfig<IInitConfig>().StoreReceipts.Returns(true);
+            configProvider.GetConfig<IInitConfig>().ReceiptsMigration.Returns(true);
             context.SyncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
 
             int txIndex = 0;

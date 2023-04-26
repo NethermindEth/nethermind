@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core.Exceptions;
@@ -25,9 +24,8 @@ namespace Nethermind.Init.Steps
         public Task Execute(CancellationToken cancellationToken)
         {
             IMiningConfig miningConfig = _api.Config<IMiningConfig>();
-            IReceiptConfig receiptConfig = _api.Config<IReceiptConfig>();
 
-            MigrateInitConfig(miningConfig, receiptConfig);
+            MigrateInitConfig(miningConfig);
 
             var blocksConfig = miningConfig.BlocksConfig;
             var value = _api.Config<IBlocksConfig>();
@@ -75,19 +73,11 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        private void MigrateInitConfig(IMiningConfig miningConfig, IReceiptConfig receiptConfig)
+        private void MigrateInitConfig(IMiningConfig miningConfig)
         {
             if (_api.Config<IInitConfig>().IsMining)
             {
                 miningConfig.Enabled = true;
-            }
-            if (!_api.Config<IInitConfig>().StoreReceipts)
-            {
-                receiptConfig.StoreReceipts = false;
-            }
-            if (_api.Config<IInitConfig>().ReceiptsMigration)
-            {
-                receiptConfig.ReceiptsMigration = true;
             }
         }
     }

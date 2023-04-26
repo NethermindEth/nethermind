@@ -46,7 +46,7 @@ namespace Nethermind.Init.Steps.Migrations
         [NotNull]
         private readonly IChainLevelInfoRepository? _chainLevelInfoRepository;
 
-        private readonly IReceiptConfig _receiptConfig;
+        private readonly IInitConfig _initConfig;
 
         public ReceiptMigration(IApiWithNetwork api)
         {
@@ -57,7 +57,7 @@ namespace Nethermind.Init.Steps.Migrations
             _blockTree = api.BlockTree ?? throw new StepDependencyException(nameof(api.BlockTree));
             _syncModeSelector = api.SyncModeSelector ?? throw new StepDependencyException(nameof(api.SyncModeSelector));
             _chainLevelInfoRepository = api.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(api.ChainLevelInfoRepository));
-            _receiptConfig = api.Config<IReceiptConfig>() ?? throw new StepDependencyException("initConfig");
+            _initConfig = api.Config<IInitConfig>() ?? throw new StepDependencyException("initConfig");
         }
 
         public async ValueTask DisposeAsync()
@@ -72,14 +72,14 @@ namespace Nethermind.Init.Steps.Migrations
             await (_migrationTask ?? Task.CompletedTask);
             _receiptStorage.MigratedBlockNumber = Math.Min(Math.Max(_receiptStorage.MigratedBlockNumber, blockNumber), (_blockTree.Head?.Number ?? 0) + 1);
             Run();
-            return _receiptConfig.StoreReceipts && _receiptConfig.ReceiptsMigration;
+            return _initConfig.StoreReceipts && _initConfig.ReceiptsMigration;
         }
 
         public void Run()
         {
-            if (_receiptConfig.StoreReceipts)
+            if (_initConfig.StoreReceipts)
             {
-                if (_receiptConfig.ReceiptsMigration)
+                if (_initConfig.ReceiptsMigration)
                 {
                     if (CanMigrate(_syncModeSelector.Current))
                     {
