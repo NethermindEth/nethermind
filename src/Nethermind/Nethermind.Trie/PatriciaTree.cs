@@ -188,17 +188,17 @@ namespace Nethermind.Trie
                 }
 
                 // reset objects
+                // TODO: why?
                 RootRef!.ResolveKey(TrieStore, true);
-                Keccak? currentRootHash = RootRef.Keccak!;
-                SetRootHash(RootRef.Keccak!, true);
-                RootRef.Keccak = currentRootHash;
-                _logger.Info($"Commiting Changes to TrieStore: {currentRootHash} {RootRef}");
+                // Keccak? currentRootHash = RootRef.Keccak!;
+                // SetRootHash(RootRef.Keccak!, true);
+                // RootRef.Keccak = currentRootHash;
+                // _logger.Info($"Commiting Changes to TrieStore: {currentRootHash} {RootRef}");
             }
 
             TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef);
             if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
         }
-
         private void Commit(NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
         {
             if (_currentCommit is null)
@@ -347,6 +347,8 @@ namespace Nethermind.Trie
             else if (resetObjects)
             {
                 RootRef = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
+                RootRef.ResolveNode(TrieStore);
+                RootRef.ResolveKey(TrieStore, true);
             }
         }
 
