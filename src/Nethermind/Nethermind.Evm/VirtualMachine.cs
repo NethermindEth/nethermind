@@ -207,11 +207,11 @@ namespace Nethermind.Evm
                                     }
                                 }
                                 // Reject code starting with 0xEF if EIP-3541 is enabled And not following EOF if EIP-3540 is enabled and it has the EOF Prefix.
-                                else if (currentState.ExecutionType.IsAnyCreateLegacy() && CodeDepositHandler.CodeIsInvalid(callResult.Output.Bytes, spec, callResult.FromVersion))
+                                else if (currentState.ExecutionType.IsAnyCreateLegacy() && CodeDepositHandler.IsValidWithLegacyRules(callResult.Output.Bytes))
                                 {
                                     _txTracer.ReportActionError(callResult.FromVersion > 0 ? EvmExceptionType.InvalidEofCode : EvmExceptionType.InvalidCode);
                                 }
-                                else if (currentState.ExecutionType.IsAnyCreateEof() && CodeDepositHandler.CodeIsInvalid(callResult.Output.Bytes, spec, callResult.FromVersion))
+                                else if (currentState.ExecutionType.IsAnyCreateEof() && CodeDepositHandler.IsValidWithEofRules(callResult.Output.Bytes, callResult.FromVersion))
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.InvalidEofCode);
                                 }
@@ -258,7 +258,7 @@ namespace Nethermind.Evm
                             if (previousState.ExecutionType.IsAnyCreateLegacy())
                             {
                                 long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Bytes.Length, spec);
-                                bool invalidCode = CodeDepositHandler.CodeIsInvalid(callResult.Output.Bytes, spec, callResult.FromVersion);
+                                bool invalidCode = CodeDepositHandler.IsValidWithLegacyRules(callResult.Output.Bytes);
                                 if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                                 {
                                     Keccak codeHash = _state.UpdateCode(callResult.Output.Bytes);
@@ -839,11 +839,7 @@ namespace Nethermind.Evm
 
             while (programCounter < codeSection.Length)
             {
-                Instruction instruction = (Instruction)codeSection[programCounter] switch
-                {
-                    Instruction.CALLDATACOPY when env.CodeInfo.IsEof() => Instruction.CODECOPY,
-                    _ => (Instruction)codeSection[programCounter]
-                };
+                Instruction instruction = (Instruction)codeSection[programCounter];
 
                 // Console.WriteLine(instruction);
                 if (traceOpcodes)
@@ -1448,7 +1444,7 @@ namespace Nethermind.Evm
                             if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
                             byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                            UInt256 codeSize = spec.IsEip3540Enabled && EvmObjectFormat.IsValidEof(accountCode, out _)
+                            UInt256 codeSize = spec.IsEofEvmModeOn && EvmObjectFormat.IsValidEof(accountCode, out _)
                                 ? 2 : (UInt256)accountCode.Length;
                             stack.PushUInt256(in codeSize);
                             break;
@@ -1471,7 +1467,7 @@ namespace Nethermind.Evm
                                 if (!UpdateMemoryCost(vmState, ref gasAvailable, in dest, length)) goto OutOfGas;
 
                                 byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                                bool shouldNotCopy = spec.IsEip3540Enabled && EvmObjectFormat.IsValidEof(externalCode, out _);
+                                bool shouldNotCopy = spec.IsEofEvmModeOn && EvmObjectFormat.IsValidEof(externalCode, out _);
 
                                 if (!shouldNotCopy)
                                 {
@@ -2157,21 +2153,6 @@ namespace Nethermind.Evm
 
                             Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
 
-                            // if (!CodeDepositHandler.CreateCodeIsValid(env.CodeInfo, initCode, spec))
-                            // {
-                            //      _returnDataBuffer = Array.Empty<byte>();
-                            //      stack.PushZero();
-                            //      break;
-                            // }
-
-                            if (EvmObjectFormat.IsEof(initCode))
-                            {
-                                // return exception maybe ?
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
                             UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                             if (value > balance)
                             {
@@ -2244,24 +2225,19 @@ namespace Nethermind.Evm
                             Address codeSource = stack.PopAddress();
                             ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
 
-                            if ((instruction is Instruction.DELEGATECALL) && (targetCodeInfo.IsEof() != env.CodeInfo.IsEof()))
+                            if (spec.IsEofEvmModeOn
+                                && env.CodeInfo.EofVersion() > 0
+                                && targetCodeInfo is EofCodeInfo)
                             {
-                                return CallResult.InvalidInstructionException;
+                                _returnDataBuffer = Array.Empty<byte>();
+                                stack.PushZero();
+                                break;
                             }
 
                             // Console.WriteLine($"CALLIN {codeSource}");
                             if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) goto OutOfGas;
 
-                            UInt256 gasLimit;
-
-                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
-                            {
-                                gasLimit = (UInt256)gasAvailable;
-                            }
-                            else
-                            {
-                                stack.PopUInt256(out gasLimit);
-                            }
+                            stack.PopUInt256(out UInt256 gasLimit);
 
                             UInt256 callValue;
                             switch (instruction)
@@ -2545,7 +2521,7 @@ namespace Nethermind.Evm
                             else
                             {
                                 byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                                if (spec.IsEip3540Enabled && EvmObjectFormat.IsValidEof(externalCode, out _))
+                                if (spec.IsEofEvmModeOn && EvmObjectFormat.IsValidEof(externalCode, out _))
                                 {
                                     stack.PushBytes(Keccak.Compute(EvmObjectFormat.MAGIC).Bytes);
                                 }
@@ -2695,7 +2671,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.DATASIZE:
                         {
-                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
+                            if (spec.IsEofEvmModeOn && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) goto OutOfGas;
 
@@ -2706,7 +2682,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.DATALOAD:
                         {
-                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
+                            if (spec.IsEofEvmModeOn && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) goto OutOfGas;
 
@@ -2720,7 +2696,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.DATALOADN:
                         {
-                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
+                            if (spec.IsEofEvmModeOn && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) goto OutOfGas;
 
@@ -2733,7 +2709,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.DATACOPY:
                         {
-                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
+                            if (spec.IsEofEvmModeOn && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.DataCopy, ref gasAvailable)) goto OutOfGas;
 
@@ -2760,7 +2736,7 @@ namespace Nethermind.Evm
 
                     case Instruction.RETURNCONTRACT:
                         {
-                            if (spec.IsEip3540Enabled && vmState.ExecutionType.IsAnyCreateEof())
+                            if (spec.IsEofEvmModeOn && vmState.ExecutionType.IsAnyCreateEof())
                             {
                                 if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
 
@@ -2782,7 +2758,7 @@ namespace Nethermind.Evm
                     case Instruction.CREATE3:
                     case Instruction.CREATE4:
                         {
-                            if (spec.IsEip3540Enabled && env.CodeInfo.IsEof())
+                            if (spec.IsEofEvmModeOn && env.CodeInfo.IsEof())
                             {
                                 var currentContext = instruction == Instruction.CREATE3 ? ExecutionType.Create3 : ExecutionType.Create4;
                                 if (!UpdateGas(currentContext == ExecutionType.Create3 ? GasCostOf.Create3 : GasCostOf.Create4, ref gasAvailable)) // still undecided in EIP

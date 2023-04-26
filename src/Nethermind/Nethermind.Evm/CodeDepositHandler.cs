@@ -25,18 +25,29 @@ namespace Nethermind.Evm
             if (spec.IsEip3540Enabled)
             {
                 //fromVersion = (execType is ExecutionType.Create1 or ExecutionType.Create2) ? fromVersion : 0; //// hmmmm
-                bool isCodeEof = EvmObjectFormat.IsEof(code);
-                int codeVersion = isCodeEof ? EvmObjectFormat.GetCodeVersion(code) : 0;
-                valid &= codeVersion >= fromVersion
-                      && (isCodeEof ?  // this needs test cases
-                           EvmObjectFormat.IsValidEof(code, out _) :
-                                fromVersion > 0 ? false : code is not [InvalidStartingCodeByte, ..]);
+                valid = IsValidWithEofRules(code, fromVersion);
             }
             else if (spec.IsEip3541Enabled)
             {
-                valid &= code is not [InvalidStartingCodeByte, ..];
+                valid = IsValidWithLegacyRules(code);
             }
 
+            return valid;
+        }
+
+        public static bool IsValidWithLegacyRules(ReadOnlySpan<byte> code)
+        {
+            return code is not [InvalidStartingCodeByte, ..]; ;
+        }
+
+        public static bool IsValidWithEofRules(ReadOnlySpan<byte> code, int fromVersion)
+        {
+            bool isCodeEof = EvmObjectFormat.IsEof(code);
+            int codeVersion = isCodeEof ? EvmObjectFormat.GetCodeVersion(code) : 0;
+            bool valid = codeVersion >= fromVersion
+                  && (isCodeEof ?  // this needs test cases
+                       EvmObjectFormat.IsValidEof(code, out _) :
+                            fromVersion > 0 ? false : code is not [InvalidStartingCodeByte, ..]);
             return valid;
         }
 
