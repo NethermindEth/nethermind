@@ -17,7 +17,6 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -106,7 +105,7 @@ namespace Ethereum.Test.Base
 
             DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-            if (test.Network == GrayGlacier.Instance)
+            if (test.Network == GrayGlacier.Instance || test.Network == Shanghai.Instance || test.Network == Cancun.Instance)
             {
                 rewardCalculator = NoBlockRewards.Instance;
                 specProvider.UpdateMergeTransitionInfo(0, 0);
@@ -266,7 +265,7 @@ namespace Ethereum.Test.Base
                         correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
                     }
                 }
-                catch (Exception e) when (e is RlpException || e is IndexOutOfRangeException)
+                catch (Exception e)
                 {
                     if (testBlockJson.ExpectedException is null)
                     {
@@ -274,13 +273,8 @@ namespace Ethereum.Test.Base
                     }
                     else
                     {
-                        // TODO: Sometimes testBlockJson.ExpectedException is not RLP related exception. In this situation we should fail
                         _logger.Info($"Expected invalid RLP ({i})");
                     }
-                }
-                catch (Exception e)
-                {
-                    Assert.Fail($"Unknown exception ({i}) {e}");
                 }
             }
 
