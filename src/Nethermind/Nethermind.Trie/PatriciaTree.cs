@@ -190,10 +190,10 @@ namespace Nethermind.Trie
                 // reset objects
                 // TODO: why?
                 RootRef!.ResolveKey(TrieStore, true);
-                // Keccak? currentRootHash = RootRef.Keccak!;
-                // SetRootHash(RootRef.Keccak!, true);
-                // RootRef.Keccak = currentRootHash;
-                // _logger.Info($"Commiting Changes to TrieStore: {currentRootHash} {RootRef}");
+                if (Capability == TrieNodeResolverCapability.Hash)
+                {
+                    SetRootHash(RootRef.Keccak!, true);
+                }
             }
 
             TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef);
