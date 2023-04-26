@@ -6,47 +6,46 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles.Snarks
+namespace Nethermind.Evm.Precompiles.Snarks;
+
+/// <summary>
+/// https://github.com/matter-labs/eip1962/blob/master/eip196_header.h
+/// </summary>
+public class Bn254AddPrecompile : IPrecompile
 {
-    /// <summary>
-    /// https://github.com/matter-labs/eip1962/blob/master/eip196_header.h
-    /// </summary>
-    public class Bn254AddPrecompile : IPrecompile
+    public static IPrecompile Instance = new Bn254AddPrecompile();
+
+    public Address Address { get; } = Address.FromNumber(6);
+
+    public long BaseGasCost(IReleaseSpec releaseSpec)
     {
-        public static IPrecompile Instance = new Bn254AddPrecompile();
+        return releaseSpec.IsEip1108Enabled ? 150L : 500L;
+    }
 
-        public Address Address { get; } = Address.FromNumber(6);
+    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    {
+        return 0L;
+    }
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
+    public unsafe (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    {
+        Metrics.Bn254AddPrecompile++;
+        Span<byte> inputDataSpan = stackalloc byte[128];
+        inputData.PrepareEthInput(inputDataSpan);
+
+        Span<byte> output = stackalloc byte[64];
+        bool success = Pairings.Bn254Add(inputDataSpan, output);
+
+        (byte[], bool) result;
+        if (success)
         {
-            return releaseSpec.IsEip1108Enabled ? 150L : 500L;
+            result = (output.ToArray(), true);
+        }
+        else
+        {
+            result = (Array.Empty<byte>(), false);
         }
 
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-        {
-            return 0L;
-        }
-
-        public unsafe (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-        {
-            Metrics.Bn254AddPrecompile++;
-            Span<byte> inputDataSpan = stackalloc byte[128];
-            inputData.PrepareEthInput(inputDataSpan);
-
-            Span<byte> output = stackalloc byte[64];
-            bool success = Pairings.Bn254Add(inputDataSpan, output);
-
-            (byte[], bool) result;
-            if (success)
-            {
-                result = (output.ToArray(), true);
-            }
-            else
-            {
-                result = (Array.Empty<byte>(), false);
-            }
-
-            return result;
-        }
+        return result;
     }
 }
