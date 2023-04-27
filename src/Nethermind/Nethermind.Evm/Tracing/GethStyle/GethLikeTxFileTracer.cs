@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
@@ -39,9 +35,38 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     {
         _dumpCallback(entry);
 
-        if (_startGas is null)
-            _startGas = entry.Gas;
+        _startGas ??= entry.Gas;
     }
 
-    protected override GethTxFileTraceEntry CreateTraceEntry(Instruction opcode) => new() { OpcodeRaw = opcode };
+    protected override GethTxFileTraceEntry CreateTraceEntry(Instruction opcode)
+    {
+        var entry = GetOrCreateTraceEntry();
+
+        entry.OpcodeRaw = opcode;
+
+        return entry;
+    }
+
+    private GethTxFileTraceEntry GetOrCreateTraceEntry()
+    {
+        if (CurrentTraceEntry is null)
+            return new();
+
+        var entry = CurrentTraceEntry;
+
+        entry.Depth = default;
+        entry.Error = default;
+        entry.Gas = default;
+        entry.GasCost = default;
+        entry.Memory = default;
+        entry.MemorySize = default;
+        entry.Opcode = default;
+        entry.OpcodeRaw = default;
+        entry.ProgramCounter = default;
+        entry.Refund = default;
+        entry.Stack = default;
+        entry.Storage = default;
+
+        return entry;
+    }
 }

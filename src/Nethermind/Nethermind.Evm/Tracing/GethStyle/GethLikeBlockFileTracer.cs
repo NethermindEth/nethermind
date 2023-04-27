@@ -16,6 +16,7 @@ namespace Nethermind.Evm.Tracing.GethStyle;
 public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxFileTracer>
 {
     private const string _alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+    private static readonly JsonSerializerOptions _serializerOptions = new();
 
     private readonly Block _block;
     private Stream _file;
@@ -24,7 +25,6 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     private IFileSystem _fileSystem;
     private Utf8JsonWriter _jsonWriter;
     private readonly GethTraceOptions _options;
-    private readonly JsonSerializerOptions _serializerOptions = new();
 
     public GethLikeBlockFileTracer(Block block, GethTraceOptions options, IFileSystem fileSystem) : base(options?.TxHash)
     {
@@ -75,7 +75,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _fileNames.Add(GetFileName(tx.Hash));
 
         _file = _fileSystem.File.OpenWrite(_fileNames.Last());
-        _jsonWriter = new Utf8JsonWriter(_file);
+        _jsonWriter = new(_file);
 
         return new(DumpTraceEntry, _options);
     }
@@ -93,9 +93,11 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         JsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
 
+        // Reset the writer to avoid adding comma (depth tracking) before writing a new line
         _jsonWriter.Flush();
         _jsonWriter.Reset();
         _jsonWriter.WriteRawValue(Environment.NewLine, true);
+        // Reset the writer again to avoid adding comma if reused
         _jsonWriter.Flush();
         _jsonWriter.Reset();
     }
