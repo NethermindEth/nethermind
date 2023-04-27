@@ -210,7 +210,7 @@ namespace Nethermind.Runner
                 catch (Exception e)
                 {
                     if (_logger.IsError) _logger.Error("Error during ethereum runner start", e);
-                    _processExitSource.ExitCode = e is IExceptionWithExitCode withExit ? withExit.ExitCode : ExitCodes.GeneralError;
+                    _processExitSource.Exit(e is IExceptionWithExitCode withExit ? withExit.ExitCode : ExitCodes.GeneralError);
                 }
 
                 _logger.Info("Closing, please wait until all functions are stopped properly...");
