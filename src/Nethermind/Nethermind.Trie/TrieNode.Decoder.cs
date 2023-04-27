@@ -30,6 +30,8 @@ namespace Nethermind.Trie
                     throw new TrieException("An attempt was made to RLP encode a null node.");
                 }
 
+                if (tree.Capability == TrieNodeResolverCapability.Path) item.ResolveNode(tree);
+                
                 return item.NodeType switch
                 {
                     NodeType.Branch => RlpEncodeBranch(tree, item),
