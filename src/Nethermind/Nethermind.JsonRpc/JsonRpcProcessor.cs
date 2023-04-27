@@ -285,7 +285,7 @@ namespace Nethermind.JsonRpc
 
         private static bool TryParseJson(ref ReadOnlySequence<byte> buffer, out JsonDocument jsonDocument)
         {
-            Utf8JsonReader reader = new (buffer, isFinalBlock: false, default);
+            Utf8JsonReader reader = new(buffer, isFinalBlock: false, default);
 
             if (JsonDocument.TryParseValue(ref reader, out jsonDocument))
             {

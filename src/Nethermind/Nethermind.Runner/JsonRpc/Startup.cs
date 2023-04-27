@@ -162,7 +162,7 @@ namespace Nethermind.Runner.JsonRpc
                     }
 
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    CountingPipeReader request = new (ctx.Request.BodyReader);
+                    CountingPipeReader request = new(ctx.Request.BodyReader);
                     try
                     {
                         JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
