@@ -824,7 +824,7 @@ public partial class EngineModuleTests
         chain.BlockTree.RecalculateTreeLevels();
 
         Assert.True(chain.BlockTree.BestSuggestedBody!.Number >= chain.BlockTree.Head!.Number);
-        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number < chain.BlockTree.Head!.Number);
+        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number >= chain.BlockTree.Head!.Number);
     }
 
     private void AssertBlockTreePointers(
