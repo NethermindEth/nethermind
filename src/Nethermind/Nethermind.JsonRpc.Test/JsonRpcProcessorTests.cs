@@ -172,8 +172,11 @@ namespace Nethermind.JsonRpc.Test
         {
             IList<JsonRpcResult> result = await ProcessAsync("[{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\"},{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":\"0x668c24\"}]");
             result.Should().HaveCount(1);
-            result[0].Response.Should().NotBeNull();
-            result[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
+            result[0].Response.Should().BeNull();
+            result[0].BatchedResponses.Should().NotBeNull();
+            var resultList = await result[0].BatchedResponses!.ToListAsync();
+            resultList.Should().HaveCount(2);
+            Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
         }
 
         [Test]

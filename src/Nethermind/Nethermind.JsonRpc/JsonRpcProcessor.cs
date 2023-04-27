@@ -213,17 +213,36 @@ namespace Nethermind.JsonRpc
                         }
                     }
                 }
-
-                reader.AdvanceTo(buffer.Start, buffer.End);
-
-                if (readResult.IsCompleted || deserializationFailureResult.HasValue)
+                
+                if (deserializationFailureResult.HasValue)
                 {
                     break;
                 }
+
+                if (readResult.IsCompleted)
+                {
+                    if (buffer.Length > 0 && (buffer.IsSingleSegment ? buffer.FirstSpan : buffer.ToArray()).IndexOfAnyExcept(WhiteSpace()) >= 0)
+                    {
+                        Metrics.JsonRpcRequestDeserializationFailures++;
+                        if (_logger.IsError) _logger.Error($"Error during parsing/validation. Incomplete request");
+                        JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
+                        TraceResult(response);
+                        stopwatch.Stop();
+                        deserializationFailureResult = JsonRpcResult.Single(
+                            RecordResponse(response, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
+                        yield return deserializationFailureResult.Value;
+                    }
+
+                    break;
+                }
+
+                reader.AdvanceTo(buffer.Start, buffer.End);
             }
 
             reader.Complete();
         }
+
+        private static ReadOnlySpan<byte> WhiteSpace() => new byte[] { (byte)' ', (byte)'\n', (byte)'\r', (byte)'\t' };
 
         private async IAsyncEnumerable<JsonRpcResult.Entry> IterateRequest(
             List<JsonRpcRequest> requests,
