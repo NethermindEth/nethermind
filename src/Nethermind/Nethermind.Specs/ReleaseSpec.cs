@@ -79,6 +79,5 @@ namespace Nethermind.Specs
         public bool IsEip3860Enabled { get; set; }
         public bool IsEip4895Enabled { get; set; }
         public bool IsEip4844Enabled { get; set; }
-        public bool IsPostMerge { get; set; }
     }
 }

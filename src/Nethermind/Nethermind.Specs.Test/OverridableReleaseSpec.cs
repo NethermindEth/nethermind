@@ -114,7 +114,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
         public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
         public bool IsEip3607Enabled { get; set; }
-        public bool IsPostMerge => _spec.IsPostMerge;
 
         public bool IsEip158IgnoredAccount(Address address)
         {

@@ -16,9 +16,10 @@ namespace Nethermind.Specs.Forks
         {
             Name = "Gray Glacier";
             DifficultyBombDelay = 11400000L;
-            IsPostMerge = true;
         }
 
         public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new GrayGlacier());
+
+
     }
 }
