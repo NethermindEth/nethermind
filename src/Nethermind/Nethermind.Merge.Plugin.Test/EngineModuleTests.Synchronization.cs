@@ -866,7 +866,7 @@ public partial class EngineModuleTests
         Assert.True(chain.BlockTree.BestSuggestedBody!.Number < chain.BlockTree.Head!.Number);
         Assert.True(chain.BlockTree.BestSuggestedHeader!.Number < chain.BlockTree.Head!.Number);
 
-        MultiSyncModeSelector multiSyncModeSelector =  CreateMultiSyncModeSelector(chain);
+        MultiSyncModeSelector multiSyncModeSelector = CreateMultiSyncModeSelector(chain);
         multiSyncModeSelector.Update();
 
         Assert.True(chain.BlockTree.BestSuggestedBody!.Number >= chain.BlockTree.Head!.Number);
