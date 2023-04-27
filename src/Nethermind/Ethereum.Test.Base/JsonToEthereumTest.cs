@@ -57,7 +57,7 @@ namespace Ethereum.Test.Base
             };
         }
 
-        private static ForkActivation ParseTransitionInfo(string transitionInfo)
+        private static ForkActivation TransitionForkActivation(string transitionInfo)
         {
             const string timestampPrefix = "Time";
             const char kSuffix = 'k';
@@ -248,7 +248,7 @@ namespace Ethereum.Test.Base
             test.Name = name;
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
-            test.TransitionInfo = testJson.TransitionInfo;
+            test.TransitionForkActivation = testJson.TransitionForkActivation;
             test.LastBlockHash = new Keccak(testJson.LastBlockHash);
             test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
@@ -310,7 +310,7 @@ namespace Ethereum.Test.Base
                 testSpec.EthereumNetwork = ParseSpec(networks[0]);
                 if (transitionInfo.Length > 1)
                 {
-                    testSpec.TransitionInfo = ParseTransitionInfo(transitionInfo[1]);
+                    testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
                     testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
                 }
 

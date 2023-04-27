@@ -16,7 +16,7 @@ namespace Ethereum.Test.Base
         public string? Name { get; set; }
         public IReleaseSpec? Network { get; set; }
         public IReleaseSpec? NetworkAfterTransition { get; set; }
-        public ForkActivation? TransitionInfo { get; set; }
+        public ForkActivation? TransitionForkActivation { get; set; }
         public Keccak? LastBlockHash { get; set; }
         public Rlp? GenesisRlp { get; set; }
 

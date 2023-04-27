@@ -89,7 +89,7 @@ namespace Ethereum.Test.Base
                 specProvider = new CustomSpecProvider(
                     ((ForkActivation)0, Frontier.Instance),
                     ((ForkActivation)1, test.Network),
-                    (test.TransitionInfo!.Value, test.NetworkAfterTransition));
+                    (test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
             }
             else
             {
