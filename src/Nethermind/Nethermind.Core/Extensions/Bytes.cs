@@ -592,37 +592,6 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        public static string ByteArrayToHexViaLookup32Safe(Memory<byte> bytes, bool withZeroX)
-        {
-            if (bytes.Length == 0)
-            {
-                return withZeroX ? "0x" : string.Empty;
-            }
-
-            int length = bytes.Length * 2 + (withZeroX ? 2 : 0);
-            StateSmallMemory stateToPass = new(bytes, withZeroX);
-
-            return string.Create(length, stateToPass, static (chars, state) =>
-            {
-                ref char charsRef = ref MemoryMarshal.GetReference(chars);
-
-                Memory<byte> bytes = state.Bytes;
-                if (bytes.Length == 0)
-                {
-                    if (state.WithZeroX)
-                    {
-                        chars[1] = 'x';
-                        chars[0] = '0';
-                    }
-
-                    return;
-                }
-
-                OutputBytesToCharHex(ref bytes.Span[0], state.Bytes.Length, ref charsRef, state.WithZeroX, leadingZeros: 0);
-            });
-        }
-
-        [DebuggerStepThrough]
         private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool skipLeadingZeros,
             bool withEip55Checksum)
         {

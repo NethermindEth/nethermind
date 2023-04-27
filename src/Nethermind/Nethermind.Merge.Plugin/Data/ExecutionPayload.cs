@@ -88,7 +88,7 @@ public class ExecutionPayload
     /// Gets or sets <see cref="Block.ExcessDataGas"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
-    [JsonProperty(ItemConverterType = typeof(NullableUInt256Converter), NullValueHandling = NullValueHandling.Ignore)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? ExcessDataGas { get; set; }
 
     /// <summary>
