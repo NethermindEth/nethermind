@@ -162,6 +162,7 @@ namespace Ethereum.Test.Base
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
+            stopwatch?.Start();
             List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test);
 
             if (test.GenesisRlp == null)
@@ -186,22 +187,15 @@ namespace Ethereum.Test.Base
             blockTree.SuggestBlock(genesisBlock);
 
             genesisProcessed.WaitOne();
-
             for (int i = 0; i < correctRlp.Count; i++)
             {
-                stopwatch?.Start();
+                if (correctRlp[i].Block.Hash is null)
+                {
+                    Assert.Fail($"null hash in {test.Name} block {i}");
+                }
+
                 try
                 {
-                    if (correctRlp[i].ExpectedException != null)
-                    {
-                        _logger.Info($"Expecting block exception: {correctRlp[i].ExpectedException}");
-                    }
-
-                    if (correctRlp[i].Block.Hash == null)
-                    {
-                        Assert.Fail($"null hash in {test.Name} block {i}");
-                    }
-
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
                     correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
                     if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block))
@@ -210,15 +204,22 @@ namespace Ethereum.Test.Base
                     }
                     else
                     {
-                        _logger.Info("Invalid block");
+                        if (correctRlp[i].ExpectedException is not null)
+                        {
+                            Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}");
+                        }
                     }
                 }
-                catch (InvalidBlockException)
+                catch (InvalidBlockException e)
                 {
+                    if (correctRlp[i].ExpectedException is not null)
+                    {
+                        Assert.Fail($"Unexpected invalid block {correctRlp[i].Block.Hash}: {e}");
+                    }
                 }
-                catch (Exception ex)
+                catch (Exception e)
                 {
-                    _logger.Info(ex.ToString());
+                    Assert.Fail($"Unexpected exception during processing: {e}");
                 }
             }
 
