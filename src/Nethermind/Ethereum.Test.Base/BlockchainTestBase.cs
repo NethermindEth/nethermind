@@ -75,7 +75,7 @@ namespace Ethereum.Test.Base
             }
         }
 
-        protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null)
+        protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
         {
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
@@ -163,7 +163,7 @@ namespace Ethereum.Test.Base
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
             stopwatch?.Start();
-            List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test);
+            List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
 
             if (test.GenesisRlp == null)
             {
@@ -238,7 +238,7 @@ namespace Ethereum.Test.Base
             );
         }
 
-        private List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test)
+        private List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
         {
             List<(Block Block, string ExpectedException)> correctRlp = new();
             for (int i = 0; i < test.Blocks.Length; i++)
@@ -270,7 +270,17 @@ namespace Ethereum.Test.Base
                 {
                     if (testBlockJson.ExpectedException is null)
                     {
-                        Assert.Fail($"Invalid RLP ({i}) {e}");
+                        string invalidRlpMessage = $"Invalid RLP ({i}) {e}";
+                        if (failOnInvalidRlp)
+                        {
+                            Assert.Fail(invalidRlpMessage);
+                        }
+                        else
+                        {
+                            // ForgedTests don't have ExpectedException and at the same time have invalid rlps
+                            // Don't fail here. If test executed incorrectly will fail at last check
+                            _logger.Warn(invalidRlpMessage);
+                        }
                     }
                     else
                     {
