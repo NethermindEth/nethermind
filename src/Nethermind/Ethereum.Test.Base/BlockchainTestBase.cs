@@ -105,7 +105,7 @@ namespace Ethereum.Test.Base
 
             DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-            if (test.Network == GrayGlacier.Instance || test.Network == Shanghai.Instance || test.Network == Cancun.Instance)
+            if (test.Network!.IsEip1559Enabled && test.Network != London.Instance) // All post-merge networks. No 1559 and not London
             {
                 rewardCalculator = NoBlockRewards.Instance;
                 specProvider.UpdateMergeTransitionInfo(0, 0);
