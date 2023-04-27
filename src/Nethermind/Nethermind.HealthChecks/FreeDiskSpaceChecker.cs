@@ -18,19 +18,21 @@ namespace Nethermind.HealthChecks
         private readonly IHealthChecksConfig _healthChecksConfig;
         private readonly ILogger _logger;
         private readonly IDriveInfo[] _drives;
+        private readonly IProcessExitSource _processExitSource;
         private readonly ITimer _timer;
         private readonly double _checkPeriodMinutes;
-        public static readonly int DefaultCheckPeriodMinutes = 1;
 
-        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IDriveInfo[] drives, ITimerFactory timerFactory) :
-            this(healthChecksConfig, logger, drives, timerFactory, DefaultCheckPeriodMinutes)
-        { }
-
-        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig, ILogger logger, IDriveInfo[] drives, ITimerFactory timerFactory, double checkPeriodMinutes)
+        public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig,
+            IDriveInfo[] drives,
+            ITimerFactory timerFactory,
+            IProcessExitSource processExitSource,
+            ILogger logger,
+            double checkPeriodMinutes = 1)
         {
             _healthChecksConfig = healthChecksConfig;
             _logger = logger;
             _drives = drives;
+            _processExitSource = processExitSource;
             _checkPeriodMinutes = checkPeriodMinutes;
             _timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(_checkPeriodMinutes));
             _timer.Elapsed += CheckDiskSpace;
@@ -45,7 +47,7 @@ namespace Nethermind.HealthChecks
                 if (freeSpacePercent < _healthChecksConfig.LowStorageSpaceShutdownThreshold)
                 {
                     if (_logger.IsError) _logger.Error($"Free disk space in '{drive.RootDirectory.FullName}' is below {_healthChecksConfig.LowStorageSpaceShutdownThreshold:0.00}% - shutting down...");
-                    Environment.Exit(ExitCodes.LowDiskSpace);
+                    _processExitSource.Exit(ExitCodes.LowDiskSpace);
                 }
 
                 if (freeSpacePercent < _healthChecksConfig.LowStorageSpaceWarningThreshold)
