@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipelines;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -58,12 +59,11 @@ namespace Nethermind.JsonRpc.WebSockets
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             IncrementBytesReceivedMetric(data.Count);
-            using MemoryStream request = new MemoryStream(data.Array!, data.Offset, data.Count);
+            PipeReader request = PipeReader.Create(new MemoryStream(data.Array!, data.Offset, data.Count));
             int allResponsesSize = 0;
 
-            await foreach ((JsonRpcResult result, IDisposable disposable) in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
+            await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
             {
-                disposable.Dispose();
                 stopwatch.Restart();
 
                 int singleResponseSize = await SendJsonRpcResult(result);

@@ -3,12 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
+using System.IO.Pipelines;
 
 namespace Nethermind.JsonRpc
 {
     public interface IJsonRpcProcessor
     {
-        IAsyncEnumerable<(JsonRpcResult result, IDisposable disposable)> ProcessAsync(Stream stream, JsonRpcContext context);
+        IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader stream, JsonRpcContext context);
     }
 }

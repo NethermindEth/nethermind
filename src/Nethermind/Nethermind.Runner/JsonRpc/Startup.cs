@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipelines;
 using System.Security.Authentication;
 using System.Text;
 using System.Threading;
@@ -160,13 +162,12 @@ namespace Nethermind.Runner.JsonRpc
                     }
 
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    using CountingStream request = new(ctx.Request.Body);
+                    CountingPipeReader request = new (ctx.Request.BodyReader);
                     try
                     {
                         JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
-                        await foreach ((JsonRpcResult result, IDisposable disposable) in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
+                        await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
                         {
-                            disposable.Dispose();
                             Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
 
                             long responseSize = 0;
@@ -290,53 +291,58 @@ namespace Nethermind.Runner.JsonRpc
             return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout };
         }
 
-        private sealed class CountingStream : Stream
+        private sealed class CountingPipeReader : PipeReader
         {
-            private readonly Stream _wrappedStream;
-            private long _position;
+            private readonly PipeReader _wrappedReader;
+            private ReadOnlySequence<byte> _currentSequence;
 
-            public CountingStream(Stream stream)
-            {
-                _position = 0;
-                _wrappedStream = stream;
-            }
+            public long Length { get; private set; }
 
-            public override long Length => _position;
-            public override long Position { get => _position; set => throw new NotSupportedException(); }
-            public override int Read(byte[] buffer, int offset, int count)
+            public CountingPipeReader(PipeReader stream)
             {
-                int length = _wrappedStream.Read(buffer, offset, count);
-                _position += length;
-                return length;
+                _wrappedReader = stream;
             }
 
-            public override int Read(Span<byte> buffer)
+            public override void AdvanceTo(SequencePosition consumed)
             {
-                int length = _wrappedStream.Read(buffer);
-                _position += length;
-                return length;
-            }
-            public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-            {
-                int length = await _wrappedStream.ReadAsync(buffer, cancellationToken);
-                _position += length;
-                return length;
-            }
-            public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-            {
-                int length = await _wrappedStream.ReadAsync(buffer, offset, count, cancellationToken);
-                _position += length;
-                return length;
+                Length += _currentSequence.GetOffset(consumed);
+                _wrappedReader.AdvanceTo(consumed);
             }
 
-            public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-            public override void Write(ReadOnlySpan<byte> buffer) => throw new NotSupportedException();
-            public override void Flush() => throw new NotSupportedException();
-            public override bool CanRead => _wrappedStream.CanRead;
-            public override bool CanSeek => _wrappedStream.CanSeek;
-            public override bool CanWrite => _wrappedStream.CanWrite;
-            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-            public override void SetLength(long value) => throw new NotSupportedException();
+            public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
+            {
+                Length += _currentSequence.GetOffset(consumed);
+                _wrappedReader.AdvanceTo(consumed, examined);
+            }
+
+            public override void CancelPendingRead()
+            {
+                _wrappedReader.CancelPendingRead();
+            }
+
+            public override void Complete(Exception? exception = null)
+            {
+                Length += _currentSequence.Length;
+                _wrappedReader.Complete(exception);
+            }
+
+            public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
+            {
+                ReadResult result = await _wrappedReader.ReadAsync(cancellationToken);
+                _currentSequence = result.Buffer;
+                return result;
+            }
+
+            public override bool TryRead(out ReadResult result)
+            {
+                bool didRead = _wrappedReader.TryRead(out result);
+                if (didRead)
+                {
+                    _currentSequence = result.Buffer;
+                }
+
+                return didRead;
+            }
         }
     }
 }

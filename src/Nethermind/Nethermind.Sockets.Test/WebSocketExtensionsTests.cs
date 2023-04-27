@@ -123,16 +123,16 @@ namespace Nethermind.Sockets.Test
             WebSocketMock mock = new(receiveResult);
 
             var processor = Substitute.For<IJsonRpcProcessor>();
-            processor.ProcessAsync(default, default).ReturnsForAnyArgs((x) => new List<(JsonRpcResult, IDisposable)>()
+            processor.ProcessAsync(default, default).ReturnsForAnyArgs((x) => new List<JsonRpcResult>()
             {
-                (JsonRpcResult.Single((new JsonRpcResponse()), new RpcReport()), new Disposable()),
+                (JsonRpcResult.Single((new JsonRpcResponse()), new RpcReport())),
                 (JsonRpcResult.Collection(new JsonRpcBatchResult((e, c) =>
                     new List<JsonRpcResult.Entry>()
                 {
                     new(new JsonRpcResponse(), new RpcReport()),
                     new(new JsonRpcResponse(), new RpcReport()),
                     new(new JsonRpcResponse(), new RpcReport()),
-                }.ToAsyncEnumerable().GetAsyncEnumerator(c))), new Disposable())
+                }.ToAsyncEnumerable().GetAsyncEnumerator(c))))
             }.ToAsyncEnumerable());
 
             var service = Substitute.For<IJsonRpcService>();
