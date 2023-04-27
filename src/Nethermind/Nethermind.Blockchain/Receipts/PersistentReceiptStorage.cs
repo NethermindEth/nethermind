@@ -56,10 +56,11 @@ namespace Nethermind.Blockchain.Receipts
             _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
 
-            _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
+            if (_receiptConfig.TxLookupLimit != 0)
+                _blockTree.BlockAddedToMain += RemoveTxIndexes;
         }
 
-        private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+        private void RemoveTxIndexes(object? sender, BlockReplacementEventArgs e)
         {
             if (e.PreviousBlock != null)
             {
@@ -94,12 +95,7 @@ namespace Nethermind.Blockchain.Receipts
         public Keccak FindBlockHash(Keccak txHash)
         {
             var blockHashData = _transactionDb.Get(txHash);
-            if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
-
-            if (blockHashData.Length == Keccak.Size) return new Keccak(blockHashData);
-
-            long blockNum = new RlpStream(blockHashData).DecodeLong();
-            return _blockTree.FindBlockHash(blockNum);
+            return blockHashData is null ? FindReceiptObsolete(txHash)?.BlockHash : new Keccak(blockHashData);
         }
 
         // Find receipt stored with old - obsolete format.
@@ -264,25 +260,11 @@ namespace Nethermind.Blockchain.Receipts
 
         public void EnsureCanonical(Block block)
         {
+            TxReceipt[] receipts = Get(block);
             using IBatch batch = _transactionDb.StartBatch();
-
-            long headNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
-
-            if (_receiptConfig.TxLookupLimit == -1) return;
-            if (_receiptConfig.TxLookupLimit != 0 && block.Number <= headNumber - _receiptConfig.TxLookupLimit) return;
-            if (_receiptConfig.CompactTxIndex)
+            foreach (TxReceipt txReceipt in receipts)
             {
-                foreach (Transaction tx in block.Transactions)
-                {
-                    batch[tx.Hash.Bytes] = Rlp.Encode(block.Number).Bytes;
-                }
-            }
-            else
-            {
-                foreach (Transaction tx in block.Transactions)
-                {
-                    batch[tx.Hash.Bytes] = block.Hash.Bytes;
-                }
+                batch[txReceipt.TxHash.Bytes] = block.Hash.Bytes;
             }
         }
 
