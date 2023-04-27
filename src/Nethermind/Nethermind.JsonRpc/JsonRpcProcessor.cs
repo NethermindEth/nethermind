@@ -213,7 +213,7 @@ namespace Nethermind.JsonRpc
                         }
                     }
                 }
-                
+
                 if (deserializationFailureResult.HasValue)
                 {
                     break;
