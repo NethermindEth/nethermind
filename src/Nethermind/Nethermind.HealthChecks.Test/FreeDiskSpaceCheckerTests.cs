@@ -20,7 +20,7 @@ namespace Nethermind.HealthChecks.Test
         [Test]
         [TestCase(1.5f, true)] //throw exception - min required 2.5% / available 1.5%
         [TestCase(2.5f, false)]
-        public void free_disk_check_ensure_free_on_startup_no_wait(float availableDiskSpacePercent, bool exceptionExpected)
+        public void free_disk_check_ensure_free_on_startup_no_wait(float availableDiskSpacePercent, bool exitExpected)
         {
             HealthChecksConfig hcConfig = new()
             {
@@ -28,17 +28,16 @@ namespace Nethermind.HealthChecks.Test
                 LowStorageSpaceShutdownThreshold = 1,
                 LowStorageSpaceWarningThreshold = 5
             };
+            IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
             FreeDiskSpaceChecker freeDiskSpaceChecker = new(
                 hcConfig,
                 GetDriveInfos(availableDiskSpacePercent),
                 Core.Timers.TimerFactory.Default,
-                Substitute.For<IProcessExitSource>(),
+                exitSource,
                 LimboTraceLogger.Instance);
 
-            if (exceptionExpected)
-                Assert.Throws<NotEnoughDiskSpaceException>(() => freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default));
-            else
-                freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default);
+            freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default);
+            exitSource.Received(exitExpected ? 1 : 0).Exit(ExitCodes.LowDiskSpace);
         }
 
         [Test]

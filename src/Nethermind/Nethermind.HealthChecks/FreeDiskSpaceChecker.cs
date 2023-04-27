@@ -98,9 +98,7 @@ namespace Nethermind.HealthChecks
                 }
                 else
                 {
-                    //throwing an exception as Environment.Exit will cause a deadlock in this scenario:
-                    //https://github.com/dotnet/runtime/issues/50397
-                    throw new NotEnoughDiskSpaceException();
+                    _processExitSource.Exit(ExitCodes.LowDiskSpace);
                 }
             }
         }
