@@ -790,6 +790,43 @@ public partial class EngineModuleTests
         // TODO: post merge sync checking pointers after state sync
     }
 
+    [Test]
+    public async Task Invalid_block_can_create_invalid_best_state_issue_but_recalculating_tree_levels_will_fix_it()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak lastHash = (await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true))
+            .LastOrDefault()?.BlockHash ?? Keccak.Zero;
+        chain.BlockTree.HeadHash.Should().Be(lastHash);
+
+        // send newPayload
+        ExecutionPayload validBlockOnTopOfHead = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(validBlockOnTopOfHead)).Data;
+        payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
+
+        // send block with invalid state root
+        ExecutionPayload blockWithInvalidStateRoot = CreateBlockRequest(validBlockOnTopOfHead, TestItem.AddressA);
+        blockWithInvalidStateRoot.StateRoot = TestItem.KeccakB;
+        TryCalculateHash(blockWithInvalidStateRoot, out Keccak? hash);
+        blockWithInvalidStateRoot.BlockHash = hash;
+        PayloadStatusV1 invalidStateRootNewPayloadResponse = (await rpc.engine_newPayloadV1(blockWithInvalidStateRoot)).Data;
+        invalidStateRootNewPayloadResponse.Status.Should().Be(PayloadStatus.Invalid);
+
+        // send fcU to last new payload
+        ForkchoiceUpdatedV1Result response = (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(validBlockOnTopOfHead.BlockHash, validBlockOnTopOfHead.BlockHash, validBlockOnTopOfHead.BlockHash))).Data;
+        response.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+        // invalid best state calculation
+        Assert.True(chain.BlockTree.BestSuggestedBody!.Number < chain.BlockTree.Head!.Number);
+        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number < chain.BlockTree.Head!.Number);
+
+        // autofix
+        chain.BlockTree.RecalculateTreeLevels();
+
+        Assert.True(chain.BlockTree.BestSuggestedBody!.Number >= chain.BlockTree.Head!.Number);
+        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number < chain.BlockTree.Head!.Number);
+    }
+
     private void AssertBlockTreePointers(
         IBlockTree blockTree,
         BlockTreePointers pointers)
