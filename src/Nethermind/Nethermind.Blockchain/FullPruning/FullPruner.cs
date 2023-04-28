@@ -5,6 +5,7 @@ using System;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,6 +27,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
+        private readonly IProcessExitSource _processExitSource;
         private readonly ILogManager _logManager;
         private readonly IChainEstimations _chainEstimations;
         private readonly IDriveInfo _driveInfo;
@@ -44,6 +46,7 @@ namespace Nethermind.Blockchain.FullPruning
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
             IStateReader stateReader,
+            IProcessExitSource processExitSource,
             IChainEstimations chainEstimations,
             IDriveInfo driveInfo,
             ILogManager logManager)
@@ -53,6 +56,7 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningConfig = pruningConfig;
             _blockTree = blockTree;
             _stateReader = stateReader;
+            _processExitSource = processExitSource;
             _logManager = logManager;
             _chainEstimations = chainEstimations;
             _driveInfo = driveInfo;
@@ -195,7 +199,7 @@ namespace Nethermind.Blockchain.FullPruning
                 case FullPruningCompletionBehavior.AlwaysShutdown:
                 case FullPruningCompletionBehavior.ShutdownOnSuccess when e.Success:
                     if (_logger.IsInfo) _logger.Info($"Full Pruning completed {(e.Success ? "successfully" : "unsuccessfully")}, shutting down as requested in the configuration.");
-                    Task.Run(() => Environment.Exit(0));
+                    _processExitSource.Exit(ExitCodes.Ok);
                     break;
             }
         }

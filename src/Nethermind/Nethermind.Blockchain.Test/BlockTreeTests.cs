@@ -1111,7 +1111,7 @@ namespace Nethermind.Blockchain.Test
             MemDb headersDb = new();
             MemDb metadataDb = new();
 
-            SyncConfig syncConfig = new();
+            SyncConfig syncConfig = new() { FastSync = true };
             syncConfig.PivotNumber = beginIndex.ToString();
 
             BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
@@ -1203,6 +1203,7 @@ namespace Nethermind.Blockchain.Test
 
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = beginIndex.ToString();
+            syncConfig.FastSync = true;
 
             BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
@@ -1306,6 +1307,34 @@ namespace Nethermind.Blockchain.Test
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis));
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
             Assert.Throws<InvalidOperationException>(() => tree.Insert(new[] { genesis }));
+        }
+
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public void Should_set_zero_total_difficulty()
+        {
+            MemDb blocksDb = new();
+            MemDb blockInfosDb = new();
+            MemDb headersDb = new();
+            MemDb metadataDb = new();
+
+            long pivotNumber = 0L;
+
+            SyncConfig syncConfig = new();
+            syncConfig.PivotNumber = pivotNumber.ToString();
+
+            CustomSpecProvider specProvider = new(((ForkActivation)0, London.Instance));
+            specProvider.UpdateMergeTransitionInfo(null, 0);
+
+            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb,
+                new ChainLevelInfoRepository(blockInfosDb), specProvider,
+                NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            Block genesis = Build.A.Block.WithDifficulty(0).TestObject;
+            tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
+            tree.FindBlock(genesis.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
+
+            Block A = Build.A.Block.WithParent(genesis).WithDifficulty(0).TestObject;
+            tree.SuggestBlock(A).Should().Be(AddBlockResult.Added);
+            tree.FindBlock(A.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

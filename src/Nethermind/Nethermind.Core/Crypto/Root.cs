@@ -72,7 +72,7 @@ public class Root : IEquatable<Root>, IComparable<Root>
 
     public override int GetHashCode()
     {
-        return BinaryPrimitives.ReadInt32LittleEndian(AsSpan().Slice(0, 4));
+        return BinaryPrimitives.ReadInt32LittleEndian(AsSpan()[..4]);
     }
 
     public static bool operator ==(Root left, Root right)

@@ -60,10 +60,7 @@ public class CompactStack<T>
 
     public void Push(T item)
     {
-        if (_head == null)
-        {
-            _head = _nodePool.Get();
-        }
+        _head ??= _nodePool.Get();
 
         if (_head._count == _head._array.Length)
         {

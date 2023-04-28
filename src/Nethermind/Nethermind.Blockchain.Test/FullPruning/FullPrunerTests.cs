@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,8 +33,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
     [Parallelizable(ParallelScope.All)]
     public class FullPrunerTests
     {
-        private int _fullPrunerMemoryBudgetMb;
-        private int _degreeOfParallelism;
+        private readonly int _fullPrunerMemoryBudgetMb;
+        private readonly int _degreeOfParallelism;
 
         public FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParallelism)
         {
@@ -83,6 +84,28 @@ namespace Nethermind.Blockchain.Test.FullPruning
             bool result = await test.WaitForPruning();
             result.Should().BeTrue();
             test.CopyDb.Count.Should().Be(count);
+        }
+
+        [Timeout(Timeout.MaxTestTime)]
+        [TestCase(true, FullPruningCompletionBehavior.None, false)]
+        [TestCase(true, FullPruningCompletionBehavior.ShutdownOnSuccess, true)]
+        [TestCase(true, FullPruningCompletionBehavior.AlwaysShutdown, true)]
+        [TestCase(false, FullPruningCompletionBehavior.None, false)]
+        [TestCase(false, FullPruningCompletionBehavior.ShutdownOnSuccess, false)]
+        [TestCase(false, FullPruningCompletionBehavior.AlwaysShutdown, true)]
+        public async Task pruning_shuts_down_node(bool success, FullPruningCompletionBehavior behavior, bool expectedShutdown)
+        {
+            TestContext test = CreateTest(successfulPruning: success, completionBehavior: behavior);
+            await test.WaitForPruning();
+
+            if (expectedShutdown)
+            {
+                test.ProcessExitSource.Received(1).Exit(ExitCodes.Ok);
+            }
+            else
+            {
+                test.ProcessExitSource.DidNotReceiveWithAnyArgs().Exit(ExitCodes.Ok);
+            }
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -137,7 +160,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.FullPruningDb[key].Should().BeEquivalentTo(key);
         }
 
-        private TestContext CreateTest(bool successfulPruning = true, bool clearPrunedDb = false) => new(successfulPruning, clearPrunedDb, _fullPrunerMemoryBudgetMb, _degreeOfParallelism);
+        private TestContext CreateTest(bool successfulPruning = true, bool clearPrunedDb = false, FullPruningCompletionBehavior completionBehavior = FullPruningCompletionBehavior.None) =>
+            new(successfulPruning, clearPrunedDb, completionBehavior, _fullPrunerMemoryBudgetMb, _degreeOfParallelism);
 
         private class TestContext
         {
@@ -154,7 +178,14 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
             public IChainEstimations _chainEstimations = ChainSizes.UnknownChain.Instance;
 
-            public TestContext(bool successfulPruning, bool clearPrunedDb = false, int fullScanMemoryBudgetMb = 0, int degreeOfParallelism = 0)
+            public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
+
+            public TestContext(
+                bool successfulPruning,
+                bool clearPrunedDb = false,
+                FullPruningCompletionBehavior completionBehavior = FullPruningCompletionBehavior.None,
+                int fullScanMemoryBudgetMb = 0,
+                int degreeOfParallelism = 0)
             {
                 BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
                 _clearPrunedDb = clearPrunedDb;
@@ -172,7 +203,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
-                }, BlockTree, StateReader, _chainEstimations, DriveInfo, LimboLogs.Instance);
+                    FullPruningCompletionBehavior = completionBehavior
+                }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, LimboLogs.Instance);
             }
 
             public async Task<bool> WaitForPruning()
@@ -286,6 +318,16 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                     get => _context[key];
                     set => _context[key] = value;
+                }
+
+                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                {
+                    _context.Set(key, value, flags);
+                }
+
+                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+                {
+                    return _context.Get(key, flags);
                 }
 
                 public void Commit()

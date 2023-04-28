@@ -66,7 +66,7 @@ namespace Nethermind.Sockets
                 }
                 finally
                 {
-                    if (!(module is null) && !string.IsNullOrWhiteSpace(id))
+                    if (module is not null && !string.IsNullOrWhiteSpace(id))
                     {
                         module.RemoveClient(id);
                         if (logger?.IsDebug == true) logger.Info($"Closing WebSockets for client: '{clientName}'.");

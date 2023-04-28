@@ -50,19 +50,26 @@ namespace Nethermind.Db
             LoadData();
         }
 
-        public byte[] this[ReadOnlySpan<byte> key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
-            get => _cache[key];
-            set
+            get => Get(key, ReadFlags.None);
+            set => Set(key, value, WriteFlags.None);
+        }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return _cache[key];
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (value is null)
             {
-                if (value is null)
-                {
-                    _cache.TryRemove(key, out _);
-                }
-                else
-                {
-                    _cache.AddOrUpdate(key.ToArray(), newValue => Add(value), (x, oldValue) => Update(oldValue, value));
-                }
+                _cache.TryRemove(key, out _);
+            }
+            else
+            {
+                _cache.AddOrUpdate(key.ToArray(), newValue => Add(value), (x, oldValue) => Update(oldValue, value));
             }
         }
 
@@ -78,6 +85,8 @@ namespace Nethermind.Db
         {
             return _cache.ContainsKey(key);
         }
+
+        public long GetSize() => 0;
 
         public IDb Innermost => this;
         public void Flush() { }

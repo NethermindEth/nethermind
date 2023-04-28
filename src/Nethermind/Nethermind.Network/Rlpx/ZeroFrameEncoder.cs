@@ -42,7 +42,7 @@ namespace Nethermind.Network.Rlpx
                 // 1 if the buffer does not have enough bytes, and its capacity is unchanged.
                 // 2 if the buffer has enough writable bytes, and its capacity has been increased.
                 // 3 if the buffer does not have enough bytes, but its capacity has been increased to its maximum.
-                int code = output.EnsureWritable(Frame.HeaderSize + Frame.MacSize + frame.PayloadSize + Frame.MacSize, true);
+                _ = output.EnsureWritable(Frame.HeaderSize + Frame.MacSize + frame.PayloadSize + Frame.MacSize, true);
 
                 WriteHeader(output);
                 WriteHeaderMac(output);

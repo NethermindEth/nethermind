@@ -81,7 +81,7 @@ namespace Nethermind.Init.Steps
 
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
-                _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
 
@@ -318,7 +318,7 @@ namespace Nethermind.Init.Steps
                     IDriveInfo drive = api.FileSystem.GetDriveInfos(fullPruningDb.GetPath(initConfig.BaseDbPath))[0];
                     FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
                         stateReader, ChainSizes.CreateChainSizeInfo(api.ChainSpec!.ChainId),
-                        drive, api.LogManager);
+                        drive, api.ProcessExit, api.LogManager);
                     api.DisposeStack.Push(pruner);
                 }
             }

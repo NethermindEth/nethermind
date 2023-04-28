@@ -37,7 +37,7 @@ namespace Nethermind.Db
                 throw new ArgumentException($"{dbName} database has not been registered in {nameof(DbProvider)}.");
             }
 
-            if (!(found is T result))
+            if (found is not T result)
             {
                 throw new IOException(
                     $"An attempt was made to resolve DB {dbName} as {typeof(T)} while its type is {found.GetType()}.");
