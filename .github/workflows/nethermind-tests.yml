@@ -91,7 +91,7 @@ jobs:
     - name: Check out repository
       uses: actions/checkout@v3
       with:
-        submodules: true
+        submodules: recursive
     - name: Cache nuget
       id: cache-nuget
       uses: actions/cache@v3
