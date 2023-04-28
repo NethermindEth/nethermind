@@ -738,6 +738,9 @@ namespace Nethermind.Trie
             trieNode.StoreNibblePathPrefix = StoreNibblePathPrefix.Length == 0? Array.Empty<byte>(): (byte[])StoreNibblePathPrefix.Clone();
             if(Key is not null) trieNode.Key = (byte[])Key.Clone();
             trieNode._rlpStream = null;
+            IsDirty = true;
+            IsPersisted = false;
+            LastSeen = null;
             return trieNode;
         }
 
