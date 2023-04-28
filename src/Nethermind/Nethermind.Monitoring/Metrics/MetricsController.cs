@@ -54,31 +54,33 @@ namespace Nethermind.Monitoring.Metrics
 
         private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member)
         {
-            Dictionary<string, string> staticTags = GetCommonStaticTags();
-
-            member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
-                  .ForEach(attribute => staticTags.Add(attribute.Label, GetStaticMemberInfo(attribute.Informer, attribute.Label)));
-
             string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = BuildGaugeName(member);
 
-            return CreateGauge(name, description, staticTags);
+            bool haveTagAttributes = member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().Any();
+            if (!haveTagAttributes)
+            {
+                return CreateGauge(name, description, _commonStaticTags);
+            }
+
+            Dictionary<string, string> tags = new(_commonStaticTags);
+            member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>().ForEach(attribute =>
+                tags.Add(attribute.Label, GetStaticMemberInfo(attribute.Informer, attribute.Label)));
+            return CreateGauge(name, description, tags);
         }
 
         // Tags that all metrics share
-        private static Dictionary<string, string> GetCommonStaticTags()
+        private static readonly Dictionary<string, string> _commonStaticTags = new()
         {
-            Dictionary<string, string> tags = new();
-            tags.Add(nameof(ProductInfo.Instance), ProductInfo.Instance);
-            tags.Add(nameof(ProductInfo.Network), ProductInfo.Network);
-            tags.Add(nameof(ProductInfo.SyncType), ProductInfo.SyncType);
-            tags.Add(nameof(ProductInfo.PruningMode), ProductInfo.PruningMode);
-            tags.Add(nameof(ProductInfo.Version), ProductInfo.Version);
-            tags.Add(nameof(ProductInfo.Commit), ProductInfo.Commit);
-            tags.Add(nameof(ProductInfo.Runtime), ProductInfo.Runtime);
-            tags.Add(nameof(ProductInfo.BuildTimestamp), ProductInfo.BuildTimestamp.ToUnixTimeSeconds().ToString());
-            return tags;
-        }
+            { nameof(ProductInfo.Instance), ProductInfo.Instance },
+            { nameof(ProductInfo.Network), ProductInfo.Network },
+            { nameof(ProductInfo.SyncType), ProductInfo.SyncType },
+            { nameof(ProductInfo.PruningMode), ProductInfo.PruningMode },
+            { nameof(ProductInfo.Version), ProductInfo.Version },
+            { nameof(ProductInfo.Commit), ProductInfo.Commit },
+            { nameof(ProductInfo.Runtime), ProductInfo.Runtime },
+            { nameof(ProductInfo.BuildTimestamp), ProductInfo.BuildTimestamp.ToUnixTimeSeconds().ToString() },
+        };
 
         private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
         {
