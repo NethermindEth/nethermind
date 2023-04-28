@@ -86,8 +86,8 @@ jobs:
         max_wait_minutes: '5'
         interval: '5'
         timeout: '10'
-        organization: 'NethermindEth'
-        repository: 'nethermind'
+        org_name: 'NethermindEth'
+        repo_name: 'nethermind'
         ref: ${{ github.ref }}
     
     #- name: Wait for Docker Build Action to complete
@@ -183,6 +183,6 @@ jobs:
         max_wait_minutes: '5'
         interval: '5'
         timeout: '20'
-        organization: 'NethermindEth'
-        repository: 'post-merge-smoke-tests'
+        org_name: 'NethermindEth'
+        repo_name: 'post-merge-smoke-tests'
         ref: 'main'
