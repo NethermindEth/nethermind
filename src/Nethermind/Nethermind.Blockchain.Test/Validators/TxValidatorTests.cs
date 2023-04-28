@@ -89,11 +89,12 @@ public class TxValidatorTests
     }
 
     [Test, Timeout(Timeout.MaxTestTime)]
-    public void No_chain_id_tx_is_valid()
+    public void No_chain_id_legacy_tx_is_valid()
     {
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r
         sigData[63] = 1; // correct s
+        sigData[64] = 27; // correct v
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
@@ -146,7 +147,7 @@ public class TxValidatorTests
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r
         sigData[63] = 1; // correct s
-        sigData[64] = CalculateV();
+        sigData[64] = 27; // correct v
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction
             .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
@@ -231,7 +232,7 @@ public class TxValidatorTests
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r
         sigData[63] = 1; // correct s
-        sigData[64] = CalculateV();
+        sigData[64] = 27; // correct v
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction
             .WithType(txType > TxType.AccessList ? TxType.Legacy : txType)
@@ -286,7 +287,7 @@ public class TxValidatorTests
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r
         sigData[63] = 1; // correct s
-        sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+        sigData[64] = 27; // correct v
         Signature signature = new(sigData);
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithType(txType)
@@ -315,7 +316,7 @@ public class TxValidatorTests
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r
         sigData[63] = 1; // correct s
-        sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+        sigData[64] = 27; // correct v
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction
             .WithType(TxType.Blob)
@@ -338,7 +339,7 @@ public class TxValidatorTests
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r
         sigData[63] = 1; // correct s
-        sigData[64] = 1 + TestBlockchainIds.ChainId * 2 + 35;
+        sigData[64] = 27; // correct v
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction
             .WithType(TxType.Blob)
