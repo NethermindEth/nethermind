@@ -47,7 +47,7 @@ namespace Nethermind.Consensus
         {
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
             tx.Signature = Sign(hash);
-            tx.Signature.V = tx.Signature.V + 8 + 2 * _chainId;
+            tx.Signature.V = tx.Type == TxType.Legacy ? tx.Signature.V + 8 + 2 * _chainId : (ulong)(tx.Signature.RecoveryId + 27);
             return default;
         }
 

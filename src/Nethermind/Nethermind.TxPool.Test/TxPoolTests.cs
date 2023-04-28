@@ -512,7 +512,7 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
             _txPool.GetPendingTransactions().Length.Should().Be(30);
             _txPool.GetOwnPendingTransactions().Length.Should().Be(isLocal ? 1 : 0);
-            result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.Accepted) : nameof(AcceptTxResult.FeeTooLow));
+            result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.FeeTooLowToCompete) : nameof(AcceptTxResult.FeeTooLow));
         }
 
         [TestCase(0)]
@@ -1374,10 +1374,12 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            _txPool.SubmitTx(firstTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
-            peer.Received().SendNewTransaction(firstTx);
-            _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
-            peer.Received().SendNewTransaction(secondTx);
+            _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(secondTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetPendingTransactions().Should().Contain(firstTx);
+            _txPool.GetPendingTransactions().Should().Contain(secondTx);
+            _txPool.GetOwnPendingTransactions().Should().NotContain(firstTx);
+            _txPool.GetOwnPendingTransactions().Should().NotContain(secondTx);
 
             // Send cheap transaction => Not included in txPool
             Transaction cheapTx = Build.A.Transaction
@@ -1386,7 +1388,9 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1)
                 .WithMaxPriorityFeePerGas(1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
+            _txPool.GetPendingTransactions().Should().NotContain(cheapTx);
+            _txPool.GetOwnPendingTransactions().Should().Contain(cheapTx);
             peer.Received().SendNewTransaction(cheapTx);
 
             // Send transaction with increased nonce => NonceGap should not appear as previous transaction is broadcasted, should be accepted
@@ -1396,7 +1400,9 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1)
                 .WithMaxPriorityFeePerGas(1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            _txPool.SubmitTx(fourthTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(fourthTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
+            _txPool.GetPendingTransactions().Should().NotContain(fourthTx);
+            _txPool.GetOwnPendingTransactions().Should().Contain(fourthTx);
             peer.Received().SendNewTransaction(fourthTx);
         }
 
