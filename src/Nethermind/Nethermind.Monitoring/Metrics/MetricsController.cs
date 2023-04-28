@@ -76,6 +76,7 @@ namespace Nethermind.Monitoring.Metrics
             tags.Add(nameof(ProductInfo.Version), ProductInfo.Version);
             tags.Add(nameof(ProductInfo.Commit), ProductInfo.Commit);
             tags.Add(nameof(ProductInfo.Runtime), ProductInfo.Runtime);
+            tags.Add(nameof(ProductInfo.BuildTimestamp), ProductInfo.BuildTimestamp.ToUnixTimeSeconds().ToString());
             return tags;
         }
 

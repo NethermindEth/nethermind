@@ -11,7 +11,6 @@ namespace Nethermind.Init
     public static class Metrics
     {
         [Description("Version number")]
-        [MetricsStaticDescriptionTag(nameof(ProductInfo.BuildTimestamp), typeof(ProductInfo))]
         public static long Version { get; set; }
     }
 }
