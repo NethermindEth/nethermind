@@ -436,10 +436,6 @@ jobs:
       run: dotnet test src/Nethermind/Ethereum.Trie.Test -c ${{ env.BUILD_CONFIG }}
     - name: Ethereum.VM.Test
       run: dotnet test src/Nethermind/Ethereum.VM.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.Blockchain.Block.Legacy.Test
-      run: dotnet test src/Nethermind/Ethereum.Block.Legacy.Test -c ${{ env.BUILD_CONFIG }}
-    - name: Ethereum.Blockchain.Legacy.Test
-      run: dotnet test src/Nethermind/Ethereum.Legacy.Test -c ${{ env.BUILD_CONFIG }}
 
   eth-tests3:
     name: 'Run Ethereum tests #3'
