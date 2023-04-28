@@ -79,7 +79,7 @@ jobs:
            }'
 
     - name: Wait for Docker Build Action to complete
-      uses: kamilchodola/wait-for-workflow-action@1.1.1-rc
+      uses: kamilchodola/wait-for-workflow-action@1.1.1
       with:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         workflow_id: 'build-nethermind-docker-images.yml'
@@ -176,7 +176,7 @@ jobs:
                    }'
 
     - name: Wait for creation of node
-      uses: kamilchodola/wait-for-workflow-action@1.1.1-rc
+      uses: kamilchodola/wait-for-workflow-action@1.1.1
       with:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         workflow_id: 'run-single-node.yml'
