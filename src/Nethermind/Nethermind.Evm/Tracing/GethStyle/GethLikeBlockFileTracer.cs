@@ -36,7 +36,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
 
         _fileNameFormat = _fileSystem.Path.Combine(_fileSystem.Path.GetTempPath(), $"block_{hash}-{{0}}-{{1}}-{{2}}.jsonl");
 
-        _serializerOptions.Converters.Add(new GethLikeTxTraceJsonConverter());
+        _serializerOptions.Converters.Add(new GethLikeTxTraceJsonLinesConverter());
     }
 
     public IReadOnlyCollection<string> FileNames => _fileNames.AsReadOnly();
@@ -89,18 +89,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter = null;
     }
 
-    private void DumpTraceEntry(GethTxFileTraceEntry entry)
-    {
-        JsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
-
-        // Reset the writer to avoid adding comma (depth tracking) before writing a new line
-        _jsonWriter.Flush();
-        _jsonWriter.Reset();
-        _jsonWriter.WriteRawValue(Environment.NewLine, true);
-        // Reset the writer again to avoid adding comma if reused
-        _jsonWriter.Flush();
-        _jsonWriter.Reset();
-    }
+    private void DumpTraceEntry(GethTxFileTraceEntry entry) => JsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
 
     private string GetFileName(Keccak txHash)
     {
