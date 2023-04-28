@@ -10,7 +10,9 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Monitoring.Config;
 using Prometheus;
 
@@ -52,16 +54,29 @@ namespace Nethermind.Monitoring.Metrics
 
         private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member)
         {
-            Dictionary<string, string> staticLabels = member
-                .GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
-                .ToDictionary(
-                    attribute => attribute.Label,
-                    attribute => GetStaticMemberInfo(attribute.Informer, attribute.Label));
+            Dictionary<string, string> staticTags = GetCommonStaticTags();
+
+            member.GetCustomAttributes<MetricsStaticDescriptionTagAttribute>()
+                  .ForEach(attribute => staticTags.Add(attribute.Label, GetStaticMemberInfo(attribute.Informer, attribute.Label)));
 
             string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = BuildGaugeName(member);
 
-            return CreateGauge(name, description, staticLabels);
+            return CreateGauge(name, description, staticTags);
+        }
+
+        // Tags that all metrics share
+        private static Dictionary<string, string> GetCommonStaticTags()
+        {
+            Dictionary<string, string> tags = new();
+            tags.Add(nameof(ProductInfo.Instance), ProductInfo.Instance);
+            tags.Add(nameof(ProductInfo.Network), ProductInfo.Network);
+            tags.Add(nameof(ProductInfo.SyncType), ProductInfo.SyncType);
+            tags.Add(nameof(ProductInfo.PruningMode), ProductInfo.PruningMode);
+            tags.Add(nameof(ProductInfo.Version), ProductInfo.Version);
+            tags.Add(nameof(ProductInfo.Commit), ProductInfo.Commit);
+            tags.Add(nameof(ProductInfo.Runtime), ProductInfo.Runtime);
+            return tags;
         }
 
         private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
