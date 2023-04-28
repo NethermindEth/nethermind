@@ -16,7 +16,6 @@ namespace Nethermind.Evm.Tracing.GethStyle;
 public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxFileTracer>
 {
     private const string _alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
-    private static readonly JsonSerializerOptions _serializerOptions = new();
 
     private readonly Block _block;
     private Stream _file;
@@ -25,6 +24,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     private IFileSystem _fileSystem;
     private Utf8JsonWriter _jsonWriter;
     private readonly GethTraceOptions _options;
+    private readonly JsonSerializerOptions _serializerOptions = new();
 
     public GethLikeBlockFileTracer(Block block, GethTraceOptions options, IFileSystem fileSystem) : base(options?.TxHash)
     {

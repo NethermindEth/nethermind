@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Evm.Tracing.GethStyle;
 using NUnit.Framework;
@@ -34,7 +35,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     public void Should_return_memory_size_with_memory_disabled()
     {
         var entries = new List<GethTxFileTraceEntry>();
-        var trace = ExecuteAndTraceToFile(entries.Add, GetBytecode(), GethTraceOptions.Default);
+        var trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
         entries[0].MemorySize.Should().Be(0);
         entries[1].MemorySize.Should().Be(0);
@@ -51,40 +52,47 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     public void Should_return_memory_when_enabled()
     {
         var entries = new List<GethTxFileTraceEntry>();
-        var trace = ExecuteAndTraceToFile(entries.Add, GetBytecode(), GethTraceOptions.Default with { EnableMemory = true });
+        var trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { EnableMemory = true });
 
-        entries[0].Memory.Count().Should().Be(0);
-        entries[1].Memory.Count().Should().Be(0);
-        entries[2].Memory.Count().Should().Be(0);
-        entries[3].Memory.Count().Should().Be(1);
-        entries[4].Memory.Count().Should().Be(1);
-        entries[5].Memory.Count().Should().Be(1);
-        entries[6].Memory.Count().Should().Be(2);
+        entries[0].Memory.Count.Should().Be(0);
+        entries[1].Memory.Count.Should().Be(0);
+        entries[2].Memory.Count.Should().Be(0);
+        entries[3].Memory.Count.Should().Be(1);
+        entries[4].Memory.Count.Should().Be(1);
+        entries[5].Memory.Count.Should().Be(1);
+        entries[6].Memory.Count.Should().Be(2);
     }
 
     [Test]
     public void Should_return_stack_when_enabled()
     {
         var entries = new List<GethTxFileTraceEntry>();
-        var trace = ExecuteAndTraceToFile(entries.Add, GetBytecode(), GethTraceOptions.Default);
+        var trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
-        entries[0].Stack.Count().Should().Be(0);
-        entries[1].Stack.Count().Should().Be(1);
-        entries[2].Stack.Count().Should().Be(2);
-        entries[3].Stack.Count().Should().Be(0);
-        entries[4].Stack.Count().Should().Be(1);
-        entries[5].Stack.Count().Should().Be(2);
-        entries[6].Stack.Count().Should().Be(0);
+        entries[0].Stack.Count.Should().Be(0);
+        entries[1].Stack.Count.Should().Be(1);
+        entries[2].Stack.Count.Should().Be(2);
+        entries[3].Stack.Count.Should().Be(0);
+        entries[4].Stack.Count.Should().Be(1);
+        entries[5].Stack.Count.Should().Be(2);
+        entries[6].Stack.Count.Should().Be(0);
     }
 
     [Test]
     public void Should_not_return_stack_when_disabled()
     {
         var entries = new List<GethTxFileTraceEntry>();
-        var trace = ExecuteAndTraceToFile(entries.Add, GetBytecode(), GethTraceOptions.Default with { DisableStack = true });
+        var trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { DisableStack = true });
 
-        entries.All(e => e.Stack.Count == 0).Should().BeTrue();
+        entries.All(e => e.Stack is null).Should().BeTrue();
     }
+
+    /// <summary>
+    /// Clones the specified trace entry as <see cref="GethLikeTxFileTracer"/>
+    /// reuses the same instance for all entries.
+    /// </summary>
+    private static GethTxFileTraceEntry CloneTraceEntry(GethTxFileTraceEntry entry) =>
+        JsonSerializer.Deserialize<GethTxFileTraceEntry>(JsonSerializer.Serialize(entry));
 
     private static byte[] GetBytecode() =>
         Prepare.EvmCode

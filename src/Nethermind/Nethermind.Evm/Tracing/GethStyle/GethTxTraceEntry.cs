@@ -15,13 +15,13 @@ public class GethTxTraceEntry
 
     public long GasCost { get; set; }
 
-    public List<string>? Memory { get; set; }
+    public IList<string>? Memory { get; set; }
 
     public string? Opcode { get; set; }
 
     public long ProgramCounter { get; set; }
 
-    public List<string>? Stack { get; set; } = new();
+    public IList<string>? Stack { get; set; }
 
     public Dictionary<string, string>? Storage { get; set; }
 
