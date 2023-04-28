@@ -32,7 +32,10 @@ namespace Nethermind.TxPool.Comparison
             if (!x.Supports1559 && !y.Supports1559)
             {
                 y.GasPrice.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpGasPrice);
-                return (y.GasPrice + bumpGasPrice).CompareTo(x.GasPrice);
+                int gasPriceResult = (y.GasPrice + bumpGasPrice).CompareTo(x.GasPrice);
+                // return -1 (replacement accepted) if fee bump is exactly by PartOfFeeRequiredToIncrease
+                // never return 0 - it's allowed or not
+                return gasPriceResult != 0 ? gasPriceResult : bumpGasPrice > 0 ? -1 : 1;
             }
 
             /* MaxFeePerGas for legacy will be GasPrice and MaxPriorityFeePerGas will be GasPrice too
@@ -41,7 +44,10 @@ namespace Nethermind.TxPool.Comparison
             if (y.MaxFeePerGas + bumpMaxFeePerGas > x.MaxFeePerGas) return 1;
 
             y.MaxPriorityFeePerGas.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpMaxPriorityFeePerGas);
-            return (y.MaxPriorityFeePerGas + bumpMaxPriorityFeePerGas).CompareTo(x.MaxPriorityFeePerGas);
+            int result = (y.MaxPriorityFeePerGas + bumpMaxPriorityFeePerGas).CompareTo(x.MaxPriorityFeePerGas);
+            // return -1 (replacement accepted) if fee bump is exactly by PartOfFeeRequiredToIncrease
+            // never return 0 - it's allowed or not
+            return result != 0 ? result : (bumpMaxFeePerGas > 0 && bumpMaxPriorityFeePerGas > 0) ? -1 : 1;
         }
 
     }
