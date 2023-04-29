@@ -123,6 +123,8 @@ public class ColumnDb : IDbWithSpan
 
     private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
 
+    public long GetSize() => _mainDb.GetSize();
+
     public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _rocksDb.GetSpan(key, _columnFamily);
 
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)

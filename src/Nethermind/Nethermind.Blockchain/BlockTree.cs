@@ -214,7 +214,8 @@ namespace Nethermind.Blockchain
                              $"lowest inserted header {LowestInsertedHeader?.Number}, " +
                              $"body {LowestInsertedBodyNumber}, " +
                              $"lowest sync inserted block number {LowestInsertedBeaconHeader?.Number}");
-            ThisNodeInfo.AddInfo("Chain ID     :", $"{(ChainId == NetworkId ? Core.BlockchainIds.GetBlockchainName(NetworkId) : ChainId)}");
+            ProductInfo.Network = $"{(ChainId == NetworkId ? BlockchainIds.GetBlockchainName(NetworkId) : ChainId)}";
+            ThisNodeInfo.AddInfo("Chain ID     :", ProductInfo.Network);
             ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.Header.ToString(BlockHeader.Format.Short) ?? "0"}");
             if (ChainId != NetworkId)
             {
@@ -239,7 +240,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private void RecalculateTreeLevels()
+        public void RecalculateTreeLevels()
         {
             LoadLowestInsertedBodyNumber();
             LoadLowestInsertedHeader();

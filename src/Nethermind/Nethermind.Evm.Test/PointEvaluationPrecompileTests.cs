@@ -24,7 +24,7 @@ public class PointEvaluationPrecompileTests
     private static readonly byte[] _predefinedFailureAnswer = Array.Empty<byte>();
 
     [OneTimeSetUp]
-    public Task OneTimeSetUp() => KzgPolynomialCommitments.Initialize();
+    public Task OneTimeSetUp() => KzgPolynomialCommitments.InitializeAsync();
 
     [TestCaseSource(nameof(OutputTests))]
     public bool Test_PointEvaluationPrecompile_Produces_Correct_Outputs(byte[] input)

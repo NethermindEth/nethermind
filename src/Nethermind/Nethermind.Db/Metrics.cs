@@ -122,6 +122,46 @@ namespace Nethermind.Db
         [Description("Indicator if StadeDb is being pruned.")]
         public static int StateDbPruning { get; set; }
 
+        [GaugeMetric]
+        [Description("Size of state DB in bytes")]
+        public static long StateDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of receipts DB in bytes")]
+        public static long ReceiptsDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of headers DB in bytes")]
+        public static long HeadersDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of blocks DB in bytes")]
+        public static long BlocksDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of bloom DB in bytes")]
+        public static long BloomDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of code DB in bytes")]
+        public static long CodeDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of blockInfos DB in bytes")]
+        public static long BlockInfosDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of cht DB in bytes")]
+        public static long ChtDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of metadata DB in bytes")]
+        public static long MetadataDbSize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of witness DB in bytes")]
+        public static long WitnessDbSize { get; set; }
+
         [Description("Metrics extracted from RocksDB Compacion Stats and DB Statistics")]
         public static IDictionary<string, long> DbStats { get; set; } = new ConcurrentDictionary<string, long>();
     }

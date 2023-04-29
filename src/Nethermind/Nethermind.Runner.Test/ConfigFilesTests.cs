@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Config.Test;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
@@ -53,6 +54,12 @@ namespace Nethermind.Runner.Test
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.FastSync, fastSyncEnabled);
             Test<ISyncConfig, bool>(configWildcard, c => c.FastBlocks, fastBlocksEnabled);
+        }
+
+        [TestCase("archive")]
+        public void Archive_configs_have_pruning_turned_off(string configWildcard)
+        {
+            Test<IPruningConfig, PruningMode>(configWildcard, c => c.Mode, PruningMode.None);
         }
 
         [TestCase("archive", true)]

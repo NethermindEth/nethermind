@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -119,7 +118,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             {
                 if (_txPool.TryGetPendingTransaction(msg.Hashes[i], out Transaction tx))
                 {
-                    int txSize = tx.GetLength(_txDecoder);
+                    int txSize = tx.GetLength();
 
                     if (txSize > packetSizeLeft && txsToSend.Count > 0)
                     {
