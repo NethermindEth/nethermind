@@ -10,6 +10,7 @@ namespace Nethermind.Blockchain
     public interface IChainEstimations
     {
         long? StateSize { get; }
+        long? PruningSize { get; }
     }
 
     public static class ChainSizes
@@ -17,20 +18,24 @@ namespace Nethermind.Blockchain
         public class UnknownChain : IChainEstimations
         {
             public long? StateSize => null;
+            public long? PruningSize => null;
 
             public static readonly IChainEstimations Instance = new UnknownChain();
         }
 
         private class ChainEstimations : IChainEstimations
         {
-            private readonly LinearExtrapolation _stateSizeEstimator;
+            private readonly LinearExtrapolation? _stateSizeEstimator;
+            private readonly LinearExtrapolation? _prunedStateEstimator;
 
-            public ChainEstimations(LinearExtrapolation stateSizeEstimator)
+            public ChainEstimations(LinearExtrapolation? stateSizeEstimator = null, LinearExtrapolation? prunedStateEstimator = null)
             {
                 _stateSizeEstimator = stateSizeEstimator;
+                _prunedStateEstimator = prunedStateEstimator;
             }
 
-            public long? StateSize => _stateSizeEstimator.Estimate;
+            public long? StateSize => _stateSizeEstimator?.Estimate;
+            public long? PruningSize => _prunedStateEstimator?.Estimate;
         }
 
         private class LinearExtrapolation
@@ -44,6 +49,13 @@ namespace Nethermind.Blockchain
                 _atUpdate = atUpdate;
                 _dailyGrowth = dailyGrowth;
                 _updateDate = updateDate;
+            }
+
+            public LinearExtrapolation(long firstValue, DateTime firstDate, long secondValue, DateTime secondDate)
+            {
+                _atUpdate = firstValue;
+                _dailyGrowth = (long)((secondValue - firstValue) / (secondDate - firstDate).TotalDays);
+                _updateDate = firstDate;
             }
 
             public long Estimate => _atUpdate + (DateTime.UtcNow - _updateDate).Days * _dailyGrowth;
@@ -63,7 +75,9 @@ namespace Nethermind.Blockchain
                 BlockchainIds.Ropsten => new ChainEstimations(
                     new LinearExtrapolation(35900.MB(), 25.MB(), new DateTime(2021, 12, 7))),
                 BlockchainIds.Mainnet => new ChainEstimations(
-                    new LinearExtrapolation(90000.MB(), 70.MB(), new DateTime(2022, 04, 7))),
+                    new LinearExtrapolation(90000.MB(), 70.MB(), new DateTime(2022, 04, 7)),
+                    new LinearExtrapolation(163.GB(), new DateTime(2023, 4, 11, 19, 49, 0),
+                        177653453177, new DateTime(2023, 04, 27, 14, 3, 0))),
                 BlockchainIds.Gnosis => new ChainEstimations(
                     new LinearExtrapolation(18000.MB(), 48.MB(), new DateTime(2021, 12, 7))),
                 BlockchainIds.EnergyWeb => new ChainEstimations(
@@ -72,6 +86,9 @@ namespace Nethermind.Blockchain
                     new LinearExtrapolation(17500.MB(), 10.MB(), new DateTime(2021, 11, 7))),
                 BlockchainIds.PoaCore => new ChainEstimations(
                     new LinearExtrapolation(13900.MB(), 4.MB(), new DateTime(2021, 12, 7))),
+                BlockchainIds.Sepolia => new ChainEstimations(null,
+                    new LinearExtrapolation(2457.MB(), new DateTime(2023, 04, 9, 21, 11, 0),
+                        3699505976, new DateTime(2023, 04, 28, 20, 18, 0))),
                 _ => UnknownChain.Instance
             };
         }

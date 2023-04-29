@@ -129,12 +129,12 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
         [TestCase(100, 150, false)]
         [TestCase(200, 100, true)]
-        [TestCase(160, 100, true)]
-        [TestCase(160, 101, false)]
+        [TestCase(130, 100, true)]
+        [TestCase(130, 101, false)]
         public async Task should_check_available_space_before_running(long availableSpace, long requiredSpace, bool isEnoughSpace)
         {
             using PruningTestBlockchain chain = await PruningTestBlockchain.Create();
-            chain._chainEstimations.StateSize.Returns(requiredSpace);
+            chain._chainEstimations.PruningSize.Returns(requiredSpace);
             chain.DriveInfo.AvailableFreeSpace.Returns(availableSpace);
             PruningTriggerEventArgs args = new();
             chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
