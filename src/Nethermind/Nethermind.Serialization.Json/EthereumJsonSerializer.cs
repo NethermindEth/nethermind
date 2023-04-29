@@ -117,6 +117,11 @@ namespace Nethermind.Serialization.Json
             return position;
         }
 
+        public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)
+        {
+            JsonSerializer.Serialize(stream, value, indented ? JsonOptionsIndented : JsonOptions);
+        }
+
         private sealed class CountingStream : Stream
         {
             private Stream _wrappedStream;

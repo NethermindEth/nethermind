@@ -153,10 +153,6 @@ namespace Nethermind.JsonRpc.Test
         private IJsonSerializer GetSerializer()
         {
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
-            //if (additionalConverters is not null)
-            //{
-            //    jsonSerializer.RegisterConverters(additionalConverters);
-            //}
 
             return jsonSerializer;
         }

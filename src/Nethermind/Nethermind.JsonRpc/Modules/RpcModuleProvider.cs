@@ -58,9 +58,6 @@ namespace Nethermind.JsonRpc.Modules
             _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
             _modules.Add(moduleType);
 
-            //IReadOnlyCollection<JsonConverter> poolConverters = pool.Factory.GetConverters();
-            //((List<JsonConverter>)Converters).AddRange(poolConverters);
-
             foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
             {
                 ResolvedMethodInfo resolvedMethodInfo = new(moduleType, info, readOnly, availability);

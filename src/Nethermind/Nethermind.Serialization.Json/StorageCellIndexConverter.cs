@@ -7,22 +7,6 @@ using Nethermind.Int256;
 
 #nullable enable
 
-//namespace Nethermind.Serialization.Json
-//{
-//    
-
-//    public class StorageCellIndexConverter : JsonConverter<UInt256>
-//    {
-//        public override void WriteJson(JsonWriter writer, UInt256 value, JsonSerializer serializer)
-//        {
-//            writer.WriteValue(value.ToHexString(false));
-//        }
-
-//        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer) =>
-//            UInt256Converter.ReaderJson(reader);
-//    }
-//}
-
 namespace Nethermind.Serialization.Json
 {
     using System.Collections.Generic;

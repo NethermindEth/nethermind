@@ -32,15 +32,12 @@ namespace Nethermind.Blockchain
 
             try
             {
-                IJsonSerializer serializer = new EthereumJsonSerializer();
-                //serializer.RegisterConverters(Converters);
-
                 if (blockTracer is BlockReceiptsTracer receiptsTracer)
                 {
                     fileName = $"receipts_{blockHash}.txt";
                     using FileStream diagnosticFile = GetFileStream(fileName);
                     IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
-                    serializer.Serialize(diagnosticFile, receipts, true);
+                    EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
                     if (logger.IsInfo)
                         logger.Info($"Created a Receipts trace of block {blockHash} in file {diagnosticFile.Name}");
 
@@ -51,7 +48,7 @@ namespace Nethermind.Blockchain
                     fileName = $"gethStyle_{blockHash}.txt";
                     using FileStream diagnosticFile = GetFileStream(fileName);
                     IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
-                    serializer.Serialize(diagnosticFile, trace, true);
+                    EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
                     if (logger.IsInfo)
                         logger.Info($"Created a Geth-style trace of block {blockHash} in file {diagnosticFile.Name}");
                 }
@@ -61,7 +58,7 @@ namespace Nethermind.Blockchain
                     fileName = $"parityStyle_{blockHash}.txt";
                     using FileStream diagnosticFile = GetFileStream(fileName);
                     IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
-                    serializer.Serialize(diagnosticFile, trace, true);
+                    EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
                     if (logger.IsInfo)
                         logger.Info($"Created a Parity-style trace of block {blockHash} in file {diagnosticFile.Name}");
                 }

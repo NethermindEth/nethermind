@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 using Nethermind.Serialization.Json;
 
@@ -14,7 +15,7 @@ namespace Nethermind.JsonRpc
 
         public JsonElement Params { get; set; }
 
-        [System.Text.Json.Serialization.JsonConverter(typeof(IdConverter))]
+        [JsonConverter(typeof(IdConverter))]
         public object Id { get; set; }
 
         public override string ToString()

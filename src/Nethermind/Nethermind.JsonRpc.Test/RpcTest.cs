@@ -41,10 +41,6 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcResponse response = service.SendRequestAsync(request, context).Result;
 
             EthereumJsonSerializer serializer = new();
-            //foreach (JsonConverter converter in converters)
-            //{
-            //    serializer.RegisterConverter(converter);
-            //}
 
             Stream stream = new MemoryStream();
             long size = serializer.Serialize(stream, response);

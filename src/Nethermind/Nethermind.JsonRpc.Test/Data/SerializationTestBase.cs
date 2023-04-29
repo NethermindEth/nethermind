@@ -67,10 +67,6 @@ namespace Nethermind.JsonRpc.Test.Data
         private void TestToJson<T>(T item, JsonConverter<T>? converter, string expectedResult)
         {
             IJsonSerializer serializer = BuildSerializer();
-            //if (converter is not null)
-            //{
-            //    serializer.RegisterConverter(converter);
-            //}
 
             string result = serializer.Serialize(item);
             Assert.AreEqual(expectedResult.Replace("+", "\\u002B"), result, result.Replace("\"", "\\\""));
@@ -84,9 +80,6 @@ namespace Nethermind.JsonRpc.Test.Data
         private static IJsonSerializer BuildSerializer()
         {
             IJsonSerializer serializer = new EthereumJsonSerializer();
-            //serializer.RegisterConverters(EthModuleFactory.Converters);
-            //serializer.RegisterConverters(TraceModuleFactory.Converters);
-            //serializer.RegisterConverter(new BlockParameterConverter());
             return serializer;
         }
     }
