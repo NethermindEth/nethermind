@@ -52,10 +52,10 @@ namespace Nethermind.Evm.Precompiles
             try
             {
                 Span<byte> extendedInput = stackalloc byte[96];
-                inputData.Slice(0, Math.Min(96, inputData.Length)).Span
-                    .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
+                inputData[..Math.Min(96, inputData.Length)].Span
+                    .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
 
-                UInt256 baseLength = new(extendedInput.Slice(0, 32), true);
+                UInt256 baseLength = new(extendedInput[..32], true);
                 UInt256 expLength = new(extendedInput.Slice(32, 32), true);
                 UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
 
@@ -91,10 +91,10 @@ namespace Nethermind.Evm.Precompiles
         private static (int, int, int) GetInputLengths(in ReadOnlyMemory<byte> inputData)
         {
             Span<byte> extendedInput = stackalloc byte[96];
-            inputData.Slice(0, Math.Min(96, inputData.Length)).Span
-                .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
+            inputData[..Math.Min(96, inputData.Length)].Span
+                .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
 
-            int baseLength = (int)new UInt256(extendedInput.Slice(0, 32), true);
+            int baseLength = (int)new UInt256(extendedInput[..32], true);
             UInt256 expLengthUint256 = new(extendedInput.Slice(32, 32), true);
             int expLength = expLengthUint256 > Array.MaxLength ? Array.MaxLength : (int)expLengthUint256;
             int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32), true);

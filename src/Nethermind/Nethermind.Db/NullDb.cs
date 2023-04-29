@@ -21,10 +21,14 @@ namespace Nethermind.Db
 
         public string Name { get; } = "NullDb";
 
-        public byte[]? this[ReadOnlySpan<byte> key]
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            get => null;
-            set => throw new NotSupportedException();
+            return null;
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            throw new NotSupportedException();
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, null)).ToArray();
@@ -38,6 +42,8 @@ namespace Nethermind.Db
         {
             return false;
         }
+
+        public long GetSize() => 0;
 
         public IDb Innermost => this;
         public void Flush() { }

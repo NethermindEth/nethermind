@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Tracing
 
             blockTracer.StartNewBlockTrace(block);
 
-            Block? processedBlock = null;
+            Block? processedBlock;
             try
             {
                 processedBlock = _blockProcessor.Process(block, _processingOptions, blockTracer);

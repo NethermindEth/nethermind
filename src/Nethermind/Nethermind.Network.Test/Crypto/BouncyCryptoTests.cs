@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Secp256k1;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Crypto
@@ -30,8 +29,8 @@ namespace Nethermind.Network.Test.Crypto
             PrivateKey privateKey1 = TestItem.PrivateKeyA;
             PrivateKey privateKey2 = TestItem.PrivateKeyB;
 
-            byte[] sharedSecret1 = Proxy.EcdhSerialized(privateKey2.PublicKey.Bytes, privateKey1.KeyBytes);
-            byte[] sharedSecret2 = Proxy.EcdhSerialized(privateKey1.PublicKey.Bytes, privateKey2.KeyBytes);
+            byte[] sharedSecret1 = SecP256k1.EcdhSerialized(privateKey2.PublicKey.Bytes, privateKey1.KeyBytes);
+            byte[] sharedSecret2 = SecP256k1.EcdhSerialized(privateKey1.PublicKey.Bytes, privateKey2.KeyBytes);
 
             Assert.AreEqual(sharedSecret1, sharedSecret2);
         }

@@ -66,11 +66,11 @@ namespace Nethermind.AccountAbstraction.Subscribe
                 JsonRpcResult result;
                 if (_includeUserOperations)
                 {
-                    result = CreateSubscriptionMessage(new { UserOperation = new UserOperationRpc(e.UserOperation), EntryPoint = e.EntryPoint });
+                    result = CreateSubscriptionMessage(new { UserOperation = new UserOperationRpc(e.UserOperation), e.EntryPoint });
                 }
                 else
                 {
-                    result = CreateSubscriptionMessage(new { UserOperation = e.UserOperation.RequestId, EntryPoint = e.EntryPoint });
+                    result = CreateSubscriptionMessage(new { UserOperation = e.UserOperation.RequestId, e.EntryPoint });
                 }
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} printed hash of newReceivedUserOperations.");

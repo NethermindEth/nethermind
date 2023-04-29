@@ -160,7 +160,7 @@ namespace Nethermind.Consensus.AuRa
 
         private class ReceivedSteps
         {
-            private struct AuthorBlock : IEquatable<AuthorBlock>
+            private readonly struct AuthorBlock : IEquatable<AuthorBlock>
             {
                 public AuthorBlock(Address author, Keccak block)
                 {

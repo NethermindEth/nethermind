@@ -238,9 +238,10 @@ namespace Nethermind.Synchronization.SnapSync
                                 node.SetChild(ci, child);
 
                                 // TODO: we should optimize it - copy only if there are two boundary children
-                                List<byte> newPath = new(path);
-
-                                newPath.Add((byte)ci);
+                                List<byte> newPath = new(path)
+                                {
+                                    (byte)ci
+                                };
 
                                 proofNodesToProcess.Push((node, child, pathIndex, newPath));
                                 sortedBoundaryList.Add(child);

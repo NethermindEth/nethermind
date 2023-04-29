@@ -29,7 +29,7 @@ namespace Nethermind.TxPool.Comparison
             // always allow replacement of zero fee txs (in legacy txs MaxFeePerGas equals GasPrice)
             if (y.MaxFeePerGas.IsZero) return -1;
 
-            if (!x.IsEip1559 && !y.IsEip1559)
+            if (!x.Supports1559 && !y.Supports1559)
             {
                 y.GasPrice.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpGasPrice);
                 return (y.GasPrice + bumpGasPrice).CompareTo(x.GasPrice);

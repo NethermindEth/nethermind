@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc
             string url = parts[0];
             if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ||
                 (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
-                uri.Segments.Count() > 1 ||
+                uri.Segments.Length > 1 ||
                 uri.Port == 0)
                 throw new FormatException("First part must be a valid url with the format: scheme://host:port");
 
