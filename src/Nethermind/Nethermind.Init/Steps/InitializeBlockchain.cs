@@ -317,8 +317,8 @@ namespace Nethermind.Init.Steps
 
                     IDriveInfo drive = api.FileSystem.GetDriveInfos(fullPruningDb.GetPath(initConfig.BaseDbPath))[0];
                     FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
-                        stateReader, ChainSizes.CreateChainSizeInfo(api.ChainSpec!.ChainId),
-                        drive, api.ProcessExit, api.LogManager);
+                        stateReader, api.ProcessExit, ChainSizes.CreateChainSizeInfo(api.ChainSpec!.ChainId),
+                        drive, api.LogManager);
                     api.DisposeStack.Push(pruner);
                 }
             }
