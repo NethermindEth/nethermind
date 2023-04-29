@@ -299,7 +299,7 @@ public class TxValidatorTests
 
         Transaction tx = txBuilder.TestObject;
 
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        TxValidator txValidator = new(TestSpecProvider.Instance);
         return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
 
@@ -326,7 +326,7 @@ public class TxValidatorTests
             .WithChainId(TestBlockchainIds.ChainId)
             .WithSignature(signature).TestObject;
 
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        TxValidator txValidator = new(TestSpecProvider.Instance);
         return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
 
