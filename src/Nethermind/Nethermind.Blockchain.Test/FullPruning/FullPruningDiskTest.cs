@@ -91,11 +91,11 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     IPruningConfig pruningConfig,
                     IBlockTree blockTree,
                     IStateReader stateReader,
+                    IProcessExitSource processExitSource,
                     IDriveInfo driveInfo,
                     IChainEstimations chainEstimations,
-                    IProcessExitSource processExitSource,
                     ILogManager logManager)
-                    : base(pruningDb, pruningTrigger, pruningConfig, blockTree, stateReader, chainEstimations, driveInfo, processExitSource, logManager)
+                    : base(pruningDb, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, chainEstimations, driveInfo, logManager)
                 {
                 }
 
