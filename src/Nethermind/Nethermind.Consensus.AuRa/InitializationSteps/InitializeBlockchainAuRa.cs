@@ -45,21 +45,21 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         _auraConfig = NethermindApi.Config<IAuraConfig>();
     }
 
-        protected override IBlockProcessor CreateBlockProcessor()
-        {
-            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.ChainHeadStateProvider is null) throw new StepDependencyException(nameof(_api.ChainHeadStateProvider));
-            if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
-            if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
-            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
-            if (_api.StorageProvider is null) throw new StepDependencyException(nameof(_api.StorageProvider));
-            if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
-            if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
-            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
+    protected override IBlockProcessor CreateBlockProcessor()
+    {
+        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+        if (_api.ChainHeadStateProvider is null) throw new StepDependencyException(nameof(_api.ChainHeadStateProvider));
+        if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
+        if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+        if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
+        if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
+        if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
+        if (_api.StorageProvider is null) throw new StepDependencyException(nameof(_api.StorageProvider));
+        if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
+        if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
+        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+        if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
+        if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
         var processingReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
         var txPermissionFilterOnlyTxProcessorSource = CreateReadOnlyTransactionProcessorSource();

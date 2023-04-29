@@ -52,11 +52,11 @@ public class TxValidatorTests
         // r is zero
         sigData[63] = 1; // correct s
 
-            Signature signature = new(sigData);
-            Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
-            TxValidator txValidator = new(TestSpecProvider.Instance);
-            txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
-        }
+        Signature signature = new(sigData);
+        Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
+        TxValidator txValidator = new(TestSpecProvider.Instance);
+        txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
+    }
 
     private static byte CalculateV() => (byte)EthereumEcdsa.CalculateV(TestBlockchainIds.ChainId);
 
@@ -70,9 +70,9 @@ public class TxValidatorTests
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(TestSpecProvider.Instance);
-            txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
-        }
+        TxValidator txValidator = new(TestSpecProvider.Instance);
+        txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
+    }
 
     [Test, Timeout(Timeout.MaxTestTime)]
     public void Bad_chain_id_is_not_valid()
@@ -84,9 +84,9 @@ public class TxValidatorTests
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(TestSpecProvider.Instance);
-            txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
-        }
+        TxValidator txValidator = new(TestSpecProvider.Instance);
+        txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
+    }
 
     [Test, Timeout(Timeout.MaxTestTime)]
     public void No_chain_id_tx_is_valid()
@@ -97,9 +97,9 @@ public class TxValidatorTests
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(TestSpecProvider.Instance);
-            txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
-        }
+        TxValidator txValidator = new(TestSpecProvider.Instance);
+        txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
+    }
 
     [Test, Timeout(Timeout.MaxTestTime)]
     public void Is_valid_with_valid_chain_id()
@@ -111,9 +111,9 @@ public class TxValidatorTests
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
-            TxValidator txValidator = new(TestSpecProvider.Instance);
-            txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
-        }
+        TxValidator txValidator = new(TestSpecProvider.Instance);
+        txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
+    }
 
     [Timeout(Timeout.MaxTestTime)]
     [TestCase(true)]
@@ -131,9 +131,9 @@ public class TxValidatorTests
         releaseSpec.IsEip155Enabled.Returns(false);
         releaseSpec.ValidateChainId.Returns(validateChainId);
 
-            TxValidator txValidator = new(TestSpecProvider.Instance);
-            txValidator.IsWellFormed(tx, releaseSpec).Should().Be(!validateChainId);
-        }
+        TxValidator txValidator = new(TestSpecProvider.Instance);
+        txValidator.IsWellFormed(tx, releaseSpec).Should().Be(!validateChainId);
+    }
 
     [Timeout(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, true, ExpectedResult = true)]
@@ -158,9 +158,9 @@ public class TxValidatorTests
 
         tx.Type = txType;
 
-            TxValidator txValidator = new(TestSpecProvider.Instance);
-            return txValidator.IsWellFormed(tx, eip2930 ? Berlin.Instance : MuirGlacier.Instance);
-        }
+        TxValidator txValidator = new(TestSpecProvider.Instance);
+        return txValidator.IsWellFormed(tx, eip2930 ? Berlin.Instance : MuirGlacier.Instance);
+    }
 
     [Timeout(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, true, false, ExpectedResult = true)]
@@ -189,10 +189,10 @@ public class TxValidatorTests
 
         tx.Type = txType;
 
-            TxValidator txValidator = new(TestSpecProvider.Instance);
-            IReleaseSpec releaseSpec = new ReleaseSpec() { IsEip2930Enabled = eip2930, IsEip1559Enabled = eip1559 };
-            return txValidator.IsWellFormed(tx, releaseSpec);
-        }
+        TxValidator txValidator = new(TestSpecProvider.Instance);
+        IReleaseSpec releaseSpec = new ReleaseSpec() { IsEip2930Enabled = eip2930, IsEip1559Enabled = eip1559 };
+        return txValidator.IsWellFormed(tx, releaseSpec);
+    }
 
     [Timeout(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, ExpectedResult = true)]
@@ -214,9 +214,9 @@ public class TxValidatorTests
 
         tx.Type = txType;
 
-            TxValidator txValidator = new(TestSpecProvider.Instance);
-            return txValidator.IsWellFormed(tx, Berlin.Instance);
-        }
+        TxValidator txValidator = new(TestSpecProvider.Instance);
+        return txValidator.IsWellFormed(tx, Berlin.Instance);
+    }
 
     [Timeout(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, 10, 5, ExpectedResult = true)]
@@ -245,9 +245,9 @@ public class TxValidatorTests
 
         tx.Type = txType;
 
-            TxValidator txValidator = new(TestSpecProvider.Instance);
-            return txValidator.IsWellFormed(tx, London.Instance);
-        }
+        TxValidator txValidator = new(TestSpecProvider.Instance);
+        return txValidator.IsWellFormed(tx, London.Instance);
+    }
 
     [Timeout(Timeout.MaxTestTime)]
     [TestCase(true, 1, false)]
@@ -272,9 +272,9 @@ public class TxValidatorTests
             .To(null)
             .WithData(initCode).TestObject;
 
-            TxValidator txValidator = new(TestSpecProvider.Instance);
-            txValidator.IsWellFormed(tx, releaseSpec).Should().Be(expectedResult);
-        }
+        TxValidator txValidator = new(TestSpecProvider.Instance);
+        txValidator.IsWellFormed(tx, releaseSpec).Should().Be(expectedResult);
+    }
 
     [Timeout(Timeout.MaxTestTime)]
     [TestCase(TxType.EIP1559, false, ExpectedResult = true)]
