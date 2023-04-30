@@ -309,6 +309,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
                 new GetPayloadV2Handler(payloadPreparationService, _api.LogManager),
+                new GetPayloadV3Handler(payloadPreparationService, _api.LogManager),
                 new NewPayloadHandler(
                     _api.BlockValidator,
                     _api.BlockTree,

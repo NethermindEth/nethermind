@@ -47,6 +47,7 @@ namespace Nethermind.Api
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
+        IProcessExitSource ProcessExit { get; set; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins

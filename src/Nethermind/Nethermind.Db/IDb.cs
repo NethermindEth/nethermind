@@ -15,6 +15,7 @@ namespace Nethermind.Db
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
         void Remove(ReadOnlySpan<byte> key);
         bool KeyExists(ReadOnlySpan<byte> key);
+        long GetSize();
 
         void Flush();
 

@@ -4,9 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
 
@@ -88,6 +86,8 @@ namespace Nethermind.Db.FullPruning
             _currentDb.Dispose();
             _pruningContext?.CloningDb.Dispose();
         }
+
+        public long GetSize() => _currentDb.GetSize() + (_pruningContext?.CloningDb.GetSize() ?? 0);
 
         public string Name => _settings.DbName;
 

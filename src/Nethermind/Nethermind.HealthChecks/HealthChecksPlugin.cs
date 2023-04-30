@@ -53,7 +53,12 @@ namespace Nethermind.HealthChecks
         public bool MustInitialize => true;
 
         public FreeDiskSpaceChecker FreeDiskSpaceChecker => LazyInitializer.EnsureInitialized(ref _freeDiskSpaceChecker,
-            () => new FreeDiskSpaceChecker(_healthChecksConfig, _logger, _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath), _api.TimerFactory));
+            () => new FreeDiskSpaceChecker(
+                _healthChecksConfig,
+                _api.FileSystem.GetDriveInfos(_initConfig.BaseDbPath),
+                _api.TimerFactory,
+                _api.ProcessExit,
+                _logger));
 
         public Task Init(INethermindApi api)
         {

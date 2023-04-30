@@ -101,6 +101,8 @@ namespace Nethermind.Db
 
         public int Count => _db.Count;
 
+        public long GetSize() => 0;
+
         public void Dispose()
         {
         }
