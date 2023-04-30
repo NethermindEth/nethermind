@@ -10,10 +10,10 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.HealthChecks
 {
@@ -71,14 +71,8 @@ namespace Nethermind.HealthChecks
 
             if (_api.SpecProvider!.TerminalTotalDifficulty is not null)
             {
-                if (syncingResult.IsSyncing)
-                {
-                    AddStillSyncingMessagePostMerge(messages, syncingResult);
-                }
-                else
-                {
-                    AddFullySyncMessage(messages);
-                }
+                bool syncHealthy = CheckSyncPostMerge(messages, errors, syncingResult);
+
                 bool hasPeers = CheckPeers(messages, errors, netPeerCount);
 
                 bool clAlive = CheckClAlive();
@@ -88,7 +82,7 @@ namespace Nethermind.HealthChecks
                     AddClUnavailableMessage(messages, errors);
                 }
 
-                healthy = clAlive & hasPeers;
+                healthy = syncHealthy & clAlive & hasPeers;
             }
             else
             {
@@ -151,6 +145,29 @@ namespace Nethermind.HealthChecks
                    _healthHintService.MaxSecondsIntervalForProducingBlocksHint();
         }
 
+        private bool CheckSyncPostMerge(ICollection<(string Description, string LongDescription)> messages,
+            ICollection<string> errors, SyncingResult syncingResult)
+        {
+            if (syncingResult.IsSyncing)
+            {
+                if (syncingResult.SyncMode == SyncMode.Disconnected)
+                {
+                    messages.Add(("Sync mode: disconnected",
+                        $"Sync degraded: No useful peers. CurrentBlock: {syncingResult.CurrentBlock}, HighestBlock: {syncingResult.HighestBlock}"));
+                    errors.Add(ErrorStrings.SyncDegraded);
+                    return false;
+                }
+                messages.Add(("Still syncing",
+                    $"The node is still syncing, CurrentBlock: {syncingResult.CurrentBlock}, HighestBlock: {syncingResult.HighestBlock}"));
+            }
+            else
+            {
+                AddFullySyncMessage(messages);
+            }
+
+            return true;
+        }
+
         public bool CheckClAlive()
         {
             var now = _api.Timestamper.UtcNow;
@@ -193,6 +210,7 @@ namespace Nethermind.HealthChecks
             public const string NotProcessingBlocks = nameof(NotProcessingBlocks);
             public const string ClUnavailable = nameof(ClUnavailable);
             public const string LowDiskSpace = nameof(LowDiskSpace);
+            public const string SyncDegraded = nameof(SyncDegraded);
         }
 
         private static bool CheckPeers(ICollection<(string Description, string LongDescription)> messages,
@@ -249,13 +267,6 @@ namespace Nethermind.HealthChecks
         {
             messages.Add(("Still syncing",
                 $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}. The status will change to healthy once synced"));
-        }
-
-        private static void AddStillSyncingMessagePostMerge(ICollection<(string Description, string LongDescription)> messages,
-            SyncingResult ethSyncing)
-        {
-            messages.Add(("Still syncing",
-                $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}"));
         }
 
         private static void AddFullySyncMessage(ICollection<(string Description, string LongDescription)> messages)
