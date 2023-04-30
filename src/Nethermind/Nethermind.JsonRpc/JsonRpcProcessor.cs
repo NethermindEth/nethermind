@@ -239,11 +239,15 @@ namespace Nethermind.JsonRpc
                     }
 
                     reader.AdvanceTo(buffer.Start, buffer.End);
+                    buffer = default;
                 }
             }
             finally
             {
-                reader.AdvanceTo(buffer.End);
+                if (!buffer.FirstSpan.IsNull())
+                {
+                    reader.AdvanceTo(buffer.End);
+                }
             }
 
             reader.Complete();
