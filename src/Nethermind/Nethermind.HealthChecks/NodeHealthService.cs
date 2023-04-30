@@ -152,8 +152,8 @@ namespace Nethermind.HealthChecks
             {
                 if (syncingResult.SyncMode == SyncMode.Disconnected)
                 {
-                    messages.Add(("Sync mode: disconnected",
-                        $"Sync degraded: No useful peers. CurrentBlock: {syncingResult.CurrentBlock}, HighestBlock: {syncingResult.HighestBlock}"));
+                    messages.Add(("Sync degraded",
+                        $"Sync degraded(no useful peers), CurrentBlock: {syncingResult.CurrentBlock}, HighestBlock: {syncingResult.HighestBlock}"));
                     errors.Add(ErrorStrings.SyncDegraded);
                     return false;
                 }

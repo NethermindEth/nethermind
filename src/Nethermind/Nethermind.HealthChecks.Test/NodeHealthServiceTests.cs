@@ -86,7 +86,7 @@ namespace Nethermind.HealthChecks.Test
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
-            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            ISyncModeSelector syncModeSelector = new StaticSelector(test.SyncMode);
             INethermindApi api = Substitute.For<INethermindApi>();
 
             ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
@@ -159,25 +159,16 @@ namespace Nethermind.HealthChecks.Test
         {
             public int Lp { get; set; }
             public int PeerCount { get; set; }
-
             public bool IsSyncing { get; set; }
-
             public bool ExpectedHealthy { get; set; }
-
             public string ExpectedMessage { get; set; }
-
             public string ExpectedLongMessage { get; set; }
-
             public int[] EnabledCapabilitiesUpdatedCalls { get; set; }
-
             public int[] DisabledCapabilitiesUpdatedCalls { get; set; } = Array.Empty<int>();
-
             public string[] EnabledCapabilities { get; set; }
-
             public string[] DisabledCapabilities { get; set; } = Array.Empty<string>();
-
             public string[] ExpectedErrors { get; set; }
-
+            public SyncMode SyncMode { get; set; }
             public int TimeSpanSeconds { get; set; }
             public double AvailableDiskSpacePercent { get; set; } = 11;
 
@@ -189,22 +180,14 @@ namespace Nethermind.HealthChecks.Test
         {
             public int Lp { get; set; }
             public int PeerCount { get; set; }
-
             public bool IsSyncing { get; set; }
-
             public bool IsMining { get; set; }
-
             public bool IsProducingBlocks { get; set; }
-
             public bool IsProcessingBlocks { get; set; }
             public double AvailableDiskSpacePercent { get; set; } = 11;
-
             public bool ExpectedHealthy { get; set; }
-
             public string ExpectedMessage { get; set; }
-
             public string ExpectedLongMessage { get; set; }
-
             public List<string> ExpectedErrors { get; set; }
 
             public override string ToString() =>
@@ -385,7 +368,7 @@ namespace Nethermind.HealthChecks.Test
                 };
                 yield return new CheckHealthPostMergeTest()
                 {
-                    Lp = 4,
+                    Lp = 5,
                     IsSyncing = false,
                     PeerCount = 10,
                     ExpectedHealthy = false,
@@ -400,7 +383,7 @@ namespace Nethermind.HealthChecks.Test
                 };
                 yield return new CheckHealthPostMergeTest()
                 {
-                    Lp = 4,
+                    Lp = 6,
                     IsSyncing = false,
                     PeerCount = 10,
                     ExpectedHealthy = true,
@@ -415,7 +398,7 @@ namespace Nethermind.HealthChecks.Test
                 };
                 yield return new CheckHealthPostMergeTest()
                 {
-                    Lp = 5,
+                    Lp = 7,
                     IsSyncing = true,
                     PeerCount = 10,
                     ExpectedHealthy = true,
@@ -428,7 +411,7 @@ namespace Nethermind.HealthChecks.Test
                 };
                 yield return new CheckHealthPostMergeTest()
                 {
-                    Lp = 5,
+                    Lp = 8,
                     IsSyncing = false,
                     PeerCount = 10,
                     ExpectedHealthy = true,
@@ -441,7 +424,7 @@ namespace Nethermind.HealthChecks.Test
                 };
                 yield return new CheckHealthPostMergeTest()
                 {
-                    Lp = 6,
+                    Lp = 9,
                     IsSyncing = false,
                     PeerCount = 10,
                     ExpectedHealthy = false,
@@ -452,6 +435,20 @@ namespace Nethermind.HealthChecks.Test
                     EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
                     AvailableDiskSpacePercent = 4.73,
                     ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 10. The node is running out of free disk space in 'C:/' - only {1.50:F2} GB ({4.73:F2}%) left."
+                };
+                yield return new CheckHealthPostMergeTest()
+                {
+                    Lp = 10,
+                    IsSyncing = true,
+                    PeerCount = 10,
+                    ExpectedHealthy = false,
+                    ExpectedMessage = "Sync degraded. Peers: 10.",
+                    TimeSpanSeconds = 301,
+                    ExpectedErrors = new[] { "SyncDegraded" },
+                    SyncMode = SyncMode.Disconnected,
+                    EnabledCapabilities = new[] { "A", "B", "C" },
+                    EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
+                    ExpectedLongMessage = "Sync degraded(no useful peers), CurrentBlock: 4, HighestBlock: 15. Peers: 10."
                 };
             }
         }
