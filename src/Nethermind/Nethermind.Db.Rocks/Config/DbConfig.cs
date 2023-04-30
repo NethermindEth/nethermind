@@ -46,7 +46,7 @@ public class DbConfig : IDbConfig
     public bool HeadersDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? HeadersDbMaxOpenFiles { get; set; }
     public long? HeadersDbMaxWriteBytesPerSec { get; set; }
-    public int? HeadersBlockSize { get; set; }
+    public int? HeadersBlockSize { get; set; } = 4 * 1024;
     public IDictionary<string, string>? HeadersDbAdditionalRocksDbOptions { get; set; }
 
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)8.MiB();
