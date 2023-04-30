@@ -165,7 +165,7 @@ namespace Nethermind.Facade.Test.Eth
         private SyncingResult CreateSyncingResult(bool isSyncing, long currentBlock, long highestBlock, SyncMode syncMode)
         {
             if (!isSyncing) return SyncingResult.NotSyncing;
-            return new SyncingResult { CurrentBlock = currentBlock, HighestBlock = highestBlock, IsSyncing = true, StartingBlock = 0, SyncMode = syncMode};
+            return new SyncingResult { CurrentBlock = currentBlock, HighestBlock = highestBlock, IsSyncing = true, StartingBlock = 0, SyncMode = syncMode };
         }
     }
 }
