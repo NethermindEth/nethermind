@@ -8,6 +8,7 @@ using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
@@ -77,6 +78,34 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
         public bool IsTracingFees => false;
+
+        bool ITxTracer.IsLiveTrace => throw new NotImplementedException();
+
+        bool ITxTracer.IsTracingReceipt => throw new NotImplementedException();
+
+        bool ITxTracer.IsTracingActions => throw new NotImplementedException();
+
+        bool ITxTracer.IsTracingOpLevelStorage => throw new NotImplementedException();
+
+        bool ITxTracer.IsTracingMemory => throw new NotImplementedException();
+
+        bool ITxTracer.IsTracingInstructions => throw new NotImplementedException();
+
+        bool ITxTracer.IsTracingRefunds => throw new NotImplementedException();
+
+        bool ITxTracer.IsTracingCode => throw new NotImplementedException();
+
+        bool ITxTracer.IsTracingStack => throw new NotImplementedException();
+
+        bool ITxTracer.IsTracingBlockHash => throw new NotImplementedException();
+
+        bool ITxTracer.IsTracingAccess => throw new NotImplementedException();
+
+        bool ITxTracer.IsTracingFees => throw new NotImplementedException();
+
+        bool IStateTracer.IsTracingState => throw new NotImplementedException();
+
+        bool IStorageTracer.IsTracingStorage => throw new NotImplementedException();
 
         private static string GetCallType(ExecutionType executionType)
         {
@@ -526,6 +555,171 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         }
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportOperationError(EvmExceptionType error)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportOperationRemainingGas(long gas)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.SetOperationStack(List<string> stackTrace)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportStackPush(in ReadOnlySpan<byte> stackItem)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.SetOperationMemory(List<string> memoryTrace)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.SetOperationMemorySize(ulong newSize)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportActionError(EvmExceptionType evmExceptionType)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportBlockHash(Keccak blockHash)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportByteCode(byte[] byteCode)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportRefund(long refund)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportExtraGasPressure(long extraGasPressure)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ITxTracer.Wait(EvmState evmState)
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStateTracer.ReportBalanceChange(Address address, UInt256? before, UInt256? after)
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStateTracer.ReportCodeChange(Address address, byte[]? before, byte[]? after)
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStateTracer.ReportNonceChange(Address address, UInt256? before, UInt256? after)
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStateTracer.ReportAccountRead(Address address)
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStorageTracer.ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStorageTracer.ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        {
+            throw new NotImplementedException();
+        }
+
+        void IStorageTracer.ReportStorageRead(in StorageCell storageCell)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Lock()
         {
             throw new NotImplementedException();
         }

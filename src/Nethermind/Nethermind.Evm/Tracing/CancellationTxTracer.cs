@@ -115,6 +115,8 @@ namespace Nethermind.Evm.Tracing
             init => _isTracingFees = value;
         }
 
+        public bool IsLiveTrace => false;
+
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             _token.ThrowIfCancellationRequested();
@@ -437,6 +439,20 @@ namespace Nethermind.Evm.Tracing
             {
                 _innerTracer.ReportFees(fees, burntFees);
             }
+        }
+
+        public void Wait(EvmState evmState)
+        {
+            _token.ThrowIfCancellationRequested();
+            if (_innerTracer.IsLiveTrace)
+            {
+                _innerTracer.Wait(evmState);
+            }
+        }
+
+        public void Lock()
+        {
+            throw new NotImplementedException();
         }
     }
 }

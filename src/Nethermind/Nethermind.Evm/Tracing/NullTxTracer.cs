@@ -30,6 +30,8 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingAccess => false;
         public bool IsTracingFees => false;
 
+        public bool IsLiveTrace => false;
+
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
             => throw new InvalidOperationException(ErrorMessage);
 
@@ -115,5 +117,15 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)
             => throw new InvalidOperationException(ErrorMessage);
+
+        public void Wait(EvmState evmState)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Lock()
+        {
+            throw new NotImplementedException();
+        }
     }
 }

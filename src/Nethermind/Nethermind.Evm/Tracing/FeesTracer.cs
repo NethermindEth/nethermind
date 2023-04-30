@@ -29,6 +29,8 @@ public class FeesTracer : IBlockTracer, ITxTracer
     public UInt256 Fees { get; private set; } = UInt256.Zero;
     public UInt256 BurntFees { get; private set; } = UInt256.Zero;
 
+    public bool IsLiveTrace => false;
+
     public void ReportFees(UInt256 fees, UInt256 burntFees)
     {
         Fees += fees;
@@ -191,6 +193,16 @@ public class FeesTracer : IBlockTracer, ITxTracer
     }
 
     public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void Wait(EvmState evmState)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void Lock()
     {
         throw new NotImplementedException();
     }

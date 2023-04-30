@@ -47,6 +47,8 @@ namespace Nethermind.Evm.Tracing
 
         public byte StatusCode { get; set; }
 
+        public bool IsLiveTrace => false;
+
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             GasSpent = gasSpent;
@@ -295,6 +297,16 @@ namespace Nethermind.Evm.Tracing
         }
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Wait(EvmState evmState)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Lock()
         {
             throw new NotImplementedException();
         }

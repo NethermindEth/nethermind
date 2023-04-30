@@ -218,7 +218,19 @@ namespace Nethermind.Evm.Tracing
             throw new NotImplementedException();
         }
 
+        public void Wait(EvmState evmState)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Lock()
+        {
+            throw new NotImplementedException();
+        }
+
         public long GasSpent { get; set; }
         public AccessList? AccessList { get; private set; }
+
+        public bool IsLiveTrace => false;
     }
 }

@@ -40,6 +40,8 @@ namespace Nethermind.Evm.Tracing.Proofs
         public bool IsTracingStorage => true;
         public bool IsTracingFees => false;
 
+        public bool IsLiveTrace => false;
+
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             throw new NotSupportedException();
@@ -220,6 +222,16 @@ namespace Nethermind.Evm.Tracing.Proofs
         }
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Wait(EvmState evmState)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Lock()
         {
             throw new NotImplementedException();
         }

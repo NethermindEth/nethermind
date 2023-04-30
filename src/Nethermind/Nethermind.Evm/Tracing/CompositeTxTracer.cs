@@ -53,6 +53,8 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingAccess { get; }
         public bool IsTracingFees { get; }
 
+        public bool IsLiveTrace => false;
+
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             for (int index = 0; index < _txTracers.Count; index++)
@@ -483,6 +485,23 @@ namespace Nethermind.Evm.Tracing
                     innerTracer.ReportFees(fees, burntFees);
                 }
             }
+        }
+
+        public void Wait(EvmState evmState)
+        {
+            for (int index = 0; index < _txTracers.Count; index++)
+            {
+                ITxTracer innerTracer = _txTracers[index];
+                if (innerTracer.IsTracingActions)
+                {
+                    innerTracer.Wait(evmState);
+                }
+            }
+        }
+
+        public void Lock()
+        {
+            throw new NotImplementedException();
         }
     }
 }

@@ -14,6 +14,16 @@ namespace Nethermind.Evm.Tracing
     public interface ITxTracer : IStateTracer, IStorageTracer
     {
         /// <summary>
+        /// Debugging Tracer switch
+        /// </summary>
+        /// <remarks>
+        /// Controls
+        /// - <see cref="MarkAsSuccess"/>
+        /// - <see cref="MarkAsFailed"/>
+        /// </remarks>
+        bool IsLiveTrace { get; }
+
+        /// <summary>
         /// Defines whether MarkAsSuccess or MarkAsFailed will be called
         /// </summary>
         /// <remarks>
@@ -427,5 +437,15 @@ namespace Nethermind.Evm.Tracing
         /// <param name="burntFees">EIP-1559 burnt fees</param>
         /// <remarks>Depends on <see cref="IsTracingFees"/></remarks>
         void ReportFees(UInt256 fees, UInt256 burntFees);
+
+        /// <summary>
+        /// Reports fees of a transaction
+        /// </summary>
+        /// <param name="fees">Fees sent to block author</param>
+        /// <param name="burntFees">EIP-1559 burnt fees</param>
+        /// <remarks>Depends on <see cref="IsTracingFees"/></remarks>
+        void Wait(EvmState evmState);
+        public void Lock();
+
     }
 }
