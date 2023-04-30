@@ -100,14 +100,9 @@ namespace Nethermind.Serialization.Json
 
         public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
 
-        [ThreadStatic]
-        private static CountingStream _countingStream;
-
         private static CountingStream GetStream(Stream stream)
         {
-            CountingStream countingStream = (_countingStream ??= new CountingStream());
-            countingStream.Set(stream);
-            return countingStream;
+            return new CountingStream(stream);
         }
 
         public long Serialize<T>(Stream stream, T value, bool indented = false)
@@ -115,7 +110,6 @@ namespace Nethermind.Serialization.Json
             CountingStream countingStream = GetStream(stream);
             JsonSerializer.Serialize(countingStream, value, indented ? JsonOptionsIndented : _jsonOptions);
             long position = countingStream.Position;
-            countingStream.Reset();
             return position;
         }
 
@@ -124,7 +118,6 @@ namespace Nethermind.Serialization.Json
             CountingStream countingStream = GetStream(stream);
             await JsonSerializer.SerializeAsync(countingStream, value, indented ? JsonOptionsIndented : _jsonOptions);
             long position = countingStream.Position;
-            countingStream.Reset();
             return position;
         }
 
@@ -138,16 +131,9 @@ namespace Nethermind.Serialization.Json
             private Stream _wrappedStream;
             private long _position;
 
-            public void Set(Stream stream)
+            public CountingStream(Stream stream)
             {
-                _position = 0;
                 _wrappedStream = stream;
-            }
-
-            public void Reset()
-            {
-                _position = 0;
-                _wrappedStream = null;
             }
 
             public override long Position { get => _position; set => throw new NotSupportedException(); }
