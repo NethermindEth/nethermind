@@ -231,7 +231,7 @@ namespace Nethermind.HealthChecks.Test
                     IsProcessingBlocks = true,
                     PeerCount = 0,
                     ExpectedHealthy = false,
-                    ExpectedErrors = new(){ "NoPeers" },
+                    ExpectedErrors = new() { "NoPeers" },
                     ExpectedMessage = "Fully synced. Node is not connected to any peers.",
                     ExpectedLongMessage = "The node is now fully synced with a network. Node is not connected to any peers."
                 };
@@ -337,7 +337,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 10. No messages from CL.",
                     TimeSpanSeconds = 301,
-                    ExpectedErrors = new []{ "ClUnavailable" },
+                    ExpectedErrors = new[] { "ClUnavailable" },
                     EnabledCapabilities = new[] { "A", "B", "C" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 0, 0, 0 },
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10. No new messages from CL after last check."
@@ -389,7 +389,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 10. No messages from CL.",
                     TimeSpanSeconds = 301,
-                    ExpectedErrors = new []{ "ClUnavailable" },
+                    ExpectedErrors = new[] { "ClUnavailable" },
                     EnabledCapabilities = new[] { "A", "B", "C" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 0, 0, 0 },
                     DisabledCapabilities = new[] { "X", "Y", "Z" },
@@ -445,7 +445,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 10. Low free disk space.",
                     TimeSpanSeconds = 15,
-                    ExpectedErrors = new []{ "LowDiskSpace" },
+                    ExpectedErrors = new[] { "LowDiskSpace" },
                     EnabledCapabilities = new[] { "A", "B", "C" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
                     AvailableDiskSpacePercent = 4.73,
