@@ -70,6 +70,8 @@ namespace Nethermind.HealthChecks.Test
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
             Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
             Assert.AreEqual(test.ExpectedLongMessage, FormatMessages(result.Messages.Select(x => x.LongMessage)));
+            Assert.AreEqual(test.IsSyncing, result.IsSyncing);
+            CollectionAssert.AreEqual(test.ExpectedErrors, result.Errors);
         }
 
         [Test]
@@ -147,6 +149,8 @@ namespace Nethermind.HealthChecks.Test
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
             Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
             Assert.AreEqual(test.ExpectedLongMessage, FormatMessages(result.Messages.Select(x => x.LongMessage)));
+            Assert.AreEqual(test.IsSyncing, result.IsSyncing);
+            CollectionAssert.AreEqual(test.ExpectedErrors, result.Errors);
         }
 
         public class CheckHealthPostMergeTest
@@ -169,6 +173,8 @@ namespace Nethermind.HealthChecks.Test
             public string[] EnabledCapabilities { get; set; }
 
             public string[] DisabledCapabilities { get; set; } = Array.Empty<string>();
+
+            public string[] ExpectedErrors { get; set; }
 
             public int TimeSpanSeconds { get; set; }
             public double AvailableDiskSpacePercent { get; set; } = 11;
@@ -197,6 +203,8 @@ namespace Nethermind.HealthChecks.Test
 
             public string ExpectedLongMessage { get; set; }
 
+            public List<string> ExpectedErrors { get; set; }
+
             public override string ToString() =>
                 $"Lp: {Lp} ExpectedHealthy: {ExpectedHealthy}, ExpectedDescription: {ExpectedMessage}, ExpectedLongDescription: {ExpectedLongMessage}";
         }
@@ -212,6 +220,7 @@ namespace Nethermind.HealthChecks.Test
                     IsProcessingBlocks = true,
                     PeerCount = 10,
                     ExpectedHealthy = true,
+                    ExpectedErrors = new(),
                     ExpectedMessage = "Fully synced. Peers: 10.",
                     ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 10."
                 };
@@ -222,6 +231,7 @@ namespace Nethermind.HealthChecks.Test
                     IsProcessingBlocks = true,
                     PeerCount = 0,
                     ExpectedHealthy = false,
+                    ExpectedErrors = new(){ "NoPeers" },
                     ExpectedMessage = "Fully synced. Node is not connected to any peers.",
                     ExpectedLongMessage = "The node is now fully synced with a network. Node is not connected to any peers."
                 };
@@ -231,6 +241,7 @@ namespace Nethermind.HealthChecks.Test
                     IsSyncing = true,
                     PeerCount = 7,
                     ExpectedHealthy = false,
+                    ExpectedErrors = new(),
                     ExpectedMessage = "Still syncing. Peers: 7.",
                     ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 7."
                 };
@@ -241,6 +252,7 @@ namespace Nethermind.HealthChecks.Test
                     IsProcessingBlocks = false,
                     PeerCount = 7,
                     ExpectedHealthy = false,
+                    ExpectedErrors = new() { "NotProcessingBlocks" },
                     ExpectedMessage = "Fully synced. Peers: 7. Stopped processing blocks.",
                     ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 7. The node stopped processing blocks."
                 };
@@ -253,6 +265,7 @@ namespace Nethermind.HealthChecks.Test
                     IsProcessingBlocks = false,
                     PeerCount = 4,
                     ExpectedHealthy = true,
+                    ExpectedErrors = new(),
                     ExpectedMessage = "Still syncing. Peers: 4.",
                     ExpectedLongMessage = $"The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 4."
                 };
@@ -265,6 +278,7 @@ namespace Nethermind.HealthChecks.Test
                     IsProcessingBlocks = false,
                     PeerCount = 0,
                     ExpectedHealthy = false,
+                    ExpectedErrors = new() { "NoPeers" },
                     ExpectedMessage = "Still syncing. Node is not connected to any peers.",
                     ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Node is not connected to any peers."
                 };
@@ -277,6 +291,7 @@ namespace Nethermind.HealthChecks.Test
                     IsProcessingBlocks = false,
                     PeerCount = 1,
                     ExpectedHealthy = false,
+                    ExpectedErrors = new() { "NotProcessingBlocks", "NotProducingBlocks" },
                     ExpectedMessage = "Fully synced. Peers: 1. Stopped processing blocks. Stopped producing blocks.",
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 1. The node stopped processing blocks. The node stopped producing blocks."
                 };
@@ -289,6 +304,7 @@ namespace Nethermind.HealthChecks.Test
                     IsProcessingBlocks = true,
                     PeerCount = 1,
                     ExpectedHealthy = true,
+                    ExpectedErrors = new(),
                     ExpectedMessage = "Fully synced. Peers: 1.",
                     ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 1."
                 };
@@ -302,6 +318,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 1,
                     AvailableDiskSpacePercent = 4.73,
                     ExpectedHealthy = false,
+                    ExpectedErrors = new() { "LowDiskSpace" },
                     ExpectedMessage = "Fully synced. Peers: 1. Low free disk space.",
                     ExpectedLongMessage = $"The node is now fully synced with a network. Peers: 1. The node is running out of free disk space in 'C:/' - only {1.5:F2} GB ({4.73:F2}%) left."
                 };
@@ -320,6 +337,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 10. No messages from CL.",
                     TimeSpanSeconds = 301,
+                    ExpectedErrors = new []{ "ClUnavailable" },
                     EnabledCapabilities = new[] { "A", "B", "C" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 0, 0, 0 },
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10. No new messages from CL after last check."
@@ -332,6 +350,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = true,
                     ExpectedMessage = "Fully synced. Peers: 10.",
                     TimeSpanSeconds = 15,
+                    ExpectedErrors = Array.Empty<string>(),
                     EnabledCapabilities = new[] { "A", "B", "C" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 0, 0, 0 },
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
@@ -344,6 +363,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = true,
                     ExpectedMessage = "Fully synced. Peers: 10.",
                     TimeSpanSeconds = 301,
+                    ExpectedErrors = Array.Empty<string>(),
                     EnabledCapabilities = new[] { "A", "B", "C" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
@@ -356,6 +376,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = true,
                     ExpectedMessage = "Fully synced. Peers: 10.",
                     TimeSpanSeconds = 15,
+                    ExpectedErrors = Array.Empty<string>(),
                     EnabledCapabilities = new[] { "A", "B", "C" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
@@ -368,6 +389,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 10. No messages from CL.",
                     TimeSpanSeconds = 301,
+                    ExpectedErrors = new []{ "ClUnavailable" },
                     EnabledCapabilities = new[] { "A", "B", "C" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 0, 0, 0 },
                     DisabledCapabilities = new[] { "X", "Y", "Z" },
@@ -382,6 +404,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = true,
                     ExpectedMessage = "Fully synced. Peers: 10.",
                     TimeSpanSeconds = 301,
+                    ExpectedErrors = Array.Empty<string>(),
                     EnabledCapabilities = new[] { "A", "B", "C" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 0, 1, 0 },
                     DisabledCapabilities = new[] { "X", "Y", "Z" },
@@ -393,12 +416,13 @@ namespace Nethermind.HealthChecks.Test
                     Lp = 5,
                     IsSyncing = true,
                     PeerCount = 10,
-                    ExpectedHealthy = false,
+                    ExpectedHealthy = true,
                     ExpectedMessage = "Still syncing. Peers: 10.",
                     TimeSpanSeconds = 301,
+                    ExpectedErrors = Array.Empty<string>(),
                     EnabledCapabilities = new[] { "A", "B", "C" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
-                    ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. The status will change to healthy once synced. Peers: 10."
+                    ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. Peers: 10."
                 };
                 yield return new CheckHealthPostMergeTest()
                 {
@@ -408,6 +432,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = true,
                     ExpectedMessage = "Fully synced. Peers: 10.",
                     TimeSpanSeconds = 301,
+                    ExpectedErrors = Array.Empty<string>(),
                     EnabledCapabilities = new[] { "engine_forkchoiceUpdatedV999", "engine_newPayloadV999" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 1, 1 },
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
@@ -420,6 +445,7 @@ namespace Nethermind.HealthChecks.Test
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 10. Low free disk space.",
                     TimeSpanSeconds = 15,
+                    ExpectedErrors = new []{ "LowDiskSpace" },
                     EnabledCapabilities = new[] { "A", "B", "C" },
                     EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
                     AvailableDiskSpacePercent = 4.73,

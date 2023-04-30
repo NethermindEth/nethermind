@@ -20,8 +20,9 @@ namespace Nethermind.HealthChecks
     public class CheckHealthResult
     {
         public bool Healthy { get; set; }
-
         public ICollection<(string Message, string LongMessage)> Messages { get; set; }
+        public bool IsSyncing { get; set; }
+        public ICollection<string> Errors { get; set; }
     }
 
     public class NodeHealthService : INodeHealthService
@@ -63,6 +64,7 @@ namespace Nethermind.HealthChecks
         public CheckHealthResult CheckHealth()
         {
             List<(string Message, string LongMessage)> messages = new();
+            List<string> errors = new();
             bool healthy = false;
             long netPeerCount = _syncServer.GetPeerCount();
             SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
@@ -71,52 +73,53 @@ namespace Nethermind.HealthChecks
             {
                 if (syncingResult.IsSyncing)
                 {
-                    AddStillSyncingMessage(messages, syncingResult);
+                    AddStillSyncingMessagePostMerge(messages, syncingResult);
                 }
                 else
                 {
                     AddFullySyncMessage(messages);
                 }
-                bool hasPeers = CheckPeers(messages, netPeerCount);
+                bool hasPeers = CheckPeers(messages, errors, netPeerCount);
 
                 bool clAlive = CheckClAlive();
 
                 if (!clAlive)
                 {
-                    AddClUnavailableMessage(messages);
+                    AddClUnavailableMessage(messages, errors);
                 }
 
-                healthy = !syncingResult.IsSyncing & clAlive & hasPeers;
+                healthy = clAlive & hasPeers;
             }
             else
             {
                 if (!_isMining && syncingResult.IsSyncing)
                 {
                     AddStillSyncingMessage(messages, syncingResult);
-                    CheckPeers(messages, netPeerCount);
+                    CheckPeers(messages, errors, netPeerCount);
                 }
                 else if (!_isMining && !syncingResult.IsSyncing)
                 {
                     AddFullySyncMessage(messages);
-                    bool peers = CheckPeers(messages, netPeerCount);
-                    bool processing = IsProcessingBlocks(messages);
+                    bool peers = CheckPeers(messages, errors, netPeerCount);
+                    bool processing = IsProcessingBlocks(messages, errors);
                     healthy = peers && processing;
                 }
                 else if (_isMining && syncingResult.IsSyncing)
                 {
                     AddStillSyncingMessage(messages, syncingResult);
-                    healthy = CheckPeers(messages, netPeerCount);
+                    healthy = CheckPeers(messages, errors, netPeerCount);
                 }
                 else if (_isMining && !syncingResult.IsSyncing)
                 {
                     AddFullySyncMessage(messages);
-                    bool peers = CheckPeers(messages, netPeerCount);
-                    bool processing = IsProcessingBlocks(messages);
-                    bool producing = IsProducingBlocks(messages);
+                    bool peers = CheckPeers(messages, errors, netPeerCount);
+                    bool processing = IsProcessingBlocks(messages, errors);
+                    bool producing = IsProducingBlocks(messages, errors);
                     healthy = peers && processing && producing;
                 }
             }
 
+            bool isLowDiskSpaceErrorAdded = false;
             for (int index = 0; index < _drives.Length; index++)
             {
                 IDriveInfo drive = _drives[index];
@@ -124,11 +127,16 @@ namespace Nethermind.HealthChecks
                 if (freeSpacePercentage < _healthChecksConfig.LowStorageSpaceWarningThreshold)
                 {
                     AddLowDiskSpaceMessage(messages, drive, freeSpacePercentage);
+                    if (!isLowDiskSpaceErrorAdded)
+                    {
+                        errors.Add(ErrorStrings.LowDiskSpace);
+                        isLowDiskSpaceErrorAdded = true;
+                    }
                     healthy = false;
                 }
             }
 
-            return new CheckHealthResult() { Healthy = healthy, Messages = messages };
+            return new CheckHealthResult() { Healthy = healthy, Errors = errors, Messages = messages, IsSyncing = syncingResult.IsSyncing };
         }
 
         private ulong? GetBlockProcessorIntervalHint()
@@ -178,12 +186,22 @@ namespace Nethermind.HealthChecks
             return true;
         }
 
+        private static class ErrorStrings
+        {
+            public const string NoPeers = nameof(NoPeers);
+            public const string NotProducingBlocks = nameof(NotProducingBlocks);
+            public const string NotProcessingBlocks = nameof(NotProcessingBlocks);
+            public const string ClUnavailable = nameof(ClUnavailable);
+            public const string LowDiskSpace = nameof(LowDiskSpace);
+        }
+
         private static bool CheckPeers(ICollection<(string Description, string LongDescription)> messages,
-            long netPeerCount)
+            ICollection<string> errors, long netPeerCount)
         {
             bool hasPeers = netPeerCount > 0;
             if (hasPeers == false)
             {
+                errors.Add(ErrorStrings.NoPeers);
                 messages.Add(("Node is not connected to any peers", "Node is not connected to any peers"));
             }
             else
@@ -194,32 +212,35 @@ namespace Nethermind.HealthChecks
             return hasPeers;
         }
 
-        private bool IsProducingBlocks(ICollection<(string Description, string LongDescription)> messages)
+        private bool IsProducingBlocks(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
         {
             ulong? maxIntervalHint = GetBlockProducerIntervalHint();
             bool producingBlocks = _blockProducer.IsProducingBlocks(maxIntervalHint);
             if (producingBlocks == false)
             {
+                errors.Add(ErrorStrings.NotProducingBlocks);
                 messages.Add(("Stopped producing blocks", "The node stopped producing blocks"));
             }
 
             return producingBlocks;
         }
 
-        private bool IsProcessingBlocks(ICollection<(string Description, string LongDescription)> messages)
+        private bool IsProcessingBlocks(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
         {
             ulong? maxIntervalHint = GetBlockProcessorIntervalHint();
             bool processingBlocks = _blockchainProcessor.IsProcessingBlocks(maxIntervalHint);
             if (processingBlocks == false)
             {
+                errors.Add(ErrorStrings.NotProcessingBlocks);
                 messages.Add(("Stopped processing blocks", "The node stopped processing blocks"));
             }
 
             return processingBlocks;
         }
 
-        private static void AddClUnavailableMessage(ICollection<(string Description, string LongDescription)> messages)
+        private static void AddClUnavailableMessage(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
         {
+            errors.Add(ErrorStrings.ClUnavailable);
             messages.Add(("No messages from CL", "No new messages from CL after last check"));
         }
 
@@ -228,6 +249,13 @@ namespace Nethermind.HealthChecks
         {
             messages.Add(("Still syncing",
                 $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}. The status will change to healthy once synced"));
+        }
+
+        private static void AddStillSyncingMessagePostMerge(ICollection<(string Description, string LongDescription)> messages,
+            SyncingResult ethSyncing)
+        {
+            messages.Add(("Still syncing",
+                $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}"));
         }
 
         private static void AddFullySyncMessage(ICollection<(string Description, string LongDescription)> messages)
