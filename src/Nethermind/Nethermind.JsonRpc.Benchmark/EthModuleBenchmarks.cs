@@ -34,11 +34,8 @@ using Nethermind.Wallet;
 using NSubstitute;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Config;
-using Nethermind.Monitoring;
-using Nethermind.Monitoring.Config;
-using Nethermind.Monitoring.Metrics;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -135,7 +132,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, new StaticSelector(SyncMode.All), LimboLogs.Instance);
 
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),
