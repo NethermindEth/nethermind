@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Nethermind.Core.Collections;
 
@@ -117,6 +119,15 @@ namespace Nethermind.Serialization.Json
             return position;
         }
 
+        public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false)
+        {
+            CountingStream countingStream = GetStream(stream);
+            await JsonSerializer.SerializeAsync(countingStream, value, indented ? JsonOptionsIndented : _jsonOptions);
+            long position = countingStream.Position;
+            countingStream.Reset();
+            return position;
+        }
+
         public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)
         {
             JsonSerializer.Serialize(stream, value, indented ? JsonOptionsIndented : JsonOptions);
@@ -153,6 +164,17 @@ namespace Nethermind.Serialization.Json
             {
                 _position += buffer.Length;
                 _wrappedStream.Write(buffer);
+            }
+            public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken token)
+            {
+                _position += count;
+                return _wrappedStream.WriteAsync(buffer, offset, count, token);
+            }
+
+            public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken token)
+            {
+                _position += buffer.Length;
+                return _wrappedStream.WriteAsync(buffer, token);
             }
 
             public override bool CanRead => _wrappedStream.CanRead;

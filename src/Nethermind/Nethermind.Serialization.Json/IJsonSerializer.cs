@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using System.Threading.Tasks;
 
 namespace Nethermind.Serialization.Json
 {
@@ -11,5 +12,6 @@ namespace Nethermind.Serialization.Json
         T Deserialize<T>(string json);
         string Serialize<T>(T value, bool indented = false);
         long Serialize<T>(Stream stream, T value, bool indented = false);
+        ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false);
     }
 }

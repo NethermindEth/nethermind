@@ -33,25 +33,23 @@ namespace Nethermind.Sockets
 
         public virtual Task ProcessAsync(ArraySegment<byte> data) => Task.CompletedTask;
 
-        public virtual Task SendAsync(SocketsMessage message)
+        public virtual async Task SendAsync(SocketsMessage message)
         {
             if (message is null)
             {
-                return Task.CompletedTask;
+                return;
             }
 
             if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
                 string.IsNullOrWhiteSpace(message.Client))
             {
                 using MemoryStream memoryStream = new();
-                _jsonSerializer.Serialize(memoryStream, new { type = message.Type, client = ClientName, data = message.Data });
+                await _jsonSerializer.SerializeAsync(memoryStream, new { type = message.Type, client = ClientName, data = message.Data });
                 if (memoryStream.TryGetBuffer(out ArraySegment<byte> data))
                 {
-                    return _handler.SendRawAsync(data);
+                    await _handler.SendRawAsync(data);
                 }
             }
-
-            return Task.CompletedTask;
         }
 
         public async Task ReceiveAsync()
