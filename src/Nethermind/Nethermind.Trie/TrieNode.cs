@@ -929,6 +929,15 @@ namespace Nethermind.Trie
                     {
                         hasStorage = true;
                         _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey, Array.Empty<byte>(), storagePrefix);
+                        try
+                        {
+                            storageRoot.ResolveNode(resolver);
+                        }
+                        catch (TrieException)
+                        {
+                            hasStorage = false;
+                            _storageRoot = storageRoot = null;
+                        }
                     }
                 }
             }
