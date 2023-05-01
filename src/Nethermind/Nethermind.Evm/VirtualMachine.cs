@@ -2431,7 +2431,8 @@ public class VirtualMachine : IVirtualMachine
 
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
-        if (traceOpcodes && debugMode.IsOn) { 
+        if (traceOpcodes && debugMode.IsOn)
+        {
             debugMode.Debugger.TryWait(vmState);
         }
 // Fall through to Empty: label
