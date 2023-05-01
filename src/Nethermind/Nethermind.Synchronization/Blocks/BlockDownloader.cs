@@ -15,6 +15,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
@@ -409,7 +410,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             if (downloadTask.IsFaulted)
             {
-                if (downloadTask.Exception?.Flatten().InnerExceptions.Any(x => x is TimeoutException) ?? false)
+                if (downloadTask.HasTimeoutException())
                 {
                     if (_logger.IsDebug) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
                     _syncBatchSize.Shrink();
@@ -644,12 +645,12 @@ namespace Nethermind.Synchronization.Blocks
             {
                 case { IsFaulted: true } t:
                     string reason;
-                    if (t.Exception is not null && t.Exception.Flatten().InnerExceptions.Any(x => x is TimeoutException))
+                    if (t.HasTimeoutException())
                     {
                         if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo} timed out. {t.Exception?.Message}");
                         reason = "timeout";
                     }
-                    else if (t.Exception is not null && t.Exception.Flatten().InnerExceptions.Any(x => x is TaskCanceledException))
+                    else if (t.HasCanceledException())
                     {
                         if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo} was canceled.");
                         reason = "cancel";

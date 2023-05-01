@@ -15,12 +15,12 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.Extensions;
 using Nethermind.Stats.Model;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
@@ -111,7 +111,7 @@ public class DiscoveryApp : IDiscoveryApp
         {
             await _storageCommitTask.ContinueWith(x =>
             {
-                if (x.IsFailedButNotCancelled())
+                if (x.IsFailedButNotCanceled())
                 {
                     if (_logger.IsError) _logger.Error("Error during discovery persistence stop.", x.Exception);
                 }

@@ -9,9 +9,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Network.Extensions;
 using Nethermind.Network.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -287,7 +287,7 @@ namespace Nethermind.Network
             {
                 storageCloseTask = _storageCommitTask.ContinueWith(x =>
                 {
-                    if (x.IsFailedButNotCancelled())
+                    if (x.IsFailedButNotCanceled())
                     {
                         if (_logger.IsError) _logger.Error("Error during peer persistence stop.", x.Exception);
                     }
