@@ -11,7 +11,7 @@ public static class TaskExtensions
 {
     public static bool IsFailedButNotCanceled(this Task? task)
     {
-        if (task is null || task.IsFaulted || task.Exception is null) return false;
+        if (task is null || !task.IsFaulted || task.Exception is null) return false;
 
         AggregateException exception = task.Exception.Flatten();
 
@@ -22,7 +22,7 @@ public static class TaskExtensions
 
     public static bool HasCanceledException(this Task? task)
     {
-        if (task is null || task.IsFaulted || task.Exception is null) return false;
+        if (task is null || !task.IsFaulted || task.Exception is null) return false;
 
         AggregateException exception = task.Exception.Flatten();
 
@@ -33,7 +33,7 @@ public static class TaskExtensions
 
     public static bool HasTimeoutException(this Task? task)
     {
-        if (task is null || task.IsFaulted || task.Exception is null) return false;
+        if (task is null || !task.IsFaulted || task.Exception is null) return false;
 
         AggregateException exception = task.Exception.Flatten();
 

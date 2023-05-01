@@ -418,7 +418,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (downloadTask.Exception is not null)
                 {
-                    _ = downloadTask.Result; // trying to throw with stack trace
+                    _ = downloadTask.GetAwaiter().GetResult(); // trying to throw with stack trace
                 }
             }
 
