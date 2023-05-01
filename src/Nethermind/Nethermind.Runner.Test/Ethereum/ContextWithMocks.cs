@@ -52,9 +52,8 @@ namespace Nethermind.Runner.Test.Ethereum
     public static class Build
     {
         public static NethermindApi ContextWithMocks() =>
-            new NethermindApi()
+            new(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance, new ChainSpec())
             {
-                LogManager = LimboLogs.Instance,
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
                 Wallet = Substitute.For<IWallet>(),
@@ -77,7 +76,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 Synchronizer = Substitute.For<ISynchronizer>(),
                 BlockchainProcessor = Substitute.For<IBlockchainProcessor>(),
                 BlockProducer = Substitute.For<IBlockProducer>(),
-                ConfigProvider = Substitute.For<IConfigProvider>(),
                 DiscoveryApp = Substitute.For<IDiscoveryApp>(),
                 EngineSigner = Substitute.For<ISigner>(),
                 FileSystem = Substitute.For<IFileSystem>(),
@@ -102,7 +100,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 TxSender = Substitute.For<ITxSender>(),
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),
                 EngineSignerStore = Substitute.For<ISignerStore>(),
-                EthereumJsonSerializer = Substitute.For<IJsonSerializer>(),
                 NodeStatsManager = Substitute.For<INodeStatsManager>(),
                 RpcModuleProvider = Substitute.For<IRpcModuleProvider>(),
                 SyncModeSelector = Substitute.For<ISyncModeSelector>(),
@@ -112,7 +109,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
                 TrieStore = Substitute.For<ITrieStore>(),
                 ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>(),
-                ChainSpec = new ChainSpec(),
                 BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
                 TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
                 GasPriceOracle = Substitute.For<IGasPriceOracle>(),
