@@ -198,9 +198,6 @@ namespace Nethermind.Evm.Tracing
         public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;
         public TxReceipt LastReceipt => _txReceipts[^1];
         public bool IsTracingRewards => _otherTracer.IsTracingRewards;
-
-        public bool IsLiveTrace => false;
-
         public int TakeSnapshot() => _txReceipts.Count;
         public void Restore(int snapshot)
         {
@@ -262,16 +259,6 @@ namespace Nethermind.Evm.Tracing
         public void SetOtherTracer(IBlockTracer blockTracer)
         {
             _otherTracer = blockTracer;
-        }
-
-        public void Wait(EvmState evmState)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void Lock()
-        {
-            throw new NotImplementedException();
         }
     }
 }

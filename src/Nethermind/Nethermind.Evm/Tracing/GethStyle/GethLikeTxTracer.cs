@@ -37,8 +37,6 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public bool IsTracingAccess => false;
         public bool IsTracingFees => false;
 
-        public bool IsLiveTrace => false;
-
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
             _trace.ReturnValue = output;
@@ -244,16 +242,6 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public GethLikeTxTrace BuildResult()
         {
             return _trace;
-        }
-
-        public void Wait(EvmState evmState)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void Lock()
-        {
-            throw new NotImplementedException();
         }
     }
 }

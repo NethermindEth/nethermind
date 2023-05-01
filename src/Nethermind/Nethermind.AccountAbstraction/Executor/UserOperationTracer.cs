@@ -77,8 +77,6 @@ namespace Nethermind.AccountAbstraction.Executor
         public bool IsTracingAccess => true;
         public bool IsTracingFees => false;
 
-        public bool IsLiveTrace => throw new NotImplementedException();
-
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
             Keccak? stateRoot = null)
         {
@@ -333,16 +331,6 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void Wait(EvmState evmState)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void Lock()
         {
             throw new NotImplementedException();
         }

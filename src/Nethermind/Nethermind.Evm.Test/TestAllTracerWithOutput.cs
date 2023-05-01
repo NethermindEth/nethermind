@@ -38,8 +38,6 @@ namespace Nethermind.Evm.Test
 
         public List<EvmExceptionType> ReportedActionErrors { get; set; } = new List<EvmExceptionType>();
 
-        public bool IsLiveTrace => false;
-
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
         {
             GasSpent = gasSpent;
@@ -171,16 +169,6 @@ namespace Nethermind.Evm.Test
 
         public void ReportFees(UInt256 fees, UInt256 burntFees)
         {
-        }
-
-        public void Wait(EvmState evmState)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void Lock()
-        {
-            throw new NotImplementedException();
         }
     }
 }
