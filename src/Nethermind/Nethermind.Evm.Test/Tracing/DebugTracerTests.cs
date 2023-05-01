@@ -16,6 +16,9 @@ namespace Nethermind.Evm.Test
 {
     public class DebugTracerTests : VirtualMachineTestsBase
     {
+
+        public GethLikeTxTracer GethLikeTxTracer => new GethLikeTxTracer(GethTraceOptions.Default);
+
         [TestCase("0x5b601760005600")]
         public void Debugger_Halts_Execution_On_Breakpoint(string bytecodeHex)
         {
@@ -24,7 +27,7 @@ namespace Nethermind.Evm.Test
 
             const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
             CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-            DebugTracer tracer = new DebugTracer(GethTraceOptions.Default)
+            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 // we activate GoToNextBreakpoint mode (i.e : deactivate StepByStepMode)
                 IsStepByStepModeOn = false,
@@ -70,7 +73,7 @@ namespace Nethermind.Evm.Test
 
             const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
             CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-            DebugTracer tracer = new DebugTracer(GethTraceOptions.Default)
+            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 // we activate GoToNextBreakpoint mode (i.e : deactivate StepByStepMode)
                 IsStepByStepModeOn = false,
@@ -118,7 +121,7 @@ namespace Nethermind.Evm.Test
             // this bytecode is just a bunch of NOP/JUMPDEST, the idea is it will take as much bytes in the bytecode as steps to go throught it
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-            DebugTracer tracer = new DebugTracer(GethTraceOptions.Default)
+            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 // we activate step by step mode in tracer
                 IsStepByStepModeOn = true,
@@ -153,7 +156,7 @@ namespace Nethermind.Evm.Test
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
-            DebugTracer tracer = new DebugTracer(GethTraceOptions.Default)
+            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = true,
             };
@@ -173,7 +176,7 @@ namespace Nethermind.Evm.Test
             }
 
             // we check if bytecode execution failed
-            var resultTraces = tracer.InnerTracer.BuildResult();
+            var resultTraces = (tracer.InnerTracer as GethLikeTxTracer).BuildResult();
             Assert.IsFalse(resultTraces.Failed);
         }
 
@@ -184,7 +187,7 @@ namespace Nethermind.Evm.Test
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
-            DebugTracer tracer = new DebugTracer(GethTraceOptions.Default)
+            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = true,
             };
@@ -208,7 +211,7 @@ namespace Nethermind.Evm.Test
             }
 
             // we check if bytecode execution failed
-            var resultTraces = tracer.InnerTracer.BuildResult();
+            var resultTraces = (tracer.InnerTracer as GethLikeTxTracer).BuildResult();
             Assert.IsFalse(resultTraces.Failed);
         }
 
@@ -219,7 +222,7 @@ namespace Nethermind.Evm.Test
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             const int MSTORE_OPCODE_PTR_BREAK_POINT = 6;
-            DebugTracer tracer = new DebugTracer(GethTraceOptions.Default)
+            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = true,
             };
@@ -242,8 +245,71 @@ namespace Nethermind.Evm.Test
             }
 
             // we check if bytecode execution failed
-            var resultTraces = tracer.InnerTracer.BuildResult();
+            var resultTraces = (tracer.InnerTracer as GethLikeTxTracer).BuildResult();
             Assert.IsTrue(resultTraces.ReturnValue[31] == 0);
+        }
+
+        [TestCase("6017806000526000511460005260206000f3")]
+        public void Use_Debug_Tracer_To_Check_Assertion_Live(string bytecodeHex)
+        {
+            // this bytecode create an infinite loop that keeps pushing 0x17 to the stack so it is bound to stackoverflow (or even to use up its gas) i.e :  
+            byte[] bytecode = Bytes.FromHexString(bytecodeHex);
+
+            const int MSTORE_OPCODE_PTR_BREAK_POINT = 6;
+            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            {
+                IsStepByStepModeOn = true,
+            };
+
+            var vmTask = Task.Run(() => Execute(tracer, bytecode));
+
+            long gasAvailable_pre_MSTORE = 0;
+            while (!vmTask.IsCompleted)
+            {
+                if (tracer.CanReadState())
+                {
+                    // we alter the value stored in memory to force EQ check at the end to fail
+                    if (tracer.CurrentState.ProgramCounter == MSTORE_OPCODE_PTR_BREAK_POINT)
+                    {
+                        gasAvailable_pre_MSTORE = tracer.CurrentState.GasAvailable;
+                    }
+
+                    if (tracer.CurrentState.ProgramCounter == MSTORE_OPCODE_PTR_BREAK_POINT + 1)
+                    {
+                        long gasAvailable_post_MSTORE = tracer.CurrentState.GasAvailable;
+                        Assert.AreEqual(GasCostOf.VeryLow, gasAvailable_pre_MSTORE - gasAvailable_post_MSTORE);
+                    }
+
+                    tracer.MoveNext();
+                }
+            }
+        }
+
+
+        [TestCase("ef601700")]
+        public void Use_Debug_Tracer_To_Check_failure_status(string bytecodeHex)
+        {
+            // this bytecode fails on first opcode INVALID
+            byte[] bytecode = Bytes.FromHexString(bytecodeHex);
+
+            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            {
+                IsStepByStepModeOn = true,
+            };
+
+            var vmTask = Task.Run(() => Execute(tracer, bytecode));
+
+            while (!vmTask.IsCompleted)
+            {
+                if (tracer.CanReadState())
+                {
+                    tracer.MoveNext();
+                }
+            }
+
+            // we check if bytecode execution failed
+            var resultTraces = (tracer.InnerTracer as GethLikeTxTracer).BuildResult();
+            Assert.IsTrue(resultTraces.Failed);
         }
     }
 }

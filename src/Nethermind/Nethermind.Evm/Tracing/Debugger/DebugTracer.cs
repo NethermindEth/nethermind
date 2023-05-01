@@ -17,12 +17,12 @@ using Nethermind.State;
 namespace Nethermind.Evm.Tracing.DebugTrace;
 internal class DebugTracer : ITxTracer
 {
-    public DebugTracer(GethTraceOptions traceOptions)
+    public DebugTracer(ITxTracer tracer)
     {
-        InnerTracer = new(traceOptions);
+        InnerTracer = tracer;
     }
 
-    public GethLikeTxTracer InnerTracer { get; private set; }
+    public ITxTracer InnerTracer { get; private set; }
     private ManualResetEventSlim _manualResetEvent = new ManualResetEventSlim(true, 0);
 
     public bool IsTracingReceipt => ((ITxTracer)InnerTracer).IsTracingReceipt;
