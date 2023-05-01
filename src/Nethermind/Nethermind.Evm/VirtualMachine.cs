@@ -1,3 +1,4 @@
+
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -21,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
+using Nethermind.Evm.Tracing.DebugTrace;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -597,6 +599,10 @@ public class VirtualMachine : IVirtualMachine
     {
         bool isTrace = _logger.IsTrace;
         bool traceOpcodes = _txTracer.IsTracingInstructions;
+        (bool IsOn, DebugTracer Debugger) debugMode = _txTracer is DebugTracer dbgTracer
+            ? (true, dbgTracer)
+            : (false, null);
+
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
 
@@ -635,6 +641,13 @@ public class VirtualMachine : IVirtualMachine
             state.DataStackHead = stackHead;
         }
 
+        static void ApplyExternalState(EvmState state, out int pc, out long gas, out int stackHead)
+        {
+            pc = state.ProgramCounter;
+            gas = state.GasAvailable;
+            stackHead = state.DataStackHead;
+        }
+
         if (previousCallResult is not null)
         {
             stack.PushBytes(previousCallResult);
@@ -655,12 +668,22 @@ public class VirtualMachine : IVirtualMachine
 
         while (programCounter < code.Length)
         {
-            Instruction instruction = (Instruction)code[programCounter];
             // Console.WriteLine(instruction);
+
             if (traceOpcodes)
             {
-                StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
+                if (debugMode.IsOn)
+                {
+                    debugMode.Debugger.TryWait(vmState);
+                    ApplyExternalState(debugMode.Debugger.CurrentState, out programCounter, out gasAvailable, out stack.Head);
+                }
+
             }
+
+            Instruction instruction = (Instruction)code[programCounter];
+
+            if (traceOpcodes)
+                StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
 
             programCounter++;
             switch (instruction)
@@ -2399,10 +2422,18 @@ public class VirtualMachine : IVirtualMachine
                     }
             }
 
-            if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+            if (traceOpcodes)
+            {
+                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+                EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+            }
         }
 
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+
+        if (traceOpcodes && debugMode.IsOn) { 
+            debugMode.Debugger.TryWait(vmState);
+        }
 // Fall through to Empty: label
 
 // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
