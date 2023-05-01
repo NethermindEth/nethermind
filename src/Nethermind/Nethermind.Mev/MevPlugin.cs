@@ -59,7 +59,7 @@ namespace Nethermind.Mev
 
                     TxBundleSimulator txBundleSimulator = new(
                         TracerFactory,
-                        getFromApi.GasLimitCalculator,
+                        getFromApi.GasLimitCalculator!,
                         getFromApi.Timestamper,
                         getFromApi.TxPool!,
                         getFromApi.SpecProvider!,
@@ -139,7 +139,7 @@ namespace Nethermind.Mev
                 throw new InvalidOperationException("Plugin is disabled");
             }
 
-            _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager);
+            _nethermindApi.BlockProducerEnvFactory!.TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager);
 
             int megabundleProducerCount = _mevConfig.GetTrustedRelayAddresses().Any() ? 1 : 0;
             List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
