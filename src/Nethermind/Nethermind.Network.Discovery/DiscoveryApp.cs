@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Extensions;
 using Nethermind.Stats.Model;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
@@ -110,7 +111,7 @@ public class DiscoveryApp : IDiscoveryApp
         {
             await _storageCommitTask.ContinueWith(x =>
             {
-                if (x.IsFaulted && x.Exception is not null && x.Exception.InnerException is not TaskCanceledException && x.Exception.InnerExceptions.All(ex => ex is not TaskCanceledException))
+                if (x.IsFailedButNotCancelled())
                 {
                     if (_logger.IsError) _logger.Error("Error during discovery persistence stop.", x.Exception);
                 }
@@ -445,6 +446,7 @@ public class DiscoveryApp : IDiscoveryApp
             long elapsedMs = currentTickMs - lastTickMs;
             if (elapsedMs < waitTimeTimeMs)
             {
+                // TODO: Change timer time in .NET 8.0 to avoid this https://github.com/dotnet/runtime/pull/82560
                 // Wait for the remaining time
                 await Task.Delay((int)(waitTimeTimeMs - elapsedMs), cancellationToken);
             }
