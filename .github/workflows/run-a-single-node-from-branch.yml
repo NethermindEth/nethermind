@@ -88,7 +88,7 @@ jobs:
         org_name: 'NethermindEth'
         repo_name: 'nethermind'
         ref: ${{ github.ref }}
-      run: ./scripts/wait-for-workflow-completed.sh
+      run: ./nethermind/scripts/wait-for-workflow-completed.sh
           
   trigger_node_and_vm_creation:
     needs: create_docker_image
@@ -99,8 +99,8 @@ jobs:
       run: |
         REF_NAME=${{ github.ref }}
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-        echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
 
+        echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
     - name: Trigger Node creation Repo Action
       uses: benc-uk/workflow-dispatch@v1
       with:
@@ -130,4 +130,4 @@ jobs:
         org_name: 'NethermindEth'
         repo_name: 'post-merge-smoke-tests'
         ref: 'main'
-      run: ./scripts/wait-for-workflow-completed.sh
+      run: ./nethermind/scripts/wait-for-workflow-completed.sh
