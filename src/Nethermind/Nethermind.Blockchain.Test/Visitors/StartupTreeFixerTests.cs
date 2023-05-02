@@ -123,7 +123,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             // add a new block at the end
             await testRpc.AddBlock();
-            Assert.AreEqual(startingBlockNumber + suggestedBlocksAmount + 1, tree.Head!.Number);
+            Assert.That(tree.Head!.Number, Is.EqualTo(startingBlockNumber + suggestedBlocksAmount + 1));
         }
 
         [Timeout(Timeout.MaxTestTime)]
@@ -150,7 +150,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, stateDb, LimboNoErrorLogger.Instance, 5);
             BlockVisitOutcome result = await fixer.VisitBlock(tree.Head!, CancellationToken.None);
 
-            Assert.AreEqual(BlockVisitOutcome.None, result);
+            Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance, 5);
             BlockVisitOutcome result = await fixer.VisitBlock(null, CancellationToken.None);
 
-            Assert.AreEqual(BlockVisitOutcome.None, result);
+            Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
         }
 
         private static void SuggestNumberOfBlocks(IBlockTree blockTree, int blockAmount)
@@ -220,9 +220,9 @@ namespace Nethermind.Blockchain.Test.Visitors
             Assert.Null(blockInfosDb.Get(4), "level 4");
             Assert.Null(blockInfosDb.Get(5), "level 5");
 
-            Assert.AreEqual(2L, tree.BestKnownNumber, "best known");
-            Assert.AreEqual(block2.Header, tree.Head?.Header, "head");
-            Assert.AreEqual(block2.Hash, tree.BestSuggestedHeader.Hash, "suggested");
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(2L), "best known");
+            Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header), "head");
+            Assert.That(tree.BestSuggestedHeader.Hash, Is.EqualTo(block2.Hash), "suggested");
         }
     }
 }

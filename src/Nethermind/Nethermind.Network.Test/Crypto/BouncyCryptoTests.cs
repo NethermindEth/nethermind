@@ -20,7 +20,7 @@ namespace Nethermind.Network.Test.Crypto
             byte[] sharedSecret1 = BouncyCrypto.Agree(privateKey1, privateKey2.PublicKey);
             byte[] sharedSecret2 = BouncyCrypto.Agree(privateKey2, privateKey1.PublicKey);
 
-            Assert.AreEqual(sharedSecret1, sharedSecret2);
+            Assert.That(sharedSecret2, Is.EqualTo(sharedSecret1));
         }
 
         [Test]
@@ -32,7 +32,7 @@ namespace Nethermind.Network.Test.Crypto
             byte[] sharedSecret1 = SecP256k1.EcdhSerialized(privateKey2.PublicKey.Bytes, privateKey1.KeyBytes);
             byte[] sharedSecret2 = SecP256k1.EcdhSerialized(privateKey1.PublicKey.Bytes, privateKey2.KeyBytes);
 
-            Assert.AreEqual(sharedSecret1, sharedSecret2);
+            Assert.That(sharedSecret2, Is.EqualTo(sharedSecret1));
         }
     }
 }

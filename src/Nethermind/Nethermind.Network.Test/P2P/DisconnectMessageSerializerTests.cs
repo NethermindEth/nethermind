@@ -18,9 +18,9 @@ namespace Nethermind.Network.Test.P2P
             DisconnectMessage msg = new(DisconnectReason.AlreadyConnected);
             DisconnectMessageSerializer serializer = new();
             byte[] serialized = serializer.Serialize(msg);
-            Assert.AreEqual("0xc105", serialized.ToHexString(true), "bytes");
+            Assert.That(serialized.ToHexString(true), Is.EqualTo("0xc105"), "bytes");
             DisconnectMessage deserialized = serializer.Deserialize(serialized);
-            Assert.AreEqual(msg.Reason, deserialized.Reason, "reason");
+            Assert.That(deserialized.Reason, Is.EqualTo(msg.Reason), "reason");
         }
 
         [Test]
@@ -29,7 +29,7 @@ namespace Nethermind.Network.Test.P2P
             DisconnectMessageSerializer serializer = new();
             byte[] serialized = new byte[] { 16 };
             DisconnectMessage deserialized = serializer.Deserialize(serialized);
-            Assert.AreEqual(DisconnectReason.Other, (DisconnectReason)deserialized.Reason, "reason");
+            Assert.That((DisconnectReason)deserialized.Reason, Is.EqualTo(DisconnectReason.Other), "reason");
         }
 
         // does this format happen more often?

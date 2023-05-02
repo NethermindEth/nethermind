@@ -20,7 +20,7 @@ namespace Nethermind.Core.Test
         public void To_short_string(bool withZeroX, string expected)
         {
             string result = Keccak.OfAnEmptyString.ToShortString(withZeroX);
-            Assert.AreEqual(expected, result);
+            Assert.That(result, Is.EqualTo(expected));
         }
 
         [Test]
@@ -39,42 +39,42 @@ namespace Nethermind.Core.Test
                 keccakHash.Update(bytes.AsSpan(i, 32));
             }
 
-            Assert.AreEqual(result, keccakHash.Hash.ToHexString(true));
+            Assert.That(keccakHash.Hash.ToHexString(true), Is.EqualTo(result));
         }
 
         [Test]
         public void Empty_byte_array()
         {
             string result = Keccak.Compute(new byte[] { }).ToString();
-            Assert.AreEqual(KeccakOfAnEmptyString, result);
+            Assert.That(result, Is.EqualTo(KeccakOfAnEmptyString));
         }
 
         [Test]
         public void Empty_string()
         {
             string result = Keccak.Compute(string.Empty).ToString();
-            Assert.AreEqual(KeccakOfAnEmptyString, result);
+            Assert.That(result, Is.EqualTo(KeccakOfAnEmptyString));
         }
 
         [Test]
         public void Null_string()
         {
             string result = Keccak.Compute((string)null!).ToString();
-            Assert.AreEqual(KeccakOfAnEmptyString, result);
+            Assert.That(result, Is.EqualTo(KeccakOfAnEmptyString));
         }
 
         [Test]
         public void Null_bytes()
         {
             string result = Keccak.Compute((byte[])null!).ToString();
-            Assert.AreEqual(KeccakOfAnEmptyString, result);
+            Assert.That(result, Is.EqualTo(KeccakOfAnEmptyString));
         }
 
         [Test]
         public void Zero()
         {
             string result = Keccak.Zero.ToString();
-            Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000", result);
+            Assert.That(result, Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
         }
 
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", null, -1)]
@@ -108,7 +108,7 @@ namespace Nethermind.Core.Test
                 byteArray[i] = (byte)(i % 256);
             }
 
-            Assert.AreEqual(Keccak.Compute(byteArray), Keccak.Compute(byteArray.AsSpan()));
+            Assert.That(Keccak.Compute(byteArray.AsSpan()), Is.EqualTo(Keccak.Compute(byteArray)));
         }
     }
 }

@@ -58,8 +58,8 @@ public class ChainSpecBasedSpecProviderTests
             (blockNumber, timestamp),
         };
         CompareSpecProviders(testProvider, provider, forkActivationsToTest);
-        Assert.AreEqual(testProvider.GenesisSpec.Eip1559TransitionBlock, provider.GenesisSpec.Eip1559TransitionBlock);
-        Assert.AreEqual(testProvider.GenesisSpec.DifficultyBombDelay, provider.GenesisSpec.DifficultyBombDelay);
+        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(testProvider.GenesisSpec.Eip1559TransitionBlock));
+        Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(testProvider.GenesisSpec.DifficultyBombDelay));
     }
 
 
@@ -135,11 +135,11 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         CompareSpecProviders(sepolia, provider, forkActivationsToTest);
-        Assert.AreEqual(SepoliaSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
-        Assert.AreEqual(0, provider.GenesisSpec.Eip1559TransitionBlock);
-        Assert.AreEqual(long.MaxValue, provider.GenesisSpec.DifficultyBombDelay);
-        Assert.AreEqual(BlockchainIds.Sepolia, provider.ChainId);
-        Assert.AreEqual(BlockchainIds.Sepolia, provider.NetworkId);
+        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(SepoliaSpecProvider.Instance.TerminalTotalDifficulty));
+        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(0));
+        Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(long.MaxValue));
+        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
+        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
     }
 
     [Test]
@@ -168,7 +168,7 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         CompareSpecProviders(rinkeby, provider, forkActivationsToTest);
-        Assert.AreEqual(RinkebySpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
+        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RinkebySpecProvider.LondonBlockNumber));
     }
 
     [Test]
@@ -197,10 +197,10 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         CompareSpecProviders(goerli, provider, forkActivationsToTest);
-        Assert.AreEqual(GoerliSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
-        Assert.AreEqual(GoerliSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
-        Assert.AreEqual(BlockchainIds.Goerli, provider.ChainId);
-        Assert.AreEqual(BlockchainIds.Goerli, provider.NetworkId);
+        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(GoerliSpecProvider.LondonBlockNumber));
+        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GoerliSpecProvider.Instance.TerminalTotalDifficulty));
+        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Goerli));
+        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Goerli));
     }
 
     [Test]
@@ -221,9 +221,9 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         CompareSpecProviders(chiado, provider, forkActivationsToTest, CompareSpecsOptions.IsGnosis);
-        Assert.AreEqual(ChiadoSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
-        Assert.AreEqual(BlockchainIds.Chiado, provider.ChainId);
-        Assert.AreEqual(BlockchainIds.Chiado, provider.NetworkId);
+        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(ChiadoSpecProvider.Instance.TerminalTotalDifficulty));
+        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Chiado));
+        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Chiado));
     }
 
 
@@ -272,25 +272,25 @@ public class ChainSpecBasedSpecProviderTests
 
         CompareSpecProviders(mainnet, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
 
-        Assert.AreEqual(MainnetSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
-        Assert.AreEqual(0_000_000, provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay);
-        Assert.AreEqual(3_000_000, provider.GetSpec((ForkActivation)4_370_000).DifficultyBombDelay);
-        Assert.AreEqual(3_000_000, provider.GetSpec((ForkActivation)7_279_999).DifficultyBombDelay);
-        Assert.AreEqual(3_000_000, provider.GetSpec((ForkActivation)7_279_999).DifficultyBombDelay);
-        Assert.AreEqual(5_000_000, provider.GetSpec((ForkActivation)7_280_000).DifficultyBombDelay);
-        Assert.AreEqual(5_000_000, provider.GetSpec((ForkActivation)9_199_999).DifficultyBombDelay);
-        Assert.AreEqual(9_000_000, provider.GetSpec((ForkActivation)9_200_000).DifficultyBombDelay);
-        Assert.AreEqual(9_000_000, provider.GetSpec((ForkActivation)12_000_000).DifficultyBombDelay);
-        Assert.AreEqual(9_000_000, provider.GetSpec((ForkActivation)12_964_999).DifficultyBombDelay);
-        Assert.AreEqual(9_700_000, provider.GetSpec((ForkActivation)12_965_000).DifficultyBombDelay);
-        Assert.AreEqual(9_700_000, provider.GetSpec((ForkActivation)13_772_999).DifficultyBombDelay);
-        Assert.AreEqual(10_700_000, provider.GetSpec((ForkActivation)13_773_000).DifficultyBombDelay);
-        Assert.AreEqual(10_700_000, provider.GetSpec((ForkActivation)15_049_999).DifficultyBombDelay);
-        Assert.AreEqual(11_400_000, provider.GetSpec((ForkActivation)15_050_000).DifficultyBombDelay);
-        Assert.AreEqual(11_400_000, provider.GetSpec((ForkActivation)99_414_000).DifficultyBombDelay);
-        Assert.AreEqual(MainnetSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
-        Assert.AreEqual(BlockchainIds.Mainnet, provider.ChainId);
-        Assert.AreEqual(BlockchainIds.Mainnet, provider.NetworkId);
+        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));
+        Assert.That(provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay, Is.EqualTo(0_000_000));
+        Assert.That(provider.GetSpec((ForkActivation)4_370_000).DifficultyBombDelay, Is.EqualTo(3_000_000));
+        Assert.That(provider.GetSpec((ForkActivation)7_279_999).DifficultyBombDelay, Is.EqualTo(3_000_000));
+        Assert.That(provider.GetSpec((ForkActivation)7_279_999).DifficultyBombDelay, Is.EqualTo(3_000_000));
+        Assert.That(provider.GetSpec((ForkActivation)7_280_000).DifficultyBombDelay, Is.EqualTo(5_000_000));
+        Assert.That(provider.GetSpec((ForkActivation)9_199_999).DifficultyBombDelay, Is.EqualTo(5_000_000));
+        Assert.That(provider.GetSpec((ForkActivation)9_200_000).DifficultyBombDelay, Is.EqualTo(9_000_000));
+        Assert.That(provider.GetSpec((ForkActivation)12_000_000).DifficultyBombDelay, Is.EqualTo(9_000_000));
+        Assert.That(provider.GetSpec((ForkActivation)12_964_999).DifficultyBombDelay, Is.EqualTo(9_000_000));
+        Assert.That(provider.GetSpec((ForkActivation)12_965_000).DifficultyBombDelay, Is.EqualTo(9_700_000));
+        Assert.That(provider.GetSpec((ForkActivation)13_772_999).DifficultyBombDelay, Is.EqualTo(9_700_000));
+        Assert.That(provider.GetSpec((ForkActivation)13_773_000).DifficultyBombDelay, Is.EqualTo(10_700_000));
+        Assert.That(provider.GetSpec((ForkActivation)15_049_999).DifficultyBombDelay, Is.EqualTo(10_700_000));
+        Assert.That(provider.GetSpec((ForkActivation)15_050_000).DifficultyBombDelay, Is.EqualTo(11_400_000));
+        Assert.That(provider.GetSpec((ForkActivation)99_414_000).DifficultyBombDelay, Is.EqualTo(11_400_000));
+        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(MainnetSpecProvider.Instance.TerminalTotalDifficulty));
+        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Mainnet));
+        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
     }
 
     [Flags]
@@ -355,7 +355,7 @@ public class ChainSpecBasedSpecProviderTests
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.LimitCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.UseConstantinopleNetGasMetering)))
         {
-            Assert.AreEqual(propertyInfo.GetValue(expectedSpec), propertyInfo.GetValue(ActualSpec),
+            Assert.That(propertyInfo.GetValue(ActualSpec), Is.EqualTo(propertyInfo.GetValue(expectedSpec)),
                 activation + "." + propertyInfo.Name);
         }
     }
@@ -393,8 +393,8 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         CompareSpecProviders(ropsten, provider, forkActivationsToTest, CompareSpecsOptions.CheckDifficultyBomb);
-        Assert.AreEqual(RopstenSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
-        Assert.AreEqual(RopstenSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
+        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(RopstenSpecProvider.Instance.TerminalTotalDifficulty));
+        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RopstenSpecProvider.LondonBlockNumber));
     }
 
     [Test]
@@ -403,8 +403,8 @@ public class ChainSpecBasedSpecProviderTests
         ChainSpec chainSpec = new() { Parameters = new ChainParameters(), NetworkId = 2, ChainId = 5 };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.AreEqual(2, provider.NetworkId);
-        Assert.AreEqual(5, provider.ChainId);
+        Assert.That(provider.NetworkId, Is.EqualTo(2));
+        Assert.That(provider.ChainId, Is.EqualTo(5));
     }
 
     [Test]
@@ -415,7 +415,7 @@ public class ChainSpecBasedSpecProviderTests
         chainSpec.DaoForkBlockNumber = 23;
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.AreEqual(23, provider.DaoBlockNumber);
+        Assert.That(provider.DaoBlockNumber, Is.EqualTo(23));
     }
 
     [Test]
@@ -428,8 +428,8 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.AreEqual(19, provider.GenesisSpec.DifficultyBoundDivisor);
-        Assert.AreEqual(17, provider.GenesisSpec.GasLimitBoundDivisor);
+        Assert.That(provider.GenesisSpec.DifficultyBoundDivisor, Is.EqualTo(19));
+        Assert.That(provider.GenesisSpec.GasLimitBoundDivisor, Is.EqualTo(17));
     }
 
     [Test]
@@ -452,11 +452,11 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.AreEqual(100, provider.GetSpec((ForkActivation)3).DifficultyBombDelay);
-        Assert.AreEqual(300, provider.GetSpec((ForkActivation)7).DifficultyBombDelay);
-        Assert.AreEqual(600, provider.GetSpec((ForkActivation)13).DifficultyBombDelay);
-        Assert.AreEqual(1000, provider.GetSpec((ForkActivation)17).DifficultyBombDelay);
-        Assert.AreEqual(1500, provider.GetSpec((ForkActivation)19).DifficultyBombDelay);
+        Assert.That(provider.GetSpec((ForkActivation)3).DifficultyBombDelay, Is.EqualTo(100));
+        Assert.That(provider.GetSpec((ForkActivation)7).DifficultyBombDelay, Is.EqualTo(300));
+        Assert.That(provider.GetSpec((ForkActivation)13).DifficultyBombDelay, Is.EqualTo(600));
+        Assert.That(provider.GetSpec((ForkActivation)17).DifficultyBombDelay, Is.EqualTo(1000));
+        Assert.That(provider.GetSpec((ForkActivation)19).DifficultyBombDelay, Is.EqualTo(1500));
     }
 
     [Test]
@@ -475,9 +475,9 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.AreEqual(long.MaxValue, provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, "one before");
-        Assert.AreEqual(maxCodeSize, provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, "at transition");
-        Assert.AreEqual(maxCodeSize, provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, "one after");
+        Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, Is.EqualTo(long.MaxValue), "one before");
+        Assert.That(provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, Is.EqualTo(maxCodeSize), "at transition");
+        Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, Is.EqualTo(maxCodeSize), "one after");
     }
 
     [Test]
@@ -655,9 +655,9 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.AreEqual(long.MaxValue, provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, "one before");
-        Assert.AreEqual(maxCodeSize, provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, "at transition");
-        Assert.AreEqual(maxCodeSize, provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, "one after");
+        Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, Is.EqualTo(long.MaxValue), "one before");
+        Assert.That(provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, Is.EqualTo(maxCodeSize), "at transition");
+        Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, Is.EqualTo(maxCodeSize), "one after");
 
         ReleaseSpec expected = new();
 
