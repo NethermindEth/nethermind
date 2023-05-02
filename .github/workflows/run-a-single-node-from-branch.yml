@@ -79,8 +79,7 @@ jobs:
            }'
 
     - name: Wait for Docker Build Action to complete
-      uses: kamilchodola/wait-for-workflow-action@1.1.1
-      with:
+      env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         workflow_id: 'build-nethermind-docker-images.yml'
         max_wait_minutes: '5'
@@ -89,6 +88,7 @@ jobs:
         org_name: 'NethermindEth'
         repo_name: 'nethermind'
         ref: ${{ github.ref }}
+      run: bash scripts/wait-for-workflow-completed.sh
           
   trigger_node_and_vm_creation:
     needs: create_docker_image
@@ -121,8 +121,7 @@ jobs:
                    }'
 
     - name: Wait for creation of node
-      uses: kamilchodola/wait-for-workflow-action@1.1.1
-      with:
+      env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         workflow_id: 'run-single-node.yml'
         max_wait_minutes: '5'
@@ -131,3 +130,4 @@ jobs:
         org_name: 'NethermindEth'
         repo_name: 'post-merge-smoke-tests'
         ref: 'main'
+      run: bash scripts/wait-for-workflow-completed.sh
