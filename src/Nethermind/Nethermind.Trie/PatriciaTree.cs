@@ -375,7 +375,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public byte[]? GetInternal(Span<byte> rawKey, Keccak? rootHash = null)
+        private byte[]? GetInternal(Span<byte> rawKey, Keccak? rootHash = null)
         {
             try
             {
@@ -406,7 +406,7 @@ namespace Nethermind.Trie
             };
         }
 
-        public byte[]? GetByPath(Span<byte> rawKey, Keccak? rootHash = null)
+        private byte[]? GetByPath(Span<byte> rawKey, Keccak? rootHash = null)
         {
             if (rootHash is null)
             {
