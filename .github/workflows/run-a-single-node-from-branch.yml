@@ -88,7 +88,10 @@ jobs:
         org_name: 'NethermindEth'
         repo_name: 'nethermind'
         ref: ${{ github.ref }}
-      run: ./nethermind/scripts/wait-for-workflow-completed.sh
+      run: |
+        chmod +x scripts/wait-for-workflow-completed.sh
+        ./scripts/wait-for-workflow-completed.sh
+      working-directory: ${{ github.workspace }}
           
   trigger_node_and_vm_creation:
     needs: create_docker_image
@@ -130,4 +133,7 @@ jobs:
         org_name: 'NethermindEth'
         repo_name: 'post-merge-smoke-tests'
         ref: 'main'
-      run: ./nethermind/scripts/wait-for-workflow-completed.sh
+      run: |
+        chmod +x scripts/wait-for-workflow-completed.sh
+        ./scripts/wait-for-workflow-completed.sh
+      working-directory: ${{ github.workspace }}
