@@ -105,7 +105,8 @@ public class StartMonitoring : IStep
                 Db.Metrics.DbBlockCacheMemorySize = dbProvider.StateDb.GetCacheSize()
                                                     + dbProvider.ReceiptsDb.GetCacheSize()
                                                     + dbProvider.HeadersDb.GetCacheSize()
-                                                    + dbProvider.BlocksDb.GetCacheSize()
+                                                    // State and Blocks are the same
+                                                    // + dbProvider.BlocksDb.GetCacheSize()
                                                     + dbProvider.BloomDb.GetCacheSize()
                                                     + dbProvider.CodeDb.GetCacheSize()
                                                     + dbProvider.BlockInfosDb.GetCacheSize()
@@ -116,7 +117,8 @@ public class StartMonitoring : IStep
                 Db.Metrics.DbIndexFilterMemorySize = dbProvider.StateDb.GetIndexSize()
                                                     + dbProvider.ReceiptsDb.GetIndexSize()
                                                     + dbProvider.HeadersDb.GetIndexSize()
-                                                    + dbProvider.BlocksDb.GetIndexSize()
+                                                    // State and Blocks are the same
+                                                    // + dbProvider.BlocksDb.GetIndexSize()
                                                     + dbProvider.BloomDb.GetIndexSize()
                                                     + dbProvider.CodeDb.GetIndexSize()
                                                     + dbProvider.BlockInfosDb.GetIndexSize()
@@ -127,7 +129,8 @@ public class StartMonitoring : IStep
                 Db.Metrics.DbMemtableMemorySize = dbProvider.StateDb.GetMemtableSize()
                                                     + dbProvider.ReceiptsDb.GetMemtableSize()
                                                     + dbProvider.HeadersDb.GetMemtableSize()
-                                                    + dbProvider.BlocksDb.GetMemtableSize()
+                                                    // State and Blocks are the same
+                                                    // + dbProvider.BlocksDb.GetMemtableSize()
                                                     + dbProvider.BloomDb.GetMemtableSize()
                                                     + dbProvider.CodeDb.GetMemtableSize()
                                                     + dbProvider.BlockInfosDb.GetMemtableSize()
