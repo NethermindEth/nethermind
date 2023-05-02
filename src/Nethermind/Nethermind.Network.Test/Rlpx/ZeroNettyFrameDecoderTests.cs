@@ -86,8 +86,8 @@ namespace Nethermind.Network.Test.Rlpx
             TestContext.WriteLine(resultBytes.ToHexString());
             string expected = expectedOutput;
             TestContext.WriteLine(resultBytes.ToHexString());
-            Assert.AreEqual(expected, resultBytes.ToHexString());
-            Assert.AreEqual(input.ReaderIndex, input.WriterIndex, "reader index == writer index");
+            Assert.That(resultBytes.ToHexString(), Is.EqualTo(expected));
+            Assert.That(input.WriterIndex, Is.EqualTo(input.ReaderIndex), "reader index == writer index");
         }
 
         private static IByteBuffer DeliverAllAtOnce(byte[] frame, IByteBuffer input, ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper)

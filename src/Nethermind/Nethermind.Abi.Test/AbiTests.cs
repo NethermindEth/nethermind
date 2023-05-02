@@ -33,7 +33,7 @@ public class AbiTests
         UInt256[][] data = { element, element };
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] { data });
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(data, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(data));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -47,7 +47,7 @@ public class AbiTests
         BigInteger[] data = { };
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(arguments[0], data);
+        Assert.That(data, Is.EqualTo(arguments[0]));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -61,7 +61,7 @@ public class AbiTests
         string[] data = { "a", "bc", "def" };
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] { data });
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(data, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(data));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -75,7 +75,7 @@ public class AbiTests
         UInt256[] data = { 1, 2, 3 };
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(data, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(data));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -90,7 +90,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] { data });
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(data, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(data));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -104,7 +104,7 @@ public class AbiTests
         string[] data = { "a", "bc", "def" };
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, new object[] { data });
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(data, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(data));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -118,7 +118,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(data, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(data));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -172,7 +172,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(data, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(data));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -186,7 +186,7 @@ public class AbiTests
         Address arg = new Address(Keccak.OfAnEmptyString);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, arg);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(arg, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(arg));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -199,7 +199,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, true);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(true, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(true));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -226,7 +226,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, BigInteger.MinusOne);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(BigInteger.MinusOne, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(BigInteger.MinusOne));
     }
 
     [TestCase(AbiEncodingStyle.None)]
@@ -237,23 +237,23 @@ public class AbiTests
 
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, UInt256.One);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(UInt256.One, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(UInt256.One));
 
         encoded = _abiEncoder.Encode(encodingStyle, signature, 1L);
         arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(UInt256.One, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(UInt256.One));
 
         encoded = _abiEncoder.Encode(encodingStyle, signature, 1UL);
         arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(UInt256.One, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(UInt256.One));
 
         encoded = _abiEncoder.Encode(encodingStyle, signature, 1);
         arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(UInt256.One, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(UInt256.One));
 
         encoded = _abiEncoder.Encode(encodingStyle, signature, 1U);
         arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(UInt256.One, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(UInt256.One));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -266,7 +266,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, BigInteger.Zero);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(UInt256.Zero, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(UInt256.Zero));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -279,7 +279,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, 123U);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(123U, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(123U));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -293,7 +293,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(data, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(data));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -308,7 +308,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(data, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(data));
     }
 
     [TestCase(0, 0)]
@@ -360,7 +360,7 @@ public class AbiTests
         Address arg = new Address(Keccak.OfAnEmptyString);
         byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.None, signature, arg);
         object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.None, signature, encoded);
-        Assert.AreEqual(arg, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(arg));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -385,7 +385,7 @@ public class AbiTests
             AbiType.Address);
 
         byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.Packed, abiDef, assetId.Bytes, units, value, expiryTime, salt, Address.Zero, Address.Zero);
-        Assert.AreEqual(108, encoded.Length);
+        Assert.That(encoded.Length, Is.EqualTo(108));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -401,7 +401,7 @@ public class AbiTests
         ValueTuple<UInt256, Address, bool> staticTuple = new ValueTuple<UInt256, Address, bool>((UInt256)1000, Address.SystemUser, true);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, staticTuple);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(staticTuple, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(staticTuple));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -415,7 +415,7 @@ public class AbiTests
         ValueTuple<byte[], Address, byte[]> dynamicTuple = new ValueTuple<byte[], Address, byte[]>(Bytes.FromHexString("0x004749fa3d"), Address.SystemUser, Bytes.Zero32);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, dynamicTuple);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(dynamicTuple, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(dynamicTuple));
     }
 
 
@@ -433,8 +433,8 @@ public class AbiTests
         const string stringParam = "hello there!";
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, staticTuple, stringParam);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(staticTuple, arguments[0]);
-        Assert.AreEqual(stringParam, arguments[1]);
+        Assert.That(arguments[0], Is.EqualTo(staticTuple));
+        Assert.That(arguments[1], Is.EqualTo(stringParam));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -451,8 +451,8 @@ public class AbiTests
         const string stringParam = "hello there!";
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, stringParam, staticTuple);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(stringParam, arguments[0]);
-        Assert.AreEqual(staticTuple, arguments[1]);
+        Assert.That(arguments[0], Is.EqualTo(stringParam));
+        Assert.That(arguments[1], Is.EqualTo(staticTuple));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -468,7 +468,7 @@ public class AbiTests
         ValueTuple<UInt256, ValueTuple<UInt256, Address>, bool> staticTuple = new ValueTuple<UInt256, ValueTuple<UInt256, Address>, bool>((UInt256)1000, new ValueTuple<UInt256, Address>((UInt256)400, Address.SystemUser), true);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, staticTuple);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(staticTuple, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(staticTuple));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -482,7 +482,7 @@ public class AbiTests
         ValueTuple<UInt256, ValueTuple<byte[], Address>, bool> dynamicTuple = new ValueTuple<UInt256, ValueTuple<byte[], Address>, bool>((UInt256)1000, new ValueTuple<byte[], Address>(Bytes.FromHexString("0x019283fa3d"), Address.SystemUser), true);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, dynamicTuple);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(dynamicTuple, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(dynamicTuple));
     }
 
 
@@ -497,7 +497,7 @@ public class AbiTests
         ValueTuple<byte[], ValueTuple<byte[], Address>, bool> dynamicTuple = new ValueTuple<byte[], ValueTuple<byte[], Address>, bool>(Bytes.FromHexString("0x019283fa3d"), new ValueTuple<byte[], Address>(Bytes.FromHexString("0x019283fa3d"), Address.SystemUser), true);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, dynamicTuple);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(dynamicTuple, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(dynamicTuple));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -513,7 +513,7 @@ public class AbiTests
         ValueTuple<ValueTuple<ValueTuple<UInt256>>> tupleception = new ValueTuple<ValueTuple<ValueTuple<UInt256>>>(new ValueTuple<ValueTuple<UInt256>>(new ValueTuple<UInt256>(88888)));
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, tupleception);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.AreEqual(tupleception, arguments[0]);
+        Assert.That(arguments[0], Is.EqualTo(tupleception));
     }
 
     [Test]

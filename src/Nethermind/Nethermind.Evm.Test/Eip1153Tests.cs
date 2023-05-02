@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         }
 
         /// <summary>
@@ -45,14 +45,14 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.CancunBlockTimestamp - 1);
-            Assert.AreEqual(StatusCode.Failure, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
 
             code = Prepare.EvmCode
                 .LoadDataFromTransientStorage(1)
                 .Done;
 
             result = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.CancunBlockTimestamp - 1);
-            Assert.AreEqual(StatusCode.Failure, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         /// <summary>
@@ -68,10 +68,10 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
             // Should be 0 since it's not yet set
-            Assert.AreEqual(0, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(0));
         }
 
         /// <summary>
@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Test
 
             stopwatch.Start();
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, blockGasLimit, code, blockGasLimit, Timestamp);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             stopwatch.Stop();
             Assert.IsTrue(stopwatch.ElapsedMilliseconds < 5000);
         }
@@ -115,9 +115,9 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
-            Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
         }
 
         /// <summary>
@@ -139,9 +139,9 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
-            Assert.AreEqual(0, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(0));
         }
 
         /// <summary>
@@ -175,7 +175,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
 
             // If transient state was not isolated, the return value would be 8
-            Assert.AreEqual(0, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(0));
         }
 
         /// <summary>
@@ -221,7 +221,7 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
         }
 
         /// <summary>
@@ -268,7 +268,7 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(9, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(9));
         }
 
         /// <summary>
@@ -314,7 +314,7 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(9, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(9));
         }
 
         /// <summary>
@@ -362,7 +362,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
 
             // Should be original TSTORE value
-            Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
         }
 
         /// <summary>
@@ -411,7 +411,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
 
             // Should be original TSTORE value
-            Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
         }
 
         /// <summary>
@@ -497,7 +497,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
 
             // Should be original TSTORE value
-            Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
         }
 
         /// <summary>
@@ -529,7 +529,7 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
 
         /// <summary>
@@ -577,7 +577,7 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
 
         /// <summary>
@@ -667,7 +667,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
 
             // Should be original TSTORE value
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
 
         /// <summary>
@@ -698,7 +698,7 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
 
         /// <summary>
@@ -729,7 +729,7 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
 
         /// <summary>
@@ -744,7 +744,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.TStore * 2, receipt.GasSpent, "gas");
+            Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.TStore * 2), "gas");
         }
 
         /// <summary>
@@ -780,11 +780,11 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            Assert.AreEqual(1, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(1));
 
             // If transient state persisted across txs, calling again would return 0
             result = Execute(code);
-            Assert.AreEqual(1, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(1));
         }
 
 
@@ -831,7 +831,7 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput result = Execute(code);
 
-            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(expectedResult));
         }
     }
 }

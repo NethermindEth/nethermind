@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
 
-            Assert.AreEqual(refund, tracer.Refund);
+            Assert.That(tracer.Refund, Is.EqualTo(refund));
             AssertGas(tracer, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / (eip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient), refund));
         }
 
@@ -176,7 +176,7 @@ namespace Nethermind.Evm.Test
             _processor.Execute(tx3, block.Header, tracer);
             long expectedRefund = eip3529Enabled ? 0 : 24000;
 
-            Assert.AreEqual(expectedRefund, tracer.Refund);
+            Assert.That(tracer.Refund, Is.EqualTo(expectedRefund));
             AssertGas(tracer, gasUsedByTx3 + GasCostOf.Transaction - Math.Min((gasUsedByTx3 + GasCostOf.Transaction) / (eip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient), expectedRefund));
         }
     }

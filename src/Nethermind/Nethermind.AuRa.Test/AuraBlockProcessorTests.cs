@@ -46,8 +46,8 @@ namespace Nethermind.AuRa.Test
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
-            Assert.AreEqual(1, processedBlocks.Length, "length");
-            Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
+            Assert.That(processedBlocks.Length, Is.EqualTo(1), "length");
+            Assert.That(processedBlocks[0].Author, Is.EqualTo(block.Author), "author");
         }
 
         [Test]

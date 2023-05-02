@@ -130,14 +130,14 @@ namespace Nethermind.Network.Test.P2P
         public void Sets_local_node_id_from_constructor()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            Assert.AreEqual(p2PProtocolHandler.LocalNodeId, TestItem.PublicKeyA);
+            Assert.That(TestItem.PublicKeyA, Is.EqualTo(p2PProtocolHandler.LocalNodeId));
         }
 
         [Test]
         public void Sets_port_from_constructor()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            Assert.AreEqual(ListenPort, p2PProtocolHandler.ListenPort);
+            Assert.That(p2PProtocolHandler.ListenPort, Is.EqualTo(ListenPort));
         }
     }
 }

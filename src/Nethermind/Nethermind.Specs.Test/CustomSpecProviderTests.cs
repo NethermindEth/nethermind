@@ -43,7 +43,7 @@ namespace Nethermind.Specs.Test
                 ((ForkActivation)0L, Frontier.Instance),
                 ((ForkActivation)daoBlockNumber, Dao.Instance));
 
-            Assert.AreEqual(daoBlockNumber, specProvider.DaoBlockNumber);
+            Assert.That(specProvider.DaoBlockNumber, Is.EqualTo(daoBlockNumber));
         }
 
         [Test]

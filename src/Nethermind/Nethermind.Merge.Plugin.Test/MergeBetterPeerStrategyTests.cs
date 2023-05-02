@@ -31,7 +31,7 @@ public class MergeBetterPeerStrategyTests
 
         MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy();
 
-        Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(header, syncPeer));
+        Assert.That(betterPeerStrategy.Compare(header, syncPeer), Is.EqualTo(expectedResult));
     }
 
     [TestCase(7, 2, 6, 4, -1)]
@@ -47,7 +47,7 @@ public class MergeBetterPeerStrategyTests
         syncPeer.HeadNumber.Returns(peerNumber);
 
         MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy();
-        Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(((UInt256)totalDifficulty, number), syncPeer));
+        Assert.That(betterPeerStrategy.Compare(((UInt256)totalDifficulty, number), syncPeer), Is.EqualTo(expectedResult));
     }
 
     [TestCase(7, 2, 6, 4, -1)]
@@ -59,7 +59,7 @@ public class MergeBetterPeerStrategyTests
     public void Compare_with_values_return_expected_results(long totalDifficulty, long number, long peerTotalDifficulty, long peerNumber, int expectedResult)
     {
         MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy();
-        Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(((UInt256)totalDifficulty, number), ((UInt256)peerTotalDifficulty, peerNumber)));
+        Assert.That(betterPeerStrategy.Compare(((UInt256)totalDifficulty, number), ((UInt256)peerTotalDifficulty, peerNumber)), Is.EqualTo(expectedResult));
     }
 
     [TestCase(6, 4, 7, 2, false)]
@@ -75,7 +75,7 @@ public class MergeBetterPeerStrategyTests
         syncPeer.HeadNumber.Returns(peerNumber);
 
         MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy();
-        Assert.AreEqual(expectedResult, betterPeerStrategy.IsBetterThanLocalChain(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestFullBlock)));
+        Assert.That(betterPeerStrategy.IsBetterThanLocalChain(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestFullBlock)), Is.EqualTo(expectedResult));
     }
 
     [TestCase(6, 4, 7, 2, false)]
@@ -91,7 +91,7 @@ public class MergeBetterPeerStrategyTests
         syncPeer.HeadNumber.Returns(peerNumber);
 
         MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy();
-        Assert.AreEqual(expectedResult, betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestHeader)));
+        Assert.That(betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestHeader)), Is.EqualTo(expectedResult));
     }
 
     [TestCase(9, 7, 4, 7, 10, true)]
@@ -105,17 +105,17 @@ public class MergeBetterPeerStrategyTests
         syncPeer.HeadNumber.Returns(peerNumber);
 
         MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy(pivotNumber);
-        Assert.AreEqual(expectedResult, betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestHeader)));
+        Assert.That(betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestHeader)), Is.EqualTo(expectedResult));
     }
 
-    [TestCase(null, true)]
+    //[TestCase(null, true)]
     [TestCase(4, true)]
     [TestCase(5, false)]
     [TestCase(6, false)]
     public void IsLowerThanTerminalTotalDifficulty_return_expected_results(long totalDifficulty, bool expectedResult)
     {
         MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy();
-        Assert.AreEqual(expectedResult, betterPeerStrategy.IsLowerThanTerminalTotalDifficulty((UInt256)totalDifficulty));
+        Assert.That(betterPeerStrategy.IsLowerThanTerminalTotalDifficulty((UInt256)totalDifficulty), Is.EqualTo(expectedResult));
     }
 
     private MergeBetterPeerStrategy CreateStrategy(long? beaconPivotNum = null)

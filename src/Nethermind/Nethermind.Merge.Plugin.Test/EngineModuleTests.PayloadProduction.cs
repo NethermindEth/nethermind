@@ -183,10 +183,10 @@ public partial class EngineModuleTests
 
         BlockHeader? currentHeader = chain.BlockTree.BestSuggestedHeader!;
 
-        Assert.AreEqual("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347", currentHeader.UnclesHash!.ToString());
-        Assert.AreEqual((UInt256)0, currentHeader.Difficulty);
-        Assert.AreEqual(0, currentHeader.Nonce);
-        Assert.AreEqual(random, currentHeader.MixHash);
+        Assert.That(currentHeader.UnclesHash!.ToString(), Is.EqualTo("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"));
+        Assert.That(currentHeader.Difficulty, Is.EqualTo((UInt256)0));
+        Assert.That(currentHeader.Nonce, Is.EqualTo(0));
+        Assert.That(currentHeader.MixHash, Is.EqualTo(random));
     }
 
     [Test]
@@ -223,8 +223,7 @@ public partial class EngineModuleTests
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", payload.ToHexString(true));
-        Assert.AreEqual(result,
-            chain.JsonSerializer.Serialize(new
+        Assert.That(chain.JsonSerializer.Serialize(new
             {
                 jsonrpc = "2.0",
                 result = new ExecutionPayload
@@ -253,7 +252,7 @@ public partial class EngineModuleTests
                     },
                 },
                 id = 67
-            }));
+            }), Is.EqualTo(result));
     }
 
     [Test]

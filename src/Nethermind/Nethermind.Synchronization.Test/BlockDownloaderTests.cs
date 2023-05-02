@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < 1023; i++)
             {
-                Assert.AreEqual(ctx.BlockTree.FindBlock(i, BlockTreeLookupOptions.None).Hash, syncPeer.BlockTree.FindBlock(i, BlockTreeLookupOptions.None).Hash, i.ToString());
+                Assert.That(syncPeer.BlockTree.FindBlock(i, BlockTreeLookupOptions.None).Hash, Is.EqualTo(ctx.BlockTree.FindBlock(i, BlockTreeLookupOptions.None).Hash), i.ToString());
             }
 
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts, 0), CancellationToken.None);
@@ -161,7 +161,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < 1023; i++)
             {
-                Assert.AreEqual(ctx.BlockTree.FindBlock(i, BlockTreeLookupOptions.None).Hash, syncPeer.BlockTree.FindBlock(i, BlockTreeLookupOptions.None).Hash, i.ToString());
+                Assert.That(syncPeer.BlockTree.FindBlock(i, BlockTreeLookupOptions.None).Hash, Is.EqualTo(ctx.BlockTree.FindBlock(i, BlockTreeLookupOptions.None).Hash), i.ToString());
             }
 
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(), CancellationToken.None);
@@ -228,12 +228,12 @@ namespace Nethermind.Synchronization.Test
 
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, ignoredBlocks), CancellationToken.None).ContinueWith(t => { });
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, ignoredBlocks), CancellationToken.None);
-            Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber - ignoredBlocks), ctx.BlockTree.BestSuggestedHeader.Number);
+            Assert.That(ctx.BlockTree.BestSuggestedHeader.Number, Is.EqualTo(Math.Max(0, peerInfo.HeadNumber - ignoredBlocks)));
 
             syncPeer.HeadNumber.Returns((int)Math.Ceiling(SyncBatchSize.Max * SyncBatchSize.AdjustmentFactor) + ignoredBlocks);
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None).ContinueWith(t => { });
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
-            Assert.AreEqual(Math.Max(0, peerInfo.HeadNumber), ctx.BlockTree.BestSuggestedHeader.Number);
+            Assert.That(ctx.BlockTree.BestSuggestedHeader.Number, Is.EqualTo(Math.Max(0, peerInfo.HeadNumber)));
         }
 
         [TestCase(32, 32, 0, true)]
@@ -332,7 +332,7 @@ namespace Nethermind.Synchronization.Test
 
             long blockSynced = await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
 
-            Assert.AreEqual(0, blockSynced);
+            Assert.That(blockSynced, Is.EqualTo(0));
         }
 
         [TestCase(33L)]
@@ -356,7 +356,7 @@ namespace Nethermind.Synchronization.Test
             Task task = downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
             await task.ContinueWith(t => Assert.False(t.IsFaulted));
 
-            Assert.AreEqual(headNumber, ctx.BlockTree.BestSuggestedHeader.Number);
+            Assert.That(ctx.BlockTree.BestSuggestedHeader.Number, Is.EqualTo(headNumber));
         }
 
         [Test]

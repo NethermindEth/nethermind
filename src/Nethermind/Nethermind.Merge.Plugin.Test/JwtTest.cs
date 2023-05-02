@@ -32,8 +32,8 @@ public class JwtTest
         IRpcAuthentication authentication = JwtAuthentication.FromSecret("5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", manualTimestamper, LimboTraceLogger.Instance);
         IRpcAuthentication authenticationWithPrefix = JwtAuthentication.FromSecret("0x5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", manualTimestamper, LimboTraceLogger.Instance);
         bool actual = authentication.Authenticate(token);
-        Assert.AreEqual(expected, actual);
+        Assert.That(actual, Is.EqualTo(expected));
         actual = authenticationWithPrefix.Authenticate(token);
-        Assert.AreEqual(actual, expected);
+        Assert.That(expected, Is.EqualTo(actual));
     }
 }
