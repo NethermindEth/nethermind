@@ -66,8 +66,17 @@ jobs:
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
 
-    - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}"
-      run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}'"
+    - name: Set BASE_TAG
+      id: set-base-tag
+      env:
+        GITHUB_USERNAME: ${{ github.actor }}
+      run: |
+        BASE_TAG="${GITHUB_USERNAME:0:1}$(shuf -i 1000-9999 -n 1)"
+        echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
+        echo "::set-output name=base_tag::$BASE_TAG"
+
+    - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}"
+      run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}'"
 
     - name: Trigger Docker Build Action with Cleaned Ref
       uses: benc-uk/workflow-dispatch@v1
@@ -111,15 +120,20 @@ jobs:
 
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
 
+    - name: Use BASE_TAG
+      run: |
+        echo "BASE_TAG=${{ needs.first-job.outputs.base_tag }}" >> $GITHUB_ENV
+
     - name: Trigger Node creation Repo Action
       uses: benc-uk/workflow-dispatch@v1
       with:
           workflow: run-single-node.yml
           repo: NethermindEth/post-merge-smoke-tests
-          ref: "main"
+          ref: "kch/add_signle_node_tag_param"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
                      "github_username": "${{ github.actor }}",
+                     "base_tag": "${{ env.BASE_TAG }}"
                      "config_file": "${{ inputs.config }}",
                      "nethermind_branch": "${{ env.CLEAN_REF }}",
                      "network": "${{ inputs.network }}",
