@@ -34,7 +34,6 @@ namespace Nethermind.Network.Rlpx
 
         private bool _isInitialized;
         public PublicKey LocalNodeId { get; }
-
         public int LocalPort { get; }
         public string? LocalIp { get; set; }
         private readonly IHandshakeService _handshakeService;
@@ -54,7 +53,8 @@ namespace Nethermind.Network.Rlpx
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
             ILogManager logManager,
-            TimeSpan sendLatency)
+            TimeSpan sendLatency
+        )
         {
             // .NET Core definitely got the easy logging setup right :D
             // ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
