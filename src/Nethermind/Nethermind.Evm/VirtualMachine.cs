@@ -599,9 +599,7 @@ public class VirtualMachine : IVirtualMachine
     {
         bool isTrace = _logger.IsTrace;
         bool traceOpcodes = _txTracer.IsTracingInstructions;
-        (bool IsOn, DebugTracer Debugger) debugMode = _txTracer is DebugTracer dbgTracer
-            ? (true, dbgTracer)
-            : (false, null);
+        DebugTracer? debugger = _txTracer as DebugTracer;
 
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
@@ -672,12 +670,8 @@ public class VirtualMachine : IVirtualMachine
 
             if (traceOpcodes)
             {
-                if (debugMode.IsOn)
-                {
-                    debugMode.Debugger.TryWait(vmState);
-                    ApplyExternalState(debugMode.Debugger.CurrentState, out programCounter, out gasAvailable, out stack.Head);
-                }
-
+                debugger?.TryWait(vmState);
+                ApplyExternalState(vmState, out programCounter, out gasAvailable, out stack.Head);
             }
 
             Instruction instruction = (Instruction)code[programCounter];
@@ -2430,11 +2424,7 @@ public class VirtualMachine : IVirtualMachine
         }
 
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-
-        if (traceOpcodes && debugMode.IsOn)
-        {
-            debugMode.Debugger.TryWait(vmState);
-        }
+        debugger?.TryWait(vmState);
 // Fall through to Empty: label
 
 // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller

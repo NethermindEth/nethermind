@@ -23,7 +23,7 @@ internal class DebugTracer : ITxTracer
     }
 
     public ITxTracer InnerTracer { get; private set; }
-    private ManualResetEventSlim _manualResetEvent = new ManualResetEventSlim(true, 0);
+    private SemaphoreSlim _manualResetEvent = new SemaphoreSlim(1);
 
     public bool IsTracingReceipt => ((ITxTracer)InnerTracer).IsTracingReceipt;
 
@@ -64,7 +64,6 @@ internal class DebugTracer : ITxTracer
 
         if (IsStepByStepModeOn)
         {
-            _manualResetEvent.Reset();
             _manualResetEvent.Wait();
             return true;
         }
@@ -75,8 +74,8 @@ internal class DebugTracer : ITxTracer
 
     }
 
-    public void MoveNext() => _manualResetEvent.Set();
-    public bool CanReadState() => !_manualResetEvent.IsSet;
+    public void MoveNext() => _manualResetEvent.Release();
+    public bool CanReadState() => _manualResetEvent.CurrentCount == 0;
     public void SetBreakPoint(int programCounter, Func<EvmState, bool> condition = null)
         => _breakPoints.Add(programCounter, condition);
     public bool CheckBreakPoint()
@@ -87,7 +86,6 @@ internal class DebugTracer : ITxTracer
             bool conditionResults = condition is null ? true : condition.Invoke(CurrentState);
             if (conditionResults)
             {
-                _manualResetEvent.Reset();
                 _manualResetEvent.Wait();
                 return true;
             }
