@@ -776,6 +776,7 @@ namespace Nethermind.Trie
             TrieNode trieNode = Clone();
             trieNode.Key = key;
             trieNode.Value = changedValue;
+            trieNode.PathToNode = changedPathToNode;
             return trieNode;
         }
 
