@@ -131,7 +131,7 @@ jobs:
       with:
           workflow: run-single-node.yml
           repo: NethermindEth/post-merge-smoke-tests
-          ref: "kch/add_signle_node_tag_param"
+          ref: "main"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
                      "github_username": "${{ github.actor }}",
