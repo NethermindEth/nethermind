@@ -52,9 +52,12 @@ namespace Nethermind.Core
                 Keccak? hash = _hash;
                 if (hash is not null) return hash;
 
-                if (_preHash.Length > 0)
+                lock (this)
                 {
-                    GenerateHash();
+                    if (_preHash.Length > 0)
+                    {
+                        GenerateHash();
+                    }
                 }
 
                 return _hash;
@@ -72,40 +75,49 @@ namespace Nethermind.Core
             }
             set
             {
-                if (_preHash.Length > 0)
+                lock (this)
                 {
-                    if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+                    if (_preHash.Length > 0)
                     {
-                        ArrayPool<byte>.Shared.Return(rentedArray.Array!);
+                        if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+                        {
+                            ArrayPool<byte>.Shared.Return(rentedArray.Array!);
+                        }
+
+                        _preHash = default;
                     }
 
-                    _preHash = default;
+                    _hash = value;
                 }
-
-                _hash = value;
             }
         }
 
         private ReadOnlyMemory<byte> _preHash;
         public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
         {
-            // Used to delay hash generation, as may be filtered as having too low gas etc
-            _hash = null;
+            lock (this)
+            {
+                // Used to delay hash generation, as may be filtered as having too low gas etc
+                _hash = null;
 
-            int size = transactionSequence.Length;
-            byte[] preHash = ArrayPool<byte>.Shared.Rent(size);
-            transactionSequence.CopyTo(preHash);
-            _preHash = new ReadOnlyMemory<byte>(preHash, 0, size);
+                int size = transactionSequence.Length;
+                byte[] preHash = ArrayPool<byte>.Shared.Rent(size);
+                transactionSequence.CopyTo(preHash);
+                _preHash = new ReadOnlyMemory<byte>(preHash, 0, size);
+            }
         }
 
         public void ClearPreHash()
         {
-            if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+            lock (this)
             {
-                ArrayPool<byte>.Shared.Return(rentedArray.Array!);
-            }
+                if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+                {
+                    ArrayPool<byte>.Shared.Return(rentedArray.Array!);
+                }
 
-            _preHash = default;
+                _preHash = default;
+            }
         }
 
         public UInt256 Timestamp { get; set; }
