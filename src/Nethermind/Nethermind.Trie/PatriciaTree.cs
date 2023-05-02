@@ -397,44 +397,44 @@ namespace Nethermind.Trie
 
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
-            // if(Capability == TrieNodeResolverCapability.Hash) return GetInternal(rawKey, rootHash);
-            return GetInternal(rawKey, rootHash);
-            // _logger.Info($"{Capability} {rootHash}");
-
-            // if (rootHash is null)
-            // {
-            //     if (RootRef is null)
-            //     {
-            //         // _logger.Info("RootRef is also null");
-            //         return null;
-            //     }
-            //
-            //     if (RootRef?.IsDirty == true)
-            //     {
-            //         return GetInternal(rawKey);
-            //     }
-            //
-            //     // _logger.Info($"set/ RootHash to {RootHash}");
-            //     rootHash = RootHash;
-            // }
-            //
-            // // try and get cached nodes
-            // Span<byte> nibbleBytes = stackalloc byte[StoreNibblePathPrefix.Length + rawKey.Length * 2];
-            // StoreNibblePathPrefix.CopyTo(nibbleBytes);
-            // Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes.Slice(StoreNibblePathPrefix.Length));
-            // // _logger.Info("TrieStore.FindCachedOrUnknown");
-            // TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes.Slice(StoreNibblePathPrefix.Length), StoreNibblePathPrefix, rootHash);
-            // if (node is null) return null;
-            // // _logger.Info($"TrieStore.FindCachedOrUnknown: {node}");
-            // if (node.NodeType == NodeType.Leaf) return node.Value;
-            //
-            // // if not in cached nodes - then check persisted nodes`
-            // byte[]? nodeData = TrieStore.TryLoadRlp(nibbleBytes, null);
-            // if (nodeData is null) return null;
-            // node = new TrieNode(NodeType.Unknown, nodeData);
-            // node.ResolveNode(TrieStore);
-            // return node.Value;
+            return Capability switch
+            {
+                TrieNodeResolverCapability.Hash => GetInternal(rawKey, rootHash),
+                TrieNodeResolverCapability.Path => GetInternal(rawKey, rootHash),
+                // TrieNodeResolverCapability.Path => GetByPath(rawKey, rootHash),
+                _ => throw new ArgumentOutOfRangeException()
+            };
         }
+
+        public byte[]? GetByPath(Span<byte> rawKey, Keccak? rootHash = null)
+        {
+            if (rootHash is null)
+            {
+                if (RootRef is null) return null;
+                if (RootRef?.IsDirty == true)  return GetInternal(rawKey);
+                rootHash = RootHash;
+            }
+
+            // try and get cached nodes
+            Span<byte> nibbleBytes = stackalloc byte[StoreNibblePathPrefix.Length + rawKey.Length * 2];
+            StoreNibblePathPrefix.CopyTo(nibbleBytes);
+            Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes[StoreNibblePathPrefix.Length..]);
+            TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, rootHash);
+
+            if (node is null) return null;
+            if (node.NodeType != NodeType.Leaf)
+            {
+                // if not in cached nodes - then check persisted nodes`
+                byte[]? nodeData = TrieStore.TryLoadRlp(nibbleBytes, null);
+                if (nodeData is null) return null;
+
+                node = new TrieNode(NodeType.Unknown, nodeData);
+                node.ResolveNode(TrieStore);
+            }
+
+            return node.Value;
+        }
+
 
         public void Set(Span<byte> rawKey, byte[] value)
         {
