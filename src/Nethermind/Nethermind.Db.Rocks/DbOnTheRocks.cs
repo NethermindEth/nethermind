@@ -252,7 +252,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     {
         try
         {
-            return long.TryParse(_db.GetProperty("rocksdb.cur-size-all-mem-tables"), out long size) ? size : 0;
+            return long.TryParse(_db.GetProperty("rocksdb.estimate-table-readers-mem"), out long size) ? size : 0;
         }
         catch (RocksDbSharpException e)
         {
@@ -267,7 +267,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     {
         try
         {
-            return long.TryParse(_db.GetProperty("rocksdb.estimate-table-readers-mem"), out long size) ? size : 0;
+            return long.TryParse(_db.GetProperty("rocksdb.cur-size-all-mem-tables"), out long size) ? size : 0;
         }
         catch (RocksDbSharpException e)
         {
