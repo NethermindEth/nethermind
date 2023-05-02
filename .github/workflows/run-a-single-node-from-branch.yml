@@ -55,6 +55,8 @@ on:
 jobs:
   create_docker_image:
     runs-on: ubuntu-latest
+    outputs:
+      base_tag: ${{ steps.set-base-tag.outputs.base_tag }}
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
