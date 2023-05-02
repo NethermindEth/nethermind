@@ -32,7 +32,10 @@ namespace Nethermind.Db
                 throw new InvalidOperationException();
             }
 #endif
-
+            if (db is IDbWithSpan spanDb)
+            {
+                return Get(spanDb, (ReadOnlySpan<byte>)key.Bytes);
+            }
             return db[key.Bytes];
         }
 
@@ -105,9 +108,48 @@ namespace Nethermind.Db
             db[key.ToBigEndianByteArrayWithoutLeadingZeros()] = value;
         }
 
-        public static byte[]? Get(this IDb db, long key) => db[key.ToBigEndianByteArrayWithoutLeadingZeros()];
+        public static byte[]? Get(this IDb db, long key)
+        {
+            ReadOnlySpan<byte> keySpan = key.ToBigEndianByteArrayWithoutLeadingZeros();
+            if (db is IDbWithSpan spanDb)
+            {
+                return Get(spanDb, keySpan);
+            }
 
-        public static byte[]? Get(this IDb db, byte[] key) => db[key];
+            return db[keySpan];
+        }
+
+        public static byte[]? Get(this IDb db, byte[] key)
+        {
+            if (db is IDbWithSpan spanDb)
+            {
+                return Get(spanDb, (ReadOnlySpan<byte>)key);
+            }
+
+            return db[key];
+        }
+
+        private static byte[]? Get(IDbWithSpan spanDb, ReadOnlySpan<byte> key)
+        {
+            Span<byte> data = spanDb.GetSpan(key);
+            if (data.IsNull())
+            {
+                return null;
+            }
+            try
+            {
+                if (data.Length == 0)
+                {
+                    return null;
+                }
+
+                return data.ToArray();
+            }
+            finally
+            {
+                spanDb.DangerousReleaseMemory(data);
+            }
+        }
 
         /// <summary>
         ///

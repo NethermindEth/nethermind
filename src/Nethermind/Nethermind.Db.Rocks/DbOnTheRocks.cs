@@ -372,7 +372,24 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         try
         {
-            return _db.Get(key);
+            Span<byte> data = _db.GetSpan(key);
+            if (data.IsNull())
+            {
+                return null;
+            }
+            try
+            {
+                if (data.Length == 0)
+                {
+                    return null;
+                }
+
+                return data.ToArray();
+            }
+            finally
+            {
+                _db.DangerousReleaseMemory(data);
+            }
         }
         catch (RocksDbSharpException e)
         {
