@@ -93,8 +93,9 @@ jobs:
         ref: ${{ github.ref }}
       run: |
         pwd
-        chmod +x nethermind/scripts/wait-for-workflow-completed.sh
-        nethermind/scripts/wait-for-workflow-completed.sh
+        ls -al
+        chmod +x scripts/wait-for-workflow-completed.sh
+        ./scripts/wait-for-workflow-completed.sh
       working-directory: ${{ github.workspace }}
           
   trigger_node_and_vm_creation:
@@ -142,6 +143,6 @@ jobs:
         repo_name: 'post-merge-smoke-tests'
         ref: 'main'
       run: |
-        chmod +x nethermind/scripts/wait-for-workflow-completed.sh
-        nethermind/scripts/wait-for-workflow-completed.sh
+        chmod +x scripts/wait-for-workflow-completed.sh
+        ./scripts/wait-for-workflow-completed.sh
       working-directory: ${{ github.workspace }}
