@@ -11,11 +11,17 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public class AuRaNethermindApi : NethermindApi
     {
+        public AuRaNethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec)
+            : base(configProvider, jsonSerializer, logManager, chainSpec)
+        {
+        }
+
         public new IAuRaBlockFinalizationManager? FinalizationManager
         {
             get => base.FinalizationManager as IAuRaBlockFinalizationManager;

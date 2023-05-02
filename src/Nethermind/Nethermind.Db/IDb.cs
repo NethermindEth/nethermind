@@ -16,6 +16,9 @@ namespace Nethermind.Db
         void Remove(ReadOnlySpan<byte> key);
         bool KeyExists(ReadOnlySpan<byte> key);
         long GetSize();
+        long GetCacheSize();
+        long GetIndexSize();
+        long GetMemtableSize();
 
         void Flush();
 

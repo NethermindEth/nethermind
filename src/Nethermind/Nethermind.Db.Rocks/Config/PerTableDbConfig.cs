@@ -40,6 +40,7 @@ public class PerTableDbConfig
     public long? MaxWriteBytesPerSec => ReadConfig<long?>(nameof(MaxWriteBytesPerSec));
     public uint RecycleLogFileNum => ReadConfig<uint>(nameof(RecycleLogFileNum));
     public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
+    public int? BlockSize => ReadConfig<int?>(nameof(BlockSize));
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
 
@@ -50,7 +51,7 @@ public class PerTableDbConfig
 
     private string GetPrefix()
     {
-        return _tableName.StartsWith("State") ? "State" : string.Concat(_tableName, "Db");
+        return _tableName.StartsWith("State") ? "StateDb" : string.Concat(_tableName, "Db");
     }
 
     private static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string prefix)
