@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -103,22 +104,21 @@ public class StartMonitoring : IStep
                 Db.Metrics.WitnessDbSize = dbProvider.WitnessDb.GetSize();
 
                 Db.Metrics.DbBlockCacheMemorySize = dbProvider.StateDb.GetCacheSize()
-                                                    + dbProvider.ReceiptsDb.GetCacheSize()
-                                                    + dbProvider.HeadersDb.GetCacheSize()
-                                                    // State and Blocks are the same
-                                                    // + dbProvider.BlocksDb.GetCacheSize()
-                                                    + dbProvider.BloomDb.GetCacheSize()
-                                                    + dbProvider.CodeDb.GetCacheSize()
                                                     + dbProvider.BlockInfosDb.GetCacheSize()
-                                                    + dbProvider.ChtDb.GetCacheSize()
-                                                    + dbProvider.MetadataDb.GetCacheSize()
-                                                    + dbProvider.WitnessDb.GetCacheSize();
+                                                    + dbProvider.HeadersDb.GetCacheSize()
+                                                    + dbProvider.BlocksDb.GetCacheSize()
+                                                    + dbProvider.ReceiptsDb.GetCacheSize();
+                // Share same cache with StateDb
+                // + dbProvider.ChtDb.GetCacheSize()
+                // + dbProvider.MetadataDb.GetCacheSize()
+                // + dbProvider.WitnessDb.GetCacheSize()
+                // + dbProvider.CodeDb.GetCacheSize()
+                // + dbProvider.BloomDb.GetCacheSize()
 
                 Db.Metrics.DbIndexFilterMemorySize = dbProvider.StateDb.GetIndexSize()
                                                     + dbProvider.ReceiptsDb.GetIndexSize()
                                                     + dbProvider.HeadersDb.GetIndexSize()
-                                                    // State and Blocks are the same
-                                                    // + dbProvider.BlocksDb.GetIndexSize()
+                                                    + dbProvider.BlocksDb.GetIndexSize()
                                                     + dbProvider.BloomDb.GetIndexSize()
                                                     + dbProvider.CodeDb.GetIndexSize()
                                                     + dbProvider.BlockInfosDb.GetIndexSize()
@@ -129,8 +129,7 @@ public class StartMonitoring : IStep
                 Db.Metrics.DbMemtableMemorySize = dbProvider.StateDb.GetMemtableSize()
                                                     + dbProvider.ReceiptsDb.GetMemtableSize()
                                                     + dbProvider.HeadersDb.GetMemtableSize()
-                                                    // State and Blocks are the same
-                                                    // + dbProvider.BlocksDb.GetMemtableSize()
+                                                    + dbProvider.BlocksDb.GetMemtableSize()
                                                     + dbProvider.BloomDb.GetMemtableSize()
                                                     + dbProvider.CodeDb.GetMemtableSize()
                                                     + dbProvider.BlockInfosDb.GetMemtableSize()
