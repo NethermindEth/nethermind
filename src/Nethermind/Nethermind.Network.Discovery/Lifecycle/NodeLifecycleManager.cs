@@ -118,7 +118,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         }
         else
         {
-            if (_logger.IsDebug) _logger.Warn("Attempt to request ENR before bonding");
+            if (_logger.IsDebug) _logger.Debug("Attempt to request ENR before bonding");
         }
     }
 

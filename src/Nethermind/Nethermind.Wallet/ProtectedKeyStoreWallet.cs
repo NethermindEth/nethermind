@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using System.Runtime.Caching;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -11,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
-using Nethermind.Secp256k1;
 
 namespace Nethermind.Wallet
 {
@@ -99,7 +97,7 @@ namespace Nethermind.Wallet
         {
             var protectedPrivateKey = (ProtectedPrivateKey)_unlockedAccounts.Get(address.ToString());
             using PrivateKey key = protectedPrivateKey is not null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
-            var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            var rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

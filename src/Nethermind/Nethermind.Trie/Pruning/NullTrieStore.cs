@@ -35,7 +35,7 @@ namespace Nethermind.Trie.Pruning
             return new(NodeType.Unknown, hash);
         }
 
-        public byte[] LoadRlp(Keccak hash)
+        public byte[] LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None)
         {
             return Array.Empty<byte>();
         }
@@ -46,5 +46,9 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsFullySynced(Keccak stateRoot) => false;
         public byte[]? this[ReadOnlySpan<byte> key] => null;
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return null;
+        }
     }
 }

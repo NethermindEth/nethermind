@@ -135,21 +135,18 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 targetAdjustedGasLimitCalculator);
 
             AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
-                new()
-                {
-                    BlockTree = BlockTree,
-                    ChainSpec = new ChainSpec
+                new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
+                    new ChainSpec
                     {
                         AuRa = new()
                         {
                             WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
                         },
                         Parameters = new()
-                    },
+                    })
+                {
+                    BlockTree = BlockTree,
                     DbProvider = DbProvider,
-                    ConfigProvider = new ConfigProvider(),
-                    EthereumJsonSerializer = new EthereumJsonSerializer(),
-                    LogManager = LogManager,
                     ReadOnlyTrieStore = ReadOnlyTrieStore,
                     SpecProvider = SpecProvider,
                     TransactionComparerProvider = TransactionComparerProvider,

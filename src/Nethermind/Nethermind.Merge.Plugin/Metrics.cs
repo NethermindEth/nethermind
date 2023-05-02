@@ -1,12 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Nethermind.Core.Attributes;
 
 namespace Nethermind.Merge.Plugin
@@ -28,6 +23,5 @@ namespace Nethermind.Merge.Plugin
         [GaugeMetric]
         [Description("Number of Transactions included in the Last GetPayload Request")]
         public static int NumberOfTransactionsInGetPayload { get; set; }
-
     }
 }

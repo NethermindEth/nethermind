@@ -182,7 +182,7 @@ namespace Nethermind.AccountAbstraction.Test
                 "newPendingUserOperations", "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + "0x123" + "\"]}");
 
             string beginningOfExpectedResult = "{\"jsonrpc\":\"2.0\",\"error\":";
-            beginningOfExpectedResult.Should().Be(serialized.Substring(0, beginningOfExpectedResult.Length));
+            beginningOfExpectedResult.Should().Be(serialized[..beginningOfExpectedResult.Length]);
         }
 
         [Test]
@@ -243,7 +243,7 @@ namespace Nethermind.AccountAbstraction.Test
                 "eth_subscribe",
                 "newPendingUserOperations", "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + "0x123" + "\"]}");
             string beginningOfExpectedResult = "{\"jsonrpc\":\"2.0\",\"error\":";
-            beginningOfExpectedResult.Should().Be(serialized.Substring(0, beginningOfExpectedResult.Length));
+            beginningOfExpectedResult.Should().Be(serialized[..beginningOfExpectedResult.Length]);
         }
 
         [Test]

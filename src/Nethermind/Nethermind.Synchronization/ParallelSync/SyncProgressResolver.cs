@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -151,6 +150,8 @@ namespace Nethermind.Synchronization.ParallelSync
                                                                            long.MaxValue) <= _receiptsBarrier);
 
         public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
+
+        public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
 
         private bool IsFastBlocks()
         {

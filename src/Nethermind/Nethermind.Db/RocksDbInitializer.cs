@@ -68,6 +68,6 @@ namespace Nethermind.Db
             await Task.WhenAll(allInitializers);
         }
 
-        protected static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName.Substring(1);
+        protected static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
     }
 }

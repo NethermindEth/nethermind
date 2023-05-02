@@ -24,6 +24,19 @@ public class ArrayPoolListTests
     }
 
     [Test]
+    public void Should_not_hang_when_capacity_is_zero()
+    {
+        ArrayPoolList<int> list = new(0);
+        list.Should().BeEquivalentTo(Array.Empty<int>());
+        list.Add(1);
+        list.Count.Should().Be(1);
+        list.Remove(1);
+        list.Count.Should().Be(0);
+        list.Add(1);
+        list.Count.Should().Be(1);
+    }
+
+    [Test]
     public void Add_should_work()
     {
         ArrayPoolList<int> list = new(1024);

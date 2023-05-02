@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Core.Collections;
@@ -16,6 +18,22 @@ public class ThrowHelper
     {
         // Note that default(T) is not equal to null for value types except when T is Nullable<U>.
         if (default(T) is not null && value is null)
-            throw new ArgumentNullException(argName);
+        {
+            ThrowArgumentNullException(argName);
+        }
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    private static void ThrowArgumentNullException(string argName)
+    {
+        throw new ArgumentNullException(argName);
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    internal static void ThrowNotSupportedException()
+    {
+        throw new NotImplementedException();
     }
 }

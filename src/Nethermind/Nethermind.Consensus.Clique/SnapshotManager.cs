@@ -91,7 +91,7 @@ namespace Nethermind.Consensus.Clique
         public Snapshot GetOrCreateSnapshot(long number, Keccak hash)
         {
             Snapshot? snapshot = GetSnapshot(number, hash);
-            if (!(snapshot is null))
+            if (snapshot is not null)
             {
                 return snapshot;
             }
@@ -138,7 +138,7 @@ namespace Nethermind.Consensus.Clique
 
                     // No snapshot for this header, gather the header and move backward
                     headers.Add(header);
-                    number = number - 1;
+                    number--;
                     hash = header.ParentHash;
                 }
 

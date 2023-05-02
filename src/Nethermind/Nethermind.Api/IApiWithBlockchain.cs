@@ -83,9 +83,9 @@ namespace Nethermind.Api
         /// </remarks>
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
-        IGasLimitCalculator GasLimitCalculator { get; set; }
+        IGasLimitCalculator? GasLimitCalculator { get; set; }
 
-        IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
+        IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
 
         IGasPriceOracle? GasPriceOracle { get; set; }
 
@@ -93,6 +93,6 @@ namespace Nethermind.Api
 
         CompositePruningTrigger PruningTrigger { get; }
 
-        IBlockProductionPolicy BlockProductionPolicy { get; set; }
+        IBlockProductionPolicy? BlockProductionPolicy { get; set; }
     }
 }

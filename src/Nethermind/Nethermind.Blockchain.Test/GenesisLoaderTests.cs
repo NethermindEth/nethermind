@@ -43,7 +43,7 @@ public class GenesisLoaderTests
     public void Can_load_withdrawals_with_empty_root()
     {
         Block block = GetGenesisBlock("Specs/shanghai_from_genesis.json");
-        Assert.AreEqual("0x3c8aeea1d582ff43787ac297e08a25c58ee9609ab49139e64e0f7a8a56ba3a46", block.Hash!.ToString());
+        Assert.AreEqual("0x1326aad1114b1f1c6a345b69ba4ba6f8ab6ce027d988aacd275ab596a047a547", block.Hash!.ToString());
     }
 
     private void AssertBlockHash(string expectedHash, string chainspecFilePath)

@@ -85,10 +85,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Account account, RlpStream rlpStream, int? contentLength = null)
         {
-            if (contentLength is null)
-            {
-                contentLength = GetContentLength(account);
-            }
+            contentLength ??= GetContentLength(account);
 
             rlpStream.StartSequence(contentLength.Value);
             rlpStream.Encode(account.Nonce);
@@ -173,7 +170,7 @@ namespace Nethermind.Serialization.Rlp
 
         private Keccak DecodeStorageRoot(RlpStream rlpStream)
         {
-            Keccak storageRoot = null;
+            Keccak storageRoot;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
@@ -189,7 +186,7 @@ namespace Nethermind.Serialization.Rlp
 
         private Keccak DecodeCodeHash(RlpStream rlpStream)
         {
-            Keccak codeHash = null;
+            Keccak codeHash;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();

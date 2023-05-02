@@ -36,6 +36,9 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Config;
+using Nethermind.Monitoring;
+using Nethermind.Monitoring.Config;
+using Nethermind.Monitoring.Metrics;
 
 namespace Nethermind.JsonRpc.Benchmark
 {

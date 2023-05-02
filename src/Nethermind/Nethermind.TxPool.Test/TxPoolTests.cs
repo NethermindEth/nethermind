@@ -1505,10 +1505,7 @@ namespace Nethermind.TxPool.Test
                 new TransactionComparerProvider(specProvider, _blockTree);
 
             _headInfo = chainHeadInfoProvider;
-            if (_headInfo is null)
-            {
-                _headInfo = new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
-            }
+            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
 
             return new TxPool(
                 _ethereumEcdsa,
@@ -1585,7 +1582,7 @@ namespace Nethermind.TxPool.Test
         private void EnsureSenderBalance(Transaction transaction)
         {
             UInt256 requiredBalance;
-            if (transaction.IsEip1559)
+            if (transaction.Supports1559)
             {
                 if (UInt256.MultiplyOverflow(transaction.MaxFeePerGas, (UInt256)transaction.GasLimit, out requiredBalance))
                 {
