@@ -89,10 +89,7 @@ jobs:
         repo_name: 'nethermind'
         ref: ${{ github.ref }}
       run: |
-        echo "Listing all files and directories in the repository:"
-        ls -al
-        echo "Current directory name:"
-        pwd
+        ls
         chmod +x nethermind/scripts/wait-for-workflow-completed.sh
         nethermind/scripts/wait-for-workflow-completed.sh
       working-directory: ${{ github.workspace }}
