@@ -40,6 +40,8 @@ public class PerTableDbConfig
     public long? MaxBytesPerSec => ReadConfig<long?>(nameof(MaxBytesPerSec));
     public uint RecycleLogFileNum => ReadConfig<uint>(nameof(RecycleLogFileNum));
     public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
+    public bool UseDirectReads => ReadConfig<bool>(nameof(UseDirectReads));
+    public bool UseDirectIoForFlushAndCompactions => ReadConfig<bool>(nameof(UseDirectIoForFlushAndCompactions ));
     public int? BlockSize => ReadConfig<int?>(nameof(BlockSize));
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
