@@ -224,35 +224,35 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", payload.ToHexString(true));
         Assert.That(chain.JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0",
+            result = new ExecutionPayload
             {
-                jsonrpc = "2.0",
-                result = new ExecutionPayload
-                {
-                    BaseFeePerGas = 0,
-                    BlockHash = new("0x5fd61518405272d77fd6cdc8a824a109d75343e32024ee4f6769408454b1823d"),
-                    BlockNumber = 0,
-                    ExtraData = Bytes.FromHexString("0x010203"),
-                    FeeRecipient = Address.Zero,
-                    GasLimit = 0x3d0900L,
-                    GasUsed = 0,
-                    LogsBloom =
+                BaseFeePerGas = 0,
+                BlockHash = new("0x5fd61518405272d77fd6cdc8a824a109d75343e32024ee4f6769408454b1823d"),
+                BlockNumber = 0,
+                ExtraData = Bytes.FromHexString("0x010203"),
+                FeeRecipient = Address.Zero,
+                GasLimit = 0x3d0900L,
+                GasUsed = 0,
+                LogsBloom =
                         new Bloom(Bytes.FromHexString(
                             "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                    ParentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c"),
-                    PrevRandao = new("0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2"),
-                    ReceiptsRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
-                    StateRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
-                    Timestamp = 0xf4240UL,
-                    Transactions = new[]
+                ParentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c"),
+                PrevRandao = new("0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2"),
+                ReceiptsRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
+                StateRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
+                Timestamp = 0xf4240UL,
+                Transactions = new[]
                     {
                         Bytes.FromHexString(
                             "0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"),
                         Bytes.FromHexString(
                             "0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0033e85439a128c42f2ba47ca278f1375ef211e61750018ff21bcd9750d1893f2a04ee981fe5261f8853f95c865232ffdab009abcc7858ca051fb624c49744bf18d")
                     },
-                },
-                id = 67
-            }), Is.EqualTo(result));
+            },
+            id = 67
+        }), Is.EqualTo(result));
     }
 
     [Test]
