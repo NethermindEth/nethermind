@@ -9,6 +9,9 @@ namespace Nethermind.Db.Rocks.Config;
 [ConfigCategory(HiddenFromDocs = true)]
 public interface IDbConfig : IConfig
 {
+    ulong SharedBlockCacheSize { get; set; }
+    public bool SkipMemoryHintSetting { get; set; }
+
     ulong WriteBufferSize { get; set; }
     uint WriteBufferNumber { get; set; }
     ulong BlockCacheSize { get; set; }
@@ -17,6 +20,7 @@ public interface IDbConfig : IConfig
     uint RecycleLogFileNum { get; set; }
     bool WriteAheadLogSync { get; set; }
     long? MaxWriteBytesPerSec { get; set; }
+    int? BlockSize { get; set; }
     IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
@@ -25,6 +29,7 @@ public interface IDbConfig : IConfig
     bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; }
     int? ReceiptsDbMaxOpenFiles { get; set; }
     long? ReceiptsDbMaxWriteBytesPerSec { get; set; }
+    int? ReceiptsBlockSize { get; set; }
     IDictionary<string, string>? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlocksDbWriteBufferSize { get; set; }
@@ -33,6 +38,7 @@ public interface IDbConfig : IConfig
     bool BlocksDbCacheIndexAndFilterBlocks { get; set; }
     int? BlocksDbMaxOpenFiles { get; set; }
     long? BlocksDbMaxWriteBytesPerSec { get; set; }
+    int? BlocksBlockSize { get; set; }
     IDictionary<string, string>? BlocksDbAdditionalRocksDbOptions { get; set; }
 
     ulong HeadersDbWriteBufferSize { get; set; }
@@ -41,6 +47,7 @@ public interface IDbConfig : IConfig
     bool HeadersDbCacheIndexAndFilterBlocks { get; set; }
     int? HeadersDbMaxOpenFiles { get; set; }
     long? HeadersDbMaxWriteBytesPerSec { get; set; }
+    int? HeadersBlockSize { get; set; }
     IDictionary<string, string>? HeadersDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlockInfosDbWriteBufferSize { get; set; }
@@ -49,6 +56,7 @@ public interface IDbConfig : IConfig
     bool BlockInfosDbCacheIndexAndFilterBlocks { get; set; }
     int? BlockInfosDbMaxOpenFiles { get; set; }
     long? BlockInfosDbMaxWriteBytesPerSec { get; set; }
+    int? BlockInfosBlockSize { get; set; }
     IDictionary<string, string>? BlockInfosDbAdditionalRocksDbOptions { get; set; }
 
     ulong PendingTxsDbWriteBufferSize { get; set; }
@@ -57,6 +65,7 @@ public interface IDbConfig : IConfig
     bool PendingTxsDbCacheIndexAndFilterBlocks { get; set; }
     int? PendingTxsDbMaxOpenFiles { get; set; }
     long? PendingTxsDbMaxWriteBytesPerSec { get; set; }
+    int? PendingTxsBlockSize { get; set; }
     IDictionary<string, string>? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
     ulong CodeDbWriteBufferSize { get; set; }
@@ -65,6 +74,7 @@ public interface IDbConfig : IConfig
     bool CodeDbCacheIndexAndFilterBlocks { get; set; }
     int? CodeDbMaxOpenFiles { get; set; }
     long? CodeDbMaxWriteBytesPerSec { get; set; }
+    int? CodeBlockSize { get; set; }
     IDictionary<string, string>? CodeDbAdditionalRocksDbOptions { get; set; }
 
     ulong BloomDbWriteBufferSize { get; set; }
@@ -81,6 +91,7 @@ public interface IDbConfig : IConfig
     bool WitnessDbCacheIndexAndFilterBlocks { get; set; }
     int? WitnessDbMaxOpenFiles { get; set; }
     long? WitnessDbMaxWriteBytesPerSec { get; set; }
+    int? WitnessBlockSize { get; set; }
     IDictionary<string, string>? WitnessDbAdditionalRocksDbOptions { get; set; }
 
     ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
@@ -89,6 +100,7 @@ public interface IDbConfig : IConfig
     bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; }
     int? CanonicalHashTrieDbMaxOpenFiles { get; set; }
     long? CanonicalHashTrieDbMaxWriteBytesPerSec { get; set; }
+    int? CanonicalHashTrieBlockSize { get; set; }
     IDictionary<string, string>? CanonicalHashTrieDbAdditionalRocksDbOptions { get; set; }
 
     ulong MetadataDbWriteBufferSize { get; set; }
@@ -97,7 +109,17 @@ public interface IDbConfig : IConfig
     bool MetadataDbCacheIndexAndFilterBlocks { get; set; }
     int? MetadataDbMaxOpenFiles { get; set; }
     long? MetadataDbMaxWriteBytesPerSec { get; set; }
+    int? MetadataBlockSize { get; set; }
     IDictionary<string, string>? MetadataDbAdditionalRocksDbOptions { get; set; }
+
+    ulong StateDbWriteBufferSize { get; set; }
+    uint StateDbWriteBufferNumber { get; set; }
+    ulong StateDbBlockCacheSize { get; set; }
+    bool StateDbCacheIndexAndFilterBlocks { get; set; }
+    int? StateDbMaxOpenFiles { get; set; }
+    long? StateDbMaxWriteBytesPerSec { get; set; }
+    int? StateDbBlockSize { get; set; }
+    IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
