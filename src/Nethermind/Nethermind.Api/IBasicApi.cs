@@ -27,7 +27,7 @@ namespace Nethermind.Api
         DisposableStack DisposeStack { get; }
 
         IAbiEncoder AbiEncoder { get; }
-        ChainSpec? ChainSpec { get; set; }
+        ChainSpec ChainSpec { get; set; }
         IConfigProvider ConfigProvider { get; set; }
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
@@ -47,7 +47,7 @@ namespace Nethermind.Api
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
-        IProcessExitSource ProcessExit { get; set; }
+        IProcessExitSource? ProcessExit { get; set; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins
