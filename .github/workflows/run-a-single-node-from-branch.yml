@@ -56,6 +56,9 @@ jobs:
   create_docker_image:
     runs-on: ubuntu-latest
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
     - name: Prepare docker tag
       id: prepare_ref
       run: |
@@ -89,8 +92,6 @@ jobs:
         repo_name: 'nethermind'
         ref: ${{ github.ref }}
       run: |
-        echo "Current directory name:"
-        pwd
         chmod +x nethermind/scripts/wait-for-workflow-completed.sh
         nethermind/scripts/wait-for-workflow-completed.sh
       working-directory: ${{ github.workspace }}
@@ -99,6 +100,9 @@ jobs:
     needs: create_docker_image
     runs-on: ubuntu-latest
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
     - name: Prepare docker tag
       id: prepare_ref
       run: |
@@ -106,6 +110,7 @@ jobs:
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
 
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
+
     - name: Trigger Node creation Repo Action
       uses: benc-uk/workflow-dispatch@v1
       with:
