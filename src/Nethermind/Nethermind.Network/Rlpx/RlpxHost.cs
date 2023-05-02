@@ -114,7 +114,7 @@ namespace Nethermind.Network.Rlpx
 
                 Task<IChannel> openTask = LocalIp is null
                     ? bootstrap.BindAsync(LocalPort)
-                    : bootstrap.BindAsync(  IPAddress.Parse(LocalIp), LocalPort);
+                    : bootstrap.BindAsync(IPAddress.Parse(LocalIp), LocalPort);
 
                 _bootstrapChannel = await openTask.ContinueWith(t =>
                 {
