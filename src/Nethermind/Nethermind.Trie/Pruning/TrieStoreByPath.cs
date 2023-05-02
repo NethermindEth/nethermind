@@ -31,8 +31,8 @@ namespace Nethermind.Trie.Pruning
         private readonly IPathTrieNodeCache _committedNodes;
 
         private bool _lastPersistedReachedReorgBoundary;
-        private Task _pruningTask = Task.CompletedTask;
-        private CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+        private readonly Task _pruningTask = Task.CompletedTask;
+        private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
 
         public TrieStoreByPath(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
@@ -116,7 +116,7 @@ namespace Nethermind.Trie.Pruning
             EnsureCommitSetExistsForBlock(blockNumber);
 
             if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
-            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
+            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node!.IsBoundaryProofNode)
             {
                 TrieNode node = nodeCommitInfo.Node!;
 
@@ -134,7 +134,7 @@ namespace Nethermind.Trie.Pruning
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
 
                 if (_committedNodes.MaxNumberOfBlocks == 0)
-                    Persist(node, blockNumber, null);
+                    Persist(node, blockNumber);
 
                 CommittedNodesCount++;
             }
@@ -142,7 +142,6 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
-            // _logger.Info($"Finish Block Commit: {trieType} {blockNumber} {root}");
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
 
@@ -150,12 +149,12 @@ namespace Nethermind.Trie.Pruning
             {
                 if (trieType == TrieType.State) // storage tries happen before state commits
                 {
-                    // if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue.Count}");
+                    if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue.Count}");
                     BlockCommitSet set = CurrentPackage;
                     if (set is not null)
                     {
                         set.Root = root;
-                        // if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
+                        if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
                         set.Seal();
                     }
                     if (blockNumber == 0) // special case for genesis
@@ -173,11 +172,11 @@ namespace Nethermind.Trie.Pruning
                         }
                     }
                 }
-                _committedNodes?.SetRootHashForBlock(blockNumber, root?.Keccak);
-                // _logger.Info($"SetRootHashForBlock {trieType} {blockNumber} {root?.Keccak}");
+                // set rootHash here to account for root hashes for the storage trees also in every block
+                // there needs to be a better way to handle this
+                _committedNodes.SetRootHashForBlock(blockNumber, root?.Keccak);
 
-                if (trieType == TrieType.State)
-                    CurrentPackage = null;
+                if (trieType == TrieType.State) CurrentPackage = null;
             }
             finally
             {
@@ -193,12 +192,9 @@ namespace Nethermind.Trie.Pruning
             keyValueStore ??= _keyValueStore;
             byte[] keyPath = Nibbles.NibblesToByteStorage(path);
             byte[]? rlp = _currentBatch?[keyPath] ?? keyValueStore[keyPath];
+            if (rlp is null || rlp[0] != PathMarker) return rlp;
 
-            if (rlp?[0] == PathMarker)
-            {
-                byte[]? pointsToPath = _currentBatch?[rlp[1..]] ?? keyValueStore[rlp[1..]];
-                rlp = pointsToPath ?? null;
-            }
+            rlp = _currentBatch?[rlp.AsSpan()[1..]] ?? keyValueStore[rlp.AsSpan()[1..]];
             return rlp;
         }
 
@@ -252,19 +248,12 @@ namespace Nethermind.Trie.Pruning
         public bool IsPersisted(Keccak keccak, byte[] childPath)
         {
             byte[]? rlp = TryLoadRlp(childPath, _keyValueStore);
+            if (rlp is null) return false;
 
-            if (rlp is null)
-            {
-                return false;
-            }
             TrieNode node = new TrieNode(NodeType.Unknown, rlp: rlp);
             node.ResolveNode(this);
             node.ResolveKey(this, false);
-            if (node.Keccak == keccak)
-            {
-                return true;
-            }
-
+            if (node.Keccak == keccak) return true;
             Metrics.LoadedFromDbNodesCount++;
 
             return false;
@@ -306,13 +295,6 @@ namespace Nethermind.Trie.Pruning
             }
             return node.FullRlp is null ? null : node;
         }
-
-        //public void Dump() => _dirtyNodes.Dump();
-
-        /// <summary>
-        /// This method is here to support testing.
-        /// </summary>
-        //public void ClearCache() => _dirtyNodes.Clear();
 
         public void Dispose()
         {
@@ -367,60 +349,23 @@ namespace Nethermind.Trie.Pruning
         }
 
         /// <summary>
-        /// Persists all transient (not yet persisted) starting from <paramref name="commitSet"/> root.
-        /// Already persisted nodes are skipped. After this action we are sure that the full state is available
-        /// for the block represented by this commit set.
+        /// Persists all transient (not yet persisted) blocks un till <paramref name="persistUntilBlock"/> block number.
+        /// After this action we are sure that the full state is available for the block <paramref name="persistUntilBlock"/>.
         /// </summary>
-        /// <param name="commitSet">A commit set of a block which root is to be persisted.</param>
-        private void Persist(BlockCommitSet commitSet)
-        {
-            void PersistNode(TrieNode tn) => Persist(tn, commitSet.BlockNumber, commitSet.Root?.Keccak);
-
-            try
-            {
-                _currentBatch ??= _keyValueStore.StartBatch();
-                if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
-
-                Stopwatch stopwatch = Stopwatch.StartNew();
-                commitSet.Root?.CallRecursively(PersistNode, this, true, _logger);
-                stopwatch.Stop();
-                Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
-
-                if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
-
-                LastPersistedBlockNumber = commitSet.BlockNumber;
-            }
-            finally
-            {
-                // For safety we prefer to commit half of the batch rather than not commit at all.
-                // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
-                _currentBatch?.Dispose();
-                _currentBatch = null;
-            }
-        }
-
-        /// <summary>
-        /// Persists all transient (not yet persisted) starting from <paramref name="commitSet"/> root.
-        /// Already persisted nodes are skipped. After this action we are sure that the full state is available
-        /// for the block represented by this commit set.
-        /// </summary>
-        /// <param name="commitSet">A commit set of a block which root is to be persisted.</param>
+        /// <param name="persistUntilBlock">Persist all the block changes until this block number</param>
         private void Persist(long persistUntilBlock)
         {
             try
             {
                 _currentBatch ??= _keyValueStore.StartBatch();
-                // if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 _committedNodes.PersistUntilBlock(persistUntilBlock, _currentBatch);
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-                // if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
-                BlockCommitSet frontSet = null;
-                while (_commitSetQueue.TryPeek(out frontSet) && frontSet.BlockNumber <= persistUntilBlock)
+                while (_commitSetQueue.TryPeek(out BlockCommitSet frontSet) && frontSet.BlockNumber <= persistUntilBlock)
                 {
                     LastPersistedBlockNumber = frontSet.BlockNumber;
                     _commitSetQueue.TryDequeue(out _);
@@ -436,7 +381,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private void Persist(TrieNode currentNode, long blockNumber, Keccak? rootHash)
+        private void Persist(TrieNode currentNode, long blockNumber)
         {
             _currentBatch ??= _keyValueStore.StartBatch();
             if (currentNode is null)
@@ -540,59 +485,25 @@ namespace Nethermind.Trie.Pruning
 
         private void PersistOnShutdown()
         {
-            //_dirtyNodes.PersistUntilBlock(LastPersistedBlockNumber);
+            // TODO: this can be used to persist the cache if we want
         }
 
         #endregion
-
-        public void PersistCache(IKeyValueStore store, CancellationToken cancellationToken)
-        {
-            //Task.Run(() =>
-            //{
-            //    const int million = 1_000_000;
-            //    int persistedNodes = 0;
-            //    Stopwatch stopwatch = Stopwatch.StartNew();
-
-            //    void PersistNode(TrieNode n)
-            //    {
-            //        Keccak? hash = n.Keccak;
-            //        if (hash?.Bytes is not null)
-            //        {
-            //            store[hash.Bytes] = n.FullRlp;
-            //            int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
-            //            if (_logger.IsInfo && persistedNodesCount % million == 0)
-            //            {
-            //                _logger.Info($"Full Pruning Persist Cache in progress: {stopwatch.Elapsed} {persistedNodesCount / million:N} mln nodes persisted.");
-            //            }
-            //        }
-            //    }
-
-            //    if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
-            //    KeyValuePair<byte[], TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
-            //    Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
-            //    {
-            //        if (!cancellationToken.IsCancellationRequested)
-            //        {
-            //            nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, false);
-            //        }
-            //    });
-
-            //    if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished: {stopwatch.Elapsed} {persistedNodes / (double)million:N} mln nodes persisted.");
-            //});
-        }
 
         public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null)
         {
             keyValueStore ??= _keyValueStore;
 
-            byte[]? fullPath = trieNode.FullPath;
-            if (fullPath is null) throw new ArgumentNullException();
+            byte[] fullPath = trieNode.FullPath ?? throw new ArgumentNullException();
 
             byte[] pathBytes = Nibbles.NibblesToByteStorage(fullPath);
 
             if (trieNode.IsLeaf)
             {
-                byte[] pathToNodeNibbles = trieNode.StoreNibblePathPrefix.Concat(trieNode.PathToNode!).ToArray();
+                Span<byte> pathToNodeNibbles = stackalloc byte[trieNode.StoreNibblePathPrefix.Length + trieNode.PathToNode!.Length];
+                trieNode.StoreNibblePathPrefix.CopyTo(pathToNodeNibbles);
+                pathToNodeNibbles = pathToNodeNibbles.Slice(trieNode.StoreNibblePathPrefix.Length);
+                trieNode.PathToNode.CopyTo(pathToNodeNibbles);
                 byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
 
                 if (trieNode.FullRlp == null)
@@ -626,13 +537,6 @@ namespace Nethermind.Trie.Pruning
 
         public byte[]? this[ReadOnlySpan<byte> key]
         {
-            //get => _pruningStrategy.PruningEnabled
-            //       && _dirtyNodes.AllNodes.TryGetValue(key.ToArray(), out TrieNode? trieNode)
-            //       && trieNode is not null
-            //       && trieNode.NodeType != NodeType.Unknown
-            //       && trieNode.FullRlp is not null
-            //    ? trieNode.FullRlp
-            //    : _currentBatch?[key] ?? _keyValueStore[key];
             get => _currentBatch?[key] ?? _keyValueStore[key];
         }
         /// <summary>

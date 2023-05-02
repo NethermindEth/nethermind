@@ -159,6 +159,26 @@ namespace Nethermind.Trie
             return oddity == 1 ? nibbles[1..].ToArray() : nibbles[2..].ToArray();
         }
 
+        public static void NibblesToByteStorage(Span<byte> nibbles, in Span<byte> bytes)
+        {
+            Debug.Assert(bytes.Length == nibbles.Length / 2 + 1);
+            int oddity = nibbles.Length % 2;
+            for (int i = 0; i < bytes.Length - 1; i++)
+            {
+                bytes[i + 1] = ToByte(nibbles[2 * i + oddity], nibbles[2 * i + 1 + oddity]);
+            }
+            if (oddity == 1)
+            {
+                bytes[0] = ToByte(1, nibbles[0]);
+            }
+        }
+
+        public static void BytesToNibblesStorage(Span<byte> bytes, in Span<byte> nibbles)
+        {
+            Debug.Assert(nibbles.Length == bytes.Length * 2);
+            BytesToNibbleBytes(bytes, nibbles);
+        }
+
         public static byte[] CompactToHexEncode(byte[] compactPath)
         {
             if (compactPath.Length == 0)
