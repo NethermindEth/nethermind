@@ -783,7 +783,7 @@ namespace Nethermind.Mining.Test
         [TestCase(49U, false)]
         public void Is_prime_works(uint number, bool isPrime)
         {
-            Assert.AreEqual(isPrime, Ethash.IsPrime(number));
+            Assert.That(Ethash.IsPrime(number), Is.EqualTo(isPrime));
         }
 
         [TestCase("f9021af90215a0cc395ced01d7af387640ac1258ab8819b84ca3e59ff476d933441c3800c63928a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d4934794738db714c08b8a32a29e0e68af00215079aa9c5ca03665d3f9edac25c8a8cdad22945e0fb2e6812f679bea3445639b3890f310ced9a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008606b4637b26e7830a2ac9832fefd8808456687ffc98d783010203844765746887676f312e352e31856c696e7578a0a64edb0df18caa7d36fcb8ca740fee12d4d82b39883ddb3d729414122ba7410688524d07ed4c40ab09c0c0")]
@@ -845,7 +845,7 @@ namespace Nethermind.Mining.Test
             for (int i = 0; i < _dataSizes.Length; i++)
             {
                 ulong size = Ethash.GetDataSize((uint)i);
-                Assert.AreEqual(size, _dataSizes[i], i, $"failed at epoch: {i}");
+                Assert.That(_dataSizes[i], Is.EqualTo(size).Within(i), $"failed at epoch: {i}");
             }
         }
 
@@ -855,7 +855,7 @@ namespace Nethermind.Mining.Test
             for (int i = 0; i < _cacheSizes.Length; i++)
             {
                 ulong size = Ethash.GetCacheSize((uint)i);
-                Assert.AreEqual(size, _cacheSizes[i], i);
+                Assert.That(_cacheSizes[i], Is.EqualTo(size).Within(i));
             }
         }
     }

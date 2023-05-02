@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test
         {
             long result = EvmPooledMemory.Div32Ceiling((ulong)input);
             TestContext.WriteLine($"Memory cost (gas): {result}");
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
         private const int MaxCodeSize = 24576;
@@ -56,8 +56,8 @@ namespace Nethermind.Evm.Test
             memory.Save(3, TestItem.KeccakA.Bytes);
             ulong initialSize = memory.Size;
             ReadOnlyMemory<byte> result = memory.Inspect(initialSize + 32, 32);
-            Assert.AreEqual(initialSize, memory.Size);
-            Assert.AreEqual(ReadOnlyMemory<byte>.Empty, result);
+            Assert.That(memory.Size, Is.EqualTo(initialSize));
+            Assert.That(result, Is.EqualTo(ReadOnlyMemory<byte>.Empty));
         }
 
         [Test]
@@ -71,9 +71,9 @@ namespace Nethermind.Evm.Test
             ulong initialSize = memory.Size;
             ReadOnlyMemory<byte> actualKeccakMemoryRead = memory.Inspect((UInt256)offset, 32);
             ReadOnlyMemory<byte> actualEmptyRead = memory.Inspect(32 + (UInt256)offset, 32 - (UInt256)offset);
-            Assert.AreEqual(initialSize, memory.Size);
-            Assert.AreEqual(expectedKeccakRead, actualKeccakMemoryRead.ToArray());
-            Assert.AreEqual(expectedEmptyRead, actualEmptyRead.ToArray());
+            Assert.That(memory.Size, Is.EqualTo(initialSize));
+            Assert.That(actualKeccakMemoryRead.ToArray(), Is.EqualTo(expectedKeccakRead));
+            Assert.That(actualEmptyRead.ToArray(), Is.EqualTo(expectedEmptyRead));
         }
 
         [Test]
@@ -84,8 +84,8 @@ namespace Nethermind.Evm.Test
             memory.Save(3, TestItem.KeccakA.Bytes);
             ulong initialSize = memory.Size;
             ReadOnlyMemory<byte> result = memory.Load(initialSize + 32, 32);
-            Assert.AreNotEqual(initialSize, memory.Size);
-            Assert.AreEqual(expectedResult, result.ToArray());
+            Assert.That(memory.Size, Is.Not.EqualTo(initialSize));
+            Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
         }
 
         [Test]

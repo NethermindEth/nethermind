@@ -50,18 +50,18 @@ public partial class BlockTreeTests
     {
         BlockMetadata metadata = BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader;
         metadata = metadata & ~(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
-        Assert.AreEqual(BlockMetadata.None, metadata);
+        Assert.That(metadata, Is.EqualTo(BlockMetadata.None));
 
         BlockMetadata metadata2 = BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.Finalized | BlockMetadata.Invalid;
         metadata2 = metadata2 & ~(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
-        Assert.AreEqual(BlockMetadata.Finalized | BlockMetadata.Invalid, metadata2);
+        Assert.That(metadata2, Is.EqualTo(BlockMetadata.Finalized | BlockMetadata.Invalid));
 
         BlockMetadata metadata3 = BlockMetadata.None;
         metadata3 &= ~(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
-        Assert.AreEqual(BlockMetadata.None, metadata3);
+        Assert.That(metadata3, Is.EqualTo(BlockMetadata.None));
 
         BlockMetadata metadata4 = BlockMetadata.BeaconHeader;
         metadata4 |= BlockMetadata.BeaconMainChain;
-        Assert.AreEqual(BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain, metadata4);
+        Assert.That(metadata4, Is.EqualTo(BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
     }
 }

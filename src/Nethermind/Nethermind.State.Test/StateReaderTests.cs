@@ -169,7 +169,7 @@ namespace Nethermind.Store.Test
                     for (int i = 0; i < 10000; i++)
                     {
                         UInt256 balance = reader.GetBalance(stateRoot, _address1);
-                        Assert.AreEqual(value, balance);
+                        Assert.That(balance, Is.EqualTo(value));
                     }
                 });
         }

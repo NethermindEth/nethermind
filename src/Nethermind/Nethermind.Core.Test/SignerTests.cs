@@ -26,7 +26,7 @@ namespace Nethermind.Core.Test
         {
             Signature signature = new(hexSignature);
             string hexAgain = signature.ToString();
-            Assert.AreEqual(hexSignature, hexAgain);
+            Assert.That(hexAgain, Is.EqualTo(hexSignature));
         }
 
         [Test]
@@ -37,7 +37,7 @@ namespace Nethermind.Core.Test
             Keccak message = Keccak.Compute("Test message");
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
             Signature signature = ethereumEcdsa.Sign(privateKey, message);
-            Assert.AreEqual(privateKey.Address, ethereumEcdsa.RecoverAddress(signature, message));
+            Assert.That(ethereumEcdsa.RecoverAddress(signature, message), Is.EqualTo(privateKey.Address));
         }
 
         [Test]
@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test
             CompressedPublicKey compressedPublicKey = privateKey.CompressedPublicKey;
             PublicKey expected = privateKey.PublicKey;
             PublicKey actual = ethereumEcdsa.Decompress(compressedPublicKey);
-            Assert.AreEqual(expected, actual);
+            Assert.That(actual, Is.EqualTo(expected));
         }
     }
 }

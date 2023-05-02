@@ -80,7 +80,7 @@ public class BlockDecoderTests
         Rlp.ValueDecoderContext valueDecoderContext = new(bytes);
         Block? decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(bytes));
         Rlp encoded = decoder.Encode(decoded);
-        Assert.AreEqual(encoded.Bytes.ToHexString(), encoded.Bytes.ToHexString());
+        Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
     }
 
     [Test]
@@ -93,7 +93,7 @@ public class BlockDecoderTests
             Rlp.ValueDecoderContext valueDecoderContext = new(encoded.Bytes);
             Block? decoded = valueDecoder ? decoder.Decode(ref valueDecoderContext) : decoder.Decode(new RlpStream(encoded.Bytes));
             Rlp encoded2 = decoder.Encode(decoded);
-            Assert.AreEqual(encoded.Bytes.ToHexString(), encoded2.Bytes.ToHexString());
+            Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
         }
     }
 
@@ -109,6 +109,6 @@ public class BlockDecoderTests
     public void Get_length_null()
     {
         BlockDecoder decoder = new();
-        Assert.AreEqual(1, decoder.GetLength(null, RlpBehaviors.None));
+        Assert.That(decoder.GetLength(null, RlpBehaviors.None), Is.EqualTo(1));
     }
 }

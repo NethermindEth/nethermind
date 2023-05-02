@@ -179,10 +179,10 @@ namespace Ethereum.Test.Base
                     Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
                     suggestedBlock.Header.SealEngineType = test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
 
-                    Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash, "hash of the block");
+                    Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Keccak(testBlockJson.BlockHeader.Hash)), "hash of the block");
                     for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
                     {
-                        Assert.AreEqual(new Keccak(testBlockJson.UncleHeaders[uncleIndex].Hash), suggestedBlock.Uncles[uncleIndex].Hash, "hash of the uncle");
+                        Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Keccak(testBlockJson.UncleHeaders[uncleIndex].Hash)), "hash of the uncle");
                     }
 
                     correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
@@ -218,14 +218,14 @@ namespace Ethereum.Test.Base
             }
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-            Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), genesisBlock.Header.Hash, "genesis header hash");
+            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Keccak(test.GenesisBlockHeader.Hash)), "genesis header hash");
 
             ManualResetEvent genesisProcessed = new(false);
             blockTree.NewHeadBlock += (_, args) =>
             {
                 if (args.Block.Number == 0)
                 {
-                    Assert.AreEqual(genesisBlock.Header.StateRoot, stateProvider.StateRoot, "genesis state root");
+                    Assert.That(stateProvider.StateRoot, Is.EqualTo(genesisBlock.Header.StateRoot), "genesis state root");
                     genesisProcessed.Set();
                 }
             };

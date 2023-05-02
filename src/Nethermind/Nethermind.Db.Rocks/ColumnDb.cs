@@ -124,6 +124,9 @@ public class ColumnDb : IDbWithSpan
     private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
 
     public long GetSize() => _mainDb.GetSize();
+    public long GetCacheSize() => _mainDb.GetCacheSize();
+    public long GetIndexSize() => _mainDb.GetIndexSize();
+    public long GetMemtableSize() => _mainDb.GetMemtableSize();
 
     public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _rocksDb.GetSpan(key, _columnFamily);
 

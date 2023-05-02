@@ -5,9 +5,13 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa")]
 
@@ -73,7 +77,8 @@ namespace Nethermind.Consensus.AuRa
 
         public IBlockProductionTrigger? DefaultBlockProductionTrigger { get; private set; }
 
-        public INethermindApi CreateApi() => new AuRaNethermindApi();
+        public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
+            ILogManager logManager, ChainSpec chainSpec) => new AuRaNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
 
         public bool ShouldRunSteps(INethermindApi api) => true;
     }

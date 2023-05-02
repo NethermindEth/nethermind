@@ -67,7 +67,7 @@ namespace Nethermind.Store.Test
             provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
             provider.Restore(snapshot);
 
-            Assert.AreEqual(_values[snapshot + 1], provider.Get(new StorageCell(ctx.Address1, 1)));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)), Is.EqualTo(_values[snapshot + 1]));
         }
 
         [Test]
@@ -84,7 +84,7 @@ namespace Nethermind.Store.Test
             provider.Restore(-1);
             provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
             provider.Restore(-1);
-            Assert.AreEqual(_values[1], provider.Get(new StorageCell(ctx.Address1, 1)));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)), Is.EqualTo(_values[1]));
         }
 
         [TestCase(-1)]
@@ -100,7 +100,7 @@ namespace Nethermind.Store.Test
             provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
             provider.Restore(snapshot);
 
-            Assert.AreEqual(_values[Math.Min(snapshot + 1, 1)], provider.Get(new StorageCell(ctx.Address1, 1)));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)), Is.EqualTo(_values[Math.Min(snapshot + 1, 1)]));
         }
 
         [Test]
@@ -126,12 +126,12 @@ namespace Nethermind.Store.Test
             provider.Commit();
             provider.Restore(-1);
 
-            Assert.AreEqual(_values[7], provider.Get(new StorageCell(ctx.Address1, 1)));
-            Assert.AreEqual(_values[8], provider.Get(new StorageCell(ctx.Address1, 2)));
-            Assert.AreEqual(_values[9], provider.Get(new StorageCell(ctx.Address1, 3)));
-            Assert.AreEqual(_values[10], provider.Get(new StorageCell(ctx.Address2, 1)));
-            Assert.AreEqual(_values[11], provider.Get(new StorageCell(ctx.Address2, 2)));
-            Assert.AreEqual(_values[12], provider.Get(new StorageCell(ctx.Address2, 3)));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)), Is.EqualTo(_values[7]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 2)), Is.EqualTo(_values[8]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address1, 3)), Is.EqualTo(_values[9]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address2, 1)), Is.EqualTo(_values[10]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address2, 2)), Is.EqualTo(_values[11]));
+            Assert.That(provider.Get(new StorageCell(ctx.Address2, 3)), Is.EqualTo(_values[12]));
         }
 
         [Test]
@@ -203,7 +203,7 @@ namespace Nethermind.Store.Test
 
             byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1));
 
-            Assert.AreEqual(_values[1], valueAfter);
+            Assert.That(valueAfter, Is.EqualTo(_values[1]));
         }
 
         [Test]
@@ -221,7 +221,7 @@ namespace Nethermind.Store.Test
             ctx.StateProvider.Commit(Frontier.Instance);
 
             byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1));
-            Assert.AreEqual(_values[(Resettable.StartCapacity + 1) % 2], valueAfter);
+            Assert.That(valueAfter, Is.EqualTo(_values[(Resettable.StartCapacity + 1) % 2]));
         }
 
         /// <summary>
@@ -253,7 +253,7 @@ namespace Nethermind.Store.Test
             StorageProvider provider = BuildStorageProvider(ctx);
 
             provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(ctx.Address1, 2)));
+            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)), Is.EqualTo(_values[1]));
         }
 
         /// <summary>
@@ -277,12 +277,12 @@ namespace Nethermind.Store.Test
             provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[3]);
             snapshots[3] = ((IStorageProvider)provider).TakeSnapshot();
 
-            Assert.AreEqual(snapshots[snapshot + 1].TransientStorageSnapshot, snapshot);
+            Assert.That(snapshot, Is.EqualTo(snapshots[snapshot + 1].TransientStorageSnapshot));
             // Persistent storage is unimpacted by transient storage
-            Assert.AreEqual(snapshots[snapshot + 1].PersistentStorageSnapshot, -1);
+            Assert.That(snapshots[snapshot + 1].PersistentStorageSnapshot, Is.EqualTo(-1));
             provider.Restore(snapshots[snapshot + 1]);
 
-            Assert.AreEqual(_values[snapshot + 1], provider.GetTransientState(new StorageCell(ctx.Address1, 1)));
+            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)), Is.EqualTo(_values[snapshot + 1]));
         }
 
         /// <summary>
@@ -295,7 +295,7 @@ namespace Nethermind.Store.Test
             StorageProvider provider = BuildStorageProvider(ctx);
 
             provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(ctx.Address1, 2)));
+            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)), Is.EqualTo(_values[1]));
 
             provider.Commit();
             Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());
@@ -311,7 +311,7 @@ namespace Nethermind.Store.Test
             StorageProvider provider = BuildStorageProvider(ctx);
 
             provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(ctx.Address1, 2)));
+            Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)), Is.EqualTo(_values[1]));
 
             provider.Reset();
             Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());

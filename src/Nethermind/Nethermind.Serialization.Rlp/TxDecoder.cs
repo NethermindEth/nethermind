@@ -73,6 +73,8 @@ namespace Nethermind.Serialization.Rlp
                     DecodeAccessListPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
                     break;
                 case TxType.EIP1559:
+                // TODO: Replace with SSZ encoding
+                case TxType.Blob:
                     DecodeEip1559PayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
                     break;
             }
@@ -254,6 +256,8 @@ namespace Nethermind.Serialization.Rlp
                     DecodeAccessListPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                     break;
                 case TxType.EIP1559:
+                // TODO: Replace with SSZ encoding
+                case TxType.Blob:
                     DecodeEip1559PayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                     break;
             }
@@ -411,6 +415,8 @@ namespace Nethermind.Serialization.Rlp
                     EncodeAccessListPayloadWithoutPayload(item, stream, rlpBehaviors);
                     break;
                 case TxType.EIP1559:
+                // TODO: Replace with SSZ encoding
+                case TxType.Blob:
                     EncodeEip1559PayloadWithoutPayload(item, stream, rlpBehaviors);
                     break;
             }
@@ -490,6 +496,8 @@ namespace Nethermind.Serialization.Rlp
                     contentLength = GetAccessListContentLength(item);
                     break;
                 case TxType.EIP1559:
+                // TODO: Replace with SSZ encoding
+                case TxType.Blob:
                     contentLength = GetEip1559ContentLength(item);
                     break;
             }

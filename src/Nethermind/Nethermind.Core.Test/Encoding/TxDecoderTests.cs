@@ -162,7 +162,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext!);
             decoded!.Hash.Should().Be(testCase.Hash);
             decoded!.Hash.Should().Be(decodedByValueDecoderContext!.Hash);
-            Assert.AreEqual(encoded.Bytes, encodedWithDecodedByValueDecoderContext.Bytes);
+            Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(encoded.Bytes));
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
@@ -170,7 +170,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Rlp rlpStreamResult = _txDecoder.Encode(testCase.Tx, RlpBehaviors.SkipTypedWrapping);
             Rlp rlpResult = Rlp.Encode(testCase.Tx, false, true, testCase.Tx.ChainId ?? 0);
-            Assert.AreEqual(rlpResult.Bytes, rlpStreamResult.Bytes);
+            Assert.That(rlpStreamResult.Bytes, Is.EqualTo(rlpResult.Bytes));
         }
 
         public static IEnumerable<(string, Keccak)> SkipTypedWrappingTestCases()
