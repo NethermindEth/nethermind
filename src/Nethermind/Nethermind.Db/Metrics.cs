@@ -162,7 +162,23 @@ namespace Nethermind.Db
         [Description("Size of witness DB in bytes")]
         public static long WitnessDbSize { get; set; }
 
-        [Description("Metrics extracted from RocksDB Compacion Stats and DB Statistics")]
+        [GaugeMetric]
+        [Description("Size of unmanaged memory for DB block caches in bytes")]
+        public static long DbBlockCacheMemorySize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of unmanaged memory for DB indexes and filters in bytes")]
+        public static long DbIndexFilterMemorySize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of unmanaged memory for DB memtables in bytes")]
+        public static long DbMemtableMemorySize { get; set; }
+
+        [GaugeMetric]
+        [Description("Size of total unmanaged memory for DB in bytes")]
+        public static long DbTotalMemorySize { get; set; }
+
+        [Description("Metrics extracted from RocksDB Compaction Stats and DB Statistics")]
         public static IDictionary<string, long> DbStats { get; set; } = new ConcurrentDictionary<string, long>();
     }
 }
