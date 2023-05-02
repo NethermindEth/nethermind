@@ -108,7 +108,7 @@ public class MergeBetterPeerStrategyTests
         Assert.That(betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestHeader)), Is.EqualTo(expectedResult));
     }
 
-    //[TestCase(null, true)]
+    [TestCase(0, true)]
     [TestCase(4, true)]
     [TestCase(5, false)]
     [TestCase(6, false)]
