@@ -16,8 +16,8 @@ namespace Nethermind.Network.Test.Stats
         public void Can_parse_ipv6_prefixed_ip()
         {
             Node node = new(TestItem.PublicKeyA, "::ffff:73.224.122.50", 65535);
-            Assert.AreEqual(65535, node.Port);
-            Assert.AreEqual("73.224.122.50", node.Address.Address.MapToIPv4().ToString());
+            Assert.That(node.Port, Is.EqualTo(65535));
+            Assert.That(node.Address.Address.MapToIPv4().ToString(), Is.EqualTo("73.224.122.50"));
         }
 
         [Test]

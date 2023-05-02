@@ -53,6 +53,7 @@
     <PackageVersion Include="NLog.Targets.Seq" Version="2.1.0" />
     <PackageVersion Include="NSubstitute" Version="5.0.0" />
     <PackageVersion Include="NUnit" Version="3.13.3" />
+    <PackageVersion Include="NUnit.Analyzers" Version="3.6.1" />
     <PackageVersion Include="NUnit3TestAdapter" Version="4.3.1" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
     <PackageVersion Include="Polly" Version="7.2.3" />

@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Test
             UInt256 dest = UInt256.Zero;
             memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
             var trace = memory.GetTrace();
-            Assert.AreEqual(1, trace.Count());
+            Assert.That(trace.Count(), Is.EqualTo(1));
         }
 
         [Test]
@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Test
             UInt256 dest = EvmPooledMemory.WordSize;
             memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
             var trace = memory.GetTrace();
-            Assert.AreEqual(2, trace.Count());
+            Assert.That(trace.Count(), Is.EqualTo(2));
         }
 
         [Test]
@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Test
             memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
             memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
             var trace = memory.GetTrace();
-            Assert.AreEqual(2, trace.Count());
+            Assert.That(trace.Count(), Is.EqualTo(2));
         }
 
         [Test]
@@ -59,7 +59,7 @@ namespace Nethermind.Evm.Test
             UInt256 dest = EvmPooledMemory.WordSize / 2;
             memory.SaveByte(in dest, 1);
             var trace = memory.GetTrace();
-            Assert.AreEqual(1, trace.Count());
+            Assert.That(trace.Count(), Is.EqualTo(1));
         }
 
         [Test]
@@ -69,7 +69,7 @@ namespace Nethermind.Evm.Test
             UInt256 dest = UInt256.One;
             long cost1 = memory.CalculateMemoryCost(in dest, UInt256.One);
             long cost2 = memory.CalculateMemoryCost(in dest, UInt256.One);
-            Assert.AreEqual(0L, cost2);
+            Assert.That(cost2, Is.EqualTo(0L));
         }
 
         [Test]
@@ -78,7 +78,7 @@ namespace Nethermind.Evm.Test
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = long.MaxValue;
             long cost = memory.CalculateMemoryCost(in dest, UInt256.Zero);
-            Assert.AreEqual(0L, cost);
+            Assert.That(cost, Is.EqualTo(0L));
         }
     }
 }

@@ -56,7 +56,7 @@ namespace Nethermind.Network.Test
         public void Can_store_discovery_nodes()
         {
             var persistedNodes = _storage.GetPersistedNodes();
-            Assert.AreEqual(0, persistedNodes.Length);
+            Assert.That(persistedNodes.Length, Is.EqualTo(0));
 
             var nodes = new[]
             {
@@ -80,9 +80,9 @@ namespace Nethermind.Network.Test
             {
                 NetworkNode persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.ManagedNode.Id));
                 Assert.IsNotNull(persistedNode);
-                Assert.AreEqual(manager.ManagedNode.Port, persistedNode.Port);
-                Assert.AreEqual(manager.ManagedNode.Host, persistedNode.Host);
-                Assert.AreEqual(manager.NodeStats.CurrentNodeReputation, persistedNode.Reputation);
+                Assert.That(persistedNode.Port, Is.EqualTo(manager.ManagedNode.Port));
+                Assert.That(persistedNode.Host, Is.EqualTo(manager.ManagedNode.Host));
+                Assert.That(persistedNode.Reputation, Is.EqualTo(manager.NodeStats.CurrentNodeReputation));
             }
 
             _storage.StartBatch();
@@ -100,9 +100,9 @@ namespace Nethermind.Network.Test
             {
                 NetworkNode persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.ManagedNode.Id));
                 Assert.IsNotNull(persistedNode);
-                Assert.AreEqual(manager.ManagedNode.Port, persistedNode.Port);
-                Assert.AreEqual(manager.ManagedNode.Host, persistedNode.Host);
-                Assert.AreEqual(manager.NodeStats.CurrentNodeReputation, persistedNode.Reputation);
+                Assert.That(persistedNode.Port, Is.EqualTo(manager.ManagedNode.Port));
+                Assert.That(persistedNode.Host, Is.EqualTo(manager.ManagedNode.Host));
+                Assert.That(persistedNode.Reputation, Is.EqualTo(manager.NodeStats.CurrentNodeReputation));
             }
         }
 
@@ -110,7 +110,7 @@ namespace Nethermind.Network.Test
         public void Can_store_peers()
         {
             var persistedPeers = _storage.GetPersistedNodes();
-            Assert.AreEqual(0, persistedPeers.Length);
+            Assert.That(persistedPeers.Length, Is.EqualTo(0));
 
             var nodes = new[]
             {
@@ -132,9 +132,9 @@ namespace Nethermind.Network.Test
             {
                 NetworkNode persistedNode = persistedPeers.FirstOrDefault(x => x.NodeId.Equals(peer.NodeId));
                 Assert.IsNotNull(persistedNode);
-                Assert.AreEqual(peer.Port, persistedNode.Port);
-                Assert.AreEqual(peer.Host, persistedNode.Host);
-                Assert.AreEqual(peer.Reputation, persistedNode.Reputation);
+                Assert.That(persistedNode.Port, Is.EqualTo(peer.Port));
+                Assert.That(persistedNode.Host, Is.EqualTo(peer.Host));
+                Assert.That(persistedNode.Reputation, Is.EqualTo(peer.Reputation));
             }
 
             _storage.StartBatch();
@@ -152,9 +152,9 @@ namespace Nethermind.Network.Test
             {
                 NetworkNode persistedNode = persistedPeers.FirstOrDefault(x => x.NodeId.Equals(peer.NodeId));
                 Assert.IsNotNull(persistedNode);
-                Assert.AreEqual(peer.Port, persistedNode.Port);
-                Assert.AreEqual(peer.Host, persistedNode.Host);
-                Assert.AreEqual(peer.Reputation, persistedNode.Reputation);
+                Assert.That(persistedNode.Port, Is.EqualTo(peer.Port));
+                Assert.That(persistedNode.Host, Is.EqualTo(peer.Host));
+                Assert.That(persistedNode.Reputation, Is.EqualTo(peer.Reputation));
             }
         }
     }

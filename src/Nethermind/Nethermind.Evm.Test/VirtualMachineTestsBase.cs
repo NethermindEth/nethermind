@@ -223,29 +223,29 @@ namespace Nethermind.Evm.Test
 
         protected void AssertGas(TestAllTracerWithOutput receipt, long gas)
         {
-            Assert.AreEqual(gas, receipt.GasSpent, "gas");
+            Assert.That(receipt.GasSpent, Is.EqualTo(gas), "gas");
         }
 
         protected void AssertStorage(UInt256 address, Address value)
         {
-            Assert.AreEqual(value.Bytes.PadLeft(32), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.Bytes.PadLeft(32)), "storage");
         }
 
         protected void AssertStorage(UInt256 address, Keccak value)
         {
-            Assert.AreEqual(value.Bytes, Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.Bytes), "storage");
         }
 
         protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)
         {
-            Assert.AreEqual(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray(), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray()), "storage");
         }
 
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
             byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();
-            Assert.AreEqual(expected, actualValue, "storage");
+            Assert.That(actualValue, Is.EqualTo(expected), "storage");
         }
 
         protected void AssertStorage(UInt256 address, UInt256 expectedValue)
@@ -253,7 +253,7 @@ namespace Nethermind.Evm.Test
             byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
 
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
-            Assert.AreEqual(bytes, actualValue, "storage");
+            Assert.That(actualValue, Is.EqualTo(bytes), "storage");
         }
 
         private static int _callIndex = -1;
@@ -263,18 +263,18 @@ namespace Nethermind.Evm.Test
             _callIndex++;
             if (!TestState.AccountExists(storageCell.Address))
             {
-                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[] { 0 }, $"storage {storageCell}, call {_callIndex}");
+                Assert.That(new byte[] { 0 }, Is.EqualTo(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray()), $"storage {storageCell}, call {_callIndex}");
             }
             else
             {
                 byte[] actualValue = Storage.Get(storageCell);
-                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");
+                Assert.That(actualValue, Is.EqualTo(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray()), $"storage {storageCell}, call {_callIndex}");
             }
         }
 
         protected void AssertCodeHash(Address address, Keccak codeHash)
         {
-            Assert.AreEqual(codeHash, TestState.GetCodeHash(address), "code hash");
+            Assert.That(TestState.GetCodeHash(address), Is.EqualTo(codeHash), "code hash");
         }
     }
 }

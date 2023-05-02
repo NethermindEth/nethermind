@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Success, tracer.TxReceipts[0].StatusCode);
+            Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
         }
 
         [TestCase(true, true)]
@@ -116,7 +116,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+            Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         [TestCase(true, true)]
@@ -132,7 +132,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+            Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         [TestCase(true, true)]
@@ -148,7 +148,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+            Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         [TestCase(true, true)]
@@ -164,7 +164,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+            Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         [TestCase(true, true)]
@@ -192,7 +192,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+            Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         [TestCase(true, true)]
@@ -213,7 +213,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+            Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         [TestCase(true, true)]
@@ -233,7 +233,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+            Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         [TestCase(true, true)]
@@ -249,7 +249,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+            Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         [TestCase(true, true)]
@@ -265,7 +265,7 @@ namespace Nethermind.Evm.Test
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
             CallAndRestore(tracer, tx, block);
 
-            Assert.AreEqual(StatusCode.Success, tracer.TxReceipts[0].StatusCode);
+            Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
         }
 
         [Test]
