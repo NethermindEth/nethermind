@@ -46,7 +46,12 @@ namespace Nethermind.Trie
         private readonly ConcurrentQueue<Exception>? _commitExceptions;
 
         private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
-        internal readonly ConcurrentQueue<TrieNode>? _deleteNodes;
+
+        /// <summary>
+        /// In path based tree, we need to keep track of nodes that are to be deleted when the insertion
+        /// operation is completed.
+        /// </summary>
+        private readonly ConcurrentQueue<TrieNode>? _deleteNodes;
 
         private readonly ITrieStore _trieStore;
         public TrieNodeResolverCapability Capability => _trieStore.Capability;
@@ -59,22 +64,22 @@ namespace Nethermind.Trie
 
         private TrieNode? _rootRef;
 
-        private byte[]? _storageBytePathPrefix;
-        private byte[]? _storageNibblePathPrefix;
+
+        /// <summary>
+        /// In path based merkle tree, storage trees are separate merkle trees. When storing these trees
+        /// by path, we get collisions with other nodes stored with the same path for other trees.
+        /// Storage prefix is used to avoid this situation.
+        /// This prefix is calculated by using the account leaf path and adding another byte to
+        /// differentiate between the path to account leaf and storage root node.
+        /// </summary>
         public byte[] StorageBytePathPrefix
         {
-            get
-            {
-                return _storageBytePathPrefix ?? Array.Empty<byte>();
-            }
-
             set
             {
-                _storageBytePathPrefix = value;
-                _storageNibblePathPrefix = value.Length == 0 ? Array.Empty<byte>() : Nibbles.BytesToNibbleBytes(value);
+                StoreNibblePathPrefix = value.Length == 0 ? Array.Empty<byte>() : Nibbles.BytesToNibbleBytes(value);
             }
         }
-        public byte[] StoreNibblePathPrefix => _storageNibblePathPrefix ?? Array.Empty<byte>();
+        public byte[] StoreNibblePathPrefix { get; private set; }
 
 
         /// <summary>
