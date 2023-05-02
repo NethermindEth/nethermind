@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie
@@ -33,22 +31,17 @@ namespace Nethermind.Trie
             return true;
         }
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
-        {
-            _logger.Info($"Visiting Tree: {rootHash}");
-        }
+        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext) { }
 
         public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
         {
             if (trieVisitContext.IsStorage)
             {
                 Interlocked.Increment(ref Stats._missingStorage);
-                _logger.Info($"STORAGE MISSING: NH:{nodeHash} PN:{trieVisitContext.AbsolutePathNibbles.ToArray().ToHexString()} L:{trieVisitContext.Level}");
             }
             else
             {
                 Interlocked.Increment(ref Stats._missingState);
-                _logger.Info($"STATE MISSING: {nodeHash}");
             }
 
             IncrementLevel(trieVisitContext);

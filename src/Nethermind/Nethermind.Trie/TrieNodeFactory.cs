@@ -15,13 +15,6 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateBranch(Span<byte> pathToNode)
-        {
-            TrieNode node = new(NodeType.Branch);
-            node.PathToNode = pathToNode.ToArray();
-            return node;
-        }
-
         public static TrieNode CreateBranch(Span<byte> pathToNode, Span<byte> storagePrefix)
         {
             TrieNode node = new(NodeType.Branch);
@@ -36,17 +29,6 @@ namespace Nethermind.Trie
             node.Key = path;
             node.Value = value;
             return node;
-        }
-
-        public static TrieNode CreateLeaf(byte[] path, byte[]? value, Span<byte> pathToNode)
-        {
-            Debug.Assert(path.Length + pathToNode.Length == 64);
-            return new(NodeType.Leaf)
-            {
-                Key = path,
-                Value = value,
-                PathToNode = pathToNode.ToArray()
-            };
         }
 
         public static TrieNode CreateLeaf(byte[] path, byte[]? value, Span<byte> pathToNode, Span<byte> storagePrefix)
@@ -68,14 +50,6 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateExtension(byte[] path, Span<byte> pathToNode)
-        {
-            TrieNode node = new(NodeType.Extension);
-            node.Key = path;
-            node.PathToNode = pathToNode.ToArray();
-            return node;
-        }
-
         public static TrieNode CreateExtension(byte[] path, Span<byte> pathToNode, Span<byte> storagePrefix)
         {
             TrieNode node = new(NodeType.Extension);
@@ -90,15 +64,6 @@ namespace Nethermind.Trie
             TrieNode node = new(NodeType.Extension);
             node.SetChild(0, child);
             node.Key = path;
-            return node;
-        }
-
-        public static TrieNode CreateExtension(byte[] path, TrieNode child, Span<byte> pathToNode)
-        {
-            TrieNode node = new(NodeType.Extension);
-            node.SetChild(0, child);
-            node.Key = path;
-            node.PathToNode = pathToNode.ToArray();
             return node;
         }
 
