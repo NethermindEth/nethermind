@@ -89,6 +89,7 @@ jobs:
         repo_name: 'nethermind'
         ref: ${{ github.ref }}
       run: |
+        ls
         chmod +x nethermind/scripts/wait-for-workflow-completed.sh
         nethermind/scripts/wait-for-workflow-completed.sh
           
