@@ -122,7 +122,7 @@ jobs:
 
     - name: Use BASE_TAG
       run: |
-        echo "BASE_TAG=${{ needs.first-job.outputs.base_tag }}" >> $GITHUB_ENV
+        echo "BASE_TAG=${{ needs.create_docker_image.outputs.base_tag }}" >> $GITHUB_ENV
 
     - name: Trigger Node creation Repo Action
       uses: benc-uk/workflow-dispatch@v1
@@ -133,7 +133,7 @@ jobs:
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
                      "github_username": "${{ github.actor }}",
-                     "base_tag": "${{ env.BASE_TAG }}"
+                     "base_tag": "${{ env.BASE_TAG }}",
                      "config_file": "${{ inputs.config }}",
                      "nethermind_branch": "${{ env.CLEAN_REF }}",
                      "network": "${{ inputs.network }}",
