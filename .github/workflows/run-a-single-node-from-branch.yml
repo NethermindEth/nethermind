@@ -95,6 +95,7 @@ jobs:
         pwd
         chmod +x nethermind/scripts/wait-for-workflow-completed.sh
         nethermind/scripts/wait-for-workflow-completed.sh
+      working-directory: ${{ github.workspace }}
           
   trigger_node_and_vm_creation:
     needs: create_docker_image
@@ -139,3 +140,4 @@ jobs:
       run: |
         chmod +x nethermind/scripts/wait-for-workflow-completed.sh
         nethermind/scripts/wait-for-workflow-completed.sh
+      working-directory: ${{ github.workspace }}
