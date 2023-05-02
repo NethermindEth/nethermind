@@ -49,50 +49,32 @@ namespace Nethermind.Core
         {
             get
             {
-                Keccak? hash = _hash;
-                if (hash is not null) return hash;
+                if (_hash is not null) return _hash;
 
                 lock (this)
                 {
-                    if (_preHash.Length > 0)
+                    if (_hash is not null) return _hash;
+
+                    if (_preHash.Count > 0)
                     {
-                        GenerateHash();
+                        _hash = Keccak.Compute(_preHash.AsSpan());
+                        ClearPreHashInternal();
                     }
                 }
 
                 return _hash;
-
-                void GenerateHash()
-                {
-                    _hash = Keccak.Compute(_preHash.Span);
-                    if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
-                    {
-                        ArrayPool<byte>.Shared.Return(rentedArray.Array!);
-                    }
-
-                    _preHash = default;
-                }
             }
             set
             {
                 lock (this)
                 {
-                    if (_preHash.Length > 0)
-                    {
-                        if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
-                        {
-                            ArrayPool<byte>.Shared.Return(rentedArray.Array!);
-                        }
-
-                        _preHash = default;
-                    }
-
+                    ClearPreHashInternal();
                     _hash = value;
                 }
             }
         }
 
-        private ReadOnlyMemory<byte> _preHash;
+        private ArraySegment<byte> _preHash;
         public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
         {
             lock (this)
@@ -103,19 +85,26 @@ namespace Nethermind.Core
                 int size = transactionSequence.Length;
                 byte[] preHash = ArrayPool<byte>.Shared.Rent(size);
                 transactionSequence.CopyTo(preHash);
-                _preHash = new ReadOnlyMemory<byte>(preHash, 0, size);
+                _preHash = new ArraySegment<byte>(preHash, 0, size);
             }
         }
 
         public void ClearPreHash()
         {
-            lock (this)
+            if (_preHash.Count > 0)
             {
-                if (MemoryMarshal.TryGetArray(_preHash, out ArraySegment<byte> rentedArray))
+                lock (this)
                 {
-                    ArrayPool<byte>.Shared.Return(rentedArray.Array!);
+                    ClearPreHashInternal();
                 }
+            }
+        }
 
+        private void ClearPreHashInternal()
+        {
+            if (_preHash.Count > 0)
+            {
+                ArrayPool<byte>.Shared.Return(_preHash.Array!);
                 _preHash = default;
             }
         }
