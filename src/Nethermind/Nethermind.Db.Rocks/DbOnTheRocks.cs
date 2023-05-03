@@ -409,7 +409,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         if (dbConfig.ReadAheadSize != 0)
         {
             _readAheadReadOptions = new ReadOptions();
-            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong) 256.KiB());
+            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
             _readAheadReadOptions.SetTailing(true);
         }
 
