@@ -412,11 +412,8 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (previousTxBottleneck is null)
-                    {
-                        previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
+                    previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
-                    }
 
                     if (tx.Nonce == currentNonce + i)
                     {

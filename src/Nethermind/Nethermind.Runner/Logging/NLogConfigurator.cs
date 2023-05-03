@@ -50,10 +50,7 @@ namespace Nethermind.Runner.Logging
         public static void ClearSeqTarget()
         {
             LoggingConfiguration loggingConfiguration = LogManager.Configuration;
-            if (loggingConfiguration is not null)
-            {
-                loggingConfiguration.RemoveTarget("seq");
-            }
+            loggingConfiguration?.RemoveTarget("seq");
         }
 
         public static void ConfigureLogLevels(CommandOption logLevelOverride)

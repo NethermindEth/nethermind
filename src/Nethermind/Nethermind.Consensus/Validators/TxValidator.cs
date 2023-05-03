@@ -146,7 +146,7 @@ namespace Nethermind.Consensus.Validators
                      i < transaction.BlobVersionedHashes!.Length;
                      i++, n += Ckzg.Ckzg.BytesPerCommitment)
                 {
-                    if (!KzgPolynomialCommitments.TryComputeCommitmentV1(
+                    if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(
                             commitements[n..(n + Ckzg.Ckzg.BytesPerCommitment)], hash) ||
                         !hash.SequenceEqual(transaction.BlobVersionedHashes![i]))
                     {

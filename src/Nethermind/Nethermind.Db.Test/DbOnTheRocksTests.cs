@@ -31,7 +31,13 @@ namespace Nethermind.Db.Test
             IDbConfig config = new DbConfig();
             DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
             db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
-            Assert.AreEqual(new byte[] { 4, 5, 6 }, db[new byte[] { 1, 2, 3 }]);
+            Assert.That(db[new byte[] { 1, 2, 3 }], Is.EqualTo(new byte[] { 4, 5, 6 }));
+
+            WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
+            RocksDbSharp.Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
+
+            db.Set(new byte[] { 2, 3, 4 }, new byte[] { 5, 6, 7 }, WriteFlags.LowPriority);
+            Assert.That(db[new byte[] { 2, 3, 4 }], Is.EqualTo(new byte[] { 5, 6, 7 }));
         }
 
         [Test]
@@ -43,7 +49,7 @@ namespace Nethermind.Db.Test
             byte[] value = new byte[] { 4, 5, 6 };
             db.PutSpan(key, value);
             Span<byte> readSpan = db.GetSpan(key);
-            Assert.AreEqual(new byte[] { 4, 5, 6 }, readSpan.ToArray());
+            Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
             db.DangerousReleaseMemory(readSpan);
         }
 

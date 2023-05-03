@@ -12,7 +12,6 @@
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
     <PackageReference Include="HexMate" />
-    <PackageReference Include="Nethermind.Numerics.Dirichlet" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />

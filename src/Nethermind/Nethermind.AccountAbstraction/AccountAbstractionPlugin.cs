@@ -22,7 +22,6 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Mev;
@@ -147,9 +146,7 @@ namespace Nethermind.AccountAbstraction
         {
             get
             {
-                if (_userOperationTxSource is null)
-                {
-                    _userOperationTxSource = new UserOperationTxSource
+                _userOperationTxSource ??= new UserOperationTxSource
                     (
                         _userOperationTxBuilders,
                         _userOperationPools,
@@ -159,7 +156,6 @@ namespace Nethermind.AccountAbstraction
                         _nethermindApi.EngineSigner!,
                         _logger
                     );
-                }
 
                 return _userOperationTxSource;
             }
@@ -169,10 +165,7 @@ namespace Nethermind.AccountAbstraction
         {
             get
             {
-                if (_userOperationBroadcaster is null)
-                {
-                    _userOperationBroadcaster = new UserOperationBroadcaster(_logger);
-                }
+                _userOperationBroadcaster ??= new UserOperationBroadcaster(_logger);
 
                 return _userOperationBroadcaster;
             }
@@ -292,7 +285,7 @@ namespace Nethermind.AccountAbstraction
         {
             if (_accountAbstractionConfig.Enabled)
             {
-                (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
+                (IApiWithNetwork getFromApi, _) = _nethermindApi.ForRpc;
 
                 // init all relevant objects if not already initialized
                 foreach (Address entryPoint in _entryPointContractAddresses)
@@ -310,9 +303,9 @@ namespace Nethermind.AccountAbstraction
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
 
-                ISubscriptionFactory subscriptionFactory = _nethermindApi.SubscriptionFactory;
+                ISubscriptionFactory? subscriptionFactory = _nethermindApi.SubscriptionFactory;
                 //Register custom UserOperation websocket subscription types in the SubscriptionFactory.
-                subscriptionFactory.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
+                subscriptionFactory?.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
                     "newPendingUserOperations",
                     (jsonRpcDuplexClient, param) => new NewPendingUserOpsSubscription(
                         jsonRpcDuplexClient,
@@ -320,7 +313,7 @@ namespace Nethermind.AccountAbstraction
                         logManager,
                         param)
                 );
-                subscriptionFactory.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
+                subscriptionFactory?.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
                     "newReceivedUserOperations",
                     (jsonRpcDuplexClient, param) => new NewReceivedUserOpsSubscription(
                         jsonRpcDuplexClient,
@@ -367,7 +360,7 @@ namespace Nethermind.AccountAbstraction
                 UserOperationTxBuilder(entryPoint);
             }
 
-            _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory =
+            _nethermindApi.BlockProducerEnvFactory!.TransactionsExecutorFactory =
                 new AABlockProducerTransactionsExecutorFactory(
                     _nethermindApi.SpecProvider!,
                     _nethermindApi.LogManager!,

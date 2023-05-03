@@ -118,7 +118,7 @@ namespace Nethermind.Core.Extensions
 
         public static readonly byte[] Zero32 = new byte[32];
 
-        public static readonly byte[] Empty = new byte[0];
+        public static readonly byte[] Empty = Array.Empty<byte>();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this byte b, int bitNumber)
@@ -224,7 +224,7 @@ namespace Nethermind.Core.Extensions
 
             if (bytes.Length > length)
             {
-                return bytes.Slice(0, length).ToArray();
+                return bytes[..length].ToArray();
             }
 
             byte[] result = new byte[length];
@@ -337,7 +337,7 @@ namespace Nethermind.Core.Extensions
             }
 
             Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+            bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
             return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);
         }
 
@@ -354,7 +354,7 @@ namespace Nethermind.Core.Extensions
             }
 
             Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+            bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
             return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);
         }
 
@@ -376,7 +376,7 @@ namespace Nethermind.Core.Extensions
             }
 
             Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+            bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
             return BinaryPrimitives.ReadInt32BigEndian(fourBytes);
         }
 
@@ -398,7 +398,7 @@ namespace Nethermind.Core.Extensions
             }
 
             Span<byte> eightBytes = stackalloc byte[8];
-            bytes.CopyTo(eightBytes.Slice(8 - bytes.Length));
+            bytes.CopyTo(eightBytes[(8 - bytes.Length)..]);
             return BinaryPrimitives.ReadUInt64BigEndian(eightBytes);
         }
 
@@ -518,6 +518,18 @@ namespace Nethermind.Core.Extensions
             public readonly bool WithZeroX;
         }
 
+        private readonly struct StateSmallMemory
+        {
+            public StateSmallMemory(Memory<byte> bytes, bool withZeroX)
+            {
+                Bytes = bytes;
+                WithZeroX = withZeroX;
+            }
+
+            public readonly Memory<byte> Bytes;
+            public readonly bool WithZeroX;
+        }
+
         private struct StateOld
         {
             public StateOld(byte[] bytes, int leadingZeros, bool withZeroX, bool withEip55Checksum)
@@ -576,6 +588,37 @@ namespace Nethermind.Core.Extensions
                 }
 
                 OutputBytesToCharHex(ref bytes[0], state.Bytes.Length, ref charsRef, state.WithZeroX, leadingZeros: 0);
+            });
+        }
+
+        [DebuggerStepThrough]
+        public static string ByteArrayToHexViaLookup32Safe(Memory<byte> bytes, bool withZeroX)
+        {
+            if (bytes.Length == 0)
+            {
+                return withZeroX ? "0x" : string.Empty;
+            }
+
+            int length = bytes.Length * 2 + (withZeroX ? 2 : 0);
+            StateSmallMemory stateToPass = new(bytes, withZeroX);
+
+            return string.Create(length, stateToPass, static (chars, state) =>
+            {
+                ref char charsRef = ref MemoryMarshal.GetReference(chars);
+
+                Memory<byte> bytes = state.Bytes;
+                if (bytes.Length == 0)
+                {
+                    if (state.WithZeroX)
+                    {
+                        chars[1] = 'x';
+                        chars[0] = '0';
+                    }
+
+                    return;
+                }
+
+                OutputBytesToCharHex(ref bytes.Span[0], state.Bytes.Length, ref charsRef, state.WithZeroX, leadingZeros: 0);
             });
         }
 

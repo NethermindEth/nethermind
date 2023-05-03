@@ -50,7 +50,7 @@ namespace Nethermind.Api
         IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }
-        ISubscriptionFactory SubscriptionFactory { get; set; }
-        ISnapProvider SnapProvider { get; set; }
+        ISubscriptionFactory? SubscriptionFactory { get; set; }
+        ISnapProvider? SnapProvider { get; set; }
     }
 }

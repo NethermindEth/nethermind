@@ -715,9 +715,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
-            ulong nextHeaderDiff = 0;
             _nextHeaderHash = header.ParentHash!;
-            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
+            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out ulong nextHeaderDiff) == true)
             {
                 _nextHeaderDiff = nextHeaderDiff;
             }

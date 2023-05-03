@@ -3,11 +3,11 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -137,16 +137,8 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.ClearCache();
             _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
             iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
-            if (_useCompactReceipts)
-            {
-                receiptStructRef.LogsRlp.IsNullOrEmpty().Should().BeTrue();
-                receiptStructRef.Logs.Should().NotBeNullOrEmpty();
-            }
-            else
-            {
-                receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
-                receiptStructRef.Logs.Should().BeNullOrEmpty();
-            }
+            receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
+            receiptStructRef.Logs.Should().BeNullOrEmpty();
 
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }
@@ -218,8 +210,14 @@ namespace Nethermind.Blockchain.Test.Receipts
         public void EnsureCanonical_should_use_blocknumber_if_finalized()
         {
             (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should()
-                .BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().NotBeNull();
+            }
         }
 
         [Test]
@@ -228,7 +226,23 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptConfig.TxLookupLimit = -1;
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
+            Thread.Sleep(100);
             _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeNull();
+        }
+
+        [Test]
+        [Ignore("Needs to be fixed, details https://github.com/NethermindEth/nethermind/pull/5621")]
+        public void Should_not_index_tx_hash_if_blockNumber_is_negative()
+        {
+            _receiptConfig.TxLookupLimit = 10;
+            CreateStorage();
+            _blockTree.BlockAddedToMain +=
+                Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(1).TestObject));
+            Thread.Sleep(100);
+            var calls = _blockTree.ReceivedCalls()
+                .Where(call => !call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.BlockAddedToMain)));
+            calls.Should().BeEmpty();
         }
 
         [Test]
@@ -237,6 +251,8 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptConfig.TxLookupLimit = 1000;
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
+            Thread.Sleep(100);
             _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeNull();
         }
 
@@ -245,7 +261,15 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock();
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().NotBeNull();
+            }
 
             Block newHead = Build.A.Block.WithNumber(1).TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
@@ -263,7 +287,15 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptConfig.TxLookupLimit = 1000;
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock();
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().NotBeNull();
+            }
 
             Block newHead = Build.A.Block.WithNumber(_receiptConfig.TxLookupLimit.Value + 1).TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
