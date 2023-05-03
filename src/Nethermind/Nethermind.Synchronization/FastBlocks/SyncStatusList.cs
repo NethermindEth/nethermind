@@ -70,7 +70,15 @@ namespace Nethermind.Synchronization.FastBlocks
             for (int index = 0; index < toSent.Count; index++)
             {
                 (int collected, long currentNumber) sent = toSent[index];
-                blockInfos[sent.collected] = _blockTree.FindCanonicalBlockInfo(sent.currentNumber);
+                try
+                {
+                    blockInfos[sent.collected] = _blockTree.FindCanonicalBlockInfo(sent.currentNumber);
+                }
+                catch
+                {
+                    _statuses[sent.currentNumber] = FastBlockStatus.Unknown;
+                    throw;
+                }
             }
         }
 
