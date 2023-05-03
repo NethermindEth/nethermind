@@ -26,8 +26,7 @@ namespace Nethermind.Evm.Test
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
-            CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 // we activate GoToNextBreakpoint mode (i.e : deactivate StepByStepMode)
                 IsStepByStepModeOn = false,
@@ -36,7 +35,9 @@ namespace Nethermind.Evm.Test
             // we set the break point to BREAK_POINT
             tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
 
-            var vmTask = Task.Run(() => Execute(tracer, bytecode), cancellationTokenSource.Token);
+            // we set the break point to BREAK_POINT
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
 
             // we run the bytecode for <confidenceLevelDesired> iteration and check how many times we stopped at BREAK_POINT
             int confidenceLevelDesired = 100;
@@ -46,20 +47,23 @@ namespace Nethermind.Evm.Test
             // Test fails if iterationsCount != confidenceLevelReached != confidenceLevelDesired
             bool TestFailed = false;
 
-            while (!vmTask.IsCompleted)
+            while (vmThread.IsAlive)
             {
-                if (tracer.CanReadState())
+                if (tracer.CanReadState)
                 {
                     iterationsCount++;
                     confidenceLevelReached += tracer.CurrentState.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT ? 1 : 0;
-
                     if (iterationsCount == confidenceLevelDesired)
                     {
                         TestFailed = confidenceLevelReached < confidenceLevelDesired;
-                        cancellationTokenSource.Cancel();
+                        tracer.Abort();
+                        vmThread.Interrupt();
+                        break;
                     }
+
                     tracer.MoveNext();
                 }
+
             }
 
             Assert.False(TestFailed);
@@ -72,8 +76,7 @@ namespace Nethermind.Evm.Test
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
-            CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 // we activate GoToNextBreakpoint mode (i.e : deactivate StepByStepMode)
                 IsStepByStepModeOn = false,
@@ -85,7 +88,8 @@ namespace Nethermind.Evm.Test
                 return state.DataStackHead == 23;
             });
 
-            var vmTask = Task.Run(() => Execute(tracer, bytecode), cancellationTokenSource.Token);
+            Thread vmThread = new(() => Execute(tracer, bytecode));
+            vmThread.Start();
 
             // we run the bytecode for <confidenceLevelDesired> iteration and check how many times we stopped at BREAK_POINT
             int confidenceLevelDesired = 100;
@@ -95,9 +99,9 @@ namespace Nethermind.Evm.Test
             // Test fails if confidenceLevelReached > 1
             bool TestFailed = false;
 
-            while (!vmTask.IsCompleted)
+            while (vmThread.IsAlive)
             {
-                if (tracer.CanReadState())
+                if (tracer.CanReadState)
                 {
                     iterationsCount++;
                     confidenceLevelReached += tracer.CurrentState.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT ? 1 : 0;
@@ -105,7 +109,9 @@ namespace Nethermind.Evm.Test
                     if (iterationsCount == confidenceLevelDesired)
                     {
                         TestFailed = confidenceLevelReached > 1;
-                        cancellationTokenSource.Cancel();
+
+                        tracer.Abort();
+                        vmThread.Interrupt();
                     }
 
                     tracer.MoveNext();
@@ -121,19 +127,20 @@ namespace Nethermind.Evm.Test
             // this bytecode is just a bunch of NOP/JUMPDEST, the idea is it will take as much bytes in the bytecode as steps to go throught it
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 // we activate step by step mode in tracer
                 IsStepByStepModeOn = true,
             };
 
-            var vmTask = Task.Run(() => Execute(tracer, bytecode));
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
 
             int countBreaks = 0;
 
-            while (!vmTask.IsCompleted)
+            while (vmThread.IsAlive)
             {
-                if (tracer.CanReadState())
+                if (tracer.CanReadState)
                 {
                     // we count how many steps it took to run the bytecode
                     countBreaks++;
@@ -156,18 +163,19 @@ namespace Nethermind.Evm.Test
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
-            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = true,
             };
 
             tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
 
-            var vmTask = Task.Run(() => Execute(tracer, bytecode));
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
 
-            while (!vmTask.IsCompleted)
+            while (vmThread.IsAlive)
             {
-                if (tracer.CanReadState())
+                if (tracer.CanReadState)
                 {
                     tracer.CurrentState.ProgramCounter++;
                     tracer.MoveNext();
@@ -186,18 +194,19 @@ namespace Nethermind.Evm.Test
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
-            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = false,
             };
 
             tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
 
-            var vmTask = Task.Run(() => Execute(tracer, bytecode));
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
 
-            while (!vmTask.IsCompleted)
+            while (vmThread.IsAlive)
             {
-                if (tracer.CanReadState())
+                if (tracer.CanReadState)
                 {
                     // we pop the condition and overwrite it with a false to force breaking out of the loop
                     EvmStack stack = new(tracer.CurrentState.DataStack, tracer.CurrentState.DataStackHead, tracer);
@@ -220,18 +229,19 @@ namespace Nethermind.Evm.Test
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             const int MSTORE_OPCODE_PTR_BREAK_POINT = 6;
-            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = false,
             };
 
             tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT);
 
-            var vmTask = Task.Run(() => Execute(tracer, bytecode));
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
 
-            while (!vmTask.IsCompleted)
+            while (vmThread.IsAlive)
             {
-                if (tracer.CanReadState())
+                if (tracer.CanReadState)
                 {
                     // we alter the value stored in memory to force EQ check at the end to fail
                     tracer.CurrentState.Memory.SaveByte(31, 0x0A);
@@ -252,7 +262,7 @@ namespace Nethermind.Evm.Test
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
             const int MSTORE_OPCODE_PTR_BREAK_POINT = 6;
-            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = false,
             };
@@ -260,15 +270,16 @@ namespace Nethermind.Evm.Test
             tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT);
             tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT + 1);
 
-            var vmTask = Task.Run(() => Execute(tracer, bytecode));
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
 
             long? gasAvailable_pre_MSTORE = null;
-            while (!vmTask.IsCompleted)
+            while (vmThread.IsAlive)
             {
-                if (tracer.CanReadState())
+                if (tracer.CanReadState)
                 {
                     // we alter the value stored in memory to force EQ check at the end to fail
-                    if(gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE  = tracer.CurrentState.GasAvailable;
+                    if (gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE = tracer.CurrentState.GasAvailable;
                     else
                     {
                         long gasAvailable_post_MSTORE = tracer.CurrentState.GasAvailable;
@@ -285,16 +296,17 @@ namespace Nethermind.Evm.Test
             // this bytecode fails on first opcode INVALID
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
 
-            DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
                 IsStepByStepModeOn = true,
             };
 
-            var vmTask = Task.Run(() => Execute(tracer, bytecode));
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
 
-            while (!vmTask.IsCompleted)
+            while (vmThread.IsAlive)
             {
-                if (tracer.CanReadState())
+                if (tracer.CanReadState)
                 {
                     tracer.MoveNext();
                 }

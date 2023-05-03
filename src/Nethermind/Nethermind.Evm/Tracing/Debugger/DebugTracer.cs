@@ -15,15 +15,23 @@ using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.DebugTrace;
-internal class DebugTracer : ITxTracer, ITxTracerWrapper
+internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 {
+    public enum DebugPhase
+    {
+        Blocked, Running, Aborted
+    }
+
     public DebugTracer(ITxTracer tracer)
     {
         InnerTracer = tracer;
     }
 
     public ITxTracer InnerTracer { get; private set; }
-    private SemaphoreSlim _manualResetEvent = new SemaphoreSlim(1);
+    public DebugPhase CurrentPhase { get; private set; } = DebugPhase.Running;
+    public bool CanReadState => CurrentPhase is DebugPhase.Blocked;
+
+    private AutoResetEvent _autoResetEvent = new AutoResetEvent(false);
 
     public bool IsTracingReceipt => ((ITxTracer)InnerTracer).IsTracingReceipt;
 
@@ -55,8 +63,13 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper
     private Dictionary<int, Func<EvmState, bool>> _breakPoints = new();
     public bool IsStepByStepModeOn { get; set; } = false;
     public EvmState CurrentState;
-    public bool TryWait(EvmState evmState)
+    public void TryWait(EvmState evmState)
     {
+        if (CurrentPhase is DebugPhase.Aborted)
+        {
+            return;
+        }
+
         lock (_lock)
         {
             CurrentState = evmState;
@@ -64,21 +77,37 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper
 
         if (IsStepByStepModeOn)
         {
-            _manualResetEvent.Wait();
-            return true;
+            lock (_lock)
+            {
+                CurrentPhase = DebugPhase.Blocked;
+            }
+            _autoResetEvent.WaitOne();
         }
         else
         {
-            return CheckBreakPoint();
+            CheckBreakPoint();
         }
-
     }
 
-    public void MoveNext() => _manualResetEvent.Release();
-    public bool CanReadState() => _manualResetEvent.CurrentCount == 0;
+    public void Abort()
+    {
+        lock (_lock)
+        {
+            CurrentPhase = DebugPhase.Aborted;
+        }
+        _autoResetEvent.Set();
+    }
+    public void MoveNext()
+    {
+        lock (_lock)
+        {
+            CurrentPhase = DebugPhase.Running;
+        }
+        _autoResetEvent.Set();
+    }
     public void SetBreakPoint(int programCounter, Func<EvmState, bool> condition = null)
         => _breakPoints.Add(programCounter, condition);
-    public bool CheckBreakPoint()
+    public void CheckBreakPoint()
     {
         if (_breakPoints.ContainsKey(CurrentState.ProgramCounter))
         {
@@ -86,11 +115,20 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper
             bool conditionResults = condition is null ? true : condition.Invoke(CurrentState);
             if (conditionResults)
             {
-                _manualResetEvent.Wait();
-                return true;
+                lock (_lock)
+                {
+                    CurrentPhase = DebugPhase.Blocked;
+                }
+                _autoResetEvent.WaitOne();
             }
         }
-        return false;
+        else
+        {
+            lock (_lock)
+            {
+                CurrentPhase = DebugPhase.Running;
+            }
+        }
     }
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
@@ -246,5 +284,10 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper
     public void ReportStorageRead(in StorageCell storageCell)
     {
         ((IStorageTracer)InnerTracer).ReportStorageRead(storageCell);
+    }
+
+    public void Dispose()
+    {
+        _autoResetEvent?.Dispose();
     }
 }
