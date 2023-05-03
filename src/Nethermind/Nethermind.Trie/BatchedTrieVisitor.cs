@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
@@ -303,6 +304,13 @@ public class BatchedTrieVisitor
                 .AsSpan()
                 .Sort((item1, item2) => currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
 
+            ReadFlags flags = ReadFlags.None;
+            if (resolveOrdering.Count > 128)
+            {
+                // Readahead only effective when batch size is large enough. Otherwise, it just add overhead.
+                flags = ReadFlags.HintReadAhead;
+            }
+
             // This loop is about 60 to 70% of the time spent. If you set very high memory budget, this drop to about 50MB.
             for (int i = 0; i < resolveOrdering.Count; i++)
             {
@@ -312,7 +320,7 @@ public class BatchedTrieVisitor
                 try
                 {
                     Keccak theKeccak = nodeToResolve.Keccak;
-                    nodeToResolve.ResolveNode(_resolver);
+                    nodeToResolve.ResolveNode(_resolver, flags);
                     nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
                 }
                 catch (TrieException)
