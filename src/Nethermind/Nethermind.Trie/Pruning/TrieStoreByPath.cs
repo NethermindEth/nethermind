@@ -502,8 +502,8 @@ namespace Nethermind.Trie.Pruning
             {
                 Span<byte> pathToNodeNibbles = stackalloc byte[trieNode.StoreNibblePathPrefix.Length + trieNode.PathToNode!.Length];
                 trieNode.StoreNibblePathPrefix.CopyTo(pathToNodeNibbles);
-                pathToNodeNibbles = pathToNodeNibbles.Slice(trieNode.StoreNibblePathPrefix.Length);
-                trieNode.PathToNode.CopyTo(pathToNodeNibbles);
+                Span<byte> pathToNodeSlice = pathToNodeNibbles.Slice(trieNode.StoreNibblePathPrefix.Length);
+                trieNode.PathToNode.CopyTo(pathToNodeSlice);
                 byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
 
                 if (trieNode.FullRlp == null)
