@@ -145,7 +145,7 @@ namespace Nethermind.Evm.Test
             countBreaks--; //Post-run break
 
             // we check that it matches the number of opcodes in the bytecode
-            Assert.AreEqual(countBreaks, bytecode.Length);
+            Assert.That(bytecode.Length, Is.EqualTo(countBreaks));
         }
 
 
@@ -277,7 +277,7 @@ namespace Nethermind.Evm.Test
                     if (tracer.CurrentState.ProgramCounter == MSTORE_OPCODE_PTR_BREAK_POINT + 1)
                     {
                         long gasAvailable_post_MSTORE = tracer.CurrentState.GasAvailable;
-                        Assert.AreEqual(GasCostOf.VeryLow, gasAvailable_pre_MSTORE - gasAvailable_post_MSTORE);
+                        Assert.That(gasAvailable_pre_MSTORE - gasAvailable_post_MSTORE, Is.EqualTo(GasCostOf.VeryLow));
                     }
 
                     tracer.MoveNext();
