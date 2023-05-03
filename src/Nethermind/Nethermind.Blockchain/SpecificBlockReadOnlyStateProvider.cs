@@ -24,6 +24,8 @@ namespace Nethermind.Blockchain
 
         public Account GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address) ?? Account.TotallyEmpty;
 
+        public bool IsContract(Address address) => GetAccount(address).IsContract;
+
         public UInt256 GetNonce(Address address) => GetAccount(address).Nonce;
 
         public UInt256 GetBalance(Address address) => GetAccount(address).Balance;

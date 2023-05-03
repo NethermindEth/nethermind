@@ -77,6 +77,17 @@ namespace Nethermind.State
 
         private readonly StateTree _tree;
 
+        public bool IsContract(Address address)
+        {
+            Account account = GetThroughCache(address);
+            if (account is null)
+            {
+                return false;
+            }
+
+            return account.IsContract;
+        }
+
         public bool AccountExists(Address address)
         {
             if (_intraBlockCache.TryGetValue(address, out Stack<int> value))
