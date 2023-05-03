@@ -188,7 +188,7 @@ namespace Nethermind.Evm.Test
             const int JUMP_OPCODE_PTR_BREAK_POINT = 5;
             DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
-                IsStepByStepModeOn = true,
+                IsStepByStepModeOn = false,
             };
 
             tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
@@ -222,7 +222,7 @@ namespace Nethermind.Evm.Test
             const int MSTORE_OPCODE_PTR_BREAK_POINT = 6;
             DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
-                IsStepByStepModeOn = true,
+                IsStepByStepModeOn = false,
             };
 
             tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT);
@@ -254,7 +254,7 @@ namespace Nethermind.Evm.Test
             const int MSTORE_OPCODE_PTR_BREAK_POINT = 6;
             DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
             {
-                IsStepByStepModeOn = true,
+                IsStepByStepModeOn = false,
             };
 
             tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT);
@@ -278,7 +278,6 @@ namespace Nethermind.Evm.Test
                 }
             }
         }
-
 
         [TestCase("ef601700")]
         public void Use_Debug_Tracer_To_Check_failure_status(string bytecodeHex)
