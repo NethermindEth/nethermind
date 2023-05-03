@@ -63,7 +63,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     private List<DbMetricsUpdater> _metricsUpdaters = new();
 
-    // Note: use of threadlocal is very important is the seek forward is fast, but the seek backward is not fast.
+    // Note: use of threadlocal is very important as the seek forward is fast, but the seek backward is not fast.
     private ThreadLocal<Iterator> _readaheadIterators = new(true);
 
     public DbOnTheRocks(
@@ -409,7 +409,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         if (dbConfig.ReadAheadSize != 0)
         {
             _readAheadReadOptions = new ReadOptions();
-            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong) 256.KiB());
+            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong) 64.KiB());
             _readAheadReadOptions.SetTailing(true);
         }
 
