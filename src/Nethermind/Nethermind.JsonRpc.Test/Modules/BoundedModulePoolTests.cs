@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 {
                     TestContext.Out.WriteLine($"Rent shared {i}");
                     IEthRpcModule ethRpcModule = await _modulePool.GetModule(true);
-                    Assert.AreSame(sharedRpcModule, ethRpcModule);
+                    Assert.That(ethRpcModule, Is.SameAs(sharedRpcModule));
                     _modulePool.ReturnModule(ethRpcModule);
                     TestContext.Out.WriteLine($"Return shared {i}");
                 }

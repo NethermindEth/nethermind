@@ -18,7 +18,7 @@ namespace Nethermind.Db.Test
                 IDb memDb = memDbFactory.CreateDb("MemDb");
                 dbProvider.RegisterDb("MemDb", memDb);
                 IDb db = dbProvider.GetDb<IDb>("MemDb");
-                Assert.AreEqual(memDb, db);
+                Assert.That(db, Is.EqualTo(memDb));
             }
         }
 
@@ -31,7 +31,7 @@ namespace Nethermind.Db.Test
                 IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
                 dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
                 IColumnsDb<ReceiptsColumns> columnsDb = dbProvider.GetDb<IColumnsDb<ReceiptsColumns>>("ColumnsDb");
-                Assert.AreEqual(memSnapshotableDb, columnsDb);
+                Assert.That(columnsDb, Is.EqualTo(memSnapshotableDb));
                 Assert.IsTrue(memSnapshotableDb is IColumnsDb<ReceiptsColumns>);
             }
         }

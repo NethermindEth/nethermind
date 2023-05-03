@@ -19,7 +19,7 @@ namespace Nethermind.Core.Test.Json
             JsonReader reader = new JsonTextReader(new StringReader(string.Empty));
             reader.ReadAsString();
             Keccak result = converter.ReadJson(reader, typeof(Keccak), null, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(null, result);
+            Assert.That(result, Is.EqualTo(null));
         }
     }
 }

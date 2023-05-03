@@ -27,7 +27,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .CallWithInput(Bn254AddPrecompile.Instance.Address, 1000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
-        Assert.AreEqual(StatusCode.Success, result.StatusCode);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 500);
     }
 
@@ -38,7 +38,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .CallWithInput(Bn254AddPrecompile.Instance.Address, 1000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
-        Assert.AreEqual(StatusCode.Success, result.StatusCode);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 150);
     }
 
@@ -50,7 +50,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .CallWithInput(Bn254MulPrecompile.Instance.Address, 50000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
-        Assert.AreEqual(StatusCode.Success, result.StatusCode);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 40000L);
     }
 
@@ -61,7 +61,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .CallWithInput(Bn254MulPrecompile.Instance.Address, 10000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
-        Assert.AreEqual(StatusCode.Success, result.StatusCode);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 6000L);
     }
 
@@ -73,7 +73,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .CallWithInput(Bn254PairingPrecompile.Instance.Address, 200000L, new byte[192])
             .Done;
         TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
-        Assert.AreEqual(StatusCode.Success, result.StatusCode);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result, 21000 + 6 * 12 + 7 * 3 + GasCostOf.CallEip150 + 100000L + 80000L);
     }
 
@@ -84,7 +84,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .CallWithInput(Bn254PairingPrecompile.Instance.Address, 200000L, new byte[192])
             .Done;
         TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
-        Assert.AreEqual(StatusCode.Success, result.StatusCode);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result, 21000 + 6 * 12 + 7 * 3 + GasCostOf.CallEip150 + 45000L + 34000L);
     }
 }

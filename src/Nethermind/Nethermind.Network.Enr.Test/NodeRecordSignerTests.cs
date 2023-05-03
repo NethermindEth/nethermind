@@ -55,7 +55,7 @@ public class NodeRecordSignerTests
 
         signer.Sign(nodeRecord);
         string enrString = nodeRecord.EnrString;
-        Assert.AreEqual(expectedEnrString, enrString);
+        Assert.That(enrString, Is.EqualTo(expectedEnrString));
     }
 
     [Test(Description = "https://eips.ethereum.org/EIPS/eip-778")]

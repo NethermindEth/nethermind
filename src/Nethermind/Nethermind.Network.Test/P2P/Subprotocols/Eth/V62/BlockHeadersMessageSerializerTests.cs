@@ -22,11 +22,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             byte[] bytes = serializer.Serialize(message);
             byte[] expectedBytes = Bytes.FromHexString("f901fcf901f9a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000830f424080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e28800000000000003e8");
 
-            Assert.AreEqual(bytes.ToHexString(), expectedBytes.ToHexString(), "bytes");
+            Assert.That(expectedBytes.ToHexString(), Is.EqualTo(bytes.ToHexString()), "bytes");
 
             BlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.BlockHeaders.Length, deserialized.BlockHeaders.Length, "length");
-            Assert.AreEqual(message.BlockHeaders[0].Hash, deserialized.BlockHeaders[0].Hash, "hash");
+            Assert.That(deserialized.BlockHeaders.Length, Is.EqualTo(message.BlockHeaders.Length), "length");
+            Assert.That(deserialized.BlockHeaders[0].Hash, Is.EqualTo(message.BlockHeaders[0].Hash), "hash");
 
             SerializerTester.TestZero(serializer, message);
         }
@@ -41,8 +41,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             byte[] bytes = serializer.Serialize(message);
 
             BlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.BlockHeaders.Length, deserialized.BlockHeaders.Length, "length");
-            Assert.AreEqual(message.BlockHeaders[0].Hash, deserialized.BlockHeaders[0].Hash, "hash");
+            Assert.That(deserialized.BlockHeaders.Length, Is.EqualTo(message.BlockHeaders.Length), "length");
+            Assert.That(deserialized.BlockHeaders[0].Hash, Is.EqualTo(message.BlockHeaders[0].Hash), "hash");
             Assert.Null(message.BlockHeaders[1]);
 
             SerializerTester.TestZero(serializer, message);
@@ -56,7 +56,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             // 249 -> 258 -> 129 127 0 0 0 ... 0 (strange?)
             BlockHeadersMessageSerializer serializer = new();
             BlockHeadersMessage message = serializer.Deserialize(rlp.Bytes);
-            Assert.AreEqual(8, message.BlockHeaders.Length);
+            Assert.That(message.BlockHeaders.Length, Is.EqualTo(8));
         }
 
         [Test]

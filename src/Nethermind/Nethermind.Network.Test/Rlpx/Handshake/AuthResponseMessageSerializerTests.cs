@@ -31,9 +31,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             byte[] data = _serializer.Serialize(before);
             AckMessage after = _serializer.Deserialize(data);
 
-            Assert.AreEqual(before.EphemeralPublicKey, after.EphemeralPublicKey);
+            Assert.That(after.EphemeralPublicKey, Is.EqualTo(before.EphemeralPublicKey));
             Assert.True(Bytes.AreEqual(before.Nonce, after.Nonce));
-            Assert.AreEqual(before.IsTokenUsed, after.IsTokenUsed);
+            Assert.That(after.IsTokenUsed, Is.EqualTo(before.IsTokenUsed));
         }
 
         [Test]

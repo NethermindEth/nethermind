@@ -39,7 +39,7 @@ namespace Nethermind.Network.Test
         public void When_no_peers_then_no_peers_nada_zero()
         {
             List<Node> peers = _loader.LoadInitialList();
-            Assert.AreEqual(0, peers.Count);
+            Assert.That(peers.Count, Is.EqualTo(0));
         }
 
         private const string enodesString = enode1String + "," + enode2String;
@@ -51,7 +51,7 @@ namespace Nethermind.Network.Test
         {
             _networkConfig.StaticPeers = enodesString;
             List<Node> nodes = _loader.LoadInitialList();
-            Assert.AreEqual(2, nodes.Count);
+            Assert.That(nodes.Count, Is.EqualTo(2));
             foreach (Node node in nodes)
             {
                 Assert.True(node.IsStatic);
@@ -64,7 +64,7 @@ namespace Nethermind.Network.Test
             _discoveryConfig.Bootnodes = enodesString;
             _networkConfig.Bootnodes = _discoveryConfig.Bootnodes;
             List<Node> nodes = _loader.LoadInitialList();
-            Assert.AreEqual(2, nodes.Count);
+            Assert.That(nodes.Count, Is.EqualTo(2));
             foreach (Node node in nodes)
             {
                 Assert.True(node.IsBootnode);
@@ -76,7 +76,7 @@ namespace Nethermind.Network.Test
         {
             _peerStorage.GetPersistedNodes().Returns(new[] { new NetworkNode(enode1String), new NetworkNode(enode2String) });
             List<Node> nodes = _loader.LoadInitialList();
-            Assert.AreEqual(2, nodes.Count);
+            Assert.That(nodes.Count, Is.EqualTo(2));
             foreach (Node node in nodes)
             {
                 Assert.False(node.IsBootnode);

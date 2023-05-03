@@ -96,8 +96,8 @@ namespace Nethermind.KeyStore.Test
                 securedPass.MakeReadOnly();
                 (PrivateKey key, Result result) = _store.GetKey(address, securedPass);
 
-                Assert.AreEqual(ResultType.Success, result.ResultType, result.Error);
-                Assert.AreEqual(testModel.KeyData.Address, key.Address.ToString(false, false));
+                Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), result.Error);
+                Assert.That(key.Address.ToString(false, false), Is.EqualTo(testModel.KeyData.Address));
 
             }
             catch (Exception e)

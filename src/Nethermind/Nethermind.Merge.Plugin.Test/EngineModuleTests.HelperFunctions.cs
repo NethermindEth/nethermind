@@ -32,9 +32,9 @@ namespace Nethermind.Merge.Plugin.Test
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Keccak headBlockHash, Keccak finalizedBlockHash,
              Keccak safeBlockHash)
         {
-            Assert.AreEqual(headBlockHash, blockFinder.HeadHash);
-            Assert.AreEqual(finalizedBlockHash, blockFinder.FinalizedHash);
-            Assert.AreEqual(safeBlockHash, blockFinder.SafeHash);
+            Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
+            Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
+            Assert.That(blockFinder.SafeHash, Is.EqualTo(safeBlockHash));
         }
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
