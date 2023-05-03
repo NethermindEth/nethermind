@@ -63,6 +63,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     private List<DbMetricsUpdater> _metricsUpdaters = new();
 
+    private ThreadLocal<Iterator> _readaheadIterators = new();
+
     public DbOnTheRocks(
         string basePath,
         RocksDbSettings rocksDbSettings,
@@ -395,7 +397,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         LowPriorityWriteOptions.SetSync(dbConfig.WriteAheadLogSync);
         Native.Instance.rocksdb_writeoptions_set_low_pri(LowPriorityWriteOptions.Handle, true);
 
-        _readAheadReadOptions.SetReadaheadSize((ulong)512.KiB());
+        // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
+        // will increase the chances that the next keys will be in the cache, which reduces iops and latency. This
+        // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
+        // bandwidth requirement, since each read must be at least this size. This value is tuned for a batched trie
+        // visitor on mainnet with 4GB memory budget and 4Gbps read bandwidth.
+        _readAheadReadOptions.SetReadaheadSize((ulong)256.KiB());
+        _readAheadReadOptions.SetTailing(true);
 
         if (dbConfig.EnableDbStatistics)
         {
@@ -412,10 +420,10 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        return GetWithColumnFamily(key, null, flags);
+        return GetWithColumnFamily(key, null, _readaheadIterators, flags);
     }
 
-    internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadFlags flags = ReadFlags.None)
+    internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ThreadLocal<Iterator> readaheadIterators, ReadFlags flags = ReadFlags.None)
     {
         if (_isDisposing)
         {
@@ -428,7 +436,17 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
             if ((flags & ReadFlags.HintReadAhead) != 0)
             {
-                return _db.Get(key, cf, _readAheadReadOptions);
+                if (!readaheadIterators.IsValueCreated)
+                {
+                    readaheadIterators.Value = _db.NewIterator(cf, _readAheadReadOptions);
+                }
+
+                Iterator iterator = readaheadIterators.Value!;
+                iterator.Seek(key);
+                if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
+                {
+                    return iterator.Value();
+                }
             }
 
             return _db.Get(key);
@@ -862,6 +880,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         foreach (IBatch batch in _currentBatches)
         {
             batch.Dispose();
+        }
+
+        foreach (Iterator iterator in _readaheadIterators.Values)
+        {
+            iterator.Dispose();
         }
 
         _db.Dispose();

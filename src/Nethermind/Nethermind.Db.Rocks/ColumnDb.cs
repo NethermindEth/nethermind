@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using RocksDbSharp;
 
@@ -15,6 +16,8 @@ public class ColumnDb : IDbWithSpan
     private readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
 
+    private ThreadLocal<Iterator> _readaheadIterators = new();
+
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {
         _rocksDb = rocksDb;
@@ -23,13 +26,19 @@ public class ColumnDb : IDbWithSpan
         Name = name;
     }
 
-    public void Dispose() { }
+    public void Dispose()
+    {
+        foreach (Iterator iterator in _readaheadIterators.Values)
+        {
+            iterator.Dispose();
+        }
+    }
 
     public string Name { get; }
 
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        return _mainDb.GetWithColumnFamily(key, _columnFamily, flags);
+        return _mainDb.GetWithColumnFamily(key, _columnFamily, _readaheadIterators, flags);
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
