@@ -41,6 +41,15 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Smoke_test_readahead()
+        {
+            IDbConfig config = new DbConfig();
+            DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
+            db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+            Assert.That(db.Get(new byte[] { 1, 2, 3 }, ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 4, 5, 6 }));
+        }
+
+        [Test]
         public void Smoke_test_span()
         {
             IDbConfig config = new DbConfig();

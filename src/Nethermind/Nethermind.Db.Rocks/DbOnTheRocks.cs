@@ -63,7 +63,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     private List<DbMetricsUpdater> _metricsUpdaters = new();
 
-    private ThreadLocal<Iterator> _readaheadIterators = new();
+    // Note: use of threadlocal is very important is the seek forward is fast, but the seek backward is not fast.
+    private ThreadLocal<Iterator> _readaheadIterators = new(true);
 
     public DbOnTheRocks(
         string basePath,
