@@ -255,6 +255,7 @@ public class VirtualMachine : IVirtualMachine
                             Keccak codeHash = _state.UpdateCode(callResult.Output);
                             _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
                             currentState.GasAvailable -= codeDepositGasCost;
+                            currentState.CreateList.Add(callCodeOwner);
 
                             if (_txTracer.IsTracingActions)
                             {
@@ -264,7 +265,6 @@ public class VirtualMachine : IVirtualMachine
                         else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
                         {
                             currentState.GasAvailable -= gasAvailableForCodeDeposit;
-                            currentState.CreateList.Add(callCodeOwner);
                             worldState.Restore(previousState.Snapshot);
                             if (!previousState.IsCreateOnPreExistingAccount)
                             {
