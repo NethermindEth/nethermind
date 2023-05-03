@@ -13,52 +13,60 @@ namespace Nethermind.Core
         private readonly Keccak? _codeHash;
         private readonly Keccak? _storageRoot;
 
-        public Account(UInt256 balance)
+        public Account(in UInt256 balance)
         {
-            Balance = balance;
-            Nonce = default;
             _codeHash = null;
             _storageRoot = null;
+            Nonce = default;
+            Balance = balance;
+        }
+
+        public Account(in UInt256 nonce, in UInt256 balance)
+        {
+            _codeHash = null;
+            _storageRoot = null;
+            Nonce = nonce;
+            Balance = balance;
         }
 
         private Account()
         {
-            Balance = default;
-            Nonce = default;
             _codeHash = null;
             _storageRoot = null;
+            Nonce = default;
+            Balance = default;
         }
 
         public Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash)
         {
+            _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
+            _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
             Nonce = nonce;
             Balance = balance;
-            _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
-            _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
         }
 
         private Account(Account account, Keccak? storageRoot)
         {
+            _codeHash = account._codeHash;
+            _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
             Nonce = account.Nonce;
             Balance = account.Balance;
-            _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
-            _codeHash = account._codeHash;
         }
 
         private Account(Keccak? codeHash, Account account)
         {
+            _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
+            _storageRoot = account._storageRoot;
             Nonce = account.Nonce;
             Balance = account.Balance;
-            _storageRoot = account._storageRoot;
-            _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
         }
 
         private Account(Account account, in UInt256 nonce, in UInt256 balance)
         {
+            _codeHash = account._codeHash;
+            _storageRoot = account._storageRoot;
             Nonce = nonce;
             Balance = balance;
-            _storageRoot = account._storageRoot;
-            _codeHash = account._codeHash;
         }
 
         public bool HasCode => _codeHash is not null;
