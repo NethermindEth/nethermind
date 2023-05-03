@@ -10,72 +10,87 @@ namespace Nethermind.Core
     {
         public static Account TotallyEmpty = new();
 
+        private readonly Keccak? _codeHash;
+        private readonly Keccak? _storageRoot;
+
         public Account(UInt256 balance)
         {
             Balance = balance;
             Nonce = default;
-            CodeHash = Keccak.OfAnEmptyString;
-            StorageRoot = Keccak.EmptyTreeHash;
-            IsTotallyEmpty = Balance.IsZero;
+            _codeHash = null;
+            _storageRoot = null;
         }
 
         private Account()
         {
-            Balance = UInt256.Zero;
+            Balance = default;
             Nonce = default;
-            CodeHash = Keccak.OfAnEmptyString;
-            StorageRoot = Keccak.EmptyTreeHash;
-            IsTotallyEmpty = true;
+            _codeHash = null;
+            _storageRoot = null;
         }
 
         public Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash)
         {
             Nonce = nonce;
             Balance = balance;
-            StorageRoot = storageRoot;
-            CodeHash = codeHash;
-            IsTotallyEmpty = Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
+            _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
+            _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
         }
 
-        private Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
+        private Account(Account account, Keccak? storageRoot)
+        {
+            Nonce = account.Nonce;
+            Balance = account.Balance;
+            _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
+            _codeHash = account._codeHash;
+        }
+
+        private Account(Keccak? codeHash, Account account)
+        {
+            Nonce = account.Nonce;
+            Balance = account.Balance;
+            _storageRoot = account._storageRoot;
+            _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
+        }
+
+        private Account(Account account, in UInt256 nonce, in UInt256 balance)
         {
             Nonce = nonce;
             Balance = balance;
-            StorageRoot = storageRoot;
-            CodeHash = codeHash;
-            IsTotallyEmpty = isTotallyEmpty;
+            _storageRoot = account._storageRoot;
+            _codeHash = account._codeHash;
         }
 
-        public bool HasCode => !CodeHash.Equals(Keccak.OfAnEmptyString);
+        public bool HasCode => _codeHash is not null;
 
-        public bool HasStorage => !StorageRoot.Equals(Keccak.EmptyTreeHash);
+        public bool HasStorage => _storageRoot is not null;
 
         public UInt256 Nonce { get; }
         public UInt256 Balance { get; }
-        public Keccak StorageRoot { get; }
-        public Keccak CodeHash { get; }
-        public bool IsTotallyEmpty { get; }
-        public bool IsEmpty => IsTotallyEmpty || (Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString);
-        public bool IsContract => CodeHash != Keccak.OfAnEmptyString;
+        public Keccak StorageRoot => _storageRoot ?? Keccak.EmptyTreeHash;
+        public Keccak CodeHash => _codeHash ?? Keccak.OfAnEmptyString;
+        public bool IsTotallyEmpty => _storageRoot is null && IsEmpty;
+        public bool IsEmpty => _codeHash is null && Balance.IsZero && Nonce.IsZero;
+        public bool IsContract => _codeHash is not null;
 
         public Account WithChangedBalance(in UInt256 newBalance)
         {
-            return new(Nonce, newBalance, StorageRoot, CodeHash, IsTotallyEmpty && newBalance.IsZero);
+            return new(this, Nonce, newBalance);
         }
 
         public Account WithChangedNonce(in UInt256 newNonce)
         {
-            return new(newNonce, Balance, StorageRoot, CodeHash, IsTotallyEmpty && newNonce.IsZero);
+            return new(this, newNonce, Balance);
         }
 
         public Account WithChangedStorageRoot(Keccak newStorageRoot)
         {
-            return new(Nonce, Balance, newStorageRoot, CodeHash, IsTotallyEmpty && newStorageRoot == Keccak.EmptyTreeHash);
+            return new(this, newStorageRoot);
         }
 
         public Account WithChangedCodeHash(Keccak newCodeHash)
         {
-            return new(Nonce, Balance, StorageRoot, newCodeHash, IsTotallyEmpty && newCodeHash == Keccak.OfAnEmptyString);
+            return new(newCodeHash, this);
         }
     }
 }
