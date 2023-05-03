@@ -38,6 +38,7 @@ public class VirtualMachine : IVirtualMachine
     private UInt256 BigInt256 = 256;
     public UInt256 BigInt32 = 32;
 
+    internal bool ForceDebuggerForTesting = false;
     internal byte[] BytesZero = { 0 };
 
     internal byte[] BytesZero32 =
@@ -602,6 +603,11 @@ public class VirtualMachine : IVirtualMachine
         DebugTracer? debugger = null;
 #if DEBUG
         debugger = _txTracer.GetTracer<DebugTracer>();
+#else
+        if (ForceDebuggerForTesting)
+        {
+            debugger = _txTracer.GetTracer<DebugTracer>();
+        }
 #endif
 
         ref readonly ExecutionEnvironment env = ref vmState.Env;

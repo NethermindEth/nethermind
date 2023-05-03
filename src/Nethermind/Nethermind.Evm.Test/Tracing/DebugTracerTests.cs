@@ -19,6 +19,13 @@ namespace Nethermind.Evm.Test
 
         public GethLikeTxTracer GethLikeTxTracer => new GethLikeTxTracer(GethTraceOptions.Default);
 
+        [SetUp]
+        public override void Setup()
+        {
+            base.Setup();
+            Machine.ForceDebuggerForTesting = true;
+        }
+
         [TestCase("0x5b601760005600")]
         public void Debugger_Halts_Execution_On_Breakpoint(string bytecodeHex)
         {
