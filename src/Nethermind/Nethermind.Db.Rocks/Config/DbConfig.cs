@@ -20,6 +20,7 @@ public class DbConfig : IDbConfig
     public int? MaxOpenFiles { get; set; }
     public long? MaxWriteBytesPerSec { get; set; }
     public int? BlockSize { get; set; } = 16 * 1024;
+    public ulong? ReadAheadSize { get; set; }
     public IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)8.MiB();

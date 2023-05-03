@@ -37,7 +37,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     internal WriteOptions? WriteOptions { get; private set; }
     internal WriteOptions? LowPriorityWriteOptions { get; private set; }
 
-    internal ReadOptions _readAheadReadOptions = new();
+    internal ReadOptions? _readAheadReadOptions = null;
 
     internal DbOptions? DbOptions { get; private set; }
 
@@ -403,8 +403,12 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
         // bandwidth requirement, since each read must be at least this size. This value is tuned for a batched trie
         // visitor on mainnet with 4GB memory budget and 4Gbps read bandwidth.
-        _readAheadReadOptions.SetReadaheadSize((ulong)256.KiB());
-        _readAheadReadOptions.SetTailing(true);
+        if (dbConfig.ReadAheadSize != 0)
+        {
+            _readAheadReadOptions = new ReadOptions();
+            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong) 256.KiB());
+            _readAheadReadOptions.SetTailing(true);
+        }
 
         if (dbConfig.EnableDbStatistics)
         {
@@ -435,7 +439,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         try
         {
-            if ((flags & ReadFlags.HintReadAhead) != 0)
+            if (_readAheadReadOptions != null && (flags & ReadFlags.HintReadAhead) != 0)
             {
                 if (!readaheadIterators.IsValueCreated)
                 {
