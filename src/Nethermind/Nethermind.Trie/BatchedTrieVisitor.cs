@@ -99,7 +99,7 @@ public class BatchedTrieVisitor
 
         // Estimated readahead threshold used to determine how many node in a partition to enable readahead.
         long estimatedPartitionAddressSpaceSize = expectedDbSize / _partitionCount;
-        long toleratedPerNodeReadAmp = 8.KiB();
+        long toleratedPerNodeReadAmp = 8.KiB(); // If the estimated per-node read is above this, don't enable readahead.
         _readAheadThreshold = estimatedPartitionAddressSpaceSize / toleratedPerNodeReadAmp;
 
         // Calculating estimated pool margin at about 5% of total working size. The working set size fluctuate a bit so
