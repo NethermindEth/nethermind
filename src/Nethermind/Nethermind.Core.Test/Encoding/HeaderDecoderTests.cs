@@ -33,7 +33,7 @@ public class HeaderDecoderTests
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
         decoded!.Hash = decoded.CalculateHash();
 
-        Assert.AreEqual(header.Hash, decoded.Hash, "hash");
+        Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
     }
 
     [Test]
@@ -57,7 +57,7 @@ public class HeaderDecoderTests
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
         decoded!.Hash = decoded.CalculateHash();
 
-        Assert.AreEqual(header.Hash, decoded.Hash, "hash");
+        Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
     }
 
     [Test]
@@ -75,14 +75,14 @@ public class HeaderDecoderTests
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
         decoded!.Hash = decoded.CalculateHash();
 
-        Assert.AreEqual(header.Hash, decoded.Hash, "hash");
+        Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
     }
 
     [Test]
     public void Get_length_null()
     {
         HeaderDecoder decoder = new();
-        Assert.AreEqual(1, decoder.GetLength(null, RlpBehaviors.None));
+        Assert.That(decoder.GetLength(null, RlpBehaviors.None), Is.EqualTo(1));
     }
 
     [Test]

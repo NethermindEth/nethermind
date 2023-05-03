@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             var result = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result);
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
 
         [Test]
@@ -77,7 +77,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             var result = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result);
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
 
         [Test]
@@ -93,7 +93,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             var result = snapProvider.AddStorageRange(1, null, rootHash, TestItem.Tree.SlotsWithPaths[0].Path, TestItem.Tree.SlotsWithPaths);
 
-            Assert.AreEqual(AddRangeResult.OK, result);
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
 
         [Test]
@@ -126,9 +126,9 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             var result3 = snapProvider.AddStorageRange(1, null, rootHash, TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result1);
-            Assert.AreEqual(AddRangeResult.OK, result2);
-            Assert.AreEqual(AddRangeResult.OK, result3);
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
         }
 
         [Test]
@@ -161,9 +161,9 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             var result3 = snapProvider.AddStorageRange(1, null, rootHash, TestItem.Tree.SlotsWithPaths[4].Path, TestItem.Tree.SlotsWithPaths[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result1);
-            Assert.AreEqual(AddRangeResult.DifferentRootHash, result2);
-            Assert.AreEqual(AddRangeResult.OK, result3);
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
         }
     }
 }

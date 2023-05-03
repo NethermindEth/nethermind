@@ -313,7 +313,7 @@ namespace Nethermind.Init.Steps
                         api.PruningTrigger.Add(pruningTrigger);
                     }
 
-                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!, stateReader, api.ProcessExit, api.LogManager);
+                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!, stateReader, api.ProcessExit!, api.LogManager);
                     api.DisposeStack.Push(pruner);
                 }
             }

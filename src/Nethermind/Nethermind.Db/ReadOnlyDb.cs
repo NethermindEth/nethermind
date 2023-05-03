@@ -71,6 +71,9 @@ namespace Nethermind.Db
         }
 
         public long GetSize() => _wrappedDb.GetSize();
+        public long GetCacheSize() => _wrappedDb.GetCacheSize();
+        public long GetIndexSize() => _wrappedDb.GetIndexSize();
+        public long GetMemtableSize() => _wrappedDb.GetMemtableSize();
 
         public void Remove(ReadOnlySpan<byte> key) { }
 

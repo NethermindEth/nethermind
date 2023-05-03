@@ -35,7 +35,7 @@ namespace Nethermind.Config.Test
 
             (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
 
-            Assert.AreEqual(0, res.Errors.Count);
+            Assert.That(res.Errors.Count, Is.EqualTo(0));
         }
 
         [Test]
@@ -75,10 +75,10 @@ namespace Nethermind.Config.Test
 
             (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
 
-            Assert.AreEqual(2, res.Errors.Count);
-            Assert.AreEqual("XYZ", res.Errors[0].Name);
-            Assert.AreEqual("Abc", res.Errors[1].Name);
-            Assert.AreEqual($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:XYZ{Environment.NewLine}ConfigType:RuntimeOption|Category:|Name:Abc", res.ErrorMsg);
+            Assert.That(res.Errors.Count, Is.EqualTo(2));
+            Assert.That(res.Errors[0].Name, Is.EqualTo("XYZ"));
+            Assert.That(res.Errors[1].Name, Is.EqualTo("Abc"));
+            Assert.That(res.ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:XYZ{Environment.NewLine}ConfigType:RuntimeOption|Category:|Name:Abc"));
 
         }
 
@@ -107,12 +107,12 @@ namespace Nethermind.Config.Test
 
             (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
 
-            Assert.AreEqual(4, res.Errors.Count);
-            Assert.AreEqual("Concurrenc", res.Errors[0].Name);
-            Assert.AreEqual("BlomConfig", res.Errors[1].Category);
-            Assert.AreEqual("MAXCANDIDATEPERCOUNT", res.Errors[2].Name);
-            Assert.AreEqual("DiscoverPort", res.Errors[3].Name);
-            Assert.AreEqual($"ConfigType:JsonConfigFile|Category:DiscoveRyConfig|Name:Concurrenc{Environment.NewLine}ConfigType:JsonConfigFile|Category:BlomConfig|Name:IndexLevelBucketSizes{Environment.NewLine}ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:NETWORKCONFIG|Name:MAXCANDIDATEPERCOUNT{Environment.NewLine}ConfigType:RuntimeOption|Category:NetworkConfig|Name:DiscoverPort", res.ErrorMsg);
+            Assert.That(res.Errors.Count, Is.EqualTo(4));
+            Assert.That(res.Errors[0].Name, Is.EqualTo("Concurrenc"));
+            Assert.That(res.Errors[1].Category, Is.EqualTo("BlomConfig"));
+            Assert.That(res.Errors[2].Name, Is.EqualTo("MAXCANDIDATEPERCOUNT"));
+            Assert.That(res.Errors[3].Name, Is.EqualTo("DiscoverPort"));
+            Assert.That(res.ErrorMsg, Is.EqualTo($"ConfigType:JsonConfigFile|Category:DiscoveRyConfig|Name:Concurrenc{Environment.NewLine}ConfigType:JsonConfigFile|Category:BlomConfig|Name:IndexLevelBucketSizes{Environment.NewLine}ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:NETWORKCONFIG|Name:MAXCANDIDATEPERCOUNT{Environment.NewLine}ConfigType:RuntimeOption|Category:NetworkConfig|Name:DiscoverPort"));
         }
 
         [Test]
@@ -136,10 +136,10 @@ namespace Nethermind.Config.Test
 
             (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
 
-            Assert.AreEqual(2, res.Errors.Count);
-            Assert.AreEqual("NETWORKCONFIGMAXCANDIDATEPEERCOUNT", res.Errors[0].Name);
-            Assert.AreEqual("NetworkConfigP2PPort", res.Errors[1].Name);
-            Assert.AreEqual($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:NETWORKCONFIGMAXCANDIDATEPEERCOUNT{Environment.NewLine}ConfigType:RuntimeOption|Category:|Name:NetworkConfigP2PPort", res.ErrorMsg);
+            Assert.That(res.Errors.Count, Is.EqualTo(2));
+            Assert.That(res.Errors[0].Name, Is.EqualTo("NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));
+            Assert.That(res.Errors[1].Name, Is.EqualTo("NetworkConfigP2PPort"));
+            Assert.That(res.ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:NETWORKCONFIGMAXCANDIDATEPEERCOUNT{Environment.NewLine}ConfigType:RuntimeOption|Category:|Name:NetworkConfigP2PPort"));
         }
 
     }

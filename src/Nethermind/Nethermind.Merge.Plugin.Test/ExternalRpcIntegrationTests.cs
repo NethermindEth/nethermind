@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin.Test
                 BlockForRpcForTest? block = jsonSerializer.Deserialize<BlockForRpcForTest>(requestResponse.Result.ToString());
                 if (currentHash is not null)
                 {
-                    Assert.AreEqual(currentHash, block.Hash, $"incorrect block hash found {block}");
+                    Assert.That(block.Hash, Is.EqualTo(currentHash), $"incorrect block hash found {block}");
                 }
 
                 currentHash = block.ParentHash;

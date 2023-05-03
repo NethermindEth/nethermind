@@ -19,9 +19,8 @@ public class WithdrawalTrieTests
         var block = Build.A.Block.WithWithdrawals(10).TestObject;
         var trie = new WithdrawalTrie(block.Withdrawals!);
 
-        Assert.AreEqual(
-            "0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f",
-            trie.RootHash.ToString());
+        Assert.That(
+            trie.RootHash.ToString(), Is.EqualTo("0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f"));
     }
 
     [Test, Timeout(Timeout.MaxTestTime)]

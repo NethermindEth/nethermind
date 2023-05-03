@@ -247,7 +247,7 @@ namespace Nethermind.Clique.Test
             public On IsProducingBlocks(PrivateKey nodeId, bool expected, ulong? maxInterval)
             {
                 if (_logger.IsInfo) _logger.Info($"IsProducingBlocks");
-                Assert.AreEqual(expected, ((IBlockProducer)_producers[nodeId]).IsProducingBlocks(maxInterval));
+                Assert.That(((IBlockProducer)_producers[nodeId]).IsProducingBlocks(maxInterval), Is.EqualTo(expected));
                 return this;
             }
 
@@ -330,7 +330,7 @@ namespace Nethermind.Clique.Test
             public On AssertHeadBlockParentIs(PrivateKey nodeKey, Keccak hash)
             {
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD PARENT HASH ON {nodeKey.Address}");
-                Assert.AreEqual(hash, _blockTrees[nodeKey].Head.ParentHash, nodeKey.Address + " head parent hash");
+                Assert.That(_blockTrees[nodeKey].Head.ParentHash, Is.EqualTo(hash), nodeKey.Address + " head parent hash");
                 return this;
             }
 
@@ -338,7 +338,7 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD BLOCK IS BLOCK {number} ON {nodeKey.Address}");
-                Assert.AreEqual(number, _blockTrees[nodeKey].Head.Number, nodeKey.Address + " head number");
+                Assert.That(_blockTrees[nodeKey].Head.Number, Is.EqualTo(number), nodeKey.Address + " head number");
                 return this;
             }
 
@@ -346,7 +346,7 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD BLOCK IS BLOCK {number} ON {nodeKey.Address}");
-                Assert.AreEqual(transactionCount, _blockTrees[nodeKey].Head.Transactions.Length, nodeKey.Address + $" transaction count should be equal {transactionCount} for block number {number}");
+                Assert.That(_blockTrees[nodeKey].Head.Transactions.Length, Is.EqualTo(transactionCount), nodeKey.Address + $" transaction count should be equal {transactionCount} for block number {number}");
                 return this;
             }
 
@@ -361,8 +361,8 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING {vote} VOTE ON {address} AT BLOCK {number}");
-                Assert.AreEqual(vote ? Consensus.Clique.Clique.NonceAuthVote : Consensus.Clique.Clique.NonceDropVote, _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header.Nonce, nodeKey + " vote nonce");
-                Assert.AreEqual(address, _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Beneficiary, nodeKey.Address + " vote nonce");
+                Assert.That(_blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header.Nonce, Is.EqualTo(vote ? Consensus.Clique.Clique.NonceAuthVote : Consensus.Clique.Clique.NonceDropVote), nodeKey + " vote nonce");
+                Assert.That(_blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Beneficiary, Is.EqualTo(address), nodeKey.Address + " vote nonce");
                 return this;
             }
 
@@ -371,7 +371,7 @@ namespace Nethermind.Clique.Test
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING {count} SIGNERS AT BLOCK {number}");
                 BlockHeader header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
-                Assert.AreEqual(count, _snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Signers.Count, nodeKey + " signers count");
+                Assert.That(_snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Signers.Count, Is.EqualTo(count), nodeKey + " signers count");
                 return this;
             }
 
@@ -381,7 +381,7 @@ namespace Nethermind.Clique.Test
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING EMPTY TALLY FOR {privateKeyB.Address} EMPTY AT {number}");
                 BlockHeader header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
-                Assert.AreEqual(false, _snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Tally.ContainsKey(privateKeyB.Address), nodeKey + " tally empty");
+                Assert.That(_snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Tally.ContainsKey(privateKeyB.Address), Is.EqualTo(false), nodeKey + " tally empty");
                 return this;
             }
 
@@ -389,7 +389,7 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING OUT TURN ON AT {nodeKey.Address} EMPTY AT BLOCK {number}");
-                Assert.AreEqual(Consensus.Clique.Clique.DifficultyNoTurn, _blockTrees[nodeKey].Head.Difficulty, nodeKey.Address + $" {number} out of turn");
+                Assert.That(_blockTrees[nodeKey].Head.Difficulty, Is.EqualTo(Consensus.Clique.Clique.DifficultyNoTurn), nodeKey.Address + $" {number} out of turn");
                 return this;
             }
 
@@ -397,7 +397,7 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING IN TURN ON AT {nodeKey.Address} EMPTY AT BLOCK {number}");
-                Assert.AreEqual(Consensus.Clique.Clique.DifficultyInTurn, _blockTrees[nodeKey].Head.Difficulty, nodeKey.Address + $" {number} in turn");
+                Assert.That(_blockTrees[nodeKey].Head.Difficulty, Is.EqualTo(Consensus.Clique.Clique.DifficultyInTurn), nodeKey.Address + $" {number} in turn");
                 return this;
             }
 
@@ -814,7 +814,7 @@ namespace Nethermind.Clique.Test
                 .ProcessBadGenesis(TestItem.PrivateKeyA)
                 .AssertHeadBlockIs(TestItem.PrivateKeyA, 1);
 
-            Assert.AreNotEqual(goerli.GetBlock(TestItem.PrivateKeyA, 0).Hash, goerli.GetBlock(TestItem.PrivateKeyB, 0).Hash, "same genesis");
+            Assert.That(goerli.GetBlock(TestItem.PrivateKeyB, 0).Hash, Is.Not.EqualTo(goerli.GetBlock(TestItem.PrivateKeyA, 0).Hash), "same genesis");
 
             goerli
                 .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyA, 1))
@@ -835,7 +835,7 @@ namespace Nethermind.Clique.Test
                 .AssertHeadBlockIs(TestItem.PrivateKeyB, 1)
                 .AssertHeadBlockIs(TestItem.PrivateKeyA, 1);
 
-            Assert.AreEqual(goerli.GetBlock(TestItem.PrivateKeyA, 0).Hash, goerli.GetBlock(TestItem.PrivateKeyB, 0).Hash, "same genesis");
+            Assert.That(goerli.GetBlock(TestItem.PrivateKeyB, 0).Hash, Is.EqualTo(goerli.GetBlock(TestItem.PrivateKeyA, 0).Hash), "same genesis");
             goerli
                 .Process(TestItem.PrivateKeyB, goerli.GetBlock(TestItem.PrivateKeyA, 1))
                 .AssertHeadBlockIs(TestItem.PrivateKeyB, 1);

@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(1000000, 100000, code);
-            Assert.AreEqual(StatusCode.Failure, receipt.StatusCode);
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         [Test]

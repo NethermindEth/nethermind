@@ -34,10 +34,10 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             byte[] data = _serializer.Serialize(authMessage);
             AuthEip8Message after = _serializer.Deserialize(data);
 
-            Assert.AreEqual(authMessage.Signature, after.Signature);
-            Assert.AreEqual(authMessage.PublicKey, after.PublicKey);
+            Assert.That(after.Signature, Is.EqualTo(authMessage.Signature));
+            Assert.That(after.PublicKey, Is.EqualTo(authMessage.PublicKey));
             Assert.True(Bytes.AreEqual(authMessage.Nonce, after.Nonce));
-            Assert.AreEqual(authMessage.Version, after.Version);
+            Assert.That(after.Version, Is.EqualTo(authMessage.Version));
         }
 
         [TestCase(BlockchainIds.Mainnet)]

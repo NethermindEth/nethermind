@@ -415,7 +415,7 @@ namespace Nethermind.Runner.Test
                 foreach (int commaIndex in commaIndexes)
                 {
                     var nextChar = content.ElementAt(commaIndex + 1);
-                    Assert.AreNotEqual('}', nextChar, $"Additional comma found in {filePath}");
+                    Assert.That(nextChar, Is.Not.EqualTo('}'), $"Additional comma found in {filePath}");
                 }
             }
         }

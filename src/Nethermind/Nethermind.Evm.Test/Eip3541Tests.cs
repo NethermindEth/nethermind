@@ -110,7 +110,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
 
-            Assert.AreEqual(withoutAnyInvalidCodeErrors, tracer.ReportedActionErrors.All(x => x != EvmExceptionType.InvalidCode), $"Code {code}, Context {context}");
+            Assert.That(tracer.ReportedActionErrors.All(x => x != EvmExceptionType.InvalidCode), Is.EqualTo(withoutAnyInvalidCodeErrors), $"Code {code}, Context {context}");
         }
     }
 }

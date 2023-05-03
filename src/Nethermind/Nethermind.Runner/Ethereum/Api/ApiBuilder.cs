@@ -50,14 +50,12 @@ namespace Nethermind.Runner.Ethereum.Api
             string engine = chainSpec.SealEngineType;
             IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
 
-            INethermindApi nethermindApi = enginePlugin?.CreateApi() ?? new NethermindApi();
-            nethermindApi.ConfigProvider = _configProvider;
-            nethermindApi.EthereumJsonSerializer = _jsonSerializer;
-            nethermindApi.LogManager = _logManager;
+            INethermindApi nethermindApi =
+                enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) ??
+                new NethermindApi(_configProvider, _jsonSerializer, _logManager, chainSpec);
             nethermindApi.SealEngineType = engine;
             nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);
             nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
-            nethermindApi.ChainSpec = chainSpec;
 
             SetLoggerVariables(chainSpec);
 

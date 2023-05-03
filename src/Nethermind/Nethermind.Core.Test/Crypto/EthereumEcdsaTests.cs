@@ -39,7 +39,7 @@ namespace Nethermind.Core.Test.Crypto
             Transaction tx = Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, eip155);
             Address? address = ecdsa.RecoverAddress(tx);
-            Assert.AreEqual(key.Address, address);
+            Assert.That(address, Is.EqualTo(key.Address));
         }
 
         [Test]
@@ -47,10 +47,10 @@ namespace Nethermind.Core.Test.Crypto
         {
             Transaction tx = Rlp.Decode<Transaction>(new Rlp(Bytes.FromHexString("0xf85f808082520894353535353535353535353535353535353535353580801ca08d24b906be2d91a0bf2168862726991cc408cddf94cb087b392ce992573be891a077964b4e55a5c8ec7b85087d619c641c06def33ab052331337ca9efcd6b82aef")));
 
-            Assert.AreEqual(new Keccak("0x5fd225549ed5c587c843e04578bdd4240fc0d7ab61f8e9faa37e84ec8dc8766d"), tx.Hash, "hash");
+            Assert.That(tx.Hash, Is.EqualTo(new Keccak("0x5fd225549ed5c587c843e04578bdd4240fc0d7ab61f8e9faa37e84ec8dc8766d")), "hash");
             EthereumEcdsa ecdsa = new(BlockchainIds.Ropsten, LimboLogs.Instance);
             Address? from = ecdsa.RecoverAddress(tx);
-            Assert.AreEqual(new Address("0x874b54a8bd152966d63f706bae1ffeb0411921e5"), from, "from");
+            Assert.That(from, Is.EqualTo(new Address("0x874b54a8bd152966d63f706bae1ffeb0411921e5")), "from");
         }
 
         [TestCase(true)]
@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test.Crypto
             Transaction tx = Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, isEip155Enabled);
             Address? address = ecdsa.RecoverAddress(tx);
-            Assert.AreEqual(key.Address, address);
+            Assert.That(address, Is.EqualTo(key.Address));
         }
 
         [Test]
@@ -73,7 +73,7 @@ namespace Nethermind.Core.Test.Crypto
             Transaction tx = Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, true);
             Address? address = ecdsa.RecoverAddress(tx);
-            Assert.AreEqual(key.Address, address);
+            Assert.That(address, Is.EqualTo(key.Address));
         }
 
         [Test]
@@ -86,7 +86,7 @@ namespace Nethermind.Core.Test.Crypto
 
             EthereumEcdsa recoverEcdsa = new(BlockchainIds.Kovan, LimboLogs.Instance);
             Address? address = recoverEcdsa.RecoverAddress(tx, true);
-            Assert.AreEqual(key.Address, address);
+            Assert.That(address, Is.EqualTo(key.Address));
         }
     }
 }

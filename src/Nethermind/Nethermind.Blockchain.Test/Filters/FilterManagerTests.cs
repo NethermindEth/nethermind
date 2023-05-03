@@ -331,7 +331,7 @@ namespace Nethermind.Blockchain.Test.Filters
                 }
 
                 var hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
-                NUnit.Framework.Assert.AreEqual(1, hashes.Length);
+                NUnit.Framework.Assert.That(hashes.Length, Is.EqualTo(1));
             });
         }
 
