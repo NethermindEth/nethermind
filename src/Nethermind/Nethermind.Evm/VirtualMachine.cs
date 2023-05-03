@@ -599,7 +599,10 @@ public class VirtualMachine : IVirtualMachine
     {
         bool isTrace = _logger.IsTrace;
         bool traceOpcodes = _txTracer.IsTracingInstructions;
-        DebugTracer? debugger = _txTracer as DebugTracer;
+        DebugTracer? debugger = null;
+#if DEBUG
+        debugger = _txTracer.GetTracer<DebugTracer>();
+#endif
 
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
@@ -668,7 +671,7 @@ public class VirtualMachine : IVirtualMachine
         {
             // Console.WriteLine(instruction);
 
-            if (traceOpcodes)
+            if (debugger is not null)
             {
                 debugger?.TryWait(vmState);
                 ApplyExternalState(vmState, out programCounter, out gasAvailable, out stack.Head);
@@ -2416,10 +2419,14 @@ public class VirtualMachine : IVirtualMachine
                     }
             }
 
+
             if (traceOpcodes)
             {
-                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                 EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+            }
+            if (debugger is not null)
+            {
+                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
             }
         }
 

@@ -15,7 +15,7 @@ using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.DebugTrace;
-internal class DebugTracer : ITxTracer
+internal class DebugTracer : ITxTracer, ITxTracerWrapper
 {
     public DebugTracer(ITxTracer tracer)
     {
