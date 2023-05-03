@@ -161,16 +161,15 @@ namespace Nethermind.Evm.Test
                 IsStepByStepModeOn = true,
             };
 
+            tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
+
             var vmTask = Task.Run(() => Execute(tracer, bytecode));
 
             while (!vmTask.IsCompleted)
             {
                 if (tracer.CanReadState())
                 {
-                    // we override the pc to skip the JUMP and reach the STOP opcode causing a successful execution 
-                    if (tracer.CurrentState.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT)
-                        tracer.CurrentState.ProgramCounter++;
-
+                    tracer.CurrentState.ProgramCounter++;
                     tracer.MoveNext();
                 }
             }
@@ -192,6 +191,8 @@ namespace Nethermind.Evm.Test
                 IsStepByStepModeOn = true,
             };
 
+            tracer.SetBreakPoint(JUMP_OPCODE_PTR_BREAK_POINT);
+
             var vmTask = Task.Run(() => Execute(tracer, bytecode));
 
             while (!vmTask.IsCompleted)
@@ -199,12 +200,9 @@ namespace Nethermind.Evm.Test
                 if (tracer.CanReadState())
                 {
                     // we pop the condition and overwrite it with a false to force breaking out of the loop
-                    if (tracer.CurrentState.ProgramCounter == JUMP_OPCODE_PTR_BREAK_POINT)
-                    {
-                        EvmStack stack = new(tracer.CurrentState.DataStack, tracer.CurrentState.DataStackHead, tracer);
-                        stack.PopLimbo();
-                        stack.PushByte(0x00);
-                    }
+                    EvmStack stack = new(tracer.CurrentState.DataStack, tracer.CurrentState.DataStackHead, tracer);
+                    stack.PopLimbo();
+                    stack.PushByte(0x00);
 
                     tracer.MoveNext();
                 }
@@ -227,18 +225,16 @@ namespace Nethermind.Evm.Test
                 IsStepByStepModeOn = true,
             };
 
+            tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT);
+
             var vmTask = Task.Run(() => Execute(tracer, bytecode));
 
             while (!vmTask.IsCompleted)
             {
                 if (tracer.CanReadState())
                 {
-
                     // we alter the value stored in memory to force EQ check at the end to fail
-                    if (tracer.CurrentState.ProgramCounter == MSTORE_OPCODE_PTR_BREAK_POINT)
-                    {
-                        tracer.CurrentState.Memory.SaveByte(31, 0x0A);
-                    }
+                    tracer.CurrentState.Memory.SaveByte(31, 0x0A);
 
                     tracer.MoveNext();
                 }
@@ -261,25 +257,23 @@ namespace Nethermind.Evm.Test
                 IsStepByStepModeOn = true,
             };
 
+            tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT);
+            tracer.SetBreakPoint(MSTORE_OPCODE_PTR_BREAK_POINT + 1);
+
             var vmTask = Task.Run(() => Execute(tracer, bytecode));
 
-            long gasAvailable_pre_MSTORE = 0;
+            long? gasAvailable_pre_MSTORE = null;
             while (!vmTask.IsCompleted)
             {
                 if (tracer.CanReadState())
                 {
                     // we alter the value stored in memory to force EQ check at the end to fail
-                    if (tracer.CurrentState.ProgramCounter == MSTORE_OPCODE_PTR_BREAK_POINT)
-                    {
-                        gasAvailable_pre_MSTORE = tracer.CurrentState.GasAvailable;
-                    }
-
-                    if (tracer.CurrentState.ProgramCounter == MSTORE_OPCODE_PTR_BREAK_POINT + 1)
+                    if(gasAvailable_pre_MSTORE is null) gasAvailable_pre_MSTORE  = tracer.CurrentState.GasAvailable;
+                    else
                     {
                         long gasAvailable_post_MSTORE = tracer.CurrentState.GasAvailable;
                         Assert.That(gasAvailable_pre_MSTORE - gasAvailable_post_MSTORE, Is.EqualTo(GasCostOf.VeryLow));
                     }
-
                     tracer.MoveNext();
                 }
             }
