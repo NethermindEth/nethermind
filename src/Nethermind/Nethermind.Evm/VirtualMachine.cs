@@ -264,6 +264,7 @@ public class VirtualMachine : IVirtualMachine
                         else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
                         {
                             currentState.GasAvailable -= gasAvailableForCodeDeposit;
+                            currentState.CreateList.Add(callCodeOwner);
                             worldState.Restore(previousState.Snapshot);
                             if (!previousState.IsCreateOnPreExistingAccount)
                             {
