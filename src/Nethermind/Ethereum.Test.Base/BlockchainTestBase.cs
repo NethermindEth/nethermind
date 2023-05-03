@@ -171,14 +171,14 @@ namespace Ethereum.Test.Base
             }
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-            Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), genesisBlock.Header.Hash, "genesis header hash");
+            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Keccak(test.GenesisBlockHeader.Hash)));
 
             ManualResetEvent genesisProcessed = new(false);
             blockTree.NewHeadBlock += (_, args) =>
             {
                 if (args.Block.Number == 0)
                 {
-                    Assert.AreEqual(genesisBlock.Header.StateRoot, stateProvider.StateRoot, "genesis state root");
+                    Assert.That(stateProvider.StateRoot, Is.EqualTo(genesisBlock.Header.StateRoot));
                     genesisProcessed.Set();
                 }
             };
@@ -253,14 +253,12 @@ namespace Ethereum.Test.Base
 
                     if (testBlockJson.BlockHeader is not null)
                     {
-                        Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash,
-                            "hash of the block");
+                        Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Keccak(testBlockJson.BlockHeader.Hash)));
 
 
                         for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
                         {
-                            Assert.AreEqual(new Keccak(testBlockJson.UncleHeaders[uncleIndex].Hash),
-                                suggestedBlock.Uncles[uncleIndex].Hash, "hash of the uncle");
+                            Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Keccak(testBlockJson.UncleHeaders[uncleIndex].Hash)));
                         }
 
                         correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
@@ -292,7 +290,7 @@ namespace Ethereum.Test.Base
             if (correctRlp.Count == 0)
             {
                 Assert.NotNull(test.GenesisBlockHeader);
-                Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), test.LastBlockHash);
+                Assert.That(test.LastBlockHash, Is.EqualTo(new Keccak(test.GenesisBlockHeader.Hash)));
             }
 
             return correctRlp;

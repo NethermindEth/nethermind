@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -85,16 +86,60 @@ public class StartMonitoring : IStep
         {
             _api.MonitoringService.AddMetricsUpdateAction(() =>
             {
-                Db.Metrics.StateDbSize = _api.DbProvider!.StateDb.GetSize();
-                Db.Metrics.ReceiptsDbSize = _api.DbProvider!.ReceiptsDb.GetSize();
-                Db.Metrics.HeadersDbSize = _api.DbProvider!.HeadersDb.GetSize();
-                Db.Metrics.BlocksDbSize = _api.DbProvider!.BlocksDb.GetSize();
-                Db.Metrics.BloomDbSize = _api.DbProvider!.BloomDb.GetSize();
-                Db.Metrics.CodeDbSize = _api.DbProvider!.CodeDb.GetSize();
-                Db.Metrics.BlockInfosDbSize = _api.DbProvider!.BlockInfosDb.GetSize();
-                Db.Metrics.ChtDbSize = _api.DbProvider!.ChtDb.GetSize();
-                Db.Metrics.MetadataDbSize = _api.DbProvider!.MetadataDb.GetSize();
-                Db.Metrics.WitnessDbSize = _api.DbProvider!.WitnessDb.GetSize();
+                IDbProvider? dbProvider = _api.DbProvider;
+                if (dbProvider is null)
+                {
+                    return;
+                }
+
+                Db.Metrics.StateDbSize = dbProvider.StateDb.GetSize();
+                Db.Metrics.ReceiptsDbSize = dbProvider.ReceiptsDb.GetSize();
+                Db.Metrics.HeadersDbSize = dbProvider.HeadersDb.GetSize();
+                Db.Metrics.BlocksDbSize = dbProvider.BlocksDb.GetSize();
+                Db.Metrics.BloomDbSize = dbProvider.BloomDb.GetSize();
+                Db.Metrics.CodeDbSize = dbProvider.CodeDb.GetSize();
+                Db.Metrics.BlockInfosDbSize = dbProvider.BlockInfosDb.GetSize();
+                Db.Metrics.ChtDbSize = dbProvider.ChtDb.GetSize();
+                Db.Metrics.MetadataDbSize = dbProvider.MetadataDb.GetSize();
+                Db.Metrics.WitnessDbSize = dbProvider.WitnessDb.GetSize();
+
+                Db.Metrics.DbBlockCacheMemorySize = dbProvider.StateDb.GetCacheSize()
+                                                    + dbProvider.BlockInfosDb.GetCacheSize()
+                                                    + dbProvider.HeadersDb.GetCacheSize()
+                                                    + dbProvider.BlocksDb.GetCacheSize()
+                                                    + dbProvider.ReceiptsDb.GetCacheSize();
+                // Share same cache with StateDb
+                // + dbProvider.ChtDb.GetCacheSize()
+                // + dbProvider.MetadataDb.GetCacheSize()
+                // + dbProvider.WitnessDb.GetCacheSize()
+                // + dbProvider.CodeDb.GetCacheSize()
+                // + dbProvider.BloomDb.GetCacheSize()
+
+                Db.Metrics.DbIndexFilterMemorySize = dbProvider.StateDb.GetIndexSize()
+                                                    + dbProvider.ReceiptsDb.GetIndexSize()
+                                                    + dbProvider.HeadersDb.GetIndexSize()
+                                                    + dbProvider.BlocksDb.GetIndexSize()
+                                                    + dbProvider.BloomDb.GetIndexSize()
+                                                    + dbProvider.CodeDb.GetIndexSize()
+                                                    + dbProvider.BlockInfosDb.GetIndexSize()
+                                                    + dbProvider.ChtDb.GetIndexSize()
+                                                    + dbProvider.MetadataDb.GetIndexSize()
+                                                    + dbProvider.WitnessDb.GetIndexSize();
+
+                Db.Metrics.DbMemtableMemorySize = dbProvider.StateDb.GetMemtableSize()
+                                                    + dbProvider.ReceiptsDb.GetMemtableSize()
+                                                    + dbProvider.HeadersDb.GetMemtableSize()
+                                                    + dbProvider.BlocksDb.GetMemtableSize()
+                                                    + dbProvider.BloomDb.GetMemtableSize()
+                                                    + dbProvider.CodeDb.GetMemtableSize()
+                                                    + dbProvider.BlockInfosDb.GetMemtableSize()
+                                                    + dbProvider.ChtDb.GetMemtableSize()
+                                                    + dbProvider.MetadataDb.GetMemtableSize()
+                                                    + dbProvider.WitnessDb.GetMemtableSize();
+
+                Db.Metrics.DbTotalMemorySize = Db.Metrics.DbBlockCacheMemorySize
+                                                + Db.Metrics.DbIndexFilterMemorySize
+                                                + Db.Metrics.DbMemtableMemorySize;
             });
         }
 

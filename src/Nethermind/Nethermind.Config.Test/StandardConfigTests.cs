@@ -114,11 +114,11 @@ namespace Nethermind.Config.Test
                 {
                     string? actualValueAtIndex = actualValueArray[i]?.ToString();
                     string expectedValueAtIndex = expectedItems[i];
-                    Assert.AreEqual(actualValueAtIndex, expectedValueAtIndex,
+                    Assert.That(expectedValueAtIndex, Is.EqualTo(actualValueAtIndex),
                         $"Property: {property.Name}, expected value at index {i}: <{expectedValueAtIndex}> but was <{actualValueAtIndex}>");
                 }
 
-                Assert.AreEqual(actualValueArray.Count, expectedItems.Length,
+                Assert.That(expectedItems.Length, Is.EqualTo(actualValueArray.Count),
                     $"Property: {property.Name}, expected value length: <{expectedItems.Length}> but was <{actualValueArray.Count}>");
 
                 return;
@@ -128,7 +128,7 @@ namespace Nethermind.Config.Test
                 actualValue = value.ToString()!;
             }
 
-            Assert.AreEqual(actualValue, expectedValue,
+            Assert.That(expectedValue, Is.EqualTo(actualValue),
                 $"Property: {property.Name}, expected value: <{expectedValue}> but was <{actualValue}>");
         }
     }

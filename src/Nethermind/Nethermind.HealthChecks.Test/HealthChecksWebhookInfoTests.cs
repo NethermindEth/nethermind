@@ -36,7 +36,7 @@ namespace Nethermind.HealthChecks.Test
                                               + "Hostname: `hostname`" + Environment.NewLine
                                               + "IP (external): `1.2.3.4`";
 
-            Assert.AreEqual(expected, healthChecksWebhookInfo.GetFullInfo());
+            Assert.That(healthChecksWebhookInfo.GetFullInfo(), Is.EqualTo(expected));
         }
     }
 }

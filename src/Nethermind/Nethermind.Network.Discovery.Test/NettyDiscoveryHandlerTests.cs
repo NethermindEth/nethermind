@@ -55,7 +55,7 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryManagersMocks.Add(discoveryManagerMock);
             _discoveryManagersMocks.Add(discoveryManagerMock2);
 
-            Assert.AreEqual(2, _channelActivatedCounter);
+            Assert.That(_channelActivatedCounter, Is.EqualTo(2));
         }
 
         [TearDown]

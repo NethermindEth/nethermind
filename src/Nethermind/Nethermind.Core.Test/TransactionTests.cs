@@ -38,8 +38,8 @@ namespace Nethermind.Core.Test
             Transaction transaction = new();
             transaction.DecodedMaxFeePerGas = (uint)decodedFeeCap;
             transaction.Type = TxType.EIP1559;
-            Assert.AreEqual(transaction.MaxFeePerGas, transaction.DecodedMaxFeePerGas);
-            Assert.AreEqual(expectedSupports1559, transaction.Supports1559);
+            Assert.That(transaction.DecodedMaxFeePerGas, Is.EqualTo(transaction.MaxFeePerGas));
+            Assert.That(transaction.Supports1559, Is.EqualTo(expectedSupports1559));
         }
     }
 }

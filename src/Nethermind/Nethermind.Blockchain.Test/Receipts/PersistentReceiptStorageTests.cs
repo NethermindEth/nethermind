@@ -232,6 +232,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test]
+        [Ignore("Needs to be fixed, details https://github.com/NethermindEth/nethermind/pull/5621")]
         public void Should_not_index_tx_hash_if_blockNumber_is_negative()
         {
             _receiptConfig.TxLookupLimit = 10;

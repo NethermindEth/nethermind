@@ -54,18 +54,18 @@ namespace Nethermind.TxPool.Test.Collections
                 var tx = _transactions[^(i + 1)];
                 tx.Hash = tx.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
-                Assert.AreEqual(i > 15 ? null : tx, _sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null);
-                Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
+                Assert.That(_sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null, Is.EqualTo(i > 15 ? null : tx));
+                Assert.That(_sortedPool.Count, Is.EqualTo(Math.Min(16, i + 1)));
             }
 
-            Assert.AreEqual(Capacity, _sortedPool.GetSnapshot().Length);
+            Assert.That(_sortedPool.GetSnapshot().Length, Is.EqualTo(Capacity));
 
             for (int i = 0; i < Capacity; i++)
             {
                 _sortedPool.TryTakeFirst(out Transaction tx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
-                Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
-                Assert.AreEqual(gasPrice, tx.GasPrice);
+                Assert.That(_sortedPool.Count, Is.EqualTo(Capacity - i - 1));
+                Assert.That(tx.GasPrice, Is.EqualTo(gasPrice));
             }
         }
 
@@ -77,15 +77,15 @@ namespace Nethermind.TxPool.Test.Collections
                 var tx = _transactions[i];
                 tx.Hash = tx.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
-                Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
+                Assert.That(_sortedPool.Count, Is.EqualTo(Math.Min(16, i + 1)));
             }
 
             for (int i = 0; i < Capacity; i++)
             {
                 _sortedPool.TryTakeFirst(out Transaction tx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
-                Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
-                Assert.AreEqual(gasPrice, tx.GasPrice);
+                Assert.That(_sortedPool.Count, Is.EqualTo(Capacity - i - 1));
+                Assert.That(tx.GasPrice, Is.EqualTo(gasPrice));
             }
         }
 

@@ -27,7 +27,7 @@ public static class KzgPolynomialCommitments
 
     private static Task? _initializeTask;
 
-    public static Task Initialize(ILogger? logger = null) => _initializeTask ??= Task.Run(() =>
+    public static Task InitializeAsync(ILogger? logger = null) => _initializeTask ??= Task.Run(() =>
     {
         if (_ckzgSetup != IntPtr.Zero) return;
 
@@ -52,7 +52,7 @@ public static class KzgPolynomialCommitments
     /// <param name="hashBuffer">Holds the output, can safely contain any data before the call.</param>
     /// <returns>Result of the attempt</returns>
     /// <exception cref="ArgumentException"></exception>
-    public static bool TryComputeCommitmentV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
+    public static bool TryComputeCommitmentHashV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
     {
         if (commitment.Length != Ckzg.Ckzg.BytesPerCommitment)
         {
@@ -97,5 +97,15 @@ public static class KzgPolynomialCommitments
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Method to genereate correct data for tests only, not safe
+    /// </summary>
+    public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1)
+    {
+        Ckzg.Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
+        Ckzg.Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
+        TryComputeCommitmentHashV1(commitment, hashV1);
     }
 }
