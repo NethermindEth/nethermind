@@ -323,16 +323,17 @@ namespace Nethermind.Evm
                                     codesectionHeaderSpan.CopyTo(bytecodeResult.Slice(movingOffset));
                                     movingOffset += codesectionHeaderSpan.Length;
 
-                                    // copy codesection header
-                                    bytecodeResult[movingOffset++] = EvmObjectFormat.Eof1.KIND_DATA;
-                                    byte[] newDataSectionLength = (auxExtraData.Length + header.Value.DataSection.Size).ToBigEndianByteArray();
-                                    newDataSectionLength.CopyTo(bytecodeResult.Slice(movingOffset));
-                                    movingOffset += newDataSectionLength.Length;
 
                                     // copy codesection header
                                     ReadOnlySpan<byte> containerectionHeaderSpan = container.Slice(containersectionOffsets.start, containersectionOffsets.size);
                                     containerectionHeaderSpan.CopyTo(bytecodeResult.Slice(movingOffset));
                                     movingOffset += containerectionHeaderSpan.Length;
+
+                                    // copy codesection header
+                                    bytecodeResult[movingOffset++] = EvmObjectFormat.Eof1.KIND_DATA;
+                                    byte[] newDataSectionLength = (auxExtraData.Length + header.Value.DataSection.Size).ToBigEndianByteArray();
+                                    newDataSectionLength.CopyTo(bytecodeResult.Slice(movingOffset));
+                                    movingOffset += newDataSectionLength.Length;
 
                                     bytecodeResult[movingOffset++] = EvmObjectFormat.Eof1.TERMINATOR;
 
@@ -346,6 +347,11 @@ namespace Nethermind.Evm
                                     codesectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
                                     movingOffset += codesectionSpan.Length;
 
+                                    // copy container section
+                                    ReadOnlySpan<byte> containersectionSpan = container.Slice(header.Value.ContainerSection?[0].Start ?? 0, header.Value.ExtraContainersSize);
+                                    containersectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
+                                    movingOffset += containersectionSpan.Length;
+
                                     // copy data section
                                     ReadOnlySpan<byte> datasectionSpan = container.Slice(header.Value.DataSection.Start, header.Value.DataSection.Size);
                                     datasectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
@@ -354,11 +360,6 @@ namespace Nethermind.Evm
                                     // copy aux data to dataSection
                                     auxExtraData.CopyTo(bytecodeResult.Slice(movingOffset));
                                     movingOffset += auxExtraData.Length;
-
-                                    // copy container section
-                                    ReadOnlySpan<byte> containersectionSpan = container.Slice(header.Value.ContainerSection?[0].Start ?? 0, header.Value.ExtraContainersSize);
-                                    containersectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
-                                    movingOffset += containersectionSpan.Length;
 
                                     bytecodeResultArray = bytecodeResult.ToArray();
                                 }

@@ -236,21 +236,6 @@ internal static class EvmObjectFormat
                 codeSectionsSizeUpToNow += codeSection.Size;
             }
 
-            offsets.DataSectionHeaderOffset = KIND_DATA_OFFSET + dynamicOffset;
-            if (container[offsets.CodeSectionHeaderOffset] != KIND_DATA)
-            {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
-                return false;
-            }
-
-            // do data section now to properly check length
-            int dataSectionOffset = DATA_SIZE_OFFSET + dynamicOffset;
-            SectionHeader dataSection = new()
-            {
-                Start = dataSectionOffset,
-                Size = GetUInt16(container, dataSectionOffset)
-            };
-
 
             offsets.ContainerSectionHeaderOffset= KIND_CONTAINER_OFFSET + dynamicOffset;
             int containersSectionsSizeUpToNow = 0;
@@ -258,13 +243,15 @@ internal static class EvmObjectFormat
             if (container[KIND_CONTAINER_OFFSET + dynamicOffset] == KIND_CONTAINER)
             {
                 int containerSectionsSize = container.Slice(NUM_CONTAINER_SECTIONS_OFFSET + dynamicOffset, 2).ReadEthInt16();
+                dynamicOffset += containerSectionsSize * Eof1.TWO_BYTE_LENGTH  + Eof1.TWO_BYTE_LENGTH;
+
                 containerSections = new SectionHeader[containerSectionsSize];
                 for (ushort pos = 0; pos < containerSectionsSize; pos++)
                 {
                     int currentContainerSizeOffset = CONTAINER_OFFSET + dynamicOffset + pos * EvmObjectFormat.TWO_BYTE_LENGTH; // offset of pos'th code size
                     SectionHeader containerSection = new()
                     {
-                        Start = dataSection.EndOffset + containersSectionsSizeUpToNow,
+                        Start = codeSections[0].Start + codeSectionsSizeUpToNow + containersSectionsSizeUpToNow,
                         Size = GetUInt16(container, currentContainerSizeOffset)
                     };
 
@@ -278,6 +265,21 @@ internal static class EvmObjectFormat
                     containersSectionsSizeUpToNow += containerSection.Size;
                 }
             }
+
+
+            offsets.DataSectionHeaderOffset = KIND_DATA_OFFSET + dynamicOffset;
+            if (container[offsets.CodeSectionHeaderOffset] != KIND_DATA)
+            {
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
+                return false;
+            }
+            // do data section now to properly check length
+            int dataSectionOffset = DATA_SIZE_OFFSET + dynamicOffset;
+            SectionHeader dataSection = new()
+            {
+                Start = dataSectionOffset,
+                Size = GetUInt16(container, dataSectionOffset)
+            };
 
             offsets.EndOfHeaderOffset = TERMINATOR_OFFSET + dynamicOffset;
             if (container[TERMINATOR_OFFSET + dynamicOffset] != TERMINATOR)
