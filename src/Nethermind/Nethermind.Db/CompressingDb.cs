@@ -44,6 +44,12 @@ namespace Nethermind.Db
 
                 public void Dispose() => _wrapped.Dispose();
 
+                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                    => _wrapped.Set(key, Compress(value), flags);
+
+                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+                    => Decompress(_wrapped.Get(key, flags));
+
                 public byte[]? this[ReadOnlySpan<byte> key]
                 {
                     get => Decompress(_wrapped[key]);
@@ -124,6 +130,20 @@ namespace Nethermind.Db
             public void Flush() => _wrapped.Flush();
 
             public void Clear() => _wrapped.Clear();
+
+            public long GetSize() => _wrapped.GetSize();
+
+            public long GetCacheSize() => _wrapped.GetCacheSize();
+
+            public long GetIndexSize() => _wrapped.GetIndexSize();
+
+            public long GetMemtableSize() => _wrapped.GetMemtableSize();
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                => _wrapped.Set(key, Compress(value), flags);
+
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+                => Decompress(_wrapped.Get(key, flags));
         }
     }
 }
