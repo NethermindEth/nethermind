@@ -29,8 +29,7 @@ public class ColumnDb : IDbWithSpan
 
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        UpdateReadMetrics();
-        return _rocksDb.Get(key, _columnFamily);
+        return _mainDb.GetWithColumnFamily(key, _columnFamily, flags);
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)

@@ -1032,6 +1032,7 @@ namespace Nethermind.Trie
             visitor.VisitTree(rootHash, trieVisitContext);
             if (visitingOptions.FullScanMemoryBudget != 0)
             {
+                resolver = new TrieNodeResolverWithReadFlags(TrieStore, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead);
                 BatchedTrieVisitor batchedTrieVisitor = new(visitor, resolver, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }

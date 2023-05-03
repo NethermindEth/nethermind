@@ -37,6 +37,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     internal WriteOptions? WriteOptions { get; private set; }
     internal WriteOptions? LowPriorityWriteOptions { get; private set; }
 
+    internal ReadOptions _readAheadReadOptions = new();
+
     internal DbOptions? DbOptions { get; private set; }
 
     public string Name { get; }
@@ -391,7 +393,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         LowPriorityWriteOptions = new WriteOptions();
         LowPriorityWriteOptions.SetSync(dbConfig.WriteAheadLogSync);
-        RocksDbSharp.Native.Instance.rocksdb_writeoptions_set_low_pri(LowPriorityWriteOptions.Handle, true);
+        Native.Instance.rocksdb_writeoptions_set_low_pri(LowPriorityWriteOptions.Handle, true);
+
+        _readAheadReadOptions.SetReadaheadSize((ulong)512.KiB());
 
         if (dbConfig.EnableDbStatistics)
         {
@@ -408,6 +412,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
+        return GetWithColumnFamily(key, null, flags);
+    }
+
+    internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadFlags flags = ReadFlags.None)
+    {
         if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
@@ -417,6 +426,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         try
         {
+            if ((flags & ReadFlags.HintReadAhead) != 0)
+            {
+                return _db.Get(key, cf, _readAheadReadOptions);
+            }
+
             return _db.Get(key);
         }
         catch (RocksDbSharpException e)
