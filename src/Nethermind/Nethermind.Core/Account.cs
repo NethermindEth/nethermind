@@ -10,28 +10,10 @@ namespace Nethermind.Core
     {
         public static Account TotallyEmpty = new();
 
-        private static UInt256 _accountStartNonce = UInt256.Zero;
-
-        /// <summary>
-        /// This is a special field that was used by some of the testnets (namely - Morden and Mordor).
-        /// It makes all the account nonces start from a different number then zero,
-        /// hence preventing potential signature reuse.
-        /// It is no longer needed since the replay attack protection on chain ID is used now.
-        /// We can remove it now but then we also need to remove any historical Mordor / Morden tests.
-        /// </summary>
-        public static UInt256 AccountStartNonce
-        {
-            set
-            {
-                _accountStartNonce = value;
-                TotallyEmpty = new Account();
-            }
-        }
-
         public Account(UInt256 balance)
         {
             Balance = balance;
-            Nonce = _accountStartNonce;
+            Nonce = default;
             CodeHash = Keccak.OfAnEmptyString;
             StorageRoot = Keccak.EmptyTreeHash;
             IsTotallyEmpty = Balance.IsZero;
@@ -40,7 +22,7 @@ namespace Nethermind.Core
         private Account()
         {
             Balance = UInt256.Zero;
-            Nonce = _accountStartNonce;
+            Nonce = default;
             CodeHash = Keccak.OfAnEmptyString;
             StorageRoot = Keccak.EmptyTreeHash;
             IsTotallyEmpty = true;
@@ -52,7 +34,7 @@ namespace Nethermind.Core
             Balance = balance;
             StorageRoot = storageRoot;
             CodeHash = codeHash;
-            IsTotallyEmpty = Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
+            IsTotallyEmpty = Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
         }
 
         private Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
@@ -73,7 +55,7 @@ namespace Nethermind.Core
         public Keccak StorageRoot { get; }
         public Keccak CodeHash { get; }
         public bool IsTotallyEmpty { get; }
-        public bool IsEmpty => IsTotallyEmpty || (Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString);
+        public bool IsEmpty => IsTotallyEmpty || (Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString);
         public bool IsContract => CodeHash != Keccak.OfAnEmptyString;
 
         public Account WithChangedBalance(in UInt256 newBalance)
@@ -83,7 +65,7 @@ namespace Nethermind.Core
 
         public Account WithChangedNonce(in UInt256 newNonce)
         {
-            return new(newNonce, Balance, StorageRoot, CodeHash, IsTotallyEmpty && newNonce == _accountStartNonce);
+            return new(newNonce, Balance, StorageRoot, CodeHash, IsTotallyEmpty && newNonce.IsZero);
         }
 
         public Account WithChangedStorageRoot(Keccak newStorageRoot)
