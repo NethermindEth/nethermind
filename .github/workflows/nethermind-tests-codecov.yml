@@ -1,4 +1,4 @@
-name: 'Nethermind/Ethereum tests with code coverage'
+name: Nethermind/Ethereum tests with code coverage
 
 on:
   push:
@@ -6,186 +6,134 @@ on:
   workflow_dispatch:
 
 env:
-  BUILD_CONFIG: release
   DOTNET_VERSION: 7
 
 jobs:
-  neth-tests-cc:
+  nethermind:
+    name: Run ${{ matrix.project }}
     if: github.repository_owner == 'NethermindEth'
-    name: Run Nethermind tests with code coverage
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        project:
+          - Nethermind.Abi.Test
+          - Nethermind.AccountAbstraction.Test
+          - Nethermind.Api.Test
+          - Nethermind.AuRa.Test
+          - Nethermind.Blockchain.Test
+          - Nethermind.Cli.Test
+          - Nethermind.Clique.Test
+          - Nethermind.Config.Test
+          - Nethermind.Consensus.Test
+          - Nethermind.Core.Test
+          - Nethermind.Db.Test
+          - Nethermind.Ethash.Test
+          - Nethermind.EthStats.Test
+          - Nethermind.Evm.Test
+          - Nethermind.Facade.Test
+          - Nethermind.HealthChecks.Test
+          - Nethermind.Hive.Test
+          - Nethermind.JsonRpc.Test
+          - Nethermind.JsonRpc.TraceStore.Test
+          - Nethermind.KeyStore.Test
+          - Nethermind.Logging.NLog.Test
+          - Nethermind.Merge.AuRa.Test
+          - Nethermind.Merge.Plugin.Test
+          - Nethermind.Mev.Test
+          - Nethermind.Mining.Test
+          - Nethermind.Monitoring.Test
+          - Nethermind.Network.Test
+          - Nethermind.Network.Discovery.Test
+          - Nethermind.Network.Dns.Test
+          - Nethermind.Network.Enr.Test
+          - Nethermind.Overseer.Test
+          - Nethermind.Runner.Test
+          - Nethermind.Serialization.Ssz.Test
+          - Nethermind.Sockets.Test
+          - Nethermind.Specs.Test
+          - Nethermind.State.Test
+          - Nethermind.State.Test.Runner.Test
+          - Nethermind.Synchronization.Test
+          - Nethermind.Trie.Test
+          - Nethermind.TxPool.Test
+          - Nethermind.Wallet.Test
     steps:
     - name: Check out repository
       uses: actions/checkout@v3
-      with: 
+      with:
         submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
     - name: Install Linux packages
-      if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install libsnappy-dev libc6-dev libc6
-    - name: Install macOS packages
-      if: matrix.os == 'macos-latest'
-      run: brew install gmp lz4 snappy zstd
-    - name: Set environment variable to exclude specific test projects
-      if: matrix.os == 'ubuntu-latest'
-      run: echo 'EXCLUDE_TEST_PROJECTS=-p:CollectCoverage=true -p:CoverletOutputFormat=opencover' >> "$GITHUB_ENV"
-    - name: Nethermind.Abi.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Abi.Test
-    - name: Nethermind.AccountAbstraction.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.AccountAbstraction.Test
-    - name: Nethermind.Api.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Api.Test
-    - name: Nethermind.AuRa.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.AuRa.Test
-    - name: Nethermind.Blockchain.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Blockchain.Test
-    - name: Nethermind.Cli.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Cli.Test
-    - name: Nethermind.Clique.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Clique.Test
-    - name: Nethermind.Config.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Config.Test
-    - name: Nethermind.Core.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Core.Test
-    - name: Nethermind.Db.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Db.Test
-    - name: Nethermind.EthStats.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.EthStats.Test
-    - name: Nethermind.Ethash.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Ethash.Test
-    - name: Nethermind.Evm.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Evm.Test
-    - name: Nethermind.Facade.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Facade.Test
-    - name: Nethermind.HealthChecks.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.HealthChecks.Test
-    - name: Nethermind.Hive.Tests
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Hive.Tests
-    - name: Nethermind.JsonRpc.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.JsonRpc.Test
-    - name: Nethermind.JsonRpc.TraceStore.Tests
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.JsonRpc.TraceStore.Tests
-    - name: Nethermind.KeyStore.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.KeyStore.Test
-    - name: Nethermind.Logging.NLog.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Logging.NLog.Test
-    - name: Nethermind.Mining.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Mining.Test
-    - name: Nethermind.Merge.Plugin.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Merge.Plugin.Test
-    - name: Nethermind.Merge.AuRa.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Merge.AuRa.Test
-    - name: Nethermind.Mev.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Mev.Test
-    - name: Nethermind.Monitoring.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Monitoring.Test
-    - name: Nethermind.Network.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Test
-    - name: Nethermind.Network.Discovery.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Discovery.Test
-    - name: Nethermind.Network.Dns.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Dns.Test
-    - name: Nethermind.Network.Enr.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Enr.Test
-    - name: Nethermind.Overseer.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Overseer.Test
-    - name: Nethermind.Runner.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Runner.Test
-    - name: Nethermind.Serialization.Ssz.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Serialization.Ssz.Test
-    - name: Nethermind.Sockets.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Sockets.Test
-    - name: Nethermind.Specs.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Specs.Test
-    - name: Nethermind.State.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.State.Test
-    - name: Nethermind.Synchronization.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Synchronization.Test
-    - name: Nethermind.Trie.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Trie.Test
-    - name: Nethermind.TxPool.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.TxPool.Test
-    - name: Nethermind.Wallet.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Wallet.Test
-    - name: Upload Codecov reports
-      if: matrix.os == 'ubuntu-latest'
-      uses: actions/upload-artifact@v2
+        sudo apt-get install libsnappy-dev -y --no-install-recommends
+    - name: ${{ matrix.project }}
+      run: dotnet test src/Nethermind/${{ matrix.project }} -c release -p:CollectCoverage=true -p:CoverletOutputFormat=opencover
+    - name: Upload test coverage report
+      uses: actions/upload-artifact@v3
       with:
-        name: codecov-report
-        path: src/Nethermind/Nethermind.*/coverage.opencover.xml
+        name: ${{ matrix.project }}-coverage
+        path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
+        retention-days: 1
 
-  eth-tests-cc:
-    name: Run Ethereum tests with code coverage
-    runs-on: ${{ matrix.os }}
+  ethereum:
+    name: Run ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        project:
+          - Ethereum.Abi.Test
+          - Ethereum.Basic.Test
+          - Ethereum.Blockchain.Block.Test
+          - Ethereum.Blockchain.Test
+          - Ethereum.Difficulty.Test
+          - Ethereum.HexPrefix.Test
+          - Ethereum.KeyAddress.Test
+          - Ethereum.PoW.Test
+          - Ethereum.Rlp.Test
+          - Ethereum.Transaction.Test
+          - Ethereum.Transition.Test
+          - Ethereum.Trie.Test
+          - Ethereum.VM.Test
     steps:
     - name: Check out repository
       uses: actions/checkout@v3
-    - name: Update submodules
-      run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
+      with:
+        submodules: true
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
-    - name: Set environment variable to exclude specific test projects
-      if: matrix.os == 'ubuntu-latest'
-      run: echo 'EXCLUDE_TEST_PROJECTS=-p:CollectCoverage=true -p:CoverletOutputFormat=opencover -p:Exclude="[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Ethereum.Test.Base]*"' >> "$GITHUB_ENV"
-    - name: Ethereum.Abi.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Abi.Test
-    - name: Ethereum.Basic.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Basic.Test
-    - name: Ethereum.Blockchain.Block.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Blockchain.Block.Test
-    - name: Ethereum.Blockchain.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Blockchain.Test
-    - name: Ethereum.Difficulty.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Difficulty.Test
-    - name: Ethereum.HexPrefix.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.HexPrefix.Test
-    - name: Ethereum.KeyAddress.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.KeyAddress.Test
-    - name: Ethereum.PoW.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.PoW.Test
-    - name: Ethereum.Rlp.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Rlp.Test
-    - name: Ethereum.Transaction.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Transaction.Test
-    - name: Ethereum.Transition.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Transition.Test
-    - name: Ethereum.Trie.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Trie.Test
-    - name: Ethereum.VM.Test
-      run: dotnet test -c ${{ env.BUILD_CONFIG }} $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.VM.Test
-    - name: Upload Codecov report
-      if: matrix.os == 'ubuntu-latest'
-      uses: actions/upload-artifact@v2
+    - name: Install Linux packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev -y --no-install-recommends
+    - name: ${{ matrix.project }}
+      run: dotnet test src/Nethermind/${{ matrix.project }} -c release -p:CollectCoverage=true -p:CoverletOutputFormat=opencover -p:Exclude="[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Ethereum.Test.Base]*"
+    - name: Upload test coverage report
+      uses: actions/upload-artifact@v3
       with:
-        name: codecov-report
-        path: src/Nethermind/Ethereum.*/coverage.opencover.xml
+        name: ${{ matrix.project }}-coverage
+        path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
+        retention-days: 1
 
   codecov-upload:
     name: Upload Codecov reports
-    needs: [neth-tests-cc, eth-tests-cc]
+    needs: [nethermind, ethereum]
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v3
-      - name: Download reports from Nethermind/Ethereum projects
-        uses: actions/download-artifact@v2
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
         with:
-          name: codecov-report
+          path: .coverage
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: codecov-nethermind
+          directory: .coverage
