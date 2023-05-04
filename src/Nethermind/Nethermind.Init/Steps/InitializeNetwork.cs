@@ -201,7 +201,7 @@ public class InitializeNetwork : IStep
 
         bool stateSyncFinished = _api.SyncProgressResolver.FindBestFullState() != 0;
 
-        if (_syncConfig.SnapSync || stateSyncFinished)
+        if (_syncConfig.SnapSync || stateSyncFinished || !_syncConfig.FastSync)
         {
             // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
             // no longer available). Eth67 should be added if snap is enabled OR sync is finished
