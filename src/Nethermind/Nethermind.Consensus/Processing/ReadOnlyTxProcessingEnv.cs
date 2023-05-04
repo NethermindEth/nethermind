@@ -20,8 +20,7 @@ namespace Nethermind.Consensus.Processing
     public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
         public IStateReader StateReader { get; }
-        public IStateProvider StateProvider { get; }
-        public IStorageProvider StorageProvider { get; }
+        public IWorldState StateProvider { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
         public IBlockTree BlockTree { get; }
         public IReadOnlyDbProvider DbProvider { get; }
@@ -51,17 +50,15 @@ namespace Nethermind.Consensus.Processing
             ReadOnlyDb codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
 
             StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
-            StateProvider = new StateProvider(readOnlyTrieStore, codeDb, logManager);
-            StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
-            IWorldState worldState = new WorldState(StateProvider, StorageProvider);
+            StateProvider = new WorldState(readOnlyTrieStore, codeDb, logManager);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
             Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, worldState, Machine, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
         }
 
-        public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, StorageProvider, stateRoot);
+        public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
     }
 }

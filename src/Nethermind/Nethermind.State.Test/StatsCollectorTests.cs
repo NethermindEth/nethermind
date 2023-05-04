@@ -26,8 +26,7 @@ namespace Nethermind.Store.Test
             MemDb memDb = new();
             IDb stateDb = memDb;
             TrieStore trieStore = new(stateDb, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
-            StateProvider stateProvider = new(trieStore, stateDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
+            WorldState stateProvider = new(trieStore, stateDb, LimboLogs.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);
             stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);
@@ -38,15 +37,12 @@ namespace Nethermind.Store.Test
             for (int i = 0; i < 1000; i++)
             {
                 StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
-                storageProvider.Set(storageCell, new byte[] { (byte)i });
+                stateProvider.Set(storageCell, new byte[] { (byte)i });
             }
 
-            storageProvider.Commit();
             stateProvider.Commit(Istanbul.Instance);
 
-            storageProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
-            storageProvider.CommitTrees(1);
             stateProvider.CommitTree(1);
 
             memDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code

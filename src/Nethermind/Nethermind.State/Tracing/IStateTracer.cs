@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.State
+namespace Nethermind.State.Tracing
 {
     public interface IStateTracer
     {

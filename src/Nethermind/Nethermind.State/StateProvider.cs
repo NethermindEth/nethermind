@@ -8,24 +8,17 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Tracing;
 using Nethermind.State.Witnesses;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
 
-[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
-[assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
-[assembly: InternalsVisibleTo("Nethermind.State.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
-[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
-
 namespace Nethermind.State
 {
-    public class StateProvider : IStateProvider
+    internal class StateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
         private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
@@ -312,7 +305,7 @@ namespace Nethermind.State
             PushDelete(address);
         }
 
-        int IJournal<int>.TakeSnapshot()
+        public int TakeSnapshot()
         {
             if (_logger.IsTrace) _logger.Trace($"State snapshot {_currentPosition}");
             return _currentPosition;
@@ -414,7 +407,7 @@ namespace Nethermind.State
             public Account? After { get; }
         }
 
-        public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer, bool isGenesis = false)
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis = false)
         {
             if (_currentPosition == -1)
             {
@@ -753,7 +746,6 @@ namespace Nethermind.State
             _intraBlockCache.Reset();
             _committedThisRound.Reset();
             _readsForTracing.Clear();
-            (_codeDb as ReadOnlyDb)?.ClearTempChanges();
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);
             _needsStateRootUpdate = false;
@@ -774,7 +766,7 @@ namespace Nethermind.State
             // placeholder for the three level Commit->CommitBlock->CommitBranch
         }
 
-        // used in EthereumTests
+        // used in EtheereumTests
         internal void SetNonce(Address address, in UInt256 nonce)
         {
             _needsStateRootUpdate = true;

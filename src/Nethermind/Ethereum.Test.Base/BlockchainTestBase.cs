@@ -127,7 +127,7 @@ namespace Ethereum.Test.Base
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
 
             TrieStore trieStore = new(stateDb, _logManager);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
+            IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
             MemDb blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, _logManager);
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
@@ -141,7 +141,6 @@ namespace Ethereum.Test.Base
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
-            IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
@@ -155,12 +154,10 @@ namespace Ethereum.Test.Base
                     new TransactionProcessor(
                         specProvider,
                         stateProvider,
-                        storageProvider,
                         virtualMachine,
                         _logManager),
                     stateProvider),
                 stateProvider,
-                storageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 _logManager);
@@ -173,7 +170,7 @@ namespace Ethereum.Test.Base
                 _logManager,
                 BlockchainProcessor.Options.NoReceipts);
 
-            InitializeTestState(test, stateProvider, storageProvider, specProvider);
+            InitializeTestState(test, stateProvider, specProvider);
 
             stopwatch?.Start();
             List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
@@ -239,7 +236,7 @@ namespace Ethereum.Test.Base
             await blockchainProcessor.StopAsync(true);
             stopwatch?.Stop();
 
-            List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
+            List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
 
             Assert.Zero(differences.Count, "differences");
 
@@ -309,14 +306,14 @@ namespace Ethereum.Test.Base
             return correctRlp;
         }
 
-        private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)
+        private void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in
                 ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
+                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
@@ -327,17 +324,14 @@ namespace Ethereum.Test.Base
                 }
             }
 
-            storageProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
 
-            storageProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
 
-            storageProvider.Reset();
             stateProvider.Reset();
         }
 
-        private List<string> RunAssertions(BlockchainTest test, Block headBlock, IStorageProvider storageProvider, IStateProvider stateProvider)
+        private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
         {
             if (test.PostStateRoot != null)
             {
@@ -406,7 +400,7 @@ namespace Ethereum.Test.Base
 
                 foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
                 {
-                    byte[] value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : storageProvider.Get(new StorageCell(acountAddress, clearedStorage.Key));
+                    byte[] value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, clearedStorage.Key));
                     if (!value.IsZero())
                     {
                         differences.Add($"{acountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
@@ -415,7 +409,7 @@ namespace Ethereum.Test.Base
 
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
                 {
-                    byte[] value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : storageProvider.Get(new StorageCell(acountAddress, storageItem.Key)) ?? new byte[0];
+                    byte[] value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, storageItem.Key)) ?? new byte[0];
                     if (!Bytes.AreEqual(storageItem.Value, value))
                     {
                         differences.Add($"{acountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");

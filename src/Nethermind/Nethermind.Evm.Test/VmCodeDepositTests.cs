@@ -57,11 +57,11 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = Storage.Get(storageCell);
+            byte[] result = TestState.Get(storageCell);
             Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(98777), "no refund");
 
-            byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
+            byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0));
             Assert.That(returnData, Is.EqualTo(new byte[1]), "address returned");
         }
 
@@ -97,11 +97,11 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = Storage.Get(storageCell);
+            byte[] result = TestState.Get(storageCell);
             Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
 
-            byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
+            byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0));
             Assert.That(returnData, Is.EqualTo(deployed.Bytes), "address returned");
         }
     }
