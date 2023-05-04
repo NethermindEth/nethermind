@@ -22,6 +22,6 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "Number of recent blocks to maintain transaction index. 0 to never remove tx index. -1 to never index.", DefaultValue = "2350000")]
     long? TxLookupLimit { get; set; }
 
-    [ConfigItem(Description = "Max num of block per eth_getLogs request.", DefaultValue = "10000")]
+    [ConfigItem(Description = "Max num of block per eth_getLogs request.", DefaultValue = "10000", HiddenFromDocs = true)]
     int MaxBlockDepth { get; set; }
 }
