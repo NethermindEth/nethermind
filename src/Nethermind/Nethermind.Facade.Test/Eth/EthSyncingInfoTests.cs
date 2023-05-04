@@ -28,10 +28,10 @@ namespace Nethermind.Facade.Test.Eth
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
             EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-            Assert.AreEqual(false, syncingResult.IsSyncing);
-            Assert.AreEqual(0, syncingResult.CurrentBlock);
-            Assert.AreEqual(0, syncingResult.HighestBlock);
-            Assert.AreEqual(0, syncingResult.StartingBlock);
+            Assert.That(syncingResult.IsSyncing, Is.EqualTo(false));
+            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(0));
+            Assert.That(syncingResult.HighestBlock, Is.EqualTo(0));
+            Assert.That(syncingResult.StartingBlock, Is.EqualTo(0));
         }
 
         [Test]
@@ -44,10 +44,10 @@ namespace Nethermind.Facade.Test.Eth
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
             EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-            Assert.AreEqual(true, syncingResult.IsSyncing);
-            Assert.AreEqual(6178000L, syncingResult.CurrentBlock);
-            Assert.AreEqual(6178010, syncingResult.HighestBlock);
-            Assert.AreEqual(0, syncingResult.StartingBlock);
+            Assert.That(syncingResult.IsSyncing, Is.EqualTo(true));
+            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(6178000L));
+            Assert.That(syncingResult.HighestBlock, Is.EqualTo(6178010));
+            Assert.That(syncingResult.StartingBlock, Is.EqualTo(0));
         }
 
         [TestCase(6178001L, 6178000L, false)]
@@ -60,7 +60,7 @@ namespace Nethermind.Facade.Test.Eth
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject).TestObject);
             EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, new SyncConfig(), LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-            Assert.AreEqual(expectedResult, syncingResult.IsSyncing);
+            Assert.That(syncingResult.IsSyncing, Is.EqualTo(expectedResult));
         }
 
         [TestCase(800, 1000, true, false, 1100, false)]
@@ -117,7 +117,7 @@ namespace Nethermind.Facade.Test.Eth
 
             EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-            Assert.AreEqual(CreateSyncingResult(expectedResult, currentHead, highestBlock), syncingResult);
+            Assert.That(syncingResult, Is.EqualTo(CreateSyncingResult(expectedResult, currentHead, highestBlock)));
         }
 
         [Test]

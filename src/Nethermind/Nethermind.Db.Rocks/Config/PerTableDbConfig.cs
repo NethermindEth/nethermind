@@ -37,9 +37,12 @@ public class PerTableDbConfig
     public IDictionary<string, string>? AdditionalRocksDbOptions => ReadConfig<IDictionary<string, string>?>(nameof(AdditionalRocksDbOptions));
 
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
-    public long? MaxWriteBytesPerSec => ReadConfig<long?>(nameof(MaxWriteBytesPerSec));
+    public long? MaxBytesPerSec => ReadConfig<long?>(nameof(MaxBytesPerSec));
     public uint RecycleLogFileNum => ReadConfig<uint>(nameof(RecycleLogFileNum));
     public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
+    public bool UseDirectReads => ReadConfig<bool>(nameof(UseDirectReads));
+    public bool UseDirectIoForFlushAndCompactions => ReadConfig<bool>(nameof(UseDirectIoForFlushAndCompactions));
+    public int? BlockSize => ReadConfig<int?>(nameof(BlockSize));
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
 
@@ -50,7 +53,7 @@ public class PerTableDbConfig
 
     private string GetPrefix()
     {
-        return _tableName.StartsWith("State") ? "State" : string.Concat(_tableName, "Db");
+        return _tableName.StartsWith("State") ? "StateDb" : string.Concat(_tableName, "Db");
     }
 
     private static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string prefix)

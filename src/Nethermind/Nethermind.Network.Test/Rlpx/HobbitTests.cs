@@ -109,7 +109,7 @@ namespace Nethermind.Network.Test.Rlpx
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
             NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
-            Assert.AreEqual(newBlockMessage.Block.Transactions.Length, decodedMessage.Block.Transactions.Length);
+            Assert.That(decodedMessage.Block.Transactions.Length, Is.EqualTo(newBlockMessage.Block.Transactions.Length));
         }
 
         [TestCase(StackType.Zero, StackType.Zero, true)]
@@ -130,7 +130,7 @@ namespace Nethermind.Network.Test.Rlpx
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
             GetReceiptsMessage decodedMessage = serializer.Deserialize(decoded.Data);
-            Assert.AreEqual(message.Hashes.Count, decodedMessage.Hashes.Count);
+            Assert.That(decodedMessage.Hashes.Count, Is.EqualTo(message.Hashes.Count));
         }
 
         [TestCase(StackType.Zero, StackType.Zero, true)]
@@ -150,7 +150,7 @@ namespace Nethermind.Network.Test.Rlpx
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
             StatusMessage decodedMessage = serializer.Deserialize(decoded.Data);
-            Assert.AreEqual(message.TotalDifficulty, decodedMessage.TotalDifficulty);
+            Assert.That(decodedMessage.TotalDifficulty, Is.EqualTo(message.TotalDifficulty));
         }
 
         private Packet Run(Packet packet, StackType inbound, StackType outbound, bool framingEnabled)
@@ -181,15 +181,15 @@ namespace Nethermind.Network.Test.Rlpx
                 if (inbound == StackType.Zero)
                 {
                     ZeroPacket decodedPacket = embeddedChannel.ReadInbound<ZeroPacket>();
-                    Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Content.ReadAllHex());
-                    Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
+                    Assert.That(decodedPacket.Content.ReadAllHex(), Is.EqualTo(packet.Data.ToHexString()));
+                    Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
                     decodedPacket.Release();
                 }
                 else // allocating
                 {
                     Packet decodedPacket = embeddedChannel.ReadInbound<Packet>();
-                    Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Data.ToHexString());
-                    Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
+                    Assert.That(decodedPacket.Data.ToHexString(), Is.EqualTo(packet.Data.ToHexString()));
+                    Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
                 }
             }
             finally
@@ -213,12 +213,12 @@ namespace Nethermind.Network.Test.Rlpx
             IChannelHandler encoder = new ZeroFrameEncoder(_frameCipherA, _macProcessorA, LimboLogs.Instance);
             IFramingAware splitter = new ZeroPacketSplitter(LimboLogs.Instance);
 
-            Assert.AreEqual(Frame.DefaultMaxFrameSize, splitter.MaxFrameSize, "default max frame size");
+            Assert.That(splitter.MaxFrameSize, Is.EqualTo(Frame.DefaultMaxFrameSize), "default max frame size");
 
             if (!framingEnabled)
             {
                 splitter.DisableFraming();
-                Assert.AreEqual(int.MaxValue, splitter.MaxFrameSize, "max frame size when framing disabled");
+                Assert.That(splitter.MaxFrameSize, Is.EqualTo(int.MaxValue), "max frame size when framing disabled");
             }
 
             EmbeddedChannel embeddedChannel = new();

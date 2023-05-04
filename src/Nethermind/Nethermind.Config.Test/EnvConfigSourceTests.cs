@@ -35,7 +35,7 @@ namespace Nethermind.Config.Test
         {
             Environment.SetEnvironmentVariable("NETHERMIND_A_A", valueString, EnvironmentVariableTarget.Process);
             EnvConfigSource configSource = new();
-            Assert.AreEqual(parsedValue, configSource.GetValue(valueType, "a", "A").Value);
+            Assert.That(configSource.GetValue(valueType, "a", "A").Value, Is.EqualTo(parsedValue));
         }
     }
 }

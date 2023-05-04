@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Test.Producers
                     UInt256 balanceBefore = _testRpcBlockchain.State.GetBalance(_eip1559FeeCollector);
                     await _testRpcBlockchain.AddBlock(transactions);
                     UInt256 balanceAfter = _testRpcBlockchain.State.GetBalance(_eip1559FeeCollector);
-                    Assert.AreEqual(expectedFeeCollected, balanceAfter - balanceBefore);
+                    Assert.That(balanceAfter - balanceBefore, Is.EqualTo(expectedFeeCollected));
 
                     return this;
                 }

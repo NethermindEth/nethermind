@@ -22,9 +22,9 @@ namespace Nethermind.Core.Test
             transaction.Type = test.Type;
             UInt256 actualResult = transaction.CalculateTransactionPotentialCost(test.IsEip1559Enabled, test.BaseFee);
             UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(test.IsEip1559Enabled, test.BaseFee);
-            Assert.AreEqual(test.ExpectedPotentialCostResult, actualResult);
-            Assert.AreEqual(test.ExpectedEffectiveGasPriceResult, effectiveGasPrice);
-            Assert.AreEqual(test.ExpectedEffectiveGasPriceResult * (UInt256)test.GasLimit + test.Value, test.ExpectedPotentialCostResult);
+            Assert.That(actualResult, Is.EqualTo(test.ExpectedPotentialCostResult));
+            Assert.That(effectiveGasPrice, Is.EqualTo(test.ExpectedEffectiveGasPriceResult));
+            Assert.That(test.ExpectedPotentialCostResult, Is.EqualTo(test.ExpectedEffectiveGasPriceResult * (UInt256)test.GasLimit + test.Value));
         }
 
         [Test]
@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test
             transaction.GasPrice = 30;
             transaction.Type = TxType.EIP1559;
             bool tryResult = transaction.TryCalculatePremiumPerGas(100, out UInt256 premiumPerGas);
-            Assert.AreEqual(UInt256.Zero, premiumPerGas);
+            Assert.That(premiumPerGas, Is.EqualTo(UInt256.Zero));
             Assert.True(tryResult);
         }
 
@@ -47,7 +47,7 @@ namespace Nethermind.Core.Test
             transaction.GasPrice = UInt256.MaxValue;
             transaction.Type = TxType.EIP1559;
             UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(true, 100);
-            Assert.AreEqual(UInt256.MaxValue, effectiveGasPrice);
+            Assert.That(effectiveGasPrice, Is.EqualTo(UInt256.MaxValue));
         }
 
         [Test]
@@ -59,7 +59,7 @@ namespace Nethermind.Core.Test
             transaction.GasPrice = 100;
             transaction.Type = TxType.EIP1559;
             UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(true, UInt256.MaxValue);
-            Assert.AreEqual(expectedValue, effectiveGasPrice);
+            Assert.That(effectiveGasPrice, Is.EqualTo(expectedValue));
         }
 
         [Test]
@@ -70,7 +70,7 @@ namespace Nethermind.Core.Test
             transaction.GasPrice = 30;
             transaction.Type = TxType.EIP1559;
             bool tryResult = transaction.TryCalculatePremiumPerGas(100, out UInt256 premiumPerGas);
-            Assert.AreEqual(UInt256.Zero, premiumPerGas);
+            Assert.That(premiumPerGas, Is.EqualTo(UInt256.Zero));
             Assert.False(tryResult);
         }
 

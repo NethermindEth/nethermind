@@ -39,22 +39,22 @@ namespace Nethermind.Clique.Test
             // Decode snapshot
             Snapshot actual = decoder.Decode(stream.Data.AsRlpStream());
             // Validate fields
-            Assert.AreEqual(expected.Number, actual.Number);
-            Assert.AreEqual(expected.Hash, actual.Hash);
-            Assert.AreEqual(expected.Signers, actual.Signers);
-            Assert.AreEqual(expected.Votes.Count, actual.Votes.Count);
+            Assert.That(actual.Number, Is.EqualTo(expected.Number));
+            Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
+            Assert.That(actual.Signers, Is.EqualTo(expected.Signers));
+            Assert.That(actual.Votes.Count, Is.EqualTo(expected.Votes.Count));
             for (int i = 0; i < expected.Votes.Count; i++)
             {
-                Assert.AreEqual(expected.Votes[i].Signer, actual.Votes[i].Signer);
-                Assert.AreEqual(expected.Votes[i].Block, actual.Votes[i].Block);
-                Assert.AreEqual(expected.Votes[i].Address, actual.Votes[i].Address);
-                Assert.AreEqual(expected.Votes[i].Authorize, actual.Votes[i].Authorize);
+                Assert.That(actual.Votes[i].Signer, Is.EqualTo(expected.Votes[i].Signer));
+                Assert.That(actual.Votes[i].Block, Is.EqualTo(expected.Votes[i].Block));
+                Assert.That(actual.Votes[i].Address, Is.EqualTo(expected.Votes[i].Address));
+                Assert.That(actual.Votes[i].Authorize, Is.EqualTo(expected.Votes[i].Authorize));
             }
-            Assert.AreEqual(expected.Tally.Count, actual.Tally.Count);
+            Assert.That(actual.Tally.Count, Is.EqualTo(expected.Tally.Count));
             foreach (Address address in expected.Tally.Keys)
             {
-                Assert.AreEqual(expected.Tally[address].Votes, actual.Tally[address].Votes);
-                Assert.AreEqual(expected.Tally[address].Authorize, actual.Tally[address].Authorize);
+                Assert.That(actual.Tally[address].Votes, Is.EqualTo(expected.Tally[address].Votes));
+                Assert.That(actual.Tally[address].Authorize, Is.EqualTo(expected.Tally[address].Authorize));
             }
         }
 

@@ -24,8 +24,8 @@ namespace Nethermind.HealthChecks.Test
             });
             IHealthRpcModule healthRpcModule = new HealthRpcModule(nodeHealthService);
             ResultWrapper<NodeStatusResult> nodeStatus = healthRpcModule.health_nodeStatus();
-            Assert.AreEqual(false, nodeStatus.Data.Healthy);
-            Assert.AreEqual("Still syncing", nodeStatus.Data.Messages[0]);
+            Assert.That(nodeStatus.Data.Healthy, Is.EqualTo(false));
+            Assert.That(nodeStatus.Data.Messages[0], Is.EqualTo("Still syncing"));
         }
     }
 }

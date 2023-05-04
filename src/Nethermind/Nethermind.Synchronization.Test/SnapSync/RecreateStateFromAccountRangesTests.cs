@@ -98,8 +98,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             tree.Commit(0);
 
-            Assert.AreEqual(_inputTree.RootHash, tree.RootHash);
-            Assert.AreEqual(6, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+            Assert.That(tree.RootHash, Is.EqualTo(_inputTree.RootHash));
+            Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
             Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
 
@@ -118,8 +118,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result);
-            Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
@@ -138,8 +138,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result);
-            Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
@@ -155,8 +155,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
-            Assert.AreEqual(AddRangeResult.OK, result);
-            Assert.AreEqual(10, db.Keys.Count);  // we don't have the proofs so we persist all nodes
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
             Assert.IsFalse(db.KeyExists(rootHash)); // the root node is NOT a part of the proof nodes
         }
 
@@ -177,24 +177,24 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(2, db.Keys.Count);
+            Assert.That(db.Keys.Count, Is.EqualTo(2));
 
             firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
 
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(5, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+            Assert.That(db.Keys.Count, Is.EqualTo(5));  // we don't persist proof nodes (boundary nodes)
 
             firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
             var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result1);
-            Assert.AreEqual(AddRangeResult.OK, result2);
-            Assert.AreEqual(AddRangeResult.OK, result3);
-            Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
@@ -214,22 +214,22 @@ namespace Nethermind.Synchronization.Test.SnapSync
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
             var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(4, db.Keys.Count);
+            Assert.That(db.Keys.Count, Is.EqualTo(4));
 
             firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(6, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+            Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
 
             firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result1);
-            Assert.AreEqual(AddRangeResult.OK, result2);
-            Assert.AreEqual(AddRangeResult.OK, result3);
-            Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
@@ -249,22 +249,22 @@ namespace Nethermind.Synchronization.Test.SnapSync
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
             var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(4, db.Keys.Count);
+            Assert.That(db.Keys.Count, Is.EqualTo(4));
 
             firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(6, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+            Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
 
             firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result1);
-            Assert.AreEqual(AddRangeResult.OK, result2);
-            Assert.AreEqual(AddRangeResult.OK, result3);
-            Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
@@ -285,7 +285,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..3], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(3, db.Keys.Count);
+            Assert.That(db.Keys.Count, Is.EqualTo(3));
 
             firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
@@ -297,18 +297,18 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[3].Path, TestItem.Tree.AccountsWithPaths[3..5], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(6, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+            Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
 
             firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
             var result4 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result1);
-            Assert.AreEqual(AddRangeResult.OK, result2);
-            Assert.AreEqual(AddRangeResult.OK, result3);
-            Assert.AreEqual(AddRangeResult.OK, result4);
-            Assert.AreEqual(10, db.Keys.Count);  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result4, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
@@ -422,7 +422,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(2, db.Keys.Count);
+            Assert.That(db.Keys.Count, Is.EqualTo(2));
 
             firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
@@ -430,17 +430,17 @@ namespace Nethermind.Synchronization.Test.SnapSync
             // missing TestItem.Tree.AccountsWithHashes[2]
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[3..4], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(2, db.Keys.Count);
+            Assert.That(db.Keys.Count, Is.EqualTo(2));
 
             firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
             var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(AddRangeResult.OK, result1);
-            Assert.AreEqual(AddRangeResult.DifferentRootHash, result2);
-            Assert.AreEqual(AddRangeResult.OK, result3);
-            Assert.AreEqual(6, db.Keys.Count);
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(db.Keys.Count, Is.EqualTo(6));
             Assert.IsFalse(db.KeyExists(rootHash));
         }
     }
