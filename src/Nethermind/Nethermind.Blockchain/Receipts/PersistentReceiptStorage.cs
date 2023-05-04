@@ -181,7 +181,7 @@ namespace Nethermind.Blockchain.Receipts
 
         private static void GetBlockNumPrefixedKey(long blockNumber, Keccak blockHash, Span<byte> output)
         {
-            blockNumber.ToBigEndianByteArray().CopyTo(output); // TODO: We don't need to create an array here...
+            blockNumber.WriteBigEndian(output);
             blockHash!.Bytes.CopyTo(output[8..]);
         }
 
