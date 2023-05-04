@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 env:
-  DOTNET_VERSION: 7    
+  DOTNET_VERSION: 7
 
 jobs:
   nethermind:
@@ -37,9 +37,9 @@ jobs:
           - Nethermind.Evm.Test
           - Nethermind.Facade.Test
           - Nethermind.HealthChecks.Test
-          - Nethermind.Hive.Tests
+          - Nethermind.Hive.Test
           - Nethermind.JsonRpc.Test
-          - Nethermind.JsonRpc.TraceStore.Tests
+          - Nethermind.JsonRpc.TraceStore.Test
           - Nethermind.KeyStore.Test
           - Nethermind.Logging.NLog.Test
           - Nethermind.Merge.AuRa.Test
