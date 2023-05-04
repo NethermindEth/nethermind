@@ -197,14 +197,14 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test, Timeout(Timeout.MaxTestTime)]
         public void HasBlock_should_returnFalseForMissingHash()
         {
-            _storage.HasBlock(Keccak.Compute("missing-value")).Should().BeFalse();
+            _storage.HasBlock(0, Keccak.Compute("missing-value")).Should().BeFalse();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void HasBlock_should_returnTrueForKnownHash()
         {
             var (block, _) = InsertBlock();
-            _storage.HasBlock(block.Hash!).Should().BeTrue();
+            _storage.HasBlock(block.Number, block.Hash!).Should().BeTrue();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

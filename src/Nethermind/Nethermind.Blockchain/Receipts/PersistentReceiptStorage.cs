@@ -289,9 +289,14 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsCache.Clear();
         }
 
-        public bool HasBlock(Keccak hash)
+        public bool HasBlock(long blockNumber, Keccak blockHash)
         {
-            return _receiptsCache.Contains(hash) || _blocksDb.KeyExists(hash);
+            if (_receiptsCache.Contains(blockHash)) return true;
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+
+            return _blocksDb.KeyExists(blockNumPrefixed) || _blocksDb.KeyExists(blockHash);
         }
 
         public void EnsureCanonical(Block block)
