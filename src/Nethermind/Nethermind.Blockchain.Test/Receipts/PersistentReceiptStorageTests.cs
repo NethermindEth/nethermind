@@ -8,6 +8,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -30,6 +31,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         private readonly bool _useCompactReceipts;
         private ReceiptConfig _receiptConfig;
         private PersistentReceiptStorage _storage;
+        private ReceiptArrayStorageDecoder _decoder;
 
         public PersistentReceiptStorageTests(bool useCompactReceipts)
         {
@@ -51,13 +53,14 @@ namespace Nethermind.Blockchain.Test.Receipts
 
         private void CreateStorage()
         {
+            _decoder = new ReceiptArrayStorageDecoder(_useCompactReceipts);
             _storage = new PersistentReceiptStorage(
                 _receiptsDb,
                 MainnetSpecProvider.Instance,
                 _receiptsRecovery,
                 _blockTree,
                 _receiptConfig,
-                new ReceiptArrayStorageDecoder(_useCompactReceipts)
+                _decoder
             )
             { MigratedBlockNumber = 0 };
         }
@@ -98,6 +101,33 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.Get(block).Should().BeEquivalentTo(receipts);
             // second should be from cache
             _storage.Get(block).Should().BeEquivalentTo(receipts);
+        }
+
+        [Test]
+        public void Adds_should_prefix_key_with_blockNumber()
+        {
+            var (block, receipts) = InsertBlock();
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
+            block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
+
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockNumPrefixed].Should().NotBeNull();
+        }
+
+        [Test]
+        public void Should_be_able_to_get_block_with_hash_address()
+        {
+            var (block, receipts) = PrepareBlock();
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
+            block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
+
+            using NettyRlpStream rlpStream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = rlpStream.AsSpan().ToArray();
+
+            _storage.Get(block).Length.Should().Be(receipts.Length);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -307,7 +337,7 @@ namespace Nethermind.Blockchain.Test.Receipts
                 );
         }
 
-        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
+        private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
         {
             block ??= Build.A.Block
                 .WithNumber(1)
@@ -335,6 +365,12 @@ namespace Nethermind.Blockchain.Test.Receipts
                 _blockTree.FindBestSuggestedHeader().Returns(farHead);
             }
             var receipts = new[] { Build.A.Receipt.WithCalculatedBloom().TestObject };
+            return (block, receipts);
+        }
+
+        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
+        {
+            (block, TxReceipt[] receipts) = PrepareBlock(block, isFinalized, headNumber);
             _storage.Insert(block, receipts);
             _receiptsRecovery.TryRecover(block, receipts);
 
