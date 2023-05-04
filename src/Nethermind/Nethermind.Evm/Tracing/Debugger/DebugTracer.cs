@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#if DEBUG
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -291,3 +292,4 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         _autoResetEvent?.Dispose();
     }
 }
+#endif

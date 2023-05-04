@@ -22,7 +22,10 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
+
+#if DEBUG
 using Nethermind.Evm.Tracing.DebugTrace;
+#endif
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -38,7 +41,6 @@ public class VirtualMachine : IVirtualMachine
     private UInt256 BigInt256 = 256;
     public UInt256 BigInt32 = 32;
 
-    internal bool ForceDebuggerForTesting = false;
     internal byte[] BytesZero = { 0 };
 
     internal byte[] BytesZero32 =
@@ -600,14 +602,8 @@ public class VirtualMachine : IVirtualMachine
     {
         bool isTrace = _logger.IsTrace;
         bool traceOpcodes = _txTracer.IsTracingInstructions;
-        DebugTracer? debugger = null;
 #if DEBUG
-        debugger = _txTracer.GetTracer<DebugTracer>();
-#else
-        if (ForceDebuggerForTesting)
-        {
-            debugger = _txTracer.GetTracer<DebugTracer>();
-        }
+        DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
 
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -648,12 +644,14 @@ public class VirtualMachine : IVirtualMachine
             state.DataStackHead = stackHead;
         }
 
+#pragma warning disable CS8321 // Local function is declared but never used
         static void ApplyExternalState(EvmState state, out int pc, out long gas, out int stackHead)
         {
             pc = state.ProgramCounter;
             gas = state.GasAvailable;
             stackHead = state.DataStackHead;
         }
+#pragma warning restore CS8321 // Local function is declared but never used
 
         if (previousCallResult is not null)
         {
@@ -675,15 +673,12 @@ public class VirtualMachine : IVirtualMachine
 
         while (programCounter < code.Length)
         {
-            // Console.WriteLine(instruction);
-
-            if (debugger is not null)
-            {
-                debugger?.TryWait(vmState);
-                ApplyExternalState(vmState, out programCounter, out gasAvailable, out stack.Head);
-            }
-
+#if DEBUG
+            debugger?.TryWait(vmState);
+            ApplyExternalState(vmState, out programCounter, out gasAvailable, out stack.Head);
+#endif  
             Instruction instruction = (Instruction)code[programCounter];
+            // Console.WriteLine(instruction);
 
             if (traceOpcodes)
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
@@ -2430,24 +2425,28 @@ public class VirtualMachine : IVirtualMachine
             {
                 EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
             }
-            if (debugger is not null)
-            {
-                UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-            }
+#if DEBUG
+            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+#endif
         }
 
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-        debugger?.TryWait(vmState);
 // Fall through to Empty: label
 
 // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
 Empty:
+#if DEBUG
+        debugger?.TryWait(vmState);
+#endif
         return CallResult.Empty;
 OutOfGas:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.OutOfGas);
         return CallResult.OutOfGasException;
 EmptyTrace:
         if (traceOpcodes) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+#if DEBUG
+        debugger?.TryWait(vmState);
+#endif
         return CallResult.Empty;
 InvalidInstruction:
         if (traceOpcodes) EndInstructionTraceError(gasAvailable, EvmExceptionType.BadInstruction);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#if DEBUG
 using Nethermind.Evm.Tracing.DebugTrace;
 using Nethermind.Evm.Tracing.GethStyle;
 using System.Threading.Tasks;
@@ -16,14 +17,12 @@ namespace Nethermind.Evm.Test
 {
     public class DebugTracerTests : VirtualMachineTestsBase
     {
-
         public GethLikeTxTracer GethLikeTxTracer => new GethLikeTxTracer(GethTraceOptions.Default);
 
         [SetUp]
         public override void Setup()
         {
             base.Setup();
-            Machine.ForceDebuggerForTesting = true;
         }
 
         [TestCase("0x5b601760005600")]
@@ -128,7 +127,7 @@ namespace Nethermind.Evm.Test
             Assert.False(TestFailed);
         }
 
-        [TestCase("0x5b5b5b5b5b5b5b5b5b5b")]
+        [TestCase("0x5b5b5b5b5b5b5b5b5b5b00")]
         public void Debugger_Halts_Execution_On_Eeach_Iteration(string bytecodeHex)
         {
             // this bytecode is just a bunch of NOP/JUMPDEST, the idea is it will take as much bytes in the bytecode as steps to go throught it
@@ -156,7 +155,7 @@ namespace Nethermind.Evm.Test
                 }
             }
 
-            countBreaks--; //Post-run break
+            countBreaks--; //Pre-run break
 
             // we check that it matches the number of opcodes in the bytecode
             Assert.That(bytecode.Length, Is.EqualTo(countBreaks));
@@ -325,3 +324,4 @@ namespace Nethermind.Evm.Test
         }
     }
 }
+#endif
