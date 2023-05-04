@@ -108,6 +108,7 @@ namespace Ethereum.Test.Base
             bool isPostMerge = test.Network != London.Instance &&
                                test.Network != Berlin.Instance &&
                                test.Network != MuirGlacier.Instance &&
+                               test.Network != Istanbul.Instance &&
                                test.Network != ConstantinopleFix.Instance &&
                                test.Network != Constantinople.Instance &&
                                test.Network != Byzantium.Instance &&
