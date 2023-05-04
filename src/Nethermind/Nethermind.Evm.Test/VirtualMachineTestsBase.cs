@@ -131,8 +131,7 @@ namespace Nethermind.Evm.Test
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
             TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
-            Keccak codeHash = TestState.UpdateCode(code);
-            TestState.UpdateCodeHash(senderRecipientAndMiner.Recipient, codeHash, SpecProvider.GenesisSpec);
+            TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
 
             GetLogManager().GetClassLogger().Debug("Committing initial state");
             TestState.Commit(SpecProvider.GenesisSpec);
@@ -159,8 +158,7 @@ namespace Nethermind.Evm.Test
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
             TestState.CreateAccount(senderRecipientAndMiner.Recipient, 100.Ether());
-            Keccak codeHash = TestState.UpdateCode(code);
-            TestState.UpdateCodeHash(senderRecipientAndMiner.Recipient, codeHash, SpecProvider.GenesisSpec);
+            TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
 
             TestState.Commit(SpecProvider.GenesisSpec);
 

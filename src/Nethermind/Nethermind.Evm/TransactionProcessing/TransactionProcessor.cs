@@ -387,8 +387,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                         if (unspentGas >= codeDepositGasCost)
                         {
-                            Keccak codeHash = _stateProvider.UpdateCode(substate.Output);
-                            _stateProvider.UpdateCodeHash(recipient, codeHash, spec);
+                            _stateProvider.InsertCode(recipient, substate.Output, spec);
                             unspentGas -= codeDepositGasCost;
                         }
                     }

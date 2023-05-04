@@ -332,7 +332,7 @@ namespace Nethermind.PerfTest
                 if (allocation.Code != null)
                 {
                     Keccak codeHash = stateProvider.UpdateCode(allocation.Code);
-                    stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
+                    stateProvider.InsertCode(address, codeHash, specProvider.GenesisSpec);
                 }
 
                 if (allocation.Constructor != null)

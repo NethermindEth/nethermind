@@ -252,8 +252,7 @@ public class VirtualMachine : IVirtualMachine
                         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
-                            Keccak codeHash = _state.UpdateCode(callResult.Output);
-                            _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
+                            _state.InsertCode(callCodeOwner, callResult.Output, spec);
                             currentState.GasAvailable -= codeDepositGasCost;
 
                             if (_txTracer.IsTracingActions)
