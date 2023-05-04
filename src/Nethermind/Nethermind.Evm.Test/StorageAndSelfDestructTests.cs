@@ -86,6 +86,12 @@ namespace Nethermind.Evm.Test
             _processor.Execute(tx2, block2.Header, tracer2);
             CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber + 2);
             AssertStorageStateReader(new StorageCell(contractAddress, 1), 0);
+
+            TestState.CreateAccount(contractAddress, 100.Ether());
+            CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber + 3);
+            Storage.Set(new StorageCell(contractAddress, 2), new byte[] { 1 });
+            CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber + 4);
+            AssertStorageStateReader(new StorageCell(contractAddress, 1), 0);
         }
 
         void CommitEverything(long blockNumber)
