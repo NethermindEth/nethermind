@@ -238,7 +238,7 @@ public partial class BlockProcessor : IBlockProcessor
         _stateProvider.Commit(spec);
         _stateProvider.RecalculateStateRoot();
 
-        if (_specProvider.GetSpec(block.Header).IsEip4844Enabled)
+        if (_specProvider.GetSpec(block.Header).IsEip4844Enabled && block.Header.Number != 0)
         {
             block.Header.ExcessDataGas = IntrinsicGasCalculator.CalculateExcessDataGas(
                 _blockFinder.FindParentHeader(block.Header)?.ExcessDataGas,

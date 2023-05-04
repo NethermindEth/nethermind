@@ -215,6 +215,7 @@ public class ChainSpecLoader : IChainSpecLoader
         chainSpec.ArrowGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(4).FirstOrDefault();
         chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
         chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
+        chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
 
         // TheMerge parameters
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
@@ -379,7 +380,7 @@ public class ChainSpecLoader : IChainSpecLoader
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
-            genesisHeader.ExcessDataGas ??= 0;
+            genesisHeader.ExcessDataGas = chainSpecJson.Genesis.ExcessDataGas;
 
         genesisHeader.AuRaStep = step;
         genesisHeader.AuRaSignature = auRaSignature;
