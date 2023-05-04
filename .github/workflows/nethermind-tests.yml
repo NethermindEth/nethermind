@@ -47,10 +47,10 @@ jobs:
           - Nethermind.Mev.Test
           - Nethermind.Mining.Test
           - Nethermind.Monitoring.Test
-          - Nethermind.Network.Test
           - Nethermind.Network.Discovery.Test
           - Nethermind.Network.Dns.Test
           - Nethermind.Network.Enr.Test
+          - Nethermind.Network.Test
           - Nethermind.Overseer.Test
           - Nethermind.Runner.Test
           - Nethermind.Serialization.Ssz.Test
