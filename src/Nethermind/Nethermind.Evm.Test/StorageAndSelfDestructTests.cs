@@ -25,6 +25,78 @@ namespace Nethermind.Evm.Test
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [Test]
+        public void Load_Self_Destruct_StateReader()
+        {
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.Commit(SpecProvider.GenesisSpec);
+            TestState.CommitTree(0);
+
+            byte[] initByteCode = Prepare.EvmCode
+                .ForInitOf(
+                    Prepare.EvmCode
+                        .PushData(1)
+                        .Op(Instruction.SLOAD)
+                        .PushData(1)
+                        .Op(Instruction.EQ)
+                        .PushData(17)
+                        .Op(Instruction.JUMPI)
+                        .PushData(1)
+                        .PushData(1)
+                        .Op(Instruction.SSTORE)
+                        .PushData(21)
+                        .Op(Instruction.JUMP)
+                        .Op(Instruction.JUMPDEST)
+                        .PushData(0)
+                        .Op(Instruction.SELFDESTRUCT)
+                        .Op(Instruction.JUMPDEST)
+                        .Done)
+                .Done;
+
+            Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+
+            byte[] byteCode1 = Prepare.EvmCode
+                .Call(contractAddress, 100000)
+                .Op(Instruction.STOP).Done;
+
+            byte[] byteCode2 = Prepare.EvmCode
+                .Call(contractAddress, 100000)
+                .Op(Instruction.STOP).Done;
+
+            long gasLimit = 1000000;
+
+            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
+
+            Transaction initTx = Build.A.Transaction.WithCode(initByteCode).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            Block blockInit = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(initTx).WithGasLimit(2 * gasLimit).TestObject;
+            ParityLikeTxTracer initTracer = new(blockInit, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            _processor.Execute(initTx, blockInit.Header, initTracer);
+            CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber);
+            AssertStorageStateReader(new StorageCell(contractAddress, 1), 0);
+
+            Transaction tx1 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(1).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            Block block1 = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber + 1).WithTransactions(tx1).WithGasLimit(2 * gasLimit).TestObject;
+            ParityLikeTxTracer tracer1 = new(block1, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            _processor.Execute(tx1, block1.Header, tracer1);
+            CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber + 1);
+            AssertStorageStateReader(new StorageCell(contractAddress, 1), 1);
+
+            Transaction tx2 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            Block block2 = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber + 2).WithTransactions(tx2).WithGasLimit(2 * gasLimit).TestObject;
+            ParityLikeTxTracer tracer2 = new(block2, tx2, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            _processor.Execute(tx2, block2.Header, tracer2);
+            CommitEverything(MainnetSpecProvider.MuirGlacierBlockNumber + 2);
+            AssertStorageStateReader(new StorageCell(contractAddress, 1), 0);
+        }
+
+        void CommitEverything(long blockNumber)
+        {
+            Storage.Commit();
+            TestState.Commit(SpecProvider.GetSpec(blockNumber, null));
+            Storage.CommitTrees(blockNumber);
+            TestState.CommitTree(blockNumber);
+        }
+
+        [Test]
         public void Load_self_destruct()
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());

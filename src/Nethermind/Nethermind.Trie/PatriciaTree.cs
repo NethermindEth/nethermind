@@ -384,8 +384,8 @@ namespace Nethermind.Trie
                 Span<byte> nibbles = rawKey.Length <= 64
                     ? stackalloc byte[nibblesCount]
                     : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
-                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles.Slice(0, nibblesCount));
+                byte[]? result = Run(nibbles.Slice(0, nibblesCount), nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
                 return result;
             }
@@ -443,8 +443,8 @@ namespace Nethermind.Trie
             Span<byte> nibbles = rawKey.Length <= 64
                 ? stackalloc byte[nibblesCount]
                 : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
-            Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-            Run(nibbles, nibblesCount, value, true);
+            Nibbles.BytesToNibbleBytes(rawKey, nibbles.Slice(0, nibblesCount));
+            Run(nibbles.Slice(0, nibblesCount), nibblesCount, value, true);
             if (array is not null) ArrayPool<byte>.Shared.Return(array);
         }
 
@@ -486,7 +486,7 @@ namespace Nethermind.Trie
             if (startRootHash is not null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
-                TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash);
+                TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
                 startNode.ResolveNode(TrieStore);
                 result = TraverseNode(startNode, in traverseContext);
             }

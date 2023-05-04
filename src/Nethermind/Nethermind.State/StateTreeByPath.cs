@@ -85,31 +85,14 @@ namespace Nethermind.State
 
         public byte[]? GetStorage(in UInt256 index, in Address accountAddress, Keccak? root = null)
         {
-            int storageKeyLength = StorageKeyLength;
-            if (Capability == TrieNodeResolverCapability.Path) storageKeyLength += StoragePrefixLength;
+            Account? account = Get(accountAddress, root);
+            if (account is null || (account.StorageRoot == Keccak.EmptyTreeHash)) return new byte[] { 0 };
 
-            Span<byte> key = stackalloc byte[storageKeyLength];
-            switch (Capability)
+            StorageTree tree = new StorageTree(TrieStore, NullLogManager.Instance, accountAddress)
             {
-                case TrieNodeResolverCapability.Hash:
-                    GetStorageKey(index, key);
-                    break;
-                case TrieNodeResolverCapability.Path:
-                    Keccak.Compute(accountAddress.Bytes).Bytes.CopyTo(key);
-                    key[32] = StorageTree.StorageDifferentiatingByte;
-                    GetStorageKey(index, key.Slice(33));
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
-
-
-            byte[]? value = Get(key, root);
-            if (value is null) return new byte[] { 0 };
-
-            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
-            return rlp.DecodeByteArray();
+                RootHash = account.StorageRoot
+            };
+            return tree.Get(index, account.StorageRoot);
         }
 
         public void SetStorage(in UInt256 index, byte[] value, in Address accountAddress)

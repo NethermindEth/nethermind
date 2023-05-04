@@ -35,6 +35,7 @@ namespace Nethermind.Evm.Test
 
         protected VirtualMachine Machine { get; private set; }
         protected IStateProvider TestState { get; private set; }
+        protected StateReader TestStateReader { get; private set; }
         protected IStorageProvider Storage { get; private set; }
 
         protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
@@ -65,6 +66,7 @@ namespace Nethermind.Evm.Test
             _stateDb = new MemDb();
             ITrieStore trieStore = new TrieStoreByPath(_stateDb, logManager);
             TestState = new StateProvider(trieStore, codeDb, logManager);
+            TestStateReader = new StateReader(trieStore, codeDb, logManager);
             Storage = new StorageProvider(trieStore, TestState, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
@@ -260,6 +262,20 @@ namespace Nethermind.Evm.Test
             else
             {
                 byte[] actualValue = Storage.Get(storageCell);
+                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");
+            }
+        }
+
+        protected void AssertStorageStateReader(StorageCell storageCell, UInt256 expectedValue)
+        {
+            _callIndex++;
+            if (!TestState.AccountExists(storageCell.Address))
+            {
+                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[] { 0 }, $"storage {storageCell}, call {_callIndex}");
+            }
+            else
+            {
+                byte[] actualValue = TestStateReader.GetStorage(TestState.StateRoot, storageCell.Address, storageCell.Index);
                 Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");
             }
         }
