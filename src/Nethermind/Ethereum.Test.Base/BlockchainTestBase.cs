@@ -105,7 +105,19 @@ namespace Ethereum.Test.Base
 
             DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-            if (test.Network!.IsEip1559Enabled && test.Network != London.Instance) // All post-merge networks. No 1559 and not London
+            bool isPostMerge = test.Network != London.Instance &&
+                               test.Network != Berlin.Instance &&
+                               test.Network != MuirGlacier.Instance &&
+                               test.Network != ConstantinopleFix.Instance &&
+                               test.Network != Constantinople.Instance &&
+                               test.Network != Byzantium.Instance &&
+                               test.Network != SpuriousDragon.Instance &&
+                               test.Network != TangerineWhistle.Instance &&
+                               test.Network != Dao.Instance &&
+                               test.Network != Homestead.Instance &&
+                               test.Network != Frontier.Instance &&
+                               test.Network != Olympic.Instance;
+            if (isPostMerge)
             {
                 rewardCalculator = NoBlockRewards.Instance;
                 specProvider.UpdateMergeTransitionInfo(0, 0);
