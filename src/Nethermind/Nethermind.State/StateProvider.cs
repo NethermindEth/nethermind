@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Witnesses;
@@ -764,6 +765,7 @@ namespace Nethermind.State
             _intraBlockCache.Reset();
             _committedThisRound.Reset();
             _readsForTracing.Clear();
+            (_codeDb as ReadOnlyDb)?.ClearTempChanges();
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);
             _needsStateRootUpdate = false;
@@ -784,7 +786,7 @@ namespace Nethermind.State
             // placeholder for the three level Commit->CommitBlock->CommitBranch
         }
 
-        // used in EtheereumTests
+        // used in EthereumTests
         internal void SetNonce(Address address, in UInt256 nonce)
         {
             _needsStateRootUpdate = true;
