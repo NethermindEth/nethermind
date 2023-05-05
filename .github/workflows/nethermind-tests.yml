@@ -174,9 +174,8 @@ jobs:
 
   codecov-upload:
     name: Upload Codecov reports
-    continue-on-error: true
-    if: needs.nethermind-tests.outputs.collect_coverage == 'true'
     needs: [nethermind-tests-status, ethereum-tests-status]
+    if: needs.nethermind-tests.outputs.collect_coverage == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Download coverage reports
