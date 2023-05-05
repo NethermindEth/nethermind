@@ -29,7 +29,8 @@ namespace Nethermind.State
             TrieStatsCollector collector = new(codeStorage, logManager);
             stateProvider.Accept(collector, stateProvider.StateRoot, new VisitingOptions
             {
-                MaxDegreeOfParallelism = Environment.ProcessorCount, FullScanMemoryBudget = 16.GiB(), // Gonna guess that if you are running this, you have a decent setup.
+                MaxDegreeOfParallelism = Environment.ProcessorCount,
+                FullScanMemoryBudget = 16.GiB(), // Gonna guess that if you are running this, you have a decent setup.
             });
             return collector.Stats;
         }

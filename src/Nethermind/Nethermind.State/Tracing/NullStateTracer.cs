@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.State.Tracing;
 
-public class NullStateTracer: IWorldStateTracer
+public class NullStateTracer : IWorldStateTracer
 {
     private NullStateTracer() { }
 

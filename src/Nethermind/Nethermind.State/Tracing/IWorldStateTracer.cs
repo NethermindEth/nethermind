@@ -3,7 +3,7 @@
 
 namespace Nethermind.State.Tracing;
 
-public interface IWorldStateTracer: IStateTracer, IStorageTracer
+public interface IWorldStateTracer : IStateTracer, IStorageTracer
 {
 
 }
