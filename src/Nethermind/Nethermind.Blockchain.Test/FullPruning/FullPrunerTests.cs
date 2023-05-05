@@ -160,7 +160,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         }
 
         private TestContext CreateTest(bool successfulPruning = true, bool clearPrunedDb = false, FullPruningCompletionBehavior completionBehavior = FullPruningCompletionBehavior.None) =>
-                new(successfulPruning, clearPrunedDb, completionBehavior, _fullPrunerMemoryBudgetMb, _degreeOfParallelism);
+            new(successfulPruning, clearPrunedDb, completionBehavior, _fullPrunerMemoryBudgetMb, _degreeOfParallelism);
 
         private class TestContext
         {
@@ -173,7 +173,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public IStateReader StateReader { get; }
             public FullPruner Pruner { get; }
             public MemDb TrieDb { get; }
-            public TestMemDb CopyDb { get; }
+            public MemDb CopyDb { get; }
 
             public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
@@ -182,8 +182,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 bool clearPrunedDb = false,
                 FullPruningCompletionBehavior completionBehavior = FullPruningCompletionBehavior.None,
                 int fullScanMemoryBudgetMb = 0,
-                int degreeOfParallelism = 0
-            )
+                int degreeOfParallelism = 0)
             {
                 BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
                 _clearPrunedDb = clearPrunedDb;
@@ -201,7 +200,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
-                    FullPruningCompletionBehavior = completionBehavior,
+                    FullPruningCompletionBehavior = completionBehavior
                 }, BlockTree, StateReader, ProcessExitSource, LimboLogs.Instance);
             }
 
@@ -252,11 +251,6 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                     CopyDb[keyValuePair.Key].Should().BeEquivalentTo(keyValuePair.Value);
                 }
-            }
-
-            public void ShouldHadTuneType(ITunableDb.TuneType heavyWrite)
-            {
-                CopyDb.WasTunedWith(heavyWrite);
             }
         }
 

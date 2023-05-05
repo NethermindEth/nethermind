@@ -13,7 +13,7 @@ namespace Nethermind.Core.Test;
 /// <summary>
 /// MemDB with additional tools for testing purposes since you can't use NSubstitute with refstruct
 /// </summary>
-public class TestMemDb : MemDb, ITunableDb
+public class TestMemDb : MemDb
 {
     private List<(byte[], ReadFlags)> _readKeys = new();
     private List<(byte[], WriteFlags)> _writeKeys = new();
@@ -52,16 +52,6 @@ public class TestMemDb : MemDb, ITunableDb
             return;
         }
         base.Remove(key);
-    }
-
-    public void Tune(ITunableDb.TuneType type)
-    {
-        _tuneTypes.Add(type);
-    }
-
-    public bool WasTunedWith(ITunableDb.TuneType type)
-    {
-        return _tuneTypes.IndexOf(type) != -1;
     }
 
     public void KeyWasRead(byte[] key, int times = 1)
