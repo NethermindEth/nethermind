@@ -35,11 +35,6 @@ namespace Nethermind.Db.FullPruning
         /// </summary>
         string InnerDbName { get; }
 
-        /// <summary>
-        /// Set the tune for the cloned db
-        /// </summary>
-        void TuneClonedDb(ITunableDb.TuneType tuneType);
-
         event EventHandler<PruningEventArgs> PruningStarted;
         event EventHandler<PruningEventArgs> PruningFinished;
     }

@@ -29,7 +29,6 @@ namespace Nethermind.Db
         public int FullPruningMaxDegreeOfParallelism { get; set; } = 0;
         public int FullPruningMemoryBudgetMb { get; set; } = 0;
         public bool FullPruningDisableLowPriorityWrites { get; set; } = false;
-        public ITunableDb.TuneType FullPruningDbTuneMode { get; set; } = ITunableDb.TuneType.Default;
         public int FullPruningMinimumDelayHours { get; set; } = 240;
         public FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; } = FullPruningCompletionBehavior.None;
     }

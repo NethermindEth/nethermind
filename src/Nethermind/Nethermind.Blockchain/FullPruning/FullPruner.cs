@@ -182,8 +182,6 @@ namespace Nethermind.Blockchain.FullPruning
                     writeFlags = WriteFlags.None;
                 }
 
-                _fullPruningDb.TuneClonedDb(_pruningConfig.FullPruningDbTuneMode);
-
                 using CopyTreeVisitor copyTreeVisitor = new(pruning, writeFlags, _logManager);
                 VisitingOptions visitingOptions = new()
                 {
@@ -191,8 +189,6 @@ namespace Nethermind.Blockchain.FullPruning
                     FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
                 };
                 _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
-
-                _fullPruningDb.TuneClonedDb(ITunableDb.TuneType.Default);
 
                 if (!pruning.CancellationTokenSource.IsCancellationRequested)
                 {

@@ -10,7 +10,6 @@ public interface ITunableDb : IDb
     enum TuneType
     {
         Default,
-        StableWrite,
         WriteBias,
         HeavyWrite,
         AggressiveHeavyWrite,
