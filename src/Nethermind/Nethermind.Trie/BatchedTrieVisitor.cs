@@ -128,7 +128,7 @@ public class BatchedTrieVisitor
             int degreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism;
             if (degreeOfParallelism == 0)
             {
-                degreeOfParallelism = Math.Max(Environment.ProcessorCount, 1);
+                degreeOfParallelism = Math.Max(Environment.ProcessorCount / 2, 1);
             }
 
             Task[]? tasks = Enumerable.Range(0, degreeOfParallelism)
