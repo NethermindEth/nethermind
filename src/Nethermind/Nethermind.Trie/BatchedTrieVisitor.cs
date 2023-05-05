@@ -76,7 +76,7 @@ public class BatchedTrieVisitor
         int degreeOfParallelism = visitingOptions.MaxDegreeOfParallelism;
         if (degreeOfParallelism == 0)
         {
-            degreeOfParallelism = Math.Max(Environment.ProcessorCount, 1);
+            degreeOfParallelism = Math.Max(Environment.ProcessorCount / 2, 1);
         }
         long maxPartitionCount = 4000 * Math.Min(4, degreeOfParallelism);
 
