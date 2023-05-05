@@ -175,13 +175,24 @@ namespace Nethermind.Blockchain.FullPruning
             try
             {
                 pruning.MarkStart();
-                using CopyTreeVisitor copyTreeVisitor = new(pruning, _logManager);
+
+                WriteFlags writeFlags = WriteFlags.LowPriority;
+                if (_pruningConfig.FullPruningDisableLowPriorityWrites)
+                {
+                    writeFlags = WriteFlags.None;
+                }
+
+                _fullPruningDb.TuneClonedDb(_pruningConfig.FullPruningDbTuneMode);
+
+                using CopyTreeVisitor copyTreeVisitor = new(pruning, writeFlags, _logManager);
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
                     FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
                 };
                 _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
+
+                _fullPruningDb.TuneClonedDb(ITunableDb.TuneType.Default);
 
                 if (!pruning.CancellationTokenSource.IsCancellationRequested)
                 {

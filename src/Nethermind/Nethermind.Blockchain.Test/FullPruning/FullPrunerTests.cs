@@ -50,6 +50,17 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.ShouldCopyAllValues();
         }
 
+        [Test]
+        public async Task can_prune_with_different_tune()
+        {
+            TestContext test = CreateTest(tuneType: ITunableDb.TuneType.HeavyWrite);
+            bool contextDisposed = await test.WaitForPruning();
+            contextDisposed.Should().BeTrue();
+            test.ShouldCopyAllValues();
+            test.ShouldHadTuneType(ITunableDb.TuneType.HeavyWrite);
+            test.ShouldHadTuneType(ITunableDb.TuneType.Default);
+        }
+
         [Test, Timeout(Timeout.MaxTestTime)]
         public async Task pruning_deletes_old_db_on_success()
         {
@@ -159,8 +170,18 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.FullPruningDb[key].Should().BeEquivalentTo(key);
         }
 
-        private TestContext CreateTest(bool successfulPruning = true, bool clearPrunedDb = false, FullPruningCompletionBehavior completionBehavior = FullPruningCompletionBehavior.None) =>
-            new(successfulPruning, clearPrunedDb, completionBehavior, _fullPrunerMemoryBudgetMb, _degreeOfParallelism);
+        private TestContext CreateTest(
+            bool successfulPruning = true,
+            bool clearPrunedDb = false,
+            FullPruningCompletionBehavior completionBehavior = FullPruningCompletionBehavior.None,
+            ITunableDb.TuneType tuneType = ITunableDb.TuneType.Default) =>
+                new(
+                    successfulPruning,
+                    clearPrunedDb,
+                    completionBehavior,
+                    _fullPrunerMemoryBudgetMb,
+                    _degreeOfParallelism,
+                    tuneType: tuneType);
 
         private class TestContext
         {
@@ -173,7 +194,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public IStateReader StateReader { get; }
             public FullPruner Pruner { get; }
             public MemDb TrieDb { get; }
-            public MemDb CopyDb { get; }
+            public TestMemDb CopyDb { get; }
 
             public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
@@ -182,7 +203,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 bool clearPrunedDb = false,
                 FullPruningCompletionBehavior completionBehavior = FullPruningCompletionBehavior.None,
                 int fullScanMemoryBudgetMb = 0,
-                int degreeOfParallelism = 0)
+                int degreeOfParallelism = 0,
+                ITunableDb.TuneType tuneType = ITunableDb.TuneType.Default
+            )
             {
                 BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
                 _clearPrunedDb = clearPrunedDb;
@@ -200,7 +223,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
-                    FullPruningCompletionBehavior = completionBehavior
+                    FullPruningCompletionBehavior = completionBehavior,
+                    FullPruningDbTuneMode = tuneType,
                 }, BlockTree, StateReader, ProcessExitSource, LimboLogs.Instance);
             }
 
@@ -251,6 +275,11 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                     CopyDb[keyValuePair.Key].Should().BeEquivalentTo(keyValuePair.Value);
                 }
+            }
+
+            public void ShouldHadTuneType(ITunableDb.TuneType heavyWrite)
+            {
+                CopyDb.WasTunedWith(heavyWrite);
             }
         }
 

@@ -166,6 +166,14 @@ namespace Nethermind.Db.FullPruning
         /// <inheritdoc />
         public string InnerDbName => _currentDb.Name;
 
+        public void TuneClonedDb(ITunableDb.TuneType tuneType)
+        {
+            if (_pruningContext?.CloningDb != null && _pruningContext?.CloningDb is ITunableDb tunableDb)
+            {
+                tunableDb.Tune(tuneType);
+            }
+        }
+
         public event EventHandler<PruningEventArgs>? PruningStarted;
         public event EventHandler<PruningEventArgs>? PruningFinished;
 

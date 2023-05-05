@@ -928,6 +928,15 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             // Note, in practice on my machine, the reads does not reach the SSD. Read measured from SSD is much lower
             // than read measured from process. It is likely that most files are cached as I have 128GB of RAM.
             // Also notice that the heavier the tune, the higher the reads.
+            case ITunableDb.TuneType.StableWrite:
+                // Make l0 and l1 of the same size as recommended. Since the default l1 size is 256MB, this basically
+                // keep everything else the same. Basically, it should have the same compaction pattern as default,
+                // except for l0 and l1 compaction, so this should have minimum effect on block processing, but
+                // because our write buffer is so low, this still reduce write amplification. In theory, if write is
+                // not limited, this should have the highest throughput among all tunes.
+                // On mainnet, the l0 target num is 17.
+                ApplyOptions(GetHeavyWriteOptionsTargetingL0Size((ulong)256.MB()));
+                break;
             case ITunableDb.TuneType.WriteBias:
                 // The default l1SizeTarget is 256MB, so the compaction is fairly light. But the default options is not very
                 // efficient for write amplification to conserve memory, so the write amplification reduction is noticeable.
@@ -998,6 +1007,12 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "soft_pending_compaction_bytes_limit", 64.GiB().ToString() },
             { "hard_pending_compaction_bytes_limit", 256.GiB().ToString() },
         };
+    }
+
+    private IDictionary<string, string> GetHeavyWriteOptionsTargetingL0Size(ulong targetl0SizeBytes)
+    {
+        ulong l0TargetNum = Math.Max(1, targetl0SizeBytes / (_perTableDbConfig.WriteBufferSize * 2));
+        return GetHeavyWriteOptions(l0TargetNum);
     }
 
     /// <summary>

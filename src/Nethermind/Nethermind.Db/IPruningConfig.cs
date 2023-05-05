@@ -49,6 +49,16 @@ namespace Nethermind.Db
             DefaultValue = "0")]
         int FullPruningMemoryBudgetMb { get; set; }
 
+        [ConfigItem(
+            Description = "Full pruning uses low priority writes to prevent blocking block processing. If not needed, set this to true for faster full pruning.",
+            DefaultValue = "false")]
+        bool FullPruningDisableLowPriorityWrites { get; set; }
+
+        [ConfigItem(
+            Description = "Set the tuning mode for the pruning database during pruning. Using more aggressive tune will reduce full pruning time at expense of memory and block processing stability.",
+            DefaultValue = "Default")]
+        ITunableDb.TuneType FullPruningDbTuneMode { get; set; }
+
         [ConfigItem(Description = "In order to not exhaust disk writes, there is a minimum delay between allowed full pruning operations.", DefaultValue = "240")]
         int FullPruningMinimumDelayHours { get; set; }
 
