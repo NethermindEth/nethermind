@@ -131,8 +131,7 @@ namespace Nethermind.Consensus.Validators
             {
                 if (transaction.BlobVersionedHashes[i] is null ||
                     transaction.BlobVersionedHashes![i].Length !=
-                    KzgPolynomialCommitments.BytesPerBlobVersionedHash ||
-                    transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+                    KzgPolynomialCommitments.BytesPerBlobVersionedHash)
                 {
                     return false;
                 }
