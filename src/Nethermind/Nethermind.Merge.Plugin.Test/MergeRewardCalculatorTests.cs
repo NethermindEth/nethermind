@@ -31,14 +31,14 @@ namespace Nethermind.Merge.Plugin.Test
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
-            Assert.AreEqual(3, rewards.Length);
-            Assert.AreEqual(5312500000000000000, (long)rewards[0].Value, "miner");
-            Assert.AreEqual(3750000000000000000, (long)rewards[1].Value, "uncle1");
-            Assert.AreEqual(3750000000000000000, (long)rewards[2].Value, "uncle2");
+            Assert.That(rewards.Length, Is.EqualTo(3));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(5312500000000000000), "miner");
+            Assert.That((long)rewards[1].Value, Is.EqualTo(3750000000000000000), "uncle1");
+            Assert.That((long)rewards[2].Value, Is.EqualTo(3750000000000000000), "uncle2");
 
             rewards = calculator.CalculateRewards(block2);
 
-            Assert.AreEqual(0, rewards.Length);
+            Assert.That(rewards.Length, Is.EqualTo(0));
         }
 
         [Test]
@@ -54,12 +54,12 @@ namespace Nethermind.Merge.Plugin.Test
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
-            Assert.AreEqual(2, rewards.Length);
-            Assert.AreEqual(5156250000000000000, (long)rewards[0].Value, "miner");
-            Assert.AreEqual(3750000000000000000, (long)rewards[1].Value, "uncle1");
+            Assert.That(rewards.Length, Is.EqualTo(2));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(5156250000000000000), "miner");
+            Assert.That((long)rewards[1].Value, Is.EqualTo(3750000000000000000), "uncle1");
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(0, rewards.Length);
+            Assert.That(rewards.Length, Is.EqualTo(0));
         }
 
         [Test]
@@ -74,11 +74,11 @@ namespace Nethermind.Merge.Plugin.Test
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
-            Assert.AreEqual(1, rewards.Length);
-            Assert.AreEqual(5000000000000000000, (long)rewards[0].Value, "miner");
+            Assert.That(rewards.Length, Is.EqualTo(1));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(5000000000000000000), "miner");
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(0, rewards.Length);
+            Assert.That(rewards.Length, Is.EqualTo(0));
         }
 
         [Test]
@@ -96,14 +96,14 @@ namespace Nethermind.Merge.Plugin.Test
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
-            Assert.AreEqual(3, rewards.Length);
-            Assert.AreEqual(3187500000000000000, (long)rewards[0].Value, "miner");
-            Assert.AreEqual(2250000000000000000, (long)rewards[1].Value, "uncle1");
-            Assert.AreEqual(2250000000000000000, (long)rewards[2].Value, "uncle2");
+            Assert.That(rewards.Length, Is.EqualTo(3));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(3187500000000000000), "miner");
+            Assert.That((long)rewards[1].Value, Is.EqualTo(2250000000000000000), "uncle1");
+            Assert.That((long)rewards[2].Value, Is.EqualTo(2250000000000000000), "uncle2");
 
             rewards = calculator.CalculateRewards(block2);
 
-            Assert.AreEqual(0, rewards.Length);
+            Assert.That(rewards.Length, Is.EqualTo(0));
         }
 
         [Test]
@@ -121,13 +121,13 @@ namespace Nethermind.Merge.Plugin.Test
             MergeRewardCalculator calculator = new(new RewardCalculator(RopstenSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
-            Assert.AreEqual(3, rewards.Length);
-            Assert.AreEqual(2125000000000000000, (long)rewards[0].Value, "miner");
-            Assert.AreEqual(1500000000000000000, (long)rewards[1].Value, "uncle1");
-            Assert.AreEqual(1500000000000000000, (long)rewards[2].Value, "uncle2");
+            Assert.That(rewards.Length, Is.EqualTo(3));
+            Assert.That((long)rewards[0].Value, Is.EqualTo(2125000000000000000), "miner");
+            Assert.That((long)rewards[1].Value, Is.EqualTo(1500000000000000000), "uncle1");
+            Assert.That((long)rewards[2].Value, Is.EqualTo(1500000000000000000), "uncle2");
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(0, rewards.Length);
+            Assert.That(rewards.Length, Is.EqualTo(0));
         }
 
         [Test]
@@ -141,10 +141,10 @@ namespace Nethermind.Merge.Plugin.Test
             MergeRewardCalculator calculator = new(NoBlockRewards.Instance, poSSwitcher);
 
             BlockReward[] rewards = calculator.CalculateRewards(block);
-            Assert.AreEqual(0, rewards.Length);
+            Assert.That(rewards.Length, Is.EqualTo(0));
 
             rewards = calculator.CalculateRewards(block2);
-            Assert.AreEqual(0, rewards.Length);
+            Assert.That(rewards.Length, Is.EqualTo(0));
         }
 
 

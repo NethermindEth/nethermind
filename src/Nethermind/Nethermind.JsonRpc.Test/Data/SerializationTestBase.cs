@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             if (equalityComparer is null)
             {
-                Assert.AreEqual(item, deserialized, description);
+                Assert.That(deserialized, Is.EqualTo(item), description);
             }
             else
             {
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             T deserialized = serializer.Deserialize<T>(json);
             string result = serializer.Serialize(deserialized);
-            Assert.AreEqual(json, result);
+            Assert.That(result, Is.EqualTo(json));
         }
 
         private void TestToJson<T>(T item, JsonConverter<T>? converter, string expectedResult)
@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Test.Data
             }
 
             string result = serializer.Serialize(item);
-            Assert.AreEqual(expectedResult, result, result.Replace("\"", "\\\""));
+            Assert.That(result, Is.EqualTo(expectedResult), result.Replace("\"", "\\\""));
         }
 
         protected void TestToJson<T>(T item, string expectedResult)

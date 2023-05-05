@@ -6,13 +6,9 @@ using System.Threading.Tasks;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -44,6 +40,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
                 if (_mergeBlockProductionPolicy is null) throw new ArgumentNullException(nameof(_mergeBlockProductionPolicy));
                 if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
+                if (_api.BlockProducerEnvFactory is null) throw new ArgumentNullException(nameof(_api.BlockProducerEnvFactory));
 
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 

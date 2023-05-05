@@ -82,7 +82,7 @@ namespace Nethermind.Consensus.Ethash
 
         private BigInteger TimeBomb(IReleaseSpec spec, long blockNumber)
         {
-            blockNumber = blockNumber - spec.DifficultyBombDelay;
+            blockNumber -= spec.DifficultyBombDelay;
 
             return blockNumber < InitialDifficultyBombBlock ? BigInteger.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
         }

@@ -30,6 +30,7 @@
         "randomnessContractAddress": {
           "9186425": "0x5870b0527DeDB1cFBD9534343Feda1a41Ce47766"
         },
+        "withdrawalContractAddress": "0x0B98057eA310F4d31F2a452B414647007d1645d9",
         "posdaoTransition": 9186425,
         "rewriteBytecode": {
           "21735000": {

@@ -1,4 +1,4 @@
-name: 'Hive tests'
+name: Hive tests
    
 on: 
   push:
@@ -7,37 +7,38 @@ on:
   workflow_dispatch:
     inputs:
       test-suite:
-        description: 'Test suite'
+        description: Test suite
         required: true
-        default: 'ethereum/engine' 
+        default: ethereum/engine
         type: choice
         options:
         - devp2p
         - ethereum/consensus
         - ethereum/engine
         - ethereum/graphql
+        - ethereum/pyspec
         - ethereum/rpc
         - ethereum/rpc-compat
         - ethereum/sync
       limit:
-        description: 'Limit'
+        description: Limit
         required: false
         type: string 
       log-level:
-        description: 'Log level'
+        description: Log level
         required: true
-        default: '3' 
+        default: '3'
         type: choice
         options: ['0', '1', '2', '3', '4', '5']
       hive-repo:
-        description: 'Hive repo'
+        description: Hive repo
         required: true
-        default: 'ethereum/hive'
+        default: ethereum/hive
         type: string        
       hive-branch:
-        description: 'Hive branch'
-        default: 'master'
+        description: Hive branch
         required: false
+        default: master
         type: string
 
 jobs:
@@ -71,10 +72,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
-      - name: Set up Go environment
-        uses: actions/setup-go@v3.0.0
+      - name: Set up Go
+        uses: actions/setup-go@v4
         with:
-          go-version: '>=1.17.0'
+          go-version: stable
       - name: Check out Hive repository
         uses: actions/checkout@v3
         with:
@@ -82,7 +83,7 @@ jobs:
           ref: ${{ env.HIVE_BRANCH }}
           path: hive
       - name: Patch Hive Dockerfile
-        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+        run: sed -i 's#FROM $user/$repo:$branch#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
       - name: Build Hive
         working-directory: hive
         run: go build .
@@ -105,6 +106,7 @@ jobs:
           path: hive/workspace
           retention-days: 7
       - name: Print results
-        run: | 
+        run: |
+          rm hive/workspace/logs/hive.json # redundant: remove to avoid jq error
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"

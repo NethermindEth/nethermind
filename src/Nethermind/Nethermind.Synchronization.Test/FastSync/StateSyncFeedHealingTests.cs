@@ -38,10 +38,10 @@ namespace Nethermind.Synchronization.Test.FastSync
 
 
             dbContext.CompareTrees("END");
-            Assert.AreEqual(dbContext.RemoteStateTree.RootHash, dbContext.LocalStateTree.RootHash);
+            Assert.That(dbContext.LocalStateTree.RootHash, Is.EqualTo(dbContext.RemoteStateTree.RootHash));
 
             // I guess state root will be requested regardless
-            Assert.AreEqual(1, data.RequestedNodesCount);   // 4 boundary proof nodes stitched together => 0
+            Assert.That(data.RequestedNodesCount, Is.EqualTo(1));   // 4 boundary proof nodes stitched together => 0
         }
 
         [Test]

@@ -7,17 +7,20 @@ namespace Nethermind.Core
 {
     public interface IKeyValueStore : IReadOnlyKeyValueStore
     {
-        new byte[]? this[ReadOnlySpan<byte> key] { get; set; }
+        new byte[]? this[ReadOnlySpan<byte> key]
+        {
+            get => Get(key, ReadFlags.None);
+            set => Set(key, value, WriteFlags.None);
+        }
+
+        void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None);
     }
 
     public interface IReadOnlyKeyValueStore
     {
-        byte[]? this[ReadOnlySpan<byte> key] { get; }
+        byte[]? this[ReadOnlySpan<byte> key] => Get(key, ReadFlags.None);
 
-        byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            return this[key];
-        }
+        byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
     }
 
     public enum ReadFlags
@@ -27,5 +30,13 @@ namespace Nethermind.Core
         // Hint that the workload is likely to not going to benefit from caching and should skip any cache handling
         // to reduce CPU usage
         HintCacheMiss,
+    }
+
+    public enum WriteFlags
+    {
+        None,
+
+        // Hint that this is a low priority write
+        LowPriority,
     }
 }

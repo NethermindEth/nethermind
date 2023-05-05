@@ -14,25 +14,25 @@ namespace Nethermind.Core;
 [DebuggerDisplay("{Hash} ({Number})")]
 public class Block
 {
-    public Block(BlockHeader blockHeader, BlockBody body)
+    public Block(BlockHeader header, BlockBody body)
     {
-        Header = blockHeader;
-        Body = body;
+        Header = header ?? throw new ArgumentNullException(nameof(header));
+        Body = body ?? throw new ArgumentNullException(nameof(body));
     }
 
     public Block(
-        BlockHeader blockHeader,
+        BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
         IEnumerable<Withdrawal>? withdrawals = null)
     {
-        Header = blockHeader;
+        Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
     }
 
-    public Block(BlockHeader blockHeader) : this(
-        blockHeader,
-        new(null, null, blockHeader.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
+    public Block(BlockHeader header) : this(
+        header,
+        new(null, null, header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
     )
     { }
 

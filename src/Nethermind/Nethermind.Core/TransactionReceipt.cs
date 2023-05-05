@@ -82,7 +82,7 @@ namespace Nethermind.Core
         /// </summary>
         public Span<byte> LogsRlp { get; set; }
 
-        public LogEntry[]? Logs { get; }
+        public LogEntry[]? Logs { get; set; }
 
         public string? Error { get; set; }
 
@@ -103,7 +103,7 @@ namespace Nethermind.Core
             PostTransactionState = (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
             Bloom = (receipt.Bloom ?? Core.Bloom.Empty).ToStructRef();
             Logs = receipt.Logs;
-            LogsRlp = Span<byte>.Empty;
+            LogsRlp = default;
             Error = receipt.Error;
         }
     }

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -72,6 +74,26 @@ namespace Nethermind.Facade.Eth
             };
         }
 
+        private readonly Stopwatch _syncStopwatch = new();
+        public TimeSpan UpdateAndGetSyncTime()
+        {
+            if (!_syncStopwatch.IsRunning)
+            {
+                if (IsSyncing())
+                {
+                    _syncStopwatch.Start();
+                }
+                return TimeSpan.Zero;
+            }
+
+            if (!IsSyncing())
+            {
+                _syncStopwatch.Stop();
+                return TimeSpan.Zero;
+            }
+
+            return _syncStopwatch.Elapsed;
+        }
 
         public bool IsSyncing()
         {

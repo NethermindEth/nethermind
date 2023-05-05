@@ -170,28 +170,6 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        private void AddReceipts(params TxReceipt[] txReceipts)
-        {
-            if (txReceipts is null)
-            {
-                throw new ArgumentNullException(nameof(txReceipts));
-            }
-
-            if (txReceipts.Length == 0)
-            {
-                return;
-            }
-
-            IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
-            foreach (LogFilter filter in filters)
-            {
-                for (int i = 0; i < txReceipts.Length; i++)
-                {
-                    StoreLogs(filter, txReceipts[i], ref _logIndex);
-                }
-            }
-        }
-
         private void AddBlock(Block block)
         {
             if (block is null)

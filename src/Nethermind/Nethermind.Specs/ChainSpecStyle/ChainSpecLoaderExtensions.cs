@@ -82,10 +82,8 @@ public static class ChainSpecLoaderExtensions
             {
                 // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
             }
-            finally
-            {
-                throw new FileNotFoundException(missingChainspecFileMessage.ToString());
-            }
+
+            throw new FileNotFoundException(missingChainspecFileMessage.ToString());
         }
         if (logger.IsInfo) logger.Info($"Loading chainspec from file: {filePath}");
         return chainSpecLoader.Load(File.ReadAllText(filePath));

@@ -1,0 +1,10 @@
+/.github/ @nethermindeth/core-devops @rubo
+/scripts/ @nethermindeth/core-devops @rubo
+
+/src/ @nethermindeth/core-general
+/tools/ @nethermindeth/core-general
+/.* @nethermindeth/core-general
+
+/Dockerfile* @nethermindeth/core-devops @rubo
+/LICENSE* @rubo @LukaszRozmej @MarekM25
+*.md @rubo @LukaszRozmej @MarekM25

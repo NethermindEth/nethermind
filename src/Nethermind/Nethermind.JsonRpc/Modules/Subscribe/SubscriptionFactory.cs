@@ -108,7 +108,7 @@ public class SubscriptionFactory : ISubscriptionFactory
     private static CustomSubscriptionType CreateSubscriptionType(Func<IJsonRpcDuplexClient, Subscription> customSubscriptionDelegate) =>
         new(((client, _) => customSubscriptionDelegate(client)));
 
-    private struct CustomSubscriptionType
+    private readonly struct CustomSubscriptionType
     {
         public Func<IJsonRpcDuplexClient, object, Subscription> Constructor { get; }
         public Type? ParamType { get; }

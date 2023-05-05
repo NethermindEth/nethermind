@@ -1,13 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using HardwareInformation;
-using HardwareInformation.Information;
 using Nethermind.Api;
 using ILogger = Nethermind.Logging.ILogger;
 
@@ -28,10 +23,16 @@ public class LogHardwareInfo : IStep
     {
         if (!_logger.IsInfo) return Task.CompletedTask;
 
-        MachineInformation info = MachineInformationGatherer.GatherInformation();
-
-        CPU cpu = info.Cpu;
-        _logger.Info($"CPU: {cpu.Name} ({cpu.PhysicalCores}C{cpu.LogicalCores}T), {cpu.NormalClockSpeed}Mhz - {cpu.MaxClockSpeed}Mhz");
+        try
+        {
+            var cpu = Cpu.RuntimeInformation.GetCpuInfo();
+            if (cpu is not null)
+            {
+                _logger.Info($"CPU: {cpu.ProcessorName} ({cpu.PhysicalCoreCount}C{cpu.LogicalCoreCount}T)");
+            }
+        }
+        catch
+        { }
 
         return Task.CompletedTask;
     }

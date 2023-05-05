@@ -4,8 +4,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
@@ -24,6 +26,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
+        private readonly IProcessExitSource _processExitSource;
         private readonly ILogManager _logManager;
         private IPruningContext? _currentPruning;
         private int _waitingForBlockProcessed = 0;
@@ -40,6 +43,7 @@ namespace Nethermind.Blockchain.FullPruning
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
             IStateReader stateReader,
+            IProcessExitSource processExitSource,
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
@@ -47,6 +51,7 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningConfig = pruningConfig;
             _blockTree = blockTree;
             _stateReader = stateReader;
+            _processExitSource = processExitSource;
             _logManager = logManager;
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger();
@@ -160,7 +165,7 @@ namespace Nethermind.Blockchain.FullPruning
                 case FullPruningCompletionBehavior.AlwaysShutdown:
                 case FullPruningCompletionBehavior.ShutdownOnSuccess when e.Success:
                     if (_logger.IsInfo) _logger.Info($"Full Pruning completed {(e.Success ? "successfully" : "unsuccessfully")}, shutting down as requested in the configuration.");
-                    Task.Run(() => Environment.Exit(0));
+                    _processExitSource.Exit(ExitCodes.Ok);
                     break;
             }
         }
@@ -170,8 +175,19 @@ namespace Nethermind.Blockchain.FullPruning
             try
             {
                 pruning.MarkStart();
-                using CopyTreeVisitor copyTreeVisitor = new(pruning, _logManager);
-                VisitingOptions visitingOptions = new() { MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism };
+
+                WriteFlags writeFlags = WriteFlags.LowPriority;
+                if (_pruningConfig.FullPruningDisableLowPriorityWrites)
+                {
+                    writeFlags = WriteFlags.None;
+                }
+
+                using CopyTreeVisitor copyTreeVisitor = new(pruning, writeFlags, _logManager);
+                VisitingOptions visitingOptions = new()
+                {
+                    MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
+                    FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
+                };
                 _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
 
                 if (!pruning.CancellationTokenSource.IsCancellationRequested)
@@ -195,8 +211,9 @@ namespace Nethermind.Blockchain.FullPruning
                     pruning.Dispose();
                 }
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                _logger.Error("Error during pruning. ", e);
                 pruning.Dispose();
                 throw;
             }

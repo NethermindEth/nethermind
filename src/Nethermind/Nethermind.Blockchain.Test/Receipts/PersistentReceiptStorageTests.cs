@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -11,25 +12,54 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts
 {
+
+    [TestFixture(true)]
+    [TestFixture(false)]
     public class PersistentReceiptStorageTests
     {
         private MemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
-        private PersistentReceiptStorage _storage = null!;
+        private ReceiptsRecovery _receiptsRecovery;
+        private IBlockTree _blockTree;
+        private readonly bool _useCompactReceipts;
+        private ReceiptConfig _receiptConfig;
+        private PersistentReceiptStorage _storage;
+
+        public PersistentReceiptStorageTests(bool useCompactReceipts)
+        {
+            _useCompactReceipts = useCompactReceipts;
+        }
 
         [SetUp]
         public void SetUp()
         {
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
             EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
-            ReceiptsRecovery receiptsRecovery = new(ethereumEcdsa, specProvider);
+            _receiptConfig = new ReceiptConfig();
+            _receiptsRecovery = new(ethereumEcdsa, specProvider);
             _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
-            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, receiptsRecovery) { MigratedBlockNumber = 0 };
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
+            _blockTree = Substitute.For<IBlockTree>();
+            CreateStorage();
+        }
+
+        private void CreateStorage()
+        {
+            _storage = new PersistentReceiptStorage(
+                _receiptsDb,
+                MainnetSpecProvider.Instance,
+                _receiptsRecovery,
+                _blockTree,
+                _receiptConfig,
+                new ReceiptArrayStorageDecoder(_useCompactReceipts)
+            )
+            { MigratedBlockNumber = 0 };
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -105,10 +135,11 @@ namespace Nethermind.Blockchain.Test.Receipts
             var (block, _) = InsertBlock();
 
             _storage.ClearCache();
-            _storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
+            _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
             iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
             receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
             receiptStructRef.Logs.Should().BeNullOrEmpty();
+
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }
 
@@ -147,9 +178,11 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void EnsureCanonical_should_change_tx_blockhash([Values(false, true)] bool ensureCanonical)
+        public void EnsureCanonical_should_change_tx_blockhash(
+            [Values(false, true)] bool ensureCanonical,
+            [Values(false, true)] bool isFinalized)
         {
-            (Block block, TxReceipt[] receipts) = InsertBlock();
+            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: isFinalized);
             _storage.FindBlockHash(receipts[0].TxHash!).Should().Be(block.Hash!);
 
             Block anotherBlock = Build.A.Block
@@ -160,6 +193,7 @@ namespace Nethermind.Blockchain.Test.Receipts
 
             anotherBlock.Hash.Should().NotBe(block.Hash!);
             _storage.Insert(anotherBlock, new[] { Build.A.Receipt.TestObject }, ensureCanonical);
+            _blockTree.FindBlockHash(anotherBlock.Number).Returns(anotherBlock.Hash);
 
             Keccak findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
             if (ensureCanonical)
@@ -172,15 +206,138 @@ namespace Nethermind.Blockchain.Test.Receipts
             }
         }
 
-        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null)
+        [Test]
+        public void EnsureCanonical_should_use_blocknumber_if_finalized()
+        {
+            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().NotBeNull();
+            }
+        }
+
+        [Test]
+        public void When_TxLookupLimitIs_NegativeOne_DoNotIndexTxHash()
+        {
+            _receiptConfig.TxLookupLimit = -1;
+            CreateStorage();
+            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
+            Thread.Sleep(100);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeNull();
+        }
+
+        [Test]
+        [Ignore("Needs to be fixed, details https://github.com/NethermindEth/nethermind/pull/5621")]
+        public void Should_not_index_tx_hash_if_blockNumber_is_negative()
+        {
+            _receiptConfig.TxLookupLimit = 10;
+            CreateStorage();
+            _blockTree.BlockAddedToMain +=
+                Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(1).TestObject));
+            Thread.Sleep(100);
+            var calls = _blockTree.ReceivedCalls()
+                .Where(call => !call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.BlockAddedToMain)));
+            calls.Should().BeEmpty();
+        }
+
+        [Test]
+        public void When_HeadBlockIsFarAhead_DoNotIndexTxHash()
+        {
+            _receiptConfig.TxLookupLimit = 1000;
+            CreateStorage();
+            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
+            Thread.Sleep(100);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeNull();
+        }
+
+        [Test]
+        public void When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock()
+        {
+            CreateStorage();
+            (Block block, TxReceipt[] receipts) = InsertBlock();
+
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().NotBeNull();
+            }
+
+            Block newHead = Build.A.Block.WithNumber(1).TestObject;
+            _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead, block));
+
+            Assert.That(
+                () => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes],
+                Is.Null.After(1000, 100)
+                );
+        }
+
+        [Test]
+        public void When_NewHeadBlock_ClearOldTxIndex()
+        {
+            _receiptConfig.TxLookupLimit = 1000;
+            CreateStorage();
+            (Block block, TxReceipt[] receipts) = InsertBlock();
+
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes].Should().NotBeNull();
+            }
+
+            Block newHead = Build.A.Block.WithNumber(_receiptConfig.TxLookupLimit.Value + 1).TestObject;
+            _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead));
+
+            Assert.That(
+                () => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash.Bytes],
+                Is.Null.After(1000, 100)
+                );
+        }
+
+        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
         {
             block ??= Build.A.Block
+                .WithNumber(1)
                 .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
                 .WithReceiptsRoot(TestItem.KeccakA)
                 .TestObject;
 
-            var receipts = new[] { Build.A.Receipt.TestObject };
+            _blockTree.FindBlock(block.Hash).Returns(block);
+            _blockTree.FindBlock(block.Number).Returns(block);
+            _blockTree.FindHeader(block.Number).Returns(block.Header);
+            _blockTree.FindBlockHash(block.Number).Returns(block.Hash);
+            if (isFinalized)
+            {
+                BlockHeader farHead = Build.A.BlockHeader
+                    .WithNumber(Reorganization.MaxDepth + 5)
+                    .TestObject;
+                _blockTree.FindBestSuggestedHeader().Returns(farHead);
+            }
+
+            if (headNumber != null)
+            {
+                BlockHeader farHead = Build.A.BlockHeader
+                    .WithNumber(headNumber.Value)
+                    .TestObject;
+                _blockTree.FindBestSuggestedHeader().Returns(farHead);
+            }
+            var receipts = new[] { Build.A.Receipt.WithCalculatedBloom().TestObject };
             _storage.Insert(block, receipts);
+            _receiptsRecovery.TryRecover(block, receipts);
+
             return (block, receipts);
         }
     }

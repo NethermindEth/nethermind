@@ -22,6 +22,7 @@ public class TrieNodeResolverWithReadFlagsTests
         TrieNodeResolverWithReadFlags resolver = new(trieStore, theFlags);
 
         Keccak theKeccak = TestItem.KeccakA;
+        memDb[theKeccak.Bytes] = TestItem.KeccakA.Bytes;
         resolver.LoadRlp(theKeccak);
 
         memDb.KeyWasReadWithFlags(theKeccak.Bytes, theFlags);

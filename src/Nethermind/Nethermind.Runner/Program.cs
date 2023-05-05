@@ -50,7 +50,7 @@ namespace Nethermind.Runner
 
         private static ILogger _logger = SimpleConsoleLogger.Instance;
 
-        private static readonly CancellationTokenSource _processCloseCancellationSource = new();
+        private static readonly ProcessExitSource _processExitSource = new();
         private static readonly TaskCompletionSource<object?> _cancelKeySource = new();
         private static readonly TaskCompletionSource<object?> _processExit = new();
         private static readonly ManualResetEventSlim _appClosed = new(true);
@@ -189,15 +189,19 @@ namespace Nethermind.Runner
 
                 INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
                 ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
+                nethermindApi.ProcessExit = _processExitSource;
 
                 _appClosed.Reset();
                 EthereumRunner ethereumRunner = new(nethermindApi);
-                int exitCode = ExitCodes.Ok;
                 try
                 {
-                    await ethereumRunner.Start(_processCloseCancellationSource.Token);
+                    await ethereumRunner.Start(_processExitSource.Token);
 
                     _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                }
+                catch (TaskCanceledException)
+                {
+                    if (_logger.IsTrace) _logger.Trace("Runner Task was canceled");
                 }
                 catch (OperationCanceledException)
                 {
@@ -206,15 +210,7 @@ namespace Nethermind.Runner
                 catch (Exception e)
                 {
                     if (_logger.IsError) _logger.Error("Error during ethereum runner start", e);
-                    if (e is IExceptionWithExitCode withExit)
-                    {
-                        exitCode = withExit.ExitCode;
-                    }
-                    else
-                    {
-                        exitCode = ExitCodes.GeneralError;
-                    }
-                    _processCloseCancellationSource.Cancel();
+                    _processExitSource.Exit(e is IExceptionWithExitCode withExit ? withExit.ExitCode : ExitCodes.GeneralError);
                 }
 
                 _logger.Info("Closing, please wait until all functions are stopped properly...");
@@ -222,7 +218,7 @@ namespace Nethermind.Runner
                 _logger.Info("All done, goodbye!");
                 _appClosed.Set();
 
-                return exitCode;
+                return _processExitSource.ExitCode;
             });
 
             try
@@ -447,7 +443,7 @@ namespace Nethermind.Runner
             configProvider.AddSource(new JsonConfigSource(configFilePath));
             configProvider.Initialize();
             var incorrectSettings = configProvider.FindIncorrectSettings();
-            if (incorrectSettings.Errors.Count() > 0)
+            if (incorrectSettings.Errors.Count > 0)
             {
                 _logger.Warn($"Incorrect config settings found:{Environment.NewLine}{incorrectSettings.ErrorMsg}");
             }
@@ -458,7 +454,7 @@ namespace Nethermind.Runner
 
         private static void CurrentDomainOnProcessExit(object? sender, EventArgs e)
         {
-            _processCloseCancellationSource.Cancel();
+            _processExitSource.Exit(ExitCodes.Ok);
             _processExit.SetResult(null);
             _appClosed.Wait();
         }
@@ -516,7 +512,7 @@ namespace Nethermind.Runner
 
         private static void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
         {
-            _processCloseCancellationSource.Cancel();
+            _processExitSource.Exit(ExitCodes.Ok);
             _ = _cancelKeySource.TrySetResult(null);
             e.Cancel = true;
         }

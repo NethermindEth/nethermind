@@ -15,8 +15,8 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 {
     private readonly IDictionary<T, ColumnDb> _columnDbs = new Dictionary<T, ColumnDb>();
 
-    public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys)
-        : base(basePath, settings, dbConfig, logManager, GetColumnFamilies(dbConfig, settings, GetEnumKeys(keys)))
+    public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
+        : base(basePath, settings, dbConfig, logManager, GetEnumKeys(keys).Select((key) => key.ToString()).ToList(), sharedCache: sharedCache)
     {
         keys = GetEnumKeys(keys);
 
@@ -36,30 +36,10 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return keys;
     }
 
-    private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, RocksDbSettings settings, IReadOnlyList<T> keys)
+    protected override void BuildOptions<O>(PerTableDbConfig dbConfig, Options<O> options, IntPtr? sharedCache)
     {
-        InitCache(dbConfig);
-
-        ColumnFamilies result = new();
-        ulong blockCacheSize = new PerTableDbConfig(dbConfig, settings).BlockCacheSize;
-        foreach (T key in keys)
-        {
-            ColumnFamilyOptions columnFamilyOptions = new();
-            columnFamilyOptions.OptimizeForPointLookup(blockCacheSize);
-            columnFamilyOptions.SetBlockBasedTableFactory(
-                new BlockBasedTableOptions()
-                    .SetFilterPolicy(BloomFilterPolicy.Create())
-                    .SetBlockCache(_cache));
-            result.Add(key.ToString(), columnFamilyOptions);
-        }
-        return result;
-    }
-
-    protected override DbOptions BuildOptions(IDbConfig dbConfig)
-    {
-        DbOptions options = base.BuildOptions(dbConfig);
+        base.BuildOptions(dbConfig, options, sharedCache);
         options.SetCreateMissingColumnFamilies();
-        return options;
     }
 
     public IDbWithSpan GetColumnDb(T key) => _columnDbs[key];

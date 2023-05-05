@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -282,13 +283,6 @@ namespace Nethermind.Consensus.Processing
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-
-                        bool readOnlyChain = blockRef.ProcessingOptions.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-                        if (!readOnlyChain)
-                        {
-                            _stats.UpdateStats(block, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
-                        }
-
                         BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                     }
                 }
@@ -375,9 +369,10 @@ namespace Nethermind.Consensus.Processing
             }
 
             bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            long blockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             if (!readonlyChain)
             {
-                Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
+                Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMs;
             }
 
             if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
@@ -385,12 +380,12 @@ namespace Nethermind.Consensus.Processing
                 if (_logger.IsTrace) _logger.Trace($"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
                 _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
 
-                Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
+                Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMs;
             }
 
             if (!readonlyChain)
             {
-                _stats.UpdateStats(lastProcessed, _blockTree, _recoveryQueue.Count, _blockQueue.Count);
+                _stats.UpdateStats(lastProcessed, _blockTree, _recoveryQueue.Count, _blockQueue.Count, _stopwatch.ElapsedMicroseconds());
             }
 
             return lastProcessed;
