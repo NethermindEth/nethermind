@@ -90,7 +90,7 @@ jobs:
       run: |
         dotnet test src/Nethermind/${{ matrix.project }} -c release \
           ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover' || '' }}
-    - name: Check for failure
+    - name: Report test failure
       id: test-failure
       if: failure() && steps.test.outcome != 'success'
       run: echo "failed=true" >> $GITHUB_OUTPUT
@@ -152,7 +152,7 @@ jobs:
       run: |
         dotnet test src/Nethermind/${{ matrix.project }} -c release \
           ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover -p:Exclude="[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Ethereum.Test.Base]*"' || '' }}
-    - name: Check for failure
+    - name: Report test failure
       id: test-failure
       if: failure() && steps.test.outcome != 'success'
       run: echo "failed=true" >> $GITHUB_OUTPUT
