@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             NetBridge netBridge = new(enode, Substitute.For<ISyncServer>());
             NetRpcModule rpcModule = new(LimboLogs.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetRpcModule>(rpcModule, "net_peerCount");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}", response);
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}"));
         }
 
         [Test]
@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             NetBridge netBridge = new(enode, syncServer);
             NetRpcModule rpcModule = new(LimboLogs.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetRpcModule>(rpcModule, "net_version");
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestBlockchainIds.NetworkId}\",\"id\":67}}", response);
+            Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestBlockchainIds.NetworkId}\",\"id\":67}}"));
 
             _ = blockTree.DidNotReceive().ChainId;
             _ = blockTree.Received().NetworkId;
@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             NetBridge netBridge = new(enode, Substitute.For<ISyncServer>());
             NetRpcModule rpcModule = new(LimboLogs.Instance, netBridge);
             string response = RpcTest.TestSerializedRequest<INetRpcModule>(rpcModule, "net_listening");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}", response);
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
         }
     }
 }

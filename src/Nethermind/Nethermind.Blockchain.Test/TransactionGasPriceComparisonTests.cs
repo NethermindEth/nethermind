@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain.Test
             Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithGasPrice((UInt256)gasPriceY).TestObject;
             int result = comparer.Compare(x, y);
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
         [Timeout(Timeout.MaxTestTime)]
@@ -119,7 +119,7 @@ namespace Nethermind.Blockchain.Test
             Transaction y = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
                 .WithGasPrice((UInt256)gasPriceY).WithGasBottleneck((UInt256)gasBottleneckY).TestObject;
             int result = comparer.Compare(x, y);
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
         [Timeout(Timeout.MaxTestTime)]
@@ -146,7 +146,7 @@ namespace Nethermind.Blockchain.Test
                 .WithMaxFeePerGas((UInt256)feeCapY).WithMaxPriorityFeePerGas((UInt256)gasPremiumY)
                 .WithType(TxType.EIP1559).TestObject;
             int result = comparer.Compare(x, y);
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
         private class TestingContext

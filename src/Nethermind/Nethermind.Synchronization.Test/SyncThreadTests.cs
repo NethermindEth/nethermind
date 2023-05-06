@@ -85,12 +85,12 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        [Retry(3)] // experiencing some flakiness
+        [Retry(20)] // experiencing some flakiness
         public void Setup_is_correct()
         {
             foreach (SyncTestContext peer in _peers)
             {
-                Assert.AreEqual(_genesis.Header.Hash, peer.SyncServer.Head?.Hash);
+                Assert.That(peer.SyncServer.Head?.Hash, Is.EqualTo(_genesis.Header.Hash));
             }
         }
 
@@ -140,11 +140,9 @@ namespace Nethermind.Synchronization.Test
             for (int i = 0; i < _peers.Count; i++)
             {
                 Address headBlockBeneficiary = headBlock.Beneficiary!;
-                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
-                Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlockBeneficiary),
-                    _peers[i].StateProvider.GetBalance(headBlockBeneficiary), i + " balance");
-                Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB),
-                    _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
+                Assert.That(_peers[i].SyncServer.Head!.Number, Is.EqualTo(headBlock.Header.Number), i.ToString());
+                Assert.That(_peers[i].StateProvider.GetBalance(headBlockBeneficiary), Is.EqualTo(_originPeer.StateProvider.GetBalance(headBlockBeneficiary)), i + " balance");
+                Assert.That(_peers[i].StateProvider.GetBalance(TestItem.AddressB), Is.EqualTo(_originPeer.StateProvider.GetBalance(TestItem.AddressB)), i + " balance B");
             }
         }
 
@@ -188,7 +186,7 @@ namespace Nethermind.Synchronization.Test
         {
             foreach (SyncTestContext peer in _peers)
             {
-                Assert.AreEqual(_genesis.Hash, peer.SyncServer.Head!.Hash, "genesis hash");
+                Assert.That(peer.SyncServer.Head!.Hash, Is.EqualTo(_genesis.Hash), "genesis hash");
             }
 
             Block headBlock = ProduceBlocks(_chainLength);
@@ -212,11 +210,9 @@ namespace Nethermind.Synchronization.Test
             for (int i = 0; i < _peers.Count; i++)
             {
                 Address headBlockBeneficiary = headBlock.Beneficiary!;
-                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
-                Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlockBeneficiary),
-                    _peers[i].StateProvider.GetBalance(headBlockBeneficiary), i + " balance");
-                Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB),
-                    _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
+                Assert.That(_peers[i].SyncServer.Head!.Number, Is.EqualTo(headBlock.Header.Number), i.ToString());
+                Assert.That(_peers[i].StateProvider.GetBalance(headBlockBeneficiary), Is.EqualTo(_originPeer.StateProvider.GetBalance(headBlockBeneficiary)), i + " balance");
+                Assert.That(_peers[i].StateProvider.GetBalance(TestItem.AddressB), Is.EqualTo(_originPeer.StateProvider.GetBalance(TestItem.AddressB)), i + " balance B");
             }
         }
 

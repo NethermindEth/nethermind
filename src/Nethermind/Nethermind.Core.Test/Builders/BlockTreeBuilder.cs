@@ -104,7 +104,7 @@ namespace Nethermind.Core.Test.Builders
                     if (!(current.IsGenesis && skipGenesis))
                     {
                         AddBlockResult result = TestObjectInternal.SuggestBlock(current);
-                        Assert.AreEqual(AddBlockResult.Added, result, $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
+                        Assert.That(result, Is.EqualTo(AddBlockResult.Added), $"Adding {current.ToString(Block.Format.Short)} at split variant {splitVariant}");
 
                         TestObjectInternal.UpdateMainChain(current);
                     }

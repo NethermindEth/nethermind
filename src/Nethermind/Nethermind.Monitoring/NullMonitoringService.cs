@@ -23,5 +23,7 @@ namespace Nethermind.Monitoring
         {
             return Task.CompletedTask;
         }
+
+        public void AddMetricsUpdateAction(Action callback) { }
     }
 }

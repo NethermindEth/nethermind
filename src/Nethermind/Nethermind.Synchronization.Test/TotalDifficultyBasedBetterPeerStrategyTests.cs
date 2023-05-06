@@ -26,7 +26,7 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
         BlockHeader header = Build.A.BlockHeader.WithTotalDifficulty(td).TestObject;
 
         TotalDifficultyBetterPeerStrategy betterPeerStrategy = new(LimboLogs.Instance);
-        Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(header, syncPeer));
+        Assert.That(betterPeerStrategy.Compare(header, syncPeer), Is.EqualTo(expectedResult));
     }
 
     [TestCase(9, -1)]
@@ -39,7 +39,7 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
         syncPeer.HeadNumber.Returns(10);
 
         TotalDifficultyBetterPeerStrategy betterPeerStrategy = new(LimboLogs.Instance);
-        Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(((UInt256)td, 10), syncPeer));
+        Assert.That(betterPeerStrategy.Compare(((UInt256)td, 10), syncPeer), Is.EqualTo(expectedResult));
     }
 
     [TestCase(9, -1)]
@@ -48,7 +48,7 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
     public void Compare_with_values_return_expected_results(long td, int expectedResult)
     {
         TotalDifficultyBetterPeerStrategy betterPeerStrategy = new(LimboLogs.Instance);
-        Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(((UInt256)td, 10), ((UInt256)10, 10)));
+        Assert.That(betterPeerStrategy.Compare(((UInt256)td, 10), ((UInt256)10, 10)), Is.EqualTo(expectedResult));
     }
 
     [TestCase(9, false)]
@@ -57,7 +57,7 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
     public void IsBetterThanLocalChain_return_expected_results(long td, bool expectedResult)
     {
         TotalDifficultyBetterPeerStrategy betterPeerStrategy = new(LimboLogs.Instance);
-        Assert.AreEqual(expectedResult, betterPeerStrategy.IsBetterThanLocalChain(((UInt256)td, 10), ((UInt256)10, 10)));
+        Assert.That(betterPeerStrategy.IsBetterThanLocalChain(((UInt256)td, 10), ((UInt256)10, 10)), Is.EqualTo(expectedResult));
     }
 
     [TestCase(3, 4, 5, 2, true)]
@@ -71,7 +71,7 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
         syncPeer.HeadNumber.Returns(peerNumber);
 
         TotalDifficultyBetterPeerStrategy betterPeerStrategy = new(LimboLogs.Instance);
-        Assert.AreEqual(expectedResult, betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestHeader)));
+        Assert.That(betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestHeader)), Is.EqualTo(expectedResult));
     }
 
 
@@ -79,7 +79,7 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
     public void IsLowerThanTerminalTotalDifficulty_return_expected_results()
     {
         IBetterPeerStrategy betterPeerStrategy = new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
-        Assert.AreEqual(true, betterPeerStrategy.IsLowerThanTerminalTotalDifficulty((UInt256)10));
+        Assert.That(betterPeerStrategy.IsLowerThanTerminalTotalDifficulty((UInt256)10), Is.EqualTo(true));
     }
 
 }

@@ -149,3 +149,7 @@ BEFORE you start work on a feature or fix, please read and follow our [contribut
 ## License
 
 Nethermind is an open-source software licensed under the [LGPL-3.0](https://github.com/nethermindeth/nethermind/blob/master/LICENSE-LGPL).
+
+## Security 
+
+If you believe you have found a security vulnerability in our code, please report it to us as described in our [security policy](https://github.com/nethermindeth/nethermind/blob/master/SECURITY.md).

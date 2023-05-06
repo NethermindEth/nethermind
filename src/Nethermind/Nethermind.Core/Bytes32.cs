@@ -99,6 +99,6 @@ public class Bytes32 : IEquatable<Bytes32>
 
     public override int GetHashCode()
     {
-        return BinaryPrimitives.ReadInt32LittleEndian(AsSpan().Slice(0, 4));
+        return BinaryPrimitives.ReadInt32LittleEndian(AsSpan()[..4]);
     }
 }

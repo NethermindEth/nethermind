@@ -276,19 +276,19 @@ namespace Nethermind.TxPool.Test
 
             // LatestPendingNonce=0, for a new account
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
-            Assert.AreEqual(latestNonce, (UInt256)0);
+            Assert.That((UInt256)0, Is.EqualTo(latestNonce));
 
             // LatestPendingNonce=1, when the current nonce of the account=1 and no pending transactions
             _stateProvider.IncrementNonce(TestItem.AddressA);
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
-            Assert.AreEqual(latestNonce, (UInt256)1);
+            Assert.That((UInt256)1, Is.EqualTo(latestNonce));
 
             // LatestPendingNonce=1, when a pending transaction added to the pool with a gap in nonce (skipping nonce=1)
             Transaction tx = Build.A.Transaction.WithNonce(2).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.Accepted);
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
-            Assert.AreEqual(latestNonce, (UInt256)1);
+            Assert.That((UInt256)1, Is.EqualTo(latestNonce));
 
             // LatestPendingNonce=5, when added pending transactions upto nonce=4
             tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -301,14 +301,14 @@ namespace Nethermind.TxPool.Test
             result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.Accepted);
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
-            Assert.AreEqual(latestNonce, (UInt256)5);
+            Assert.That((UInt256)5, Is.EqualTo(latestNonce));
 
             //LatestPendingNonce=5, when added a new pending transaction with a gap in nonce (skipped nonce=5)
             tx = Build.A.Transaction.WithNonce(6).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.Accepted);
             latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
-            Assert.AreEqual(latestNonce, (UInt256)5);
+            Assert.That((UInt256)5, Is.EqualTo(latestNonce));
         }
 
         [Test]
@@ -778,7 +778,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             AddTransactionToPool();
-            Assert.AreEqual(1, _txPool.GetOwnPendingTransactions().Length);
+            Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(1));
         }
 
         [Test]
@@ -789,7 +789,7 @@ namespace Nethermind.TxPool.Test
             _txPool.RemoveTransaction(transaction.Hash);
             _txPool.RemoveTransaction(TestItem.KeccakA);
             _txPool.SubmitTx(transaction, TxHandlingOptions.None);
-            Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
+            Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(0));
         }
 
         [TestCase(1, 0)]
@@ -1505,10 +1505,7 @@ namespace Nethermind.TxPool.Test
                 new TransactionComparerProvider(specProvider, _blockTree);
 
             _headInfo = chainHeadInfoProvider;
-            if (_headInfo is null)
-            {
-                _headInfo = new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
-            }
+            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
 
             return new TxPool(
                 _ethereumEcdsa,
@@ -1585,7 +1582,7 @@ namespace Nethermind.TxPool.Test
         private void EnsureSenderBalance(Transaction transaction)
         {
             UInt256 requiredBalance;
-            if (transaction.IsEip1559)
+            if (transaction.Supports1559)
             {
                 if (UInt256.MultiplyOverflow(transaction.MaxFeePerGas, (UInt256)transaction.GasLimit, out requiredBalance))
                 {

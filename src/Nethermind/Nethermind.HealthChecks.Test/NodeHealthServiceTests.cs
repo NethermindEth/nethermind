@@ -67,16 +67,16 @@ namespace Nethermind.HealthChecks.Test
                 new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
                     healthHintService, ethSyncingInfo, new EngineRpcCapabilitiesProvider(api.SpecProvider), api, new[] { drive }, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();
-            Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
-            Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
-            Assert.AreEqual(test.ExpectedLongMessage, FormatMessages(result.Messages.Select(x => x.LongMessage)));
+            Assert.That(result.Healthy, Is.EqualTo(test.ExpectedHealthy));
+            Assert.That(FormatMessages(result.Messages.Select(x => x.Message)), Is.EqualTo(test.ExpectedMessage));
+            Assert.That(FormatMessages(result.Messages.Select(x => x.LongMessage)), Is.EqualTo(test.ExpectedLongMessage));
         }
 
         [Test]
         public void post_merge_health_checks([ValueSource(nameof(CheckHealthPostMergeTestCases))] CheckHealthPostMergeTest test)
         {
-            Assert.AreEqual(test.EnabledCapabilities.Length, test.EnabledCapabilitiesUpdatedCalls.Length);
-            Assert.AreEqual(test.DisabledCapabilities.Length, test.DisabledCapabilitiesUpdatedCalls.Length);
+            Assert.That(test.EnabledCapabilitiesUpdatedCalls.Length, Is.EqualTo(test.EnabledCapabilities.Length));
+            Assert.That(test.DisabledCapabilitiesUpdatedCalls.Length, Is.EqualTo(test.DisabledCapabilities.Length));
 
             IBlockTree blockFinder = Substitute.For<IBlockTree>();
             ISyncServer syncServer = Substitute.For<ISyncServer>();
@@ -144,9 +144,9 @@ namespace Nethermind.HealthChecks.Test
             }
 
             CheckHealthResult result = nodeHealthService.CheckHealth();
-            Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
-            Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
-            Assert.AreEqual(test.ExpectedLongMessage, FormatMessages(result.Messages.Select(x => x.LongMessage)));
+            Assert.That(result.Healthy, Is.EqualTo(test.ExpectedHealthy));
+            Assert.That(FormatMessages(result.Messages.Select(x => x.Message)), Is.EqualTo(test.ExpectedMessage));
+            Assert.That(FormatMessages(result.Messages.Select(x => x.LongMessage)), Is.EqualTo(test.ExpectedLongMessage));
         }
 
         public class CheckHealthPostMergeTest

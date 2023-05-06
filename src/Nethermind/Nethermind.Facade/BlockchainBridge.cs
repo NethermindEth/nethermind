@@ -234,10 +234,7 @@ namespace Nethermind.Facade
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
-            if (transaction.SenderAddress is null)
-            {
-                transaction.SenderAddress = Address.SystemUser;
-            }
+            transaction.SenderAddress ??= Address.SystemUser;
 
             Keccak stateRoot = blockHeader.StateRoot!;
             using IReadOnlyTransactionProcessor transactionProcessor = _processingEnv.Build(stateRoot);

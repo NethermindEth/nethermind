@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Test.Tracing
                 ((IBlockTracer)blockTracer).EndTxTrace();
             }
 
-            Assert.AreEqual(3, blockTracer.BuildResult().Count);
+            Assert.That(blockTracer.BuildResult().Count, Is.EqualTo(3));
         }
 
         [Test]

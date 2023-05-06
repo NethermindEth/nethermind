@@ -62,6 +62,6 @@ namespace Nethermind.Abi
         public AbiEventDescription GetEvent(string name, bool camelCase = false) => _events[camelCase ? GetName(name) : name];
         public AbiErrorDescription GetError(string name, bool camelCase = false) => _errors[camelCase ? GetName(name) : name];
 
-        public static string GetName(string name) => char.IsUpper(name[0]) ? char.ToLowerInvariant(name[0]) + name.Substring(1) : name;
+        public static string GetName(string name) => char.IsUpper(name[0]) ? char.ToLowerInvariant(name[0]) + name[1..] : name;
     }
 }

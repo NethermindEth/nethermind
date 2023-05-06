@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Secp256k1;
 
 namespace Nethermind.Crypto
 {
@@ -15,12 +14,12 @@ namespace Nethermind.Crypto
     {
         public Signature Sign(PrivateKey privateKey, Keccak message)
         {
-            if (!Proxy.VerifyPrivateKey(privateKey.KeyBytes))
+            if (!SecP256k1.VerifyPrivateKey(privateKey.KeyBytes))
             {
                 throw new ArgumentException("Invalid private key", nameof(privateKey));
             }
 
-            byte[] signatureBytes = Proxy.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
+            byte[] signatureBytes = SecP256k1.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
 
             //// https://bitcoin.stackexchange.com/questions/59820/sign-a-tx-with-low-s-value-using-openssl
 
@@ -52,7 +51,7 @@ namespace Nethermind.Crypto
         public PublicKey? RecoverPublicKey(Signature signature, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
+            bool success = SecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
             if (!success)
             {
                 return null;
@@ -64,7 +63,7 @@ namespace Nethermind.Crypto
         public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[33];
-            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
+            bool success = SecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
             if (!success)
             {
                 return null;
@@ -75,7 +74,7 @@ namespace Nethermind.Crypto
 
         public PublicKey Decompress(CompressedPublicKey compressedPublicKey)
         {
-            byte[] deserialized = Proxy.Decompress(compressedPublicKey.Bytes);
+            byte[] deserialized = SecP256k1.Decompress(compressedPublicKey.Bytes);
             return new PublicKey(deserialized);
         }
     }

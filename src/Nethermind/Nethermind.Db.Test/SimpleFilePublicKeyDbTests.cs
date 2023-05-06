@@ -47,7 +47,7 @@ namespace Nethermind.Db.Test
             }
 
             SimpleFilePublicKeyDb copy = new("Test", Path.GetTempPath(), LimboLogs.Instance);
-            Assert.AreEqual(dict.Count, copy.Keys.Count);
+            Assert.That(copy.Keys.Count, Is.EqualTo(dict.Count));
             foreach (var kv in dict)
             {
                 Assert.True(filePublicKeyDb[kv.Key].AsSpan().SequenceEqual(kv.Value));

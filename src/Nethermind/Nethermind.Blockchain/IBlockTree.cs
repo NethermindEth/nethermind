@@ -187,5 +187,7 @@ namespace Nethermind.Blockchain
         bool IsBetterThanHead(BlockHeader? header);
 
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
+
+        void RecalculateTreeLevels();
     }
 }

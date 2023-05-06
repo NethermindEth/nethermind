@@ -26,7 +26,7 @@ namespace Nethermind.Core.Crypto
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static readonly ValueKeccak OfAnEmptyString = InternalCompute(new byte[] { });
+        public static readonly ValueKeccak OfAnEmptyString = InternalCompute(Array.Empty<byte>());
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
@@ -145,7 +145,7 @@ namespace Nethermind.Core.Crypto
         public string ToShortString(bool withZeroX = true)
         {
             string hash = BytesAsSpan.ToHexString(withZeroX);
-            return $"{hash.Substring(0, withZeroX ? 8 : 6)}...{hash.Substring(hash.Length - 6)}";
+            return $"{hash[..(withZeroX ? 8 : 6)]}...{hash[^6..]}";
         }
 
         public string ToString(bool withZeroX)
@@ -160,6 +160,11 @@ namespace Nethermind.Core.Crypto
         public static bool operator <(ValueKeccak left, ValueKeccak right) => left.CompareTo(right) < 0;
         public static bool operator >=(ValueKeccak left, ValueKeccak right) => left.CompareTo(right) >= 0;
         public static bool operator <=(ValueKeccak left, ValueKeccak right) => left.CompareTo(right) <= 0;
+
+        public Keccak ToKeccak()
+        {
+            return new Keccak(BytesAsSpan.ToArray());
+        }
     }
 
     /// <summary>
@@ -204,7 +209,7 @@ namespace Nethermind.Core.Crypto
 
         public override bool Equals(object? obj)
         {
-            return obj is KeccakKey && Equals((KeccakKey)obj);
+            return obj is KeccakKey key && Equals(key);
         }
 
         public override int GetHashCode()
@@ -239,7 +244,7 @@ namespace Nethermind.Core.Crypto
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static readonly Keccak OfAnEmptyString = InternalCompute(new byte[] { });
+        public static readonly Keccak OfAnEmptyString = InternalCompute(Array.Empty<byte>());
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
@@ -284,7 +289,7 @@ namespace Nethermind.Core.Crypto
         public string ToShortString(bool withZeroX = true)
         {
             string hash = Bytes.ToHexString(withZeroX);
-            return $"{hash.Substring(0, withZeroX ? 8 : 6)}...{hash.Substring(hash.Length - 6)}";
+            return $"{hash[..(withZeroX ? 8 : 6)]}...{hash[^6..]}";
         }
 
         public string ToString(bool withZeroX)
@@ -432,7 +437,7 @@ namespace Nethermind.Core.Crypto
         public string ToShortString(bool withZeroX = true)
         {
             string hash = Bytes.ToHexString(withZeroX);
-            return $"{hash.Substring(0, withZeroX ? 8 : 6)}...{hash.Substring(hash.Length - 6)}";
+            return $"{hash[..(withZeroX ? 8 : 6)]}...{hash[^6..]}";
         }
 
         public string ToString(bool withZeroX)
