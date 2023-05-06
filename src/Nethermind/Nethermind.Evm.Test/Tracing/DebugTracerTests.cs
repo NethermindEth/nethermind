@@ -322,6 +322,35 @@ namespace Nethermind.Evm.Test
             var resultTraces = (tracer.InnerTracer as GethLikeTxTracer).BuildResult();
             Assert.IsTrue(resultTraces.Failed);
         }
+
+
+        [TestCase("0x5b601760005600")]
+        public void Debugger_Halts_Execution_When_Global_Condition_Is_Met(string bytecodeHex)
+        {
+            // this bytecode fails on first opcode INVALID
+            byte[] bytecode = Bytes.FromHexString(bytecodeHex);
+
+            const int DATA_STACK_HEIGHT = 10;
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer);
+
+            tracer.SetCondtion(state => state.DataStackHead == DATA_STACK_HEIGHT);
+
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
+
+            bool stoppedAtLeastOneTime = false;
+            while (vmThread.IsAlive)
+            {
+                if (tracer.CanReadState)
+                {
+                    Assert.That(tracer.CurrentState.DataStackHead, Is.EqualTo(DATA_STACK_HEIGHT));
+                    stoppedAtLeastOneTime = true;
+                    tracer.MoveNext();
+                }
+            }
+
+            Assert.That(stoppedAtLeastOneTime, Is.True);
+        }
     }
 }
 #endif

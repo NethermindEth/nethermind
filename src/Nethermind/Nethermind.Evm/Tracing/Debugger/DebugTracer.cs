@@ -20,7 +20,7 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 {
     public enum DebugPhase
     {
-        Blocked, Running, Aborted
+        Starting, Blocked, Running, Aborted
     }
 
     public DebugTracer(ITxTracer tracer)
@@ -29,7 +29,7 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     }
 
     public ITxTracer InnerTracer { get; private set; }
-    public DebugPhase CurrentPhase { get; private set; } = DebugPhase.Running;
+    public DebugPhase CurrentPhase { get; private set; } = DebugPhase.Starting;
     public bool CanReadState => CurrentPhase is DebugPhase.Blocked;
 
     private AutoResetEvent _autoResetEvent = new AutoResetEvent(false);
@@ -60,8 +60,19 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingStorage => ((IStorageTracer)InnerTracer).IsTracingStorage;
 
-    private object _lock = new();
+
     private Dictionary<int, Func<EvmState, bool>> _breakPoints = new();
+    public void SetBreakPoint(int programCounter, Func<EvmState, bool> condition = null)
+    {
+        if(CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting) _breakPoints[programCounter] = condition;
+    }
+    private Func<EvmState, bool> _globalBreakCondition = null;
+    public void SetCondtion(Func<EvmState, bool> condition = null)
+    {
+        if(CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting) _globalBreakCondition = condition;
+    }
+
+    private object _lock = new();
     public bool IsStepByStepModeOn { get; set; } = false;
     public EvmState CurrentState;
     public void TryWait(EvmState evmState)
@@ -78,16 +89,20 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
         if (IsStepByStepModeOn)
         {
-            lock (_lock)
-            {
-                CurrentPhase = DebugPhase.Blocked;
-            }
-            _autoResetEvent.WaitOne();
+            Block();
         }
         else
         {
             CheckBreakPoint();
         }
+    }
+    private void Block()
+    {
+        lock (_lock)
+        {
+            CurrentPhase = DebugPhase.Blocked;
+        }
+        _autoResetEvent.WaitOne();
     }
 
     public void Abort()
@@ -98,6 +113,7 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         }
         _autoResetEvent.Set();
     }
+
     public void MoveNext()
     {
         lock (_lock)
@@ -106,8 +122,7 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         }
         _autoResetEvent.Set();
     }
-    public void SetBreakPoint(int programCounter, Func<EvmState, bool> condition = null)
-        => _breakPoints.Add(programCounter, condition);
+
     public void CheckBreakPoint()
     {
         if (_breakPoints.ContainsKey(CurrentState.ProgramCounter))
@@ -116,19 +131,23 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
             bool conditionResults = condition is null ? true : condition.Invoke(CurrentState);
             if (conditionResults)
             {
-                lock (_lock)
-                {
-                    CurrentPhase = DebugPhase.Blocked;
-                }
-                _autoResetEvent.WaitOne();
+                Block();
             }
         }
         else
         {
-            lock (_lock)
+            if(_globalBreakCondition?.Invoke(CurrentState) ?? false)
             {
-                CurrentPhase = DebugPhase.Running;
+                Block();
             }
+            else
+            {
+                lock (_lock)
+                {
+                    CurrentPhase = DebugPhase.Running;
+                }
+            }
+
         }
     }
 
