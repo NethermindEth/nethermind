@@ -128,7 +128,7 @@ namespace Nethermind.Evm.Test
         }
 
         [TestCase("0x5b5b5b5b5b5b5b5b5b5b00")]
-        public void Debugger_Halts_Execution_On_Eeach_Iteration(string bytecodeHex)
+        public void Debugger_Halts_Execution_On_Eeach_Iteration_using_StepByStepMode(string bytecodeHex)
         {
             // this bytecode is just a bunch of NOP/JUMPDEST, the idea is it will take as much bytes in the bytecode as steps to go throught it
             byte[] bytecode = Bytes.FromHexString(bytecodeHex);
@@ -161,6 +161,72 @@ namespace Nethermind.Evm.Test
             Assert.That(bytecode.Length, Is.EqualTo(countBreaks));
         }
 
+        [TestCase("0x5b5b5b5b5b5b5b5b5b5b00")]
+        public void Debugger_Skips_Single_Step_Breakpoints_When_MoveNext_Uses_Override(string bytecodeHex)
+        {
+            // this bytecode is just a bunch of NOP/JUMPDEST, the idea is it will take as much bytes in the bytecode as steps to go throught it
+            byte[] bytecode = Bytes.FromHexString(bytecodeHex);
+
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            {
+                // we activate step by step mode in tracer
+                IsStepByStepModeOn = true,
+            };
+
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
+
+            int countBreaks = 0;
+
+            while (vmThread.IsAlive)
+            {
+                if (tracer.CanReadState)
+                {
+                    // we count how many steps it took to run the bytecode
+                    countBreaks++;
+
+                    tracer.MoveNext(executeOneStep: false);
+                }
+            }
+
+            // we check that it matches the number of opcodes in the bytecode
+            Assert.That(countBreaks, Is.EqualTo(1));
+        }
+
+        [TestCase("0x5b5b5b5b5b5b5b5b5b5b00")]
+        public void Debugger_Switches_To_Single_Steps_After_First_Breakpoint(string bytecodeHex)
+        {
+            // this bytecode is just a bunch of NOP/JUMPDEST, the idea is it will take as much bytes in the bytecode as steps to go throught it
+            byte[] bytecode = Bytes.FromHexString(bytecodeHex);
+
+            const int BREAKPOINT = 5;
+            using DebugTracer tracer = new DebugTracer(GethLikeTxTracer)
+            {
+                // we activate step by step mode in tracer
+                IsStepByStepModeOn = false,
+            };
+
+            tracer.SetBreakPoint(BREAKPOINT);
+
+            Thread vmThread = new Thread(() => Execute(tracer, bytecode));
+            vmThread.Start();
+
+            int countBreaks = -1; // not counting the post-run stop
+
+            while (vmThread.IsAlive)
+            {
+                if (tracer.CanReadState)
+                {
+                    // we count how many steps it took to run the bytecode
+                    countBreaks++;
+
+                    tracer.MoveNext(executeOneStep: true);
+                }
+            }
+
+            // we check that it matches the number of opcodes in the bytecode
+            Assert.That(countBreaks, Is.EqualTo(bytecode.Length - BREAKPOINT));
+        }
 
         [TestCase("0x5b601760005600")]
         public void Debugger_Can_Alter_Program_Counter(string bytecodeHex)

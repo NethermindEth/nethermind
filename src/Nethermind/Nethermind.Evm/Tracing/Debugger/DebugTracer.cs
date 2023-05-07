@@ -114,10 +114,11 @@ internal class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         _autoResetEvent.Set();
     }
 
-    public void MoveNext()
+    public void MoveNext(bool executeOneStep = false)
     {
         lock (_lock)
         {
+            IsStepByStepModeOn = executeOneStep;
             CurrentPhase = DebugPhase.Running;
         }
         _autoResetEvent.Set();
