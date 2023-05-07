@@ -29,7 +29,7 @@ namespace Nethermind.Serialization.Rlp
             Keccak? stateRoot = decoderContext.DecodeKeccak();
             Keccak? transactionsRoot = decoderContext.DecodeKeccak();
             Keccak? receiptsRoot = decoderContext.DecodeKeccak();
-            Bloom? bloom = decoderContext.DecodeBloom();
+            Bloom? bloom = decoderContext.DecodeBloom(rlpBehaviors);
             UInt256 difficulty = decoderContext.DecodeUInt256();
             long number = decoderContext.DecodeLong();
             long gasLimit = decoderContext.DecodeLong();
@@ -52,13 +52,13 @@ namespace Nethermind.Serialization.Rlp
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
                 GasUsed = gasUsed,
-                Hash = Keccak.Compute(headerRlp)
+                Hash = (rlpBehaviors & RlpBehaviors.StorageCompression) != 0 ? null : Keccak.Compute(headerRlp)
             };
 
             if (decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.MixHash = decoderContext.DecodeKeccak();
-                blockHeader.Nonce = (ulong)decoderContext.DecodeUBigInt();
+                blockHeader.Nonce = (ulong)decoderContext.DecodeUInt256();
             }
             else
             {
@@ -110,7 +110,7 @@ namespace Nethermind.Serialization.Rlp
             Keccak? stateRoot = rlpStream.DecodeKeccak();
             Keccak? transactionsRoot = rlpStream.DecodeKeccak();
             Keccak? receiptsRoot = rlpStream.DecodeKeccak();
-            Bloom? bloom = rlpStream.DecodeBloom();
+            Bloom? bloom = rlpStream.DecodeBloom(rlpBehaviors);
             UInt256 difficulty = rlpStream.DecodeUInt256();
             long number = rlpStream.DecodeLong();
             long gasLimit = rlpStream.DecodeLong();
@@ -133,13 +133,13 @@ namespace Nethermind.Serialization.Rlp
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
                 GasUsed = gasUsed,
-                Hash = Keccak.Compute(headerRlp)
+                Hash = (rlpBehaviors & RlpBehaviors.StorageCompression) != 0 ? null : Keccak.Compute(headerRlp)
             };
 
             if (rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.MixHash = rlpStream.DecodeKeccak();
-                blockHeader.Nonce = (ulong)rlpStream.DecodeUBigInt();
+                blockHeader.Nonce = (ulong)rlpStream.DecodeUInt256();
             }
             else
             {
@@ -188,7 +188,7 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.Encode(header.StateRoot);
             rlpStream.Encode(header.TxRoot);
             rlpStream.Encode(header.ReceiptsRoot);
-            rlpStream.Encode(header.Bloom);
+            rlpStream.Encode(header.Bloom, rlpBehaviors);
             rlpStream.Encode(header.Difficulty);
             rlpStream.Encode(header.Number);
             rlpStream.Encode(header.GasLimit);
@@ -207,7 +207,7 @@ namespace Nethermind.Serialization.Rlp
                 else
                 {
                     rlpStream.Encode(header.MixHash);
-                    rlpStream.EncodeNonce(header.Nonce);
+                    rlpStream.EncodeNonce(header.Nonce, rlpBehaviors);
                 }
             }
 
@@ -255,7 +255,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.StateRoot)
                                 + Rlp.LengthOf(item.TxRoot)
                                 + Rlp.LengthOf(item.ReceiptsRoot)
-                                + Rlp.LengthOf(item.Bloom)
+                                + Rlp.LengthOf(item.Bloom, rlpBehaviors)
                                 + Rlp.LengthOf(item.Difficulty)
                                 + Rlp.LengthOf(item.Number)
                                 + Rlp.LengthOf(item.GasLimit)
@@ -277,7 +277,7 @@ namespace Nethermind.Serialization.Rlp
                 else
                 {
                     contentLength += Rlp.LengthOf(item.MixHash);
-                    contentLength += Rlp.LengthOfNonce(item.Nonce);
+                    contentLength += Rlp.LengthOfNonce(item.Nonce, rlpBehaviors);
                 }
             }
 

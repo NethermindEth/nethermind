@@ -47,7 +47,7 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
             }
 
-            txReceipt.Bloom = rlpStream.DecodeBloom();
+            txReceipt.Bloom = rlpStream.DecodeBloom(rlpBehaviors);
 
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
@@ -71,7 +71,7 @@ namespace Nethermind.Serialization.Rlp
 
             int contentLength = 0;
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
-            contentLength += Rlp.LengthOf(item.Bloom);
+            contentLength += Rlp.LengthOf(item.Bloom, rlpBehaviors);
 
             int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
@@ -166,7 +166,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             rlpStream.Encode(item.GasUsedTotal);
-            rlpStream.Encode(item.Bloom);
+            rlpStream.Encode(item.Bloom, rlpBehaviors);
 
             rlpStream.StartSequence(logsLength);
             for (var i = 0; i < item.Logs.Length; i++)

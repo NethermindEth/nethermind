@@ -15,6 +15,8 @@ namespace Nethermind.Crypto
         public static Keccak CalculateHash(this BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             KeccakRlpStream stream = new();
+            // Uncompressed version for hash calculation
+            behaviors &= ~RlpBehaviors.StorageCompression;
             _headerDecoder.Encode(stream, header, behaviors);
 
             return stream.GetHash();

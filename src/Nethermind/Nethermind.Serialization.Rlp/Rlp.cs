@@ -653,7 +653,6 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
-
             public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
             {
                 int memorizedPosition = Position;
@@ -930,7 +929,7 @@ namespace Nethermind.Serialization.Rlp
                 return bytes.ToUnsignedBigInteger();
             }
 
-            public Bloom? DecodeBloom()
+            public Bloom? DecodeBloom(RlpBehaviors rlpBehaviors)
             {
                 Span<byte> bloomBytes;
 
@@ -952,13 +951,28 @@ namespace Nethermind.Serialization.Rlp
 
                 if (bloomBytes.Length != 256)
                 {
-                    throw new InvalidOperationException("Incorrect bloom RLP");
+                    if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+                    {
+                        if ((bloomBytes.Length == 1 && bloomBytes[0] == 0) || bloomBytes.IndexOfAnyExcept((byte)0) < 0)
+                        {
+                            return Bloom.Empty;
+                        }
+                        byte[] bloom = new byte[256];
+                        bloomBytes.CopyTo(bloom.AsSpan(256 - bloomBytes.Length));
+                        return new Bloom(bloom);
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("Incorrect bloom RLP");
+                    }
                 }
-
-                return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes.ToArray());
+                else
+                {
+                    return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes.ToArray());
+                }
             }
 
-            public void DecodeBloomStructRef(out BloomStructRef bloom)
+            public void DecodeBloomStructRef(RlpBehaviors rlpBehaviors, out BloomStructRef bloom)
             {
                 Span<byte> bloomBytes;
 
@@ -981,7 +995,22 @@ namespace Nethermind.Serialization.Rlp
 
                 if (bloomBytes.Length != 256)
                 {
-                    throw new InvalidOperationException("Incorrect bloom RLP");
+                    if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+                    {
+                        if ((bloomBytes.Length == 1 && bloomBytes[0] == 0) || bloomBytes.IndexOfAnyExcept((byte)0) < 0)
+                        {
+                            bloom = new BloomStructRef(Bloom.Empty.Bytes);
+                            return;
+                        }
+                        byte[] bloomData = new byte[256];
+                        bloomBytes.CopyTo(bloomData.AsSpan(256 - bloomBytes.Length));
+                        bloom = new BloomStructRef(bloomData.AsSpan());
+                        return;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("Incorrect bloom RLP");
+                    }
                 }
 
                 bloom = bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? new BloomStructRef(Bloom.Empty.Bytes) : new BloomStructRef(bloomBytes);
@@ -1271,8 +1300,13 @@ namespace Nethermind.Serialization.Rlp
             return length + 1;
         }
 
-        public static int LengthOfNonce(ulong _)
+        public static int LengthOfNonce(ulong value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+            {
+                return LengthOf((long)value);
+            }
+
             return 9;
         }
 
@@ -1382,9 +1416,20 @@ namespace Nethermind.Serialization.Rlp
             return item is null ? 1 : 21;
         }
 
-        public static int LengthOf(Bloom? bloom)
+        public static int LengthOf(Bloom? bloom, RlpBehaviors rlpBehaviors)
         {
-            return bloom is null ? 1 : 259;
+            if (bloom is null) return 1;
+
+            if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+            {
+                int length = bloom.Bytes.WithoutLeadingZeros().Length;
+
+                if (length == 1 && bloom.Bytes[^1] < 128) return 1;
+
+                return LengthOfSequence(length);
+            }
+
+            return 259;
         }
 
         public static int LengthOfSequence(int contentLength)

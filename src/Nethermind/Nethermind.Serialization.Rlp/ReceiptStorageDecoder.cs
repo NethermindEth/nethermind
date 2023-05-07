@@ -57,7 +57,7 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.ContractAddress = rlpStream.DecodeAddress();
             if (isStorage) txReceipt.GasUsed = (long)rlpStream.DecodeUBigInt();
             txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
-            txReceipt.Bloom = rlpStream.DecodeBloom();
+            txReceipt.Bloom = rlpStream.DecodeBloom(rlpBehaviors);
 
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
             List<LogEntry> logEntries = new();
@@ -132,7 +132,7 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress();
             if (isStorage) txReceipt.GasUsed = (long)decoderContext.DecodeUBigInt();
             txReceipt.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
-            txReceipt.Bloom = decoderContext.DecodeBloom();
+            txReceipt.Bloom = decoderContext.DecodeBloom(rlpBehaviors);
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
             List<LogEntry> logEntries = new();
@@ -222,7 +222,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(item.ContractAddress);
                 rlpStream.Encode(item.GasUsed);
                 rlpStream.Encode(item.GasUsedTotal);
-                rlpStream.Encode(item.Bloom);
+                rlpStream.Encode(item.Bloom, rlpBehaviors);
 
                 rlpStream.StartSequence(logsLength);
 
@@ -242,7 +242,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 rlpStream.Encode(item.GasUsedTotal);
-                rlpStream.Encode(item.Bloom);
+                rlpStream.Encode(item.Bloom, rlpBehaviors);
 
                 rlpStream.StartSequence(logsLength);
 
@@ -278,7 +278,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
-            contentLength += Rlp.LengthOf(item.Bloom);
+            contentLength += Rlp.LengthOf(item.Bloom, rlpBehaviors);
 
             int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
@@ -368,7 +368,7 @@ namespace Nethermind.Serialization.Rlp
                 item.GasUsed = (long)decoderContext.DecodeUBigInt();
             }
             item.GasUsedTotal = (long)decoderContext.DecodeUBigInt();
-            decoderContext.DecodeBloomStructRef(out item.Bloom);
+            decoderContext.DecodeBloomStructRef(rlpBehaviors, out item.Bloom);
 
             (int PrefixLength, int ContentLength) peekPrefixAndContentLength =
                 decoderContext.PeekPrefixAndContentLength();

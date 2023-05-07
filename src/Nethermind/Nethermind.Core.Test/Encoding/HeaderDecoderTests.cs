@@ -17,9 +17,11 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public class HeaderDecoderTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Can_decode(bool hasWithdrawalsRoot)
+    [TestCase(true, true)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    public void Can_decode(bool hasWithdrawalsRoot, bool isStorageCompressed)
     {
         BlockHeader header = Build.A.BlockHeader
             .WithMixHash(Keccak.Compute("mix_hash"))
@@ -27,10 +29,12 @@ public class HeaderDecoderTests
             .WithWithdrawalsRoot(hasWithdrawalsRoot ? Keccak.EmptyTreeHash : null)
             .TestObject;
 
+        RlpBehaviors rlpBehaviors = isStorageCompressed ? RlpBehaviors.StorageCompression : RlpBehaviors.None;
+
         HeaderDecoder decoder = new();
-        Rlp rlp = decoder.Encode(header);
+        Rlp rlp = decoder.Encode(header, rlpBehaviors);
         Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
-        BlockHeader? decoded = decoder.Decode(ref decoderContext);
+        BlockHeader? decoded = decoder.Decode(ref decoderContext, rlpBehaviors);
         decoded!.Hash = decoded.CalculateHash();
 
         Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");

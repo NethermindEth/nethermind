@@ -123,7 +123,7 @@ namespace Nethermind.Db
             db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());
         }
 
-        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<KeccakKey, TItem> cache = null, bool shouldCache = true) where TItem : class
+        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<KeccakKey, TItem> cache = null, bool shouldCache = true, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TItem : class
         {
             TItem item = cache?.Get(key);
             if (item is null)
@@ -144,7 +144,7 @@ namespace Nethermind.Db
                         }
 
                         var rlpValueContext = data.AsRlpValueContext();
-                        item = valueDecoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
+                        item = valueDecoder.Decode(ref rlpValueContext, rlpBehaviors | RlpBehaviors.AllowExtraBytes);
                     }
                     finally
                     {
@@ -159,7 +159,19 @@ namespace Nethermind.Db
                         return null;
                     }
 
-                    item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraBytes);
+                    item = decoder.Decode(data.AsRlpStream(), rlpBehaviors | RlpBehaviors.AllowExtraBytes);
+                }
+            }
+
+            if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+            {
+                if (item is Block block)
+                {
+                    block.Header.Hash = key;
+                }
+                else if (item is BlockHeader header)
+                {
+                    header.Hash = key;
                 }
             }
 

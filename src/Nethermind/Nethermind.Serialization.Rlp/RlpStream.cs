@@ -49,9 +49,9 @@ namespace Nethermind.Serialization.Rlp
             _blockDecoder.Encode(this, value);
         }
 
-        public void Encode(BlockHeader value)
+        public void Encode(BlockHeader value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            _headerDecoder.Encode(this, value);
+            _headerDecoder.Encode(this, value, rlpBehaviors);
         }
 
         public void Encode(Transaction value)
@@ -155,7 +155,7 @@ namespace Nethermind.Serialization.Rlp
             Write(bytesToWrite.AsSpan());
         }
 
-        public virtual void Write(Span<byte> bytesToWrite)
+        public virtual void Write(ReadOnlySpan<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
@@ -267,9 +267,26 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(Bloom? bloom)
+        private static ReadOnlySpan<byte> ZeroByte() => new byte[] { 0 };
+
+        public void Encode(Bloom? bloom, RlpBehaviors rlpBehaviors)
         {
-            if (ReferenceEquals(bloom, Bloom.Empty))
+            if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+            {
+                if (ReferenceEquals(bloom, Bloom.Empty))
+                {
+                    Encode(ZeroByte());
+                }
+                else if (bloom is null)
+                {
+                    WriteByte(EmptyArrayByte);
+                }
+                else
+                {
+                    Encode(bloom.Bytes.WithoutLeadingZeros());
+                }
+            }
+            else if (ReferenceEquals(bloom, Bloom.Empty))
             {
                 WriteByte(185);
                 WriteByte(1);
@@ -438,9 +455,16 @@ namespace Nethermind.Serialization.Rlp
             Encode(new BigInteger(value), 8);
         }
 
-        public void EncodeNonce(ulong value)
+        public void EncodeNonce(ulong value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            Encode((UInt256)value, 8);
+            if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+            {
+                Encode((UInt256)value);
+            }
+            else
+            {
+                Encode((UInt256)value, 8);
+            }
         }
 
         public void Encode(ulong value)
@@ -488,7 +512,7 @@ namespace Nethermind.Serialization.Rlp
             Encode(input.AsSpan());
         }
 
-        public void Encode(Span<byte> input)
+        public void Encode(ReadOnlySpan<byte> input)
         {
             if (input.IsEmpty)
             {
@@ -882,7 +906,7 @@ namespace Nethermind.Serialization.Rlp
             return bytes.ToUnsignedBigInteger();
         }
 
-        public Bloom? DecodeBloom()
+        public Bloom? DecodeBloom(RlpBehaviors rlpBehaviors)
         {
             ReadOnlySpan<byte> bloomBytes;
 
@@ -904,10 +928,26 @@ namespace Nethermind.Serialization.Rlp
 
             if (bloomBytes.Length != 256)
             {
-                throw new InvalidOperationException("Incorrect bloom RLP");
-            }
+                if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+                {
+                    if (bloomBytes.Length == 1 && bloomBytes[0] == 0)
+                    {
+                        return Bloom.Empty;
+                    }
 
-            return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes.ToArray());
+                    byte[] bloom = new byte[256];
+                    bloomBytes.CopyTo(bloom.AsSpan(256 - bloomBytes.Length));
+                    return new Bloom(bloom);
+                }
+                else
+                {
+                    throw new InvalidOperationException("Incorrect bloom RLP");
+                }
+            }
+            else
+            {
+                return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes.ToArray());
+            }
         }
 
         public Span<byte> PeekNextItem()

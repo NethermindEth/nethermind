@@ -568,7 +568,7 @@ namespace Nethermind.Blockchain
             // validate hash here
             // using previously received header RLPs would allows us to save 2GB allocations on a sample
             // 3M Goerli blocks fast sync
-            using (NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header))
+            using (NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header, RlpBehaviors.StorageCompression))
             {
                 _headerDb.Set(header.Hash, newRlp.AsSpan());
             }
@@ -667,7 +667,7 @@ namespace Nethermind.Blockchain
 
             // if we carry Rlp from the network message all the way here then we could solve 4GB of allocations and some processing
             // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
-            using (NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block))
+            using (NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block, RlpBehaviors.StorageCompression))
             {
                 _blockDb.Set(block.Hash, newRlp.AsSpan());
             }
@@ -757,13 +757,13 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to suggest block with a null hash.");
                 }
 
-                using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
+                using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block, RlpBehaviors.StorageCompression);
                 _blockDb.Set(block.Hash, newRlp.AsSpan());
             }
 
             if (!isKnown)
             {
-                using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
+                using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header, RlpBehaviors.StorageCompression);
                 _headerDb.Set(header.Hash, newRlp.AsSpan());
             }
 
@@ -847,7 +847,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, false);
+            BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: false, RlpBehaviors.StorageCompression);
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -1101,7 +1101,7 @@ namespace Nethermind.Blockchain
         {
             if (invalidBlock.Hash is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(DeleteInvalidBlock)} call has been made for a block without a null hash.");
+                if (_logger.IsWarn) _logger.Warn($"{nameof(DeleteInvalidBlock)} call has been made for a block with a null hash.");
                 return;
             }
 
@@ -1791,7 +1791,8 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Block block = _blockDb.Get(blockHash, _blockDecoder, _blockCache, false);
+            Block block = _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache: false, RlpBehaviors.StorageCompression);
+
             if (block is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
