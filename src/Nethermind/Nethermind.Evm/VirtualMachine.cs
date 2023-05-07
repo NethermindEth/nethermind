@@ -2380,7 +2380,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RJUMP | Instruction.BEGINSUB:
                         {
-                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
+                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
                                 short offset = codeSection.Slice(programCounter, EvmObjectFormat.Eof1.TWO_BYTE_LENGTH).ReadEthInt16();
@@ -2402,7 +2402,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RJUMPI | Instruction.RETURNSUB:
                         {
-                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
+                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
                                 Span<byte> condition = stack.PopBytes();
@@ -2433,7 +2433,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RJUMPV | Instruction.JUMPSUB:
                         {
-                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.EofVersion() > 0)
+                            if (spec.IsEofEvmModeOn && spec.StaticRelativeJumpsEnabled && env.CodeInfo.IsEof())
                             {
                                 if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
                                 var case_v = stack.PopByte();
@@ -2471,7 +2471,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.CALLF:
                         {
-                            if (!spec.IsEofEvmModeOn || !spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
+                            if (!spec.IsEofEvmModeOn || !spec.FunctionSections || !env.CodeInfo.IsEof())
                             {
                                 goto InvalidInstruction;
                             }
@@ -2496,7 +2496,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RETF:
                         {
-                            if (!spec.IsEofEvmModeOn && !spec.FunctionSections || env.CodeInfo.EofVersion() == 0)
+                            if (!spec.IsEofEvmModeOn && !spec.FunctionSections || !env.CodeInfo.IsEof())
                             {
                                 goto InvalidInstruction;
                             }
