@@ -951,7 +951,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if (bloomBytes.Length != 256)
                 {
-                    if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+                    if ((rlpBehaviors & RlpBehaviors.Storage) != 0)
                     {
                         if ((bloomBytes.Length == 1 && bloomBytes[0] == 0) || bloomBytes.IndexOfAnyExcept((byte)0) < 0)
                         {
@@ -995,7 +995,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if (bloomBytes.Length != 256)
                 {
-                    if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+                    if ((rlpBehaviors & RlpBehaviors.Storage) != 0)
                     {
                         if ((bloomBytes.Length == 1 && bloomBytes[0] == 0) || bloomBytes.IndexOfAnyExcept((byte)0) < 0)
                         {
@@ -1302,7 +1302,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOfNonce(ulong value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+            if ((rlpBehaviors & RlpBehaviors.Storage) != 0)
             {
                 return LengthOf((long)value);
             }
@@ -1420,7 +1420,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (bloom is null) return 1;
 
-            if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+            if ((rlpBehaviors & RlpBehaviors.Storage) != 0)
             {
                 int length = bloom.Bytes.WithoutLeadingZeros().Length;
 

@@ -163,7 +163,7 @@ namespace Nethermind.Db
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+            if ((rlpBehaviors & RlpBehaviors.Storage) != 0)
             {
                 if (item is Block block)
                 {

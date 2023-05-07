@@ -271,7 +271,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Bloom? bloom, RlpBehaviors rlpBehaviors)
         {
-            if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+            if ((rlpBehaviors & RlpBehaviors.Storage) != 0)
             {
                 if (ReferenceEquals(bloom, Bloom.Empty))
                 {
@@ -457,7 +457,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void EncodeNonce(ulong value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+            if ((rlpBehaviors & RlpBehaviors.Storage) != 0)
             {
                 Encode((UInt256)value);
             }
@@ -928,7 +928,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (bloomBytes.Length != 256)
             {
-                if ((rlpBehaviors & RlpBehaviors.StorageCompression) != 0)
+                if ((rlpBehaviors & RlpBehaviors.Storage) != 0)
                 {
                     if (bloomBytes.Length == 1 && bloomBytes[0] == 0)
                     {

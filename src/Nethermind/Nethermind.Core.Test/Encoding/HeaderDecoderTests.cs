@@ -29,7 +29,7 @@ public class HeaderDecoderTests
             .WithWithdrawalsRoot(hasWithdrawalsRoot ? Keccak.EmptyTreeHash : null)
             .TestObject;
 
-        RlpBehaviors rlpBehaviors = isStorageCompressed ? RlpBehaviors.StorageCompression : RlpBehaviors.None;
+        RlpBehaviors rlpBehaviors = isStorageCompressed ? RlpBehaviors.Storage : RlpBehaviors.None;
 
         HeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header, rlpBehaviors);
