@@ -120,32 +120,13 @@ namespace Nethermind.Mev
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 rpcConfig.EnableModules(ModuleType.Mev);
 
-                ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory =
-                    new(getFromApi.DbProvider!.AsReadOnly(true),
-                    getFromApi.ReadOnlyTrieStore,
-                    getFromApi.BlockTree,
-                    getFromApi.SpecProvider,
-                    getFromApi.LogManager);
-
-                BlockValidationService blockValidationService =
-                    new(getFromApi.BlockTree!.AsReadOnly(),
-                    getFromApi.SpecProvider!,
-                    getFromApi.GasLimitCalculator,
-                    getFromApi.HeaderValidator!,
-                    readOnlyTxProcessingEnvFactory,
-                    getFromApi.ReceiptStorage!,
-                    getFromApi.RewardCalculatorSource!,
-                    getFromApi.BlockValidator!,
-                    getFromApi.LogManager);
-
                 MevModuleFactory mevModuleFactory = new(rpcConfig,
                     BundlePool,
                     getFromApi.BlockTree!,
                     getFromApi.StateReader!,
                     TracerFactory,
                     getFromApi.SpecProvider!,
-                    getFromApi.EngineSigner,
-                    blockValidationService);
+                    getFromApi.EngineSigner);
 
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(mevModuleFactory, rpcConfig.Timeout);
 

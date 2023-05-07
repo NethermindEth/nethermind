@@ -30,6 +30,9 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
 using Nethermind.Config;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -113,12 +116,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
 
-            ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(DbProvider, false),
-                new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
-                new ReadOnlyBlockTree(BlockTree),
-                SpecProvider,
-                LimboLogs.Instance);
+            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory =
+                    new(DbProvider.AsReadOnly(true),
+                    ReadOnlyTrieStore,
+                    BlockTree,
+                    SpecProvider,
+                    LogManager);
+
+            ReadOnlyTxProcessingEnv processingEnv =
+                readOnlyTxProcessingEnvFactory.Create();
 
             ReceiptFinder ??= ReceiptStorage;
             Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
@@ -132,6 +138,19 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockFinder, ReceiptStorage, SpecProvider);
             ISyncConfig syncConfig = new SyncConfig();
+            IBlocksConfig blocksConfig = new BlocksConfig();
+            IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(specProvider, blocksConfig);
+
+            IBuilderSubmissionValidator blockValidationService =
+                new BuilderSubmissionValidator(SpecProvider,
+                    gasLimitCalculator,
+                    HeaderValidator,
+                    readOnlyTxProcessingEnvFactory,
+                    ReceiptStorage,
+                    NoBlockRewards.Instance,
+                    BlockValidator,
+                    LogManager);
+
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 Bridge,
@@ -145,7 +164,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SpecProvider,
                 GasPriceOracle,
                 new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager),
-                FeeHistoryOracle);
+                FeeHistoryOracle,
+                blockValidationService);
 
             return this;
         }

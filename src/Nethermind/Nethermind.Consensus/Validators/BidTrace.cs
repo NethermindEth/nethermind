@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.Mev.Data;
+namespace Nethermind.Consensus.Validators;
 
 public class BidTrace
 {

@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -32,6 +33,8 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Rpc;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 
 namespace Nethermind.Init.Steps
 {
@@ -94,6 +97,23 @@ namespace Nethermind.Init.Steps
             if (_api.EthSyncingInfo is null) throw new StepDependencyException(nameof(_api.EthSyncingInfo));
             if (_api.ReadOnlyTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
 
+            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory =
+                new(_api.DbProvider!.AsReadOnly(true),
+                _api.ReadOnlyTrieStore,
+                _api.BlockTree,
+                _api.SpecProvider,
+                _api.LogManager);
+
+            BuilderSubmissionValidator builderSubmissionValidator =
+                new(_api.SpecProvider!,
+                _api.GasLimitCalculator!,
+                _api.HeaderValidator!,
+                readOnlyTxProcessingEnvFactory,
+                _api.ReceiptStorage!,
+                _api.RewardCalculatorSource!,
+                _api.BlockValidator!,
+                _api.LogManager);
+
             EthModuleFactory ethModuleFactory = new(
                 _api.TxPool,
                 _api.TxSender,
@@ -106,7 +126,8 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 _api.ReceiptStorage,
                 _api.GasPriceOracle,
-                _api.EthSyncingInfo);
+                _api.EthSyncingInfo,
+                builderSubmissionValidator);
 
             rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
 

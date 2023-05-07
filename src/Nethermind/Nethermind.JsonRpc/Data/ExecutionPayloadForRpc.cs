@@ -1,49 +1,21 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Newtonsoft.Json;
 
-namespace Nethermind.Merge.Plugin.Data;
-
-/// <summary>
-/// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
-/// </summary>
-public class ExecutionPayload
+namespace Nethermind.JsonRpc.Data;
+public class ExecutionPayloadForRpc
 {
-    public ExecutionPayload() { } // Needed for tests
-
-    public ExecutionPayload(Block block)
-    {
-        BlockHash = block.Hash!;
-        ParentHash = block.ParentHash!;
-        FeeRecipient = block.Beneficiary!;
-        StateRoot = block.StateRoot!;
-        BlockNumber = block.Number;
-        GasLimit = block.GasLimit;
-        GasUsed = block.GasUsed;
-        ReceiptsRoot = block.ReceiptsRoot!;
-        LogsBloom = block.Bloom!;
-        PrevRandao = block.MixHash ?? Keccak.Zero;
-        ExtraData = block.ExtraData!;
-        Timestamp = block.Timestamp;
-        BaseFeePerGas = block.BaseFeePerGas;
-        Withdrawals = block.Withdrawals;
-        ExcessDataGas = block.ExcessDataGas;
-
-        SetTransactions(block.Transactions);
-    }
-
     public UInt256 BaseFeePerGas { get; set; }
 
     public Keccak BlockHash { get; set; } = Keccak.Zero;
@@ -96,12 +68,12 @@ public class ExecutionPayload
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
-    public virtual bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
+    public virtual bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
     {
         try
         {
-            var transactions = GetTransactions();
-            var header = new BlockHeader(
+            Transaction[] transactions = GetTransactions();
+            BlockHeader header = new BlockHeader(
                 ParentHash,
                 Keccak.OfAnEmptySequenceRlp,
                 FeeRecipient,
@@ -147,46 +119,5 @@ public class ExecutionPayload
         .Select(t => Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping))
         .ToArray();
 
-    /// <summary>
-    /// RLP-encodes and sets the transactions specified to <see cref="Transactions"/>.
-    /// </summary>
-    /// <param name="transactions">An array of transactions to encode.</param>
-    public void SetTransactions(params Transaction[] transactions) => Transactions = transactions
-        .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
-        .ToArray();
-
     public override string ToString() => $"{BlockNumber} ({BlockHash})";
-}
-
-public static class ExecutionPayloadExtensions
-{
-    public static int GetVersion(this ExecutionPayload executionPayload) =>
-        executionPayload.Withdrawals is null ? 1 : 2;
-
-    public static bool Validate(
-        this ExecutionPayload executionPayload,
-        IReleaseSpec spec,
-        int version,
-        [NotNullWhen(false)] out string? error)
-    {
-        int actualVersion = executionPayload.GetVersion();
-
-        error = actualVersion switch
-        {
-            1 when spec.WithdrawalsEnabled => "ExecutionPayloadV2 expected",
-            > 1 when !spec.WithdrawalsEnabled => "ExecutionPayloadV1 expected",
-            _ => actualVersion > version ? $"ExecutionPayloadV{version} expected" : null
-        };
-
-        return error is null;
-    }
-
-    public static bool Validate(this ExecutionPayload executionPayload,
-        ISpecProvider specProvider,
-        int version,
-        [NotNullWhen(false)] out string? error) =>
-        executionPayload.Validate(
-            specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp),
-            version,
-            out error);
 }

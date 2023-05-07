@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
@@ -33,7 +34,6 @@ namespace Nethermind.Mev
         private readonly ITracerFactory _tracerFactory;
         private readonly ISpecProvider _specProvider;
         private readonly ISigner? _signer;
-        private readonly BlockValidationService _blockValidationService;
 
         static MevRpcModule()
         {
@@ -47,8 +47,7 @@ namespace Nethermind.Mev
             IStateReader stateReader,
             ITracerFactory tracerFactory,
             ISpecProvider specProvider,
-            ISigner? signer,
-            BlockValidationService blockValidationService)
+            ISigner? signer)
         {
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
@@ -57,47 +56,6 @@ namespace Nethermind.Mev
             _tracerFactory = tracerFactory;
             _specProvider = specProvider;
             _signer = signer;
-            _blockValidationService = blockValidationService;
-        }
-
-        [JsonRpcMethod(Description = "Validates a builder submission v1", IsImplemented = true)]
-        public ResultWrapper<bool> mev_validateBuilderSubmissionV1(BuilderBlockValidationRequest request)
-        {
-            Block builderBlock = ValidateRequestAndGetBlock(request);
-
-            _blockValidationService.ValidateBuilderSubmission(builderBlock, request.Message!,
-                request.RegisteredGasLimit);
-            return ResultWrapper<bool>.Success(true);
-        }
-
-        [JsonRpcMethod(Description = "Validates a builder submission v2", IsImplemented = true)]
-        public ResultWrapper<bool> mev_validateBuilderSubmissionV2(BuilderBlockValidationRequest request)
-        {
-            Block builderBlock = ValidateRequestAndGetBlock(request);
-
-            _blockValidationService.ValidateBuilderSubmission(builderBlock, request.Message!,
-                request.RegisteredGasLimit, request.WithdrawalsRoot);
-            return ResultWrapper<bool>.Success(true);
-        }
-
-        private static Block ValidateRequestAndGetBlock(BuilderBlockValidationRequest request)
-        {
-            if (request.Message is null)
-            {
-                throw new InvalidOperationException("Message is null");
-            }
-
-            if (request.ExecutionPayload is null)
-            {
-                throw new InvalidOperationException("Execution Payload is null");
-            }
-
-            if (!request.ExecutionPayload.TryGetBlock(out Block? builderBlock))
-            {
-                throw new InvalidOperationException("Execution Payload failed to be converted to Block");
-            }
-
-            return builderBlock;
         }
 
         public ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc)
