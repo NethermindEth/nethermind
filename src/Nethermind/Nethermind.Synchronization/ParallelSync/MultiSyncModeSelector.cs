@@ -344,22 +344,22 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInUpdatingPivot()
         {
+            bool fastReceiptsNotFinished = !FastBlocksReceiptsFinished;
             bool updateRequestedAndNotFinished = _syncConfig.MaxAttemptsToUpdatePivot > 0;
             bool isPostMerge = _beaconSyncStrategy.GetFinalizedHash() != null;
-            bool stateSyncNotFinished = _syncProgressResolver.FindBestFullState() == 0;
 
-            bool result = updateRequestedAndNotFinished &&
+            bool result = fastReceiptsNotFinished &&
+                          updateRequestedAndNotFinished &&
                           FastSyncEnabled &&
-                          isPostMerge &&
-                          stateSyncNotFinished;
+                          isPostMerge;
 
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("UPDATING PIVOT",
+                    (nameof(fastReceiptsNotFinished), fastReceiptsNotFinished),
                     (nameof(updateRequestedAndNotFinished), updateRequestedAndNotFinished),
                     (nameof(FastSyncEnabled), FastSyncEnabled),
-                    (nameof(isPostMerge), isPostMerge),
-                    (nameof(stateSyncNotFinished), stateSyncNotFinished));
+                    (nameof(isPostMerge), isPostMerge));
             }
 
             return result;
