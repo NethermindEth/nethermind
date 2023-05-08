@@ -32,7 +32,16 @@ namespace Nethermind.Blockchain
 
         public Keccak? GetStorageRoot(Address address) => GetAccount(address).StorageRoot;
 
-        public byte[] GetCode(Address address) => _stateReader.GetCode(GetAccount(address).CodeHash);
+        public byte[] GetCode(Address address)
+        {
+            Account account = GetAccount(address);
+            if (!account.HasCode)
+            {
+                return Array.Empty<byte>();
+            }
+
+            return _stateReader.GetCode(account.CodeHash);
+        }
 
         public byte[] GetCode(Keccak codeHash) => _stateReader.GetCode(codeHash);
 

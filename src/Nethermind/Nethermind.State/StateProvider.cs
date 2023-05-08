@@ -79,7 +79,7 @@ namespace Nethermind.State
 
         public bool IsContract(Address address)
         {
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             if (account is null)
             {
                 return false;
@@ -100,7 +100,7 @@ namespace Nethermind.State
 
         public bool IsEmptyAccount(Address address)
         {
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             if (account is null)
             {
                 throw new InvalidOperationException($"Account {address} is null when checking if empty");
@@ -266,7 +266,7 @@ namespace Nethermind.State
         public void DecrementNonce(Address address)
         {
             _needsStateRootUpdate = true;
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             if (account is null)
             {
                 throw new InvalidOperationException($"Account {address} is null when decrementing nonce.");
@@ -302,7 +302,7 @@ namespace Nethermind.State
 
         public Keccak GetCodeHash(Address address)
         {
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             return account?.CodeHash ?? Keccak.OfAnEmptyString;
         }
 

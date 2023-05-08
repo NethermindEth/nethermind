@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -14,7 +13,12 @@ namespace Nethermind.State
     {
         public static byte[] GetCode(this IStateProvider stateProvider, Address address)
         {
-            return stateProvider.GetCode(stateProvider.GetCodeHash(address));
+            Account account = stateProvider.GetAccount(address);
+            if (!account.HasCode)
+            {
+                return Array.Empty<byte>();
+            }
+            return stateProvider.GetCode(account.CodeHash);
         }
 
         public static string DumpState(this IStateProvider stateProvider)
