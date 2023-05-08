@@ -596,31 +596,9 @@ namespace Nethermind.Serialization.Rlp
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
         public int GetLength(T tx, RlpBehaviors rlpBehaviors)
-        {
-            int txPayloadLength;
+            => GetTxLength(tx, rlpBehaviors);
 
-            if (tx.Type is TxType.Blob)
-            {
-                txPayloadLength = (rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm
-                    ? Ssz.Ssz.BlobTransactionNetworkWrapperLength(tx)
-                    : Ssz.Ssz.SignedBlobTransactionLength(tx);
-            }
-            else
-            {
-                int txContentLength = GetContentLength(tx, false);
-                txPayloadLength = Rlp.LengthOfSequence(txContentLength);
-            }
-
-            bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
-            int result = tx.Type != TxType.Legacy
-                ? isForTxRoot
-                    ? (sizeof(TxType) + txPayloadLength)
-                    : Rlp.LengthOfSequence(sizeof(TxType) + txPayloadLength) // Rlp(TransactionType || TransactionPayload)
-                : txPayloadLength;
-            return result;
-        }
-
-        public int GetTxLength(T tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false,
+        private int GetTxLength(T tx, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false,
             ulong chainId = 0)
         {
             int txPayloadLength;

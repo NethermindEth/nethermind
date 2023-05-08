@@ -102,7 +102,7 @@ namespace Nethermind.Consensus.Validators
         private static bool Validate4844Fields(Transaction transaction)
         {
             // Execution-payload version verification
-            if (transaction.Type != TxType.Blob)
+            if (!transaction.SupportsBlobs)
             {
                 return transaction.MaxFeePerDataGas is null &&
                        transaction.BlobVersionedHashes is null &&

@@ -35,7 +35,7 @@ public class BlockBodiesMessageSerializerTests
         foreach (BlockBody? body in deserializedMessage.Bodies)
         {
             if (body is null) continue;
-            foreach (Transaction tx in body.Transactions.Where(t => t.Type == TxType.Blob))
+            foreach (Transaction tx in body.Transactions.Where(t => t.SupportsBlobs))
             {
                 Assert.That(tx.NetworkWrapper, Is.Null);
             }

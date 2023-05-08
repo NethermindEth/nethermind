@@ -13,47 +13,43 @@ namespace Nethermind.Serialization.Ssz;
 
 public static partial class Ssz
 {
-    public static int BlobTransactionNetworkWrapperLength(Transaction container)
-    {
-        ShardBlobNetworkWrapper? wrapper = container.NetworkWrapper as ShardBlobNetworkWrapper;
-        if (wrapper is null)
-        {
-            throw new ArgumentException("Wrapper should present in network form", nameof(container.NetworkWrapper));
-        }
-
-        int transactionDynamicOffset = 4 * VarOffsetSize;
-        int commitmentsDynamicOffset = transactionDynamicOffset + SignedBlobTransactionLength(container);
-        int blobsDynamicOffset =
-            commitmentsDynamicOffset + wrapper.Commitments.Length;
-        int proofsDynamicOffset = blobsDynamicOffset + wrapper.Blobs.Length;
-
-        return proofsDynamicOffset + wrapper.Proofs.Length;
-    }
+    public static int BlobTransactionNetworkWrapperLength(Transaction container) =>
+        container.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+            ? 4 * VarOffsetSize
+              + SignedBlobTransactionLength(container)
+              + wrapper.Commitments.Length
+              + wrapper.Blobs.Length
+              + wrapper.Proofs.Length
+            : throw new ArgumentException("Wrapper should present in network form", nameof(container.NetworkWrapper));
 
     public static int SignedBlobTransactionLength(Transaction container) =>
         TransactionDynamicOffset + TransactionLength(container);
 
-    public static int TransactionLength(Transaction transaction)
+    public static int TransactionLength(Transaction transaction) =>
+        192 // static fields length
+        + OptionalAddressLength(transaction.To)
+        + (transaction.Data?.Length ?? 0)
+        + AccessListLength(transaction.AccessList)
+        + (transaction.BlobVersionedHashes?.Length ?? 0) * 32;
+
+    private static int OptionalAddressLength(Address? address) =>
+        sizeof(byte) + (address is null ? 0 : Address.ByteLength);
+
+    private static int AccessListLength(AccessList? accessList)
     {
-        int toDynamicOffset = 192;
-        int dataDynamicOffset = toDynamicOffset + OptionalAddressLength(transaction.To);
-        int accessListDynamicOffset = dataDynamicOffset + (transaction.Data?.Length ?? 0);
-        int blobVersionedHashesToDynamicOffset = accessListDynamicOffset;
-        if (transaction.AccessList is not null)
+        if (accessList is null)
         {
-            foreach (KeyValuePair<Address, IReadOnlySet<UInt256>> pair in transaction.AccessList.Data)
-            {
-                blobVersionedHashesToDynamicOffset +=
-                    VarOffsetSize + Address.ByteLength + VarOffsetSize + pair.Value.Count * 32;
-            }
+            return 0;
         }
 
-        return blobVersionedHashesToDynamicOffset + (transaction.BlobVersionedHashes?.Length ?? 0) * 32;
-    }
+        int length = 0;
+        foreach (KeyValuePair<Address, IReadOnlySet<UInt256>> pair in accessList.Data)
+        {
+            length +=
+                VarOffsetSize + Address.ByteLength + VarOffsetSize + pair.Value.Count * 32;
+        }
 
-    private static int OptionalAddressLength(Address? address)
-    {
-        return sizeof(byte) + (address is null ? 0 : Address.ByteLength);
+        return length;
     }
 
     private const int SignatureLength = 65;
@@ -155,6 +151,7 @@ public static partial class Ssz
             Encode(span, (byte)0);
             return;
         }
+
         Encode(span, (byte)1);
         Encode(span.Slice(1, Address.ByteLength), value.Bytes);
     }

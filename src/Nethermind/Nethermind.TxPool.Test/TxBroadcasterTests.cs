@@ -213,7 +213,7 @@ public class TxBroadcasterTests
         {
             Transaction tx = transactions[i];
 
-            if (tx.Type != TxType.Blob)
+            if (!tx.SupportsBlobs)
             {
                 expectedTxs.Add(tx);
             }

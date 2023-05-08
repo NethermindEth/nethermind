@@ -91,12 +91,12 @@ public class TransactionsMessageSerializerTests
         TransactionsMessageSerializer serializer = new();
         serializer.Serialize(buffer, transactionsMessage);
         TransactionsMessage deserializedMessage = serializer.Deserialize(buffer);
-        foreach (Transaction? tx in deserializedMessage.Transactions.Where(tx => tx.Type == TxType.Blob))
+        foreach (Transaction? tx in deserializedMessage.Transactions.Where(tx => tx.SupportsBlobs))
         {
             Assert.That(tx.NetworkWrapper, Is.Not.Null);
         }
 
-        foreach (Transaction? tx in deserializedMessage.Transactions.Where(tx => tx.Type != TxType.Blob))
+        foreach (Transaction? tx in deserializedMessage.Transactions.Where(tx => !tx.SupportsBlobs))
         {
             Assert.That(tx.NetworkWrapper, Is.Null);
         }
