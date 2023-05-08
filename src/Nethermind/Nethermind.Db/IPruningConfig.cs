@@ -59,7 +59,7 @@ namespace Nethermind.Db
             DefaultValue = "None")]
         FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; }
 
-        [ConfigItem(Description = "Disables available disk space check.", DefaultValue = "true", HiddenFromDocs = true)]
+        [ConfigItem(Description = "Enables available disk space check.", DefaultValue = "true", HiddenFromDocs = true)]
         bool AvailableSpaceCheckEnabled { get; set; }
     }
 }
