@@ -25,11 +25,25 @@ namespace Nethermind.Db.Test
     [Parallelizable(ParallelScope.None)]
     public class DbOnTheRocksTests
     {
+        private const string DbPath = "blocks";
+
+        [SetUp]
+        public void Setup()
+        {
+            Directory.CreateDirectory(DbPath);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            Directory.Delete(DbPath, true);
+        }
+
         [Test]
         public void Smoke_test()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
+            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, LimboLogs.Instance);
             db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
             Assert.That(db[new byte[] { 1, 2, 3 }], Is.EqualTo(new byte[] { 4, 5, 6 }));
 
@@ -44,7 +58,7 @@ namespace Nethermind.Db.Test
         public void Smoke_test_span()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
+            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, LimboLogs.Instance);
             byte[] key = new byte[] { 1, 2, 3 };
             byte[] value = new byte[] { 4, 5, 6 };
             db.PutSpan(key, value);
@@ -68,6 +82,32 @@ namespace Nethermind.Db.Test
                 db.Clear();
                 db.Dispose();
             }
+        }
+
+        [Test]
+        public void Smoke_test_iterator()
+        {
+            IDbConfig config = new DbConfig();
+            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, LimboLogs.Instance);
+            db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+
+            KeyValuePair<byte[], byte[]>[] allValues = db.GetAll().ToArray()!;
+            allValues[0].Key.Should().BeEquivalentTo(new byte[] { 1, 2, 3 });
+            allValues[0].Value.Should().BeEquivalentTo(new byte[] { 4, 5, 6 });
+        }
+
+        [Test]
+        public void Columns_db_smoke_test_iterator()
+        {
+            IDbConfig config = new DbConfig();
+            using ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
+            IDbWithSpan? db = columnsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+
+            KeyValuePair<byte[], byte[]>[] allValues = db.GetAll().ToArray()!;
+            allValues[0].Key.Should().BeEquivalentTo(new byte[] { 1, 2, 3 });
+            allValues[0].Value.Should().BeEquivalentTo(new byte[] { 4, 5, 6 });
         }
 
         [Test]
@@ -194,7 +234,7 @@ namespace Nethermind.Db.Test
             try
             {
                 IDbConfig config = new DbConfig();
-                using ColumnsDb<ReceiptsColumns> columnDb = new(path, GetRocksDbSettings("blocks", "Blocks"), config,
+                using ColumnsDb<ReceiptsColumns> columnDb = new(path, GetRocksDbSettings(DbPath, "Blocks"), config,
                     LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
 
                 using IDbWithSpan db = columnDb.GetColumnDb(ReceiptsColumns.Blocks);

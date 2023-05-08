@@ -199,9 +199,9 @@ namespace Nethermind.Blockchain.Receipts
                     receiptsData = _blocksDb.GetSpan(blockHash);
                 }
 
-    #pragma warning disable CS9080
+#pragma warning disable CS9080
                 return receiptsData;
-    #pragma warning restore CS9080
+#pragma warning restore CS9080
             }
         }
 

@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
             block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
 
-            TestMemDb blocksDb = (TestMemDb) _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            TestMemDb blocksDb = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
             blocksDb.KeyWasRead(blockNumPrefixed.ToArray(), 0);
             blocksDb.KeyWasRead(block.Hash.Bytes, 1);
         }
