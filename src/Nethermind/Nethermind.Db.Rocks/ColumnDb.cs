@@ -16,7 +16,7 @@ public class ColumnDb : IDbWithSpan
     private readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
 
-    private ThreadLocal<Iterator> _readaheadIterators = new(true);
+    private ThreadLocal<DbOnTheRocks.ManagedIterator> _readaheadIterators = new(true);
 
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {
@@ -28,7 +28,7 @@ public class ColumnDb : IDbWithSpan
 
     public void Dispose()
     {
-        foreach (Iterator iterator in _readaheadIterators.Values)
+        foreach (DbOnTheRocks.ManagedIterator iterator in _readaheadIterators.Values)
         {
             iterator.Dispose();
         }
