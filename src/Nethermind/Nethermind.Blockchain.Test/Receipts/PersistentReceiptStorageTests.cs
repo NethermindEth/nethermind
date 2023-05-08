@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -25,7 +26,7 @@ namespace Nethermind.Blockchain.Test.Receipts
     [TestFixture(false)]
     public class PersistentReceiptStorageTests
     {
-        private MemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
+        private TestMemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
         private ReceiptsRecovery _receiptsRecovery;
         private IBlockTree _blockTree;
         private readonly bool _useCompactReceipts;
@@ -45,7 +46,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
             _receiptConfig = new ReceiptConfig();
             _receiptsRecovery = new(ethereumEcdsa, specProvider);
-            _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
+            _receiptsDb = new TestMemColumnsDb<ReceiptsColumns>();
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
             _blockTree = Substitute.For<IBlockTree>();
             CreateStorage();
@@ -113,6 +114,26 @@ namespace Nethermind.Blockchain.Test.Receipts
             block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
 
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockNumPrefixed].Should().NotBeNull();
+        }
+
+        [Test]
+        public void Adds_should_attempt_hash_key_first_if_inserted_with_hashkey()
+        {
+            var (block, receipts) = PrepareBlock();
+
+            using NettyRlpStream rlpStream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = rlpStream.AsSpan().ToArray();
+
+            CreateStorage();
+            _storage.Get(block);
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
+            block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
+
+            TestMemDb blocksDb = (TestMemDb) _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            blocksDb.KeyWasRead(blockNumPrefixed.ToArray(), 0);
+            blocksDb.KeyWasRead(block.Hash.Bytes, 1);
         }
 
         [Test]

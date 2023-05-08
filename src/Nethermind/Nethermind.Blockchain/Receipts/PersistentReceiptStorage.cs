@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -28,6 +30,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly ReceiptArrayStorageDecoder _storageDecoder = ReceiptArrayStorageDecoder.Instance;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptConfig _receiptConfig;
+        private readonly bool _legacyHashKey;
 
         private const int CacheSize = 64;
         private readonly LruCache<KeccakKey, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
@@ -55,6 +58,9 @@ namespace Nethermind.Blockchain.Receipts
             byte[] lowestBytes = _database.Get(Keccak.Zero);
             _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
+
+            KeyValuePair<byte[], byte[]>? firstValue = _blocksDb.GetAll().FirstOrDefault();
+            _legacyHashKey = firstValue != null && firstValue.Value.Key.Length == Keccak.Size;
 
             _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
         }
@@ -165,18 +171,38 @@ namespace Nethermind.Blockchain.Receipts
 
         private unsafe Span<byte> GetReceiptData(long blockNumber, Keccak blockHash)
         {
-            Span<byte> blockNumPrefixed = stackalloc byte[40];
-            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
-
-            Span<byte> receiptsData = _blocksDb.GetSpan(blockNumPrefixed);
-            if (receiptsData.IsNull())
+            if (_legacyHashKey)
             {
-                receiptsData = _blocksDb.GetSpan(blockHash);
-            }
+                Span<byte> receiptsData = _blocksDb.GetSpan(blockHash);
+                if (receiptsData != null)
+                {
+                    return receiptsData;
+                }
+
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
 
 #pragma warning disable CS9080
-            return receiptsData;
+                receiptsData = _blocksDb.GetSpan(blockNumPrefixed);
 #pragma warning restore CS9080
+
+                return receiptsData;
+            }
+            else
+            {
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+
+                Span<byte> receiptsData = _blocksDb.GetSpan(blockNumPrefixed);
+                if (receiptsData.IsNull())
+                {
+                    receiptsData = _blocksDb.GetSpan(blockHash);
+                }
+
+    #pragma warning disable CS9080
+                return receiptsData;
+    #pragma warning restore CS9080
+            }
         }
 
         private static void GetBlockNumPrefixedKey(long blockNumber, Keccak blockHash, Span<byte> output)
@@ -293,10 +319,22 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_receiptsCache.Contains(blockHash)) return true;
 
-            Span<byte> blockNumPrefixed = stackalloc byte[40];
-            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+            if (_legacyHashKey)
+            {
+                if (_blocksDb.KeyExists(blockHash)) return true;
 
-            return _blocksDb.KeyExists(blockNumPrefixed) || _blocksDb.KeyExists(blockHash);
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+
+                return _blocksDb.KeyExists(blockNumPrefixed);
+            }
+            else
+            {
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+
+                return _blocksDb.KeyExists(blockNumPrefixed) || _blocksDb.KeyExists(blockHash);
+            }
         }
 
         public void EnsureCanonical(Block block)
