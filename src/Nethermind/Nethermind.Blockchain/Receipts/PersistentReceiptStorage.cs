@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Receipts
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
 
             KeyValuePair<byte[], byte[]>? firstValue = _blocksDb.GetAll().FirstOrDefault();
-            _legacyHashKey = firstValue != null && firstValue.Value.Key.Length == Keccak.Size;
+            _legacyHashKey = firstValue.HasValue && firstValue.Value.Key != null && firstValue.Value.Key.Length == Keccak.Size;
 
             _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
         }
