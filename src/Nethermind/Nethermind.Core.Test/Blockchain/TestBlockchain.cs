@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -136,10 +137,13 @@ public class TestBlockchain : IDisposable
         ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
-        IDb blockDb = new MemDb();
-        IDb headerDb = new MemDb();
-        IDb blockInfoDb = new MemDb();
-        BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+        IDb blockDb = DbProvider.BlocksDb;
+        IDb headerDb = DbProvider.HeadersDb;
+        IDb blockInfoDb = DbProvider.BlockInfosDb;
+        IDb metadataDb = DbProvider.MetadataDb;
+        SyncConfig syncConfig = new();
+        BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, metadataDb, new ChainLevelInfoRepository(blockInfoDb),
+            SpecProvider, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
         TxPool = CreateTxPool();

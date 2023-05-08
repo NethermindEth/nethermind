@@ -43,7 +43,6 @@ namespace Nethermind.Facade.Proxy
         public Task<RpcResult<MultiCallResultModel[]>> eth_multicall(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
             BlockParameterModel blockParameter = null)
         {
-            var data = blockCalls;
             return _proxy.SendAsync<MultiCallResultModel[]>(nameof(eth_multicall), version, blockCalls, MapBlockParameter(blockParameter));
         }
 

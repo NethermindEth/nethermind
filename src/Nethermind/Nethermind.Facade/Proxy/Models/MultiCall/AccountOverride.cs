@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.State.Snap;
@@ -25,9 +26,9 @@ public class AccountOverride
     public byte[] Code { get; set; }
 
     //Storage for AccountOverrideState
-    public PathWithAccount? State { get; set; }
+    public Dictionary<UInt256, byte[]>? State { get; set; }
 
     //Storage difference for AccountOverrideStateDiff
-    public PathWithAccount? StateDiff { get; set; }
+    public Dictionary<UInt256, byte[]>? StateDiff { get; set; }
 
 }

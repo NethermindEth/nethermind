@@ -9,8 +9,10 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Facade;
+using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -80,6 +82,37 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     ? GetInputError(result)
                     : ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
             }
+        }
+
+        private class MultiCallTxExecutor
+        {
+            public MultiCallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
+            {
+                
+            }
+
+            public ResultWrapper<MultiCallResultModel> Execute(ulong version, MultiCallBlockStateCallsModel[] blockCalls,
+                BlockParameter? blockParameter)
+            {
+
+
+                throw new NotImplementedException();
+
+                /*
+                BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, token);
+
+                if (result.Error is null)
+                {
+                    return ResultWrapper<MultiCallResultModel>.Success(result.OutputData.ToHexString(true));
+                }
+
+                return result.InputError
+                    ? GetInputError(result)
+                    : ResultWrapper<MultiCallResultModel>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
+                */
+            }
+
+         
         }
 
         private class EstimateGasTxExecutor : TxExecutor<UInt256?>

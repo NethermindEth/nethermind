@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Db
@@ -60,9 +61,9 @@ namespace Nethermind.Db
             }
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _memDb.GetAll();
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _memDb.GetAll().Union(_wrappedDb.GetAll());
 
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues();
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues().Union(_wrappedDb.GetAllValues());
 
         public IBatch StartBatch()
         {
