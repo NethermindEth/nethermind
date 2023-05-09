@@ -46,6 +46,7 @@ public class PerTableDbConfig
     public ulong? ReadAheadSize => ReadConfig<ulong?>(nameof(ReadAheadSize));
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
+    public bool? DisableCompression => ReadConfig<bool?>(nameof(DisableCompression));
 
     private T? ReadConfig<T>(string propertyName)
     {
