@@ -899,11 +899,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             batch.Dispose();
         }
 
-        foreach (Iterator iterator in _readaheadIterators.Values)
-        {
-            iterator.Dispose();
-        }
-        _readaheadIterators.Dispose();
+        _readaheadIterators.DisposeAll();
 
         _db.Dispose();
 
@@ -1096,8 +1092,19 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
         }
 
+        public void DisposeAll()
+        {
+            foreach (Iterator iterator in Values)
+            {
+                iterator.Dispose();
+            }
+
+            Dispose();
+        }
+
         protected override void Dispose(bool disposing)
         {
+            // Note: This is called from finalizer thread, so we can't use foreach to dispose all values
             Value?.Dispose();
             Value = null!;
             base.Dispose(disposing);

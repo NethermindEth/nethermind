@@ -27,11 +27,7 @@ public class ColumnDb : IDbWithSpan
 
     public void Dispose()
     {
-        foreach (Iterator iterator in _readaheadIterators.Values)
-        {
-            iterator.Dispose();
-        }
-        _readaheadIterators.Dispose();
+        _readaheadIterators.DisposeAll();
     }
 
     public string Name { get; }
