@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             AssertGas(result, 21000 + 2 * GasCostOf.CallEip150 + 24 + 21 + GasCostOf.VeryLow + 3 * GasCostOf.SelfBalance + 3 * GasCostOf.SSet);
             UInt256 balanceB = TestState.GetBalance(TestItem.AddressB);
             UInt256 balanceC = TestState.GetBalance(TestItem.AddressC);

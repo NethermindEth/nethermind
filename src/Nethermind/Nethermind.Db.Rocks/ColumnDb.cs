@@ -51,7 +51,7 @@ public class ColumnDb : IDbWithSpan
 
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
-        using Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
+        Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
         return _mainDb.GetAllCore(iterator);
     }
 
@@ -124,6 +124,9 @@ public class ColumnDb : IDbWithSpan
     private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
 
     public long GetSize() => _mainDb.GetSize();
+    public long GetCacheSize() => _mainDb.GetCacheSize();
+    public long GetIndexSize() => _mainDb.GetIndexSize();
+    public long GetMemtableSize() => _mainDb.GetMemtableSize();
 
     public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _rocksDb.GetSpan(key, _columnFamily);
 

@@ -197,12 +197,11 @@ namespace Nethermind.AccountAbstraction.Test
             Keccak idFromTransaction =
                 new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
             createOp.CalculateRequestId(entryPointId, chainId);
-            Assert.AreEqual(idFromTransaction, createOp.RequestId!,
+            Assert.That(createOp.RequestId!, Is.EqualTo(idFromTransaction),
                 "Request IDs do not match.");
 
-            Assert.AreEqual(
-                Bytes.FromHexString("0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c"),
-                createOp.Signature,
+            Assert.That(
+                createOp.Signature, Is.EqualTo(Bytes.FromHexString("0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c")),
                 "signatures are different"
             );
         }

@@ -233,6 +233,51 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         return 0;
     }
 
+    public long GetCacheSize()
+    {
+        try
+        {
+            return long.TryParse(_db.GetProperty("rocksdb.block-cache-usage"), out long size) ? size : 0;
+        }
+        catch (RocksDbSharpException e)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"Failed to update DB size metrics {e.Message}");
+        }
+
+        return 0;
+    }
+
+    public long GetIndexSize()
+    {
+        try
+        {
+            return long.TryParse(_db.GetProperty("rocksdb.estimate-table-readers-mem"), out long size) ? size : 0;
+        }
+        catch (RocksDbSharpException e)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"Failed to update DB size metrics {e.Message}");
+        }
+
+        return 0;
+    }
+
+    public long GetMemtableSize()
+    {
+        try
+        {
+            return long.TryParse(_db.GetProperty("rocksdb.cur-size-all-mem-tables"), out long size) ? size : 0;
+        }
+        catch (RocksDbSharpException e)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"Failed to update DB size metrics {e.Message}");
+        }
+
+        return 0;
+    }
+
     protected virtual void BuildOptions<T>(PerTableDbConfig dbConfig, Options<T> options, IntPtr? sharedCache) where T : Options<T>
     {
         _maxThisDbSize = 0;
@@ -305,10 +350,10 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
         }
 
-        if (dbConfig.MaxWriteBytesPerSec.HasValue)
+        if (dbConfig.MaxBytesPerSec.HasValue)
         {
             _rateLimiter =
-                _rocksDbNative.rocksdb_ratelimiter_create(dbConfig.MaxWriteBytesPerSec.Value, 1000, 10);
+                _rocksDbNative.rocksdb_ratelimiter_create(dbConfig.MaxBytesPerSec.Value, 1000, 10);
             _rocksDbNative.rocksdb_options_set_ratelimiter(options.Handle, _rateLimiter.Value);
         }
 
@@ -335,6 +380,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         options.IncreaseParallelism(Environment.ProcessorCount);
         options.SetRecycleLogFileNum(dbConfig
             .RecycleLogFileNum); // potential optimization for reusing allocated log files
+
+        options.SetUseDirectReads(dbConfig.UseDirectReads);
+        options.SetUseDirectIoForFlushAndCompaction(dbConfig.UseDirectIoForFlushAndCompactions);
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
@@ -545,79 +593,89 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     {
         try
         {
-            iterator.SeekToFirst();
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
-        }
-
-        while (iterator.Valid())
-        {
-            yield return iterator.Value();
             try
             {
-                iterator.Next();
+                iterator.SeekToFirst();
             }
             catch (RocksDbSharpException e)
             {
                 CreateMarkerIfCorrupt(e);
                 throw;
             }
-        }
 
-        try
-        {
-            iterator.Dispose();
+            while (iterator.Valid())
+            {
+                yield return iterator.Value();
+                try
+                {
+                    iterator.Next();
+                }
+                catch (RocksDbSharpException e)
+                {
+                    CreateMarkerIfCorrupt(e);
+                    throw;
+                }
+            }
         }
-        catch (RocksDbSharpException e)
+        finally
         {
-            CreateMarkerIfCorrupt(e);
-            throw;
+            try
+            {
+                iterator.Dispose();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
         }
     }
 
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
-        }
-
         try
         {
-            iterator.SeekToFirst();
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
-        }
-
-        while (iterator.Valid())
-        {
-            yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
+            if (_isDisposing)
+            {
+                throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+            }
 
             try
             {
-                iterator.Next();
+                iterator.SeekToFirst();
             }
             catch (RocksDbSharpException e)
             {
                 CreateMarkerIfCorrupt(e);
                 throw;
             }
-        }
 
-        try
-        {
-            iterator.Dispose();
+            while (iterator.Valid())
+            {
+                yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
+
+                try
+                {
+                    iterator.Next();
+                }
+                catch (RocksDbSharpException e)
+                {
+                    CreateMarkerIfCorrupt(e);
+                    throw;
+                }
+            }
         }
-        catch (RocksDbSharpException e)
+        finally
         {
-            CreateMarkerIfCorrupt(e);
-            throw;
+            try
+            {
+                iterator.Dispose();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
         }
     }
 

@@ -23,7 +23,7 @@ public class SignatureTests
     public void Test(ulong v, int? chainId)
     {
         Signature signature = new(0, 0, v);
-        Assert.AreEqual(chainId, signature.ChainId);
+        Assert.That(signature.ChainId, Is.EqualTo(chainId));
     }
 
     [Test]

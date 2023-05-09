@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Test
             _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
             JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
             JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
-            Assert.AreEqual(request.Id, response.Id);
+            Assert.That(response.Id, Is.EqualTo(request.Id));
             return response;
         }
 
@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Test
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
             JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true") as JsonRpcSuccessResponse;
-            Assert.AreEqual(2L, (response?.Result as BlockForRpc)?.Number);
+            Assert.That((response?.Result as BlockForRpc)?.Number, Is.EqualTo(2L));
         }
 
         [Test]
@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Test
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
             JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true") as JsonRpcSuccessResponse;
-            Assert.AreEqual(513L, (response?.Result as BlockForRpc)?.Size);
+            Assert.That((response?.Result as BlockForRpc)?.Size, Is.EqualTo(513L));
         }
 
         [Test]
@@ -87,7 +87,7 @@ namespace Nethermind.JsonRpc.Test
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
             ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x1"));
             JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized) as JsonRpcSuccessResponse;
-            Assert.AreEqual("0x1", response?.Result);
+            Assert.That(response?.Result, Is.EqualTo("0x1"));
         }
 
         [Test]
@@ -135,7 +135,7 @@ namespace Nethermind.JsonRpc.Test
             string serialized = serializer.Serialize(new TransactionForRpc());
 
             JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized) as JsonRpcSuccessResponse;
-            Assert.AreEqual("0x", response?.Result);
+            Assert.That(response?.Result, Is.EqualTo("0x"));
         }
 
         [TestCase("")]
@@ -149,7 +149,7 @@ namespace Nethermind.JsonRpc.Test
             string serialized = serializer.Serialize(new TransactionForRpc());
 
             JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized, nullValue) as JsonRpcSuccessResponse;
-            Assert.AreEqual("0x", response?.Result);
+            Assert.That(response?.Result, Is.EqualTo("0x"));
         }
 
         [Test]
@@ -167,7 +167,7 @@ namespace Nethermind.JsonRpc.Test
         public void IncorrectMethodNameTest()
         {
             JsonRpcErrorResponse? response = TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method") as JsonRpcErrorResponse;
-            Assert.AreEqual(response?.Error?.Code, ErrorCodes.MethodNotFound);
+            Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.MethodNotFound));
         }
 
         [Test]
@@ -176,7 +176,7 @@ namespace Nethermind.JsonRpc.Test
             INetRpcModule netRpcModule = Substitute.For<INetRpcModule>();
             netRpcModule.net_version().ReturnsForAnyArgs(x => ResultWrapper<string>.Success("1"));
             JsonRpcSuccessResponse? response = TestRequest(netRpcModule, "net_version") as JsonRpcSuccessResponse;
-            Assert.AreEqual(response?.Result, "1");
+            Assert.That(response?.Result, Is.EqualTo("1"));
             Assert.IsNotInstanceOf<JsonRpcErrorResponse>(response);
         }
 
@@ -186,7 +186,7 @@ namespace Nethermind.JsonRpc.Test
             IWeb3RpcModule web3RpcModule = Substitute.For<IWeb3RpcModule>();
             web3RpcModule.web3_sha3(Arg.Any<byte[]>()).ReturnsForAnyArgs(x => ResultWrapper<Keccak>.Success(TestItem.KeccakA));
             JsonRpcSuccessResponse? response = TestRequest(web3RpcModule, "web3_sha3", "0x68656c6c6f20776f726c64") as JsonRpcSuccessResponse;
-            Assert.AreEqual(TestItem.KeccakA, response?.Result);
+            Assert.That(response?.Result, Is.EqualTo(TestItem.KeccakA));
         }
 
         [TestCaseSource(nameof(BlockForRpcTestSource))]

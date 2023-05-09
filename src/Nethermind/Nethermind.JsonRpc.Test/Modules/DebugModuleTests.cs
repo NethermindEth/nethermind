@@ -76,8 +76,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             JsonRpcSuccessResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
             ChainLevelForRpc? chainLevel = response?.Result as ChainLevelForRpc;
             Assert.NotNull(chainLevel);
-            Assert.AreEqual(true, chainLevel?.HasBlockOnMainChain);
-            Assert.AreEqual(2, chainLevel?.BlockInfos.Length);
+            Assert.That(chainLevel?.HasBlockOnMainChain, Is.EqualTo(true));
+            Assert.That(chainLevel?.BlockInfos.Length, Is.EqualTo(2));
         }
 
         [Test]
@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
-            Assert.AreEqual(rlp.Bytes, (byte[]?)response?.Result);
+            Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
         }
 
         [Test]
@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcSuccessResponse;
 
-            Assert.AreEqual(rlp.Bytes, (byte[]?)response?.Result);
+            Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
         }
 
         [Test]
@@ -114,7 +114,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcErrorResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcErrorResponse;
 
-            Assert.AreEqual(-32001, response?.Error?.Code);
+            Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
         }
 
         [Test]
@@ -127,7 +127,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcErrorResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
 
-            Assert.AreEqual(-32001, response?.Error?.Code);
+            Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
         }
 
         [Test]
@@ -166,7 +166,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             string response = RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{}");
 
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[\"0000000000000000000000000000000000000000000000000000000000000007\",\"0000000000000000000000000000000000000000000000000000000000000008\"],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}", response);
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[\"0000000000000000000000000000000000000000000000000000000000000007\",\"0000000000000000000000000000000000000000000000000000000000000008\"],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
         }
 
         [Test]
@@ -203,7 +203,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             string response = RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{\"disableStack\" : true}");
 
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}", response);
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
         }
 
         [Test]

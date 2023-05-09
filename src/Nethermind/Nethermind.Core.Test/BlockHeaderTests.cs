@@ -44,7 +44,7 @@ public class BlockHeaderTests
             UnclesHash = new Keccak(Bytes.FromHexString("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"))
         };
 
-        Assert.AreEqual(new Keccak(Bytes.FromHexString("0x19a24085f6b1fb174aee0463264cc7163a7ffa165af04d3f40431ab3c3b08b98")), header.CalculateHash());
+        Assert.That(header.CalculateHash(), Is.EqualTo(new Keccak(Bytes.FromHexString("0x19a24085f6b1fb174aee0463264cc7163a7ffa165af04d3f40431ab3c3b08b98"))));
     }
 
     [Test]
@@ -71,7 +71,7 @@ public class BlockHeaderTests
         };
         header.Hash = header.CalculateHash();
 
-        Assert.AreEqual(new Keccak(Bytes.FromHexString("0x1423c2875714c31049cacfea8450f66a73ecbd61d7a6ab13089406a491aa9fc2")), header.Hash);
+        Assert.That(header.Hash, Is.EqualTo(new Keccak(Bytes.FromHexString("0x1423c2875714c31049cacfea8450f66a73ecbd61d7a6ab13089406a491aa9fc2"))));
     }
 
     [Test]
@@ -84,7 +84,7 @@ public class BlockHeaderTests
             Beneficiary = author
         };
 
-        Assert.AreEqual(author, header.GasBeneficiary);
+        Assert.That(header.GasBeneficiary, Is.EqualTo(author));
     }
 
     [Test]
@@ -97,7 +97,7 @@ public class BlockHeaderTests
         blockHeader.Number = 2001;
         blockHeader.GasLimit = 100;
         UInt256 baseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
-        Assert.AreEqual(UInt256.Zero, baseFee);
+        Assert.That(baseFee, Is.EqualTo(UInt256.Zero));
     }
 
     [TestCase(100, 100, 88, 0)]
@@ -121,7 +121,7 @@ public class BlockHeaderTests
         blockHeader.BaseFeePerGas = (UInt256)baseFee;
         blockHeader.GasUsed = gasUsed;
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
-        Assert.AreEqual((UInt256)expectedBaseFee, actualBaseFee);
+        Assert.That(actualBaseFee, Is.EqualTo((UInt256)expectedBaseFee));
     }
 
     [TestCaseSource(nameof(HasBodyTestSource))]
@@ -148,7 +148,7 @@ public class BlockHeaderTests
         blockHeader.BaseFeePerGas = (UInt256)testCase.Info.ParentBaseFee;
         blockHeader.GasUsed = testCase.Info.ParentGasUsed;
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
-        Assert.AreEqual((UInt256)testCase.Info.ExpectedBaseFee, actualBaseFee, testCase.Description);
+        Assert.That(actualBaseFee, Is.EqualTo((UInt256)testCase.Info.ExpectedBaseFee), testCase.Description);
     }
 
     private static IEnumerable<(BaseFeeTestCases, string)> Eip1559BaseFeeTestSource()

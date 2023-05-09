@@ -64,13 +64,13 @@ namespace Nethermind.Blockchain.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Hash!))
+            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
             {
                 throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Hash!))
+            if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!))
             {
                 throw new ResourceNotFoundException($"Receipt not available for To block {toBlock.Number}.");
             }

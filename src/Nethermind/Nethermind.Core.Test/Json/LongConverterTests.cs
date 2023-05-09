@@ -30,7 +30,7 @@ namespace Nethermind.Core.Test.Json
         public void Regression_0xa00000()
         {
             long result = JsonSerializer.Deserialize<long>("\"0xa00000\"", options);
-            Assert.AreEqual(10485760, result);
+            Assert.That(result, Is.EqualTo(10485760));
         }
 
         [Test]
@@ -44,7 +44,7 @@ namespace Nethermind.Core.Test.Json
         public void Can_read_0x000()
         {
             long result = JsonSerializer.Deserialize<long>("\"0x0000\"", options);
-            Assert.AreEqual(long.Parse("0"), result);
+            Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]

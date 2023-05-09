@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Test.Data
             long?[] indexes = receiptForRpc.Logs.Select(log => log.LogIndex).ToArray();
             long?[] expected = { 0, 1, 2 };
 
-            Assert.AreEqual(expected, indexes);
+            Assert.That(indexes, Is.EqualTo(expected));
         }
     }
 }

@@ -163,7 +163,7 @@ namespace Nethermind.Store.Test
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.Restore(4);
-            Assert.AreEqual((UInt256)4, provider.GetBalance(_address1));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)4));
         }
 
         [Test]
@@ -179,7 +179,7 @@ namespace Nethermind.Store.Test
             provider.Restore(-1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.Restore(-1);
-            Assert.AreEqual(UInt256.Zero, provider.GetBalance(_address1));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.Zero));
         }
 
         [Test]
@@ -195,31 +195,31 @@ namespace Nethermind.Store.Test
             provider.UpdateCodeHash(_address1, codeHash, Frontier.Instance);
             provider.UpdateStorageRoot(_address1, Hash2);
 
-            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
-            Assert.AreEqual(code, provider.GetCode(_address1));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(code));
             provider.Restore(4);
-            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
-            Assert.AreEqual(code, provider.GetCode(_address1));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(code));
             provider.Restore(3);
-            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
-            Assert.AreEqual(code, provider.GetCode(_address1));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(code));
             provider.Restore(2);
-            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
-            Assert.AreEqual(new byte[0], provider.GetCode(_address1));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(new byte[0]));
             provider.Restore(1);
-            Assert.AreEqual(UInt256.Zero, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
-            Assert.AreEqual(new byte[0], provider.GetCode(_address1));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.Zero));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(new byte[0]));
             provider.Restore(0);
-            Assert.AreEqual(UInt256.Zero, provider.GetNonce(_address1));
-            Assert.AreEqual(UInt256.One, provider.GetBalance(_address1));
-            Assert.AreEqual(new byte[0], provider.GetCode(_address1));
+            Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.Zero));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One));
+            Assert.That(provider.GetCode(_address1), Is.EqualTo(new byte[0]));
             provider.Restore(-1);
-            Assert.AreEqual(false, provider.AccountExists(_address1));
+            Assert.That(provider.AccountExists(_address1), Is.EqualTo(false));
         }
 
         [Test(Description = "It was failing before as touch was marking the accounts as committed but not adding to trace list")]

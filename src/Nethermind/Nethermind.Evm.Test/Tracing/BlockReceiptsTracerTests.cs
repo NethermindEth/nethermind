@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StartNewTxTrace(block.Transactions[0]);
             tracer.MarkAsSuccess(TestItem.AddressA, 100, new byte[0], new LogEntry[0], TestItem.KeccakF);
 
-            Assert.AreEqual(TestItem.KeccakF, tracer.TxReceipts[0].PostTransactionState);
+            Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem.KeccakF));
         }
 
         [Test]
@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StartNewTxTrace(block.Transactions[0]);
             tracer.MarkAsFailed(TestItem.AddressA, 100, new byte[0], "error", TestItem.KeccakF);
 
-            Assert.AreEqual(TestItem.KeccakF, tracer.TxReceipts[0].PostTransactionState);
+            Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem.KeccakF));
         }
 
         [Test]

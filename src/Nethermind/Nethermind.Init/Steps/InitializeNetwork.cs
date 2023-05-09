@@ -201,10 +201,10 @@ public class InitializeNetwork : IStep
 
         bool stateSyncFinished = _api.SyncProgressResolver.FindBestFullState() != 0;
 
-        if (_syncConfig.SnapSync || stateSyncFinished)
+        if (_syncConfig.SnapSync || stateSyncFinished || !_syncConfig.FastSync)
         {
             // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
-            // no longer available). Eth67 should be added if snap is enabled OR sync is finished
+            // no longer available). Eth67 should be added if snap is enabled OR sync is finished OR in archive nodes (no state sync)
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
         }
@@ -483,6 +483,7 @@ public class InitializeNetwork : IStep
             _api.MessageSerializationService,
             _api.NodeKey.PublicKey,
             _networkConfig.P2PPort,
+            _networkConfig.LocalIp,
             encryptionHandshakeServiceA,
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,

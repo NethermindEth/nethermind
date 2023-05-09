@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
 
-            Assert.AreEqual(output, blockParameter.BlockNumber);
+            Assert.That(blockParameter.BlockNumber, Is.EqualTo(output));
         }
 
         [TestCase("null", BlockParameterType.Latest)]
@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
 
-            Assert.AreEqual(output, blockParameter.Type);
+            Assert.That(blockParameter.Type, Is.EqualTo(output));
         }
 
         [TestCase("\"latest\"", BlockParameterType.Latest)]

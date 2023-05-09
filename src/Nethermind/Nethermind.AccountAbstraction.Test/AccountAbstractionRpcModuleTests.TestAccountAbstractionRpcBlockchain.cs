@@ -314,7 +314,7 @@ namespace Nethermind.AccountAbstraction.Test
 
                 Address[] eps = entryPointContractAddresses.ToArray();
                 Address[] recieved_eps = (Address[])(resultOfEntryPoints.GetData()!);
-                Assert.AreEqual(eps, recieved_eps);
+                Assert.That(recieved_eps, Is.EqualTo(eps));
             }
         }
     }
