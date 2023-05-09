@@ -226,7 +226,7 @@ namespace Nethermind.Trie
         /// <summary>
         /// Highly optimized
         /// </summary>
-        public void ResolveNode(ITrieNodeResolver tree)
+        public void ResolveNode(ITrieNodeResolver tree, ReadFlags readFlags = ReadFlags.None)
         {
             try
             {
@@ -239,7 +239,7 @@ namespace Nethermind.Trie
                             throw new TrieException("Unable to resolve node without Keccak");
                         }
 
-                        FullRlp = tree.LoadRlp(Keccak);
+                        FullRlp = tree.LoadRlp(Keccak, readFlags);
                         IsPersisted = true;
 
                         if (FullRlp is null)

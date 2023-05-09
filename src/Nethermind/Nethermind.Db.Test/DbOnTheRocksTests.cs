@@ -25,7 +25,7 @@ namespace Nethermind.Db.Test
     [Parallelizable(ParallelScope.None)]
     public class DbOnTheRocksTests
     {
-        private const string DbPath = "blocks";
+        string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
 
         [SetUp]
         public void Setup()
@@ -55,6 +55,15 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Smoke_test_readahead()
+        {
+            IDbConfig config = new DbConfig();
+            DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
+            db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+            Assert.That(db.Get(new byte[] { 1, 2, 3 }, ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 4, 5, 6 }));
+        }
+
+        [Test]
         public void Smoke_test_span()
         {
             IDbConfig config = new DbConfig();
@@ -65,6 +74,17 @@ namespace Nethermind.Db.Test
             Span<byte> readSpan = db.GetSpan(key);
             Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
             db.DangerousReleaseMemory(readSpan);
+        }
+
+        [Test]
+        public void Smoke_test_column_db()
+        {
+            IDbConfig config = new DbConfig();
+            using ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
+            IDbWithSpan? db = columnsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+            Assert.That(db[new byte[] { 1, 2, 3 }], Is.EqualTo(new byte[] { 4, 5, 6 }));
         }
 
         [Test]

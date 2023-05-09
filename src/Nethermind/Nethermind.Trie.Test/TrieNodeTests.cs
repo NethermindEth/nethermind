@@ -60,6 +60,22 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void Forward_read_flags_on_resolve()
+        {
+            ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+            resolver.LoadRlp(TestItem.KeccakA, ReadFlags.HintReadAhead).Returns((byte[])null);
+            TrieNode trieNode = new(NodeType.Unknown, TestItem.KeccakA);
+            try
+            {
+                Assert.Throws<TrieException>(() => trieNode.ResolveNode(resolver, ReadFlags.HintReadAhead));
+            }
+            catch (TrieException)
+            {
+            }
+            resolver.Received().LoadRlp(TestItem.KeccakA, ReadFlags.HintReadAhead);
+        }
+
+        [Test]
         public void Throws_trie_exception_on_unexpected_format()
         {
             TrieNode trieNode = new(NodeType.Unknown, new byte[42]);
