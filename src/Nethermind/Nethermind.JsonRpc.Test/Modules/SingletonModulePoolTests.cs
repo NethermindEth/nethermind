@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Consensus.Validators;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -51,7 +52,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IGasPriceOracle>(),
-                Substitute.For<IEthSyncingInfo>());
+                Substitute.For<IEthSyncingInfo>(),
+                Substitute.For<IBuilderSubmissionValidator>());
         }
 
         [Test]

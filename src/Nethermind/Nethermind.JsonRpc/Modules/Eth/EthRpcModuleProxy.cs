@@ -365,5 +365,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Type = blockParameter.Type.ToString()
             };
         }
+
+        public ResultWrapper<bool> mev_validateBuilderSubmissionV1(BuilderBlockValidationRequest request)
+        {
+            throw new NotImplementedException();
+        }
+
+        public ResultWrapper<bool> mev_validateBuilderSubmissionV2(BuilderBlockValidationRequest request)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

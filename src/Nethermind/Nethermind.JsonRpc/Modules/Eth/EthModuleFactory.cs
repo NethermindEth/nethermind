@@ -17,6 +17,7 @@ using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
+using Nethermind.Consensus.Validators;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -34,6 +35,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IReceiptStorage _receiptStorage;
         private readonly IGasPriceOracle _gasPriceOracle;
         private readonly IEthSyncingInfo _ethSyncingInfo;
+        private readonly IBuilderSubmissionValidator _builderSubmissionValidator;
 
         public EthModuleFactory(
             ITxPool txPool,
@@ -47,7 +49,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ISpecProvider specProvider,
             IReceiptStorage receiptStorage,
             IGasPriceOracle gasPriceOracle,
-            IEthSyncingInfo ethSyncingInfo)
+            IEthSyncingInfo ethSyncingInfo,
+            IBuilderSubmissionValidator builderSubmissionValidator)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
@@ -60,6 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+            _builderSubmissionValidator = builderSubmissionValidator ?? throw new ArgumentNullException(nameof(builderSubmissionValidator));
             _blockTree = blockTree.AsReadOnly();
         }
 
@@ -78,7 +82,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _specProvider,
                 _gasPriceOracle,
                 _ethSyncingInfo,
-                 new FeeHistoryOracle(_blockTree, _receiptStorage, _specProvider));
+                 new FeeHistoryOracle(_blockTree, _receiptStorage, _specProvider),
+                 _builderSubmissionValidator);
         }
 
         public static List<JsonConverter> Converters = new()

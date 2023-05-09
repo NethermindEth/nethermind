@@ -39,6 +39,7 @@ using Nethermind.Config;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
+using Nethermind.Consensus;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -135,7 +136,26 @@ namespace Nethermind.JsonRpc.Benchmark
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             ISyncConfig syncConfig = new SyncConfig();
+            IBlocksConfig blocksConfig = new BlocksConfig();
+            IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(specProvider, blocksConfig);
             EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
+
+            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory =
+                    new(dbProvider.AsReadOnly(true),
+                    trieStore.AsReadOnly(),
+                    blockTree,
+                    specProvider,
+                    LimboLogs.Instance);
+
+            IBuilderSubmissionValidator blockValidationService =
+                new BuilderSubmissionValidator(specProvider,
+                    gasLimitCalculator,
+                    Always.Valid,
+                    readOnlyTxProcessingEnvFactory,
+                    receiptStorage,
+                    NoBlockRewards.Instance,
+                    Always.Valid,
+                    LimboLogs.Instance);
 
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),
@@ -150,7 +170,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 specProvider,
                 gasPriceOracle,
                 ethSyncingInfo,
-                feeHistoryOracle);
+                feeHistoryOracle,
+                blockValidationService);
         }
 
         [Benchmark]

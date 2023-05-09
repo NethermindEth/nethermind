@@ -275,5 +275,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Accounts via Address and Blocknumber", IsSharable = true)]
         ResultWrapper<AccountForRpc> eth_getAccount([JsonRpcParameter(ExampleValue = "[\"0xaa00000000000000000000000000000000000000\", \"latest\"]")] Address accountAddress, BlockParameter blockParameter = null);
+
+        [JsonRpcMethod(Description = "Validates a builder submission v1", IsImplemented = true)]
+        ResultWrapper<bool> mev_validateBuilderSubmissionV1(BuilderBlockValidationRequest request);
+
+        [JsonRpcMethod(Description = "Validates a builder submission v2", IsImplemented = true)]
+        ResultWrapper<bool> mev_validateBuilderSubmissionV2(BuilderBlockValidationRequest request);
     }
 }

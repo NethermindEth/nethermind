@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -52,8 +53,9 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly ILogger _logger;
     private readonly IGasPriceOracle _gasPriceOracle;
     private readonly IEthSyncingInfo _ethSyncingInfo;
-
     private readonly IFeeHistoryOracle _feeHistoryOracle;
+    private readonly IBuilderSubmissionValidator _builderSubmissionValidator;
+
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
         RootCheckVisitor rootCheckVisitor = new();
@@ -74,7 +76,8 @@ public partial class EthRpcModule : IEthRpcModule
         ISpecProvider specProvider,
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
-        IFeeHistoryOracle feeHistoryOracle)
+        IFeeHistoryOracle feeHistoryOracle,
+        IBuilderSubmissionValidator builderSubmissionValidator)
     {
         _logger = logManager.GetClassLogger();
         _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -89,6 +92,7 @@ public partial class EthRpcModule : IEthRpcModule
         _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
         _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
         _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
+        _builderSubmissionValidator = builderSubmissionValidator ?? throw new ArgumentNullException(nameof(builderSubmissionValidator));
     }
 
     public ResultWrapper<string> eth_protocolVersion()
@@ -765,5 +769,45 @@ public partial class EthRpcModule : IEthRpcModule
         }
         Account account = _stateReader.GetAccount(header.StateRoot, accountAddress);
         return ResultWrapper<AccountForRpc>.Success(account is null ? null : new AccountForRpc(account));
+    }
+
+    [JsonRpcMethod(Description = "Validates a builder submission v1", IsImplemented = true)]
+    public ResultWrapper<bool> mev_validateBuilderSubmissionV1(BuilderBlockValidationRequest request)
+    {
+        Block builderBlock = ValidateRequestAndGetBlock(request);
+
+        _builderSubmissionValidator.ValidateBuilderSubmission(builderBlock, request.Message!,
+            request.RegisteredGasLimit);
+        return ResultWrapper<bool>.Success(true);
+    }
+
+    [JsonRpcMethod(Description = "Validates a builder submission v2", IsImplemented = true)]
+    public ResultWrapper<bool> mev_validateBuilderSubmissionV2(BuilderBlockValidationRequest request)
+    {
+        Block builderBlock = ValidateRequestAndGetBlock(request);
+
+        _builderSubmissionValidator.ValidateBuilderSubmission(builderBlock, request.Message!,
+            request.RegisteredGasLimit, request.WithdrawalsRoot);
+        return ResultWrapper<bool>.Success(true);
+    }
+
+    private static Block ValidateRequestAndGetBlock(BuilderBlockValidationRequest request)
+    {
+        if (request.Message is null)
+        {
+            throw new InvalidOperationException("Message is null");
+        }
+
+        if (request.ExecutionPayload is null)
+        {
+            throw new InvalidOperationException("Execution Payload is null");
+        }
+
+        if (!request.ExecutionPayload.TryGetBlock(out Block? builderBlock))
+        {
+            throw new InvalidOperationException("Execution Payload failed to be converted to Block");
+        }
+
+        return builderBlock;
     }
 }

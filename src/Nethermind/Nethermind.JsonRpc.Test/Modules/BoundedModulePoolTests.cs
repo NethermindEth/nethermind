@@ -23,6 +23,11 @@ using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
+using Nethermind.Consensus;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -47,6 +52,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new SyncConfig(),
                 LimboLogs.Instance);
 
+            IBuilderSubmissionValidator builderSubmissionValidator = Substitute.For<IBuilderSubmissionValidator>(); ;
+
             _modulePool = new BoundedModulePool<IEthRpcModule>(new EthModuleFactory(
                 txPool,
                 Substitute.For<ITxSender>(),
@@ -59,7 +66,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IGasPriceOracle>(),
-                Substitute.For<IEthSyncingInfo>()),
+                Substitute.For<IEthSyncingInfo>(),
+                builderSubmissionValidator),
                  1, 1000);
         }
 
