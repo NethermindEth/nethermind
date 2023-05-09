@@ -124,7 +124,7 @@ namespace Nethermind.Stats.Model
 
         public override int GetHashCode() => HashCode.Combine(Id);
 
-        public override string ToString() => ToString("p");
+        public override string ToString() => ToString(Format.WithPublicKey);
 
         public string ToString(string format) => ToString(format, null);
 
@@ -132,12 +132,13 @@ namespace Nethermind.Stats.Model
         {
             return format switch
             {
-                "s" => $"{_paddedHost}:{_paddedPort}",
-                "c" => $"[Node|{_paddedHost}:{_paddedPort}|{EthDetails}|{ClientId}]",
-                "f" => $"enode://{Id.ToString(false)}@{_paddedHost}:{_paddedPort}|{ClientId}",
-                "e" => $"enode://{Id.ToString(false)}@{_paddedHost}:{_paddedPort}",
-                "p" => $"enode://{Id.ToString(false)}@{_paddedHost}:{_paddedPort}|{Id.Address}",
-                _ => $"enode://{Id.ToString(false)}@{_paddedHost}:{_paddedPort}"
+                Format.Short => $"{Host}:{Port}",
+                Format.AlignedShort => $"{_paddedHost}:{_paddedPort}",
+                Format.Console => $"[Node|{Host}:{Port}|{EthDetails}|{ClientId}]",
+                Format.WithId => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
+                Format.ENode => $"enode://{Id.ToString(false)}@{Host}:{Port}",
+                Format.WithPublicKey => $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}",
+                _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
             };
         }
 
@@ -195,6 +196,16 @@ namespace Nethermind.Stats.Model
             {
                 return NodeClientType.Unknown;
             }
+        }
+
+        public static class Format
+        {
+            public const string Short = "s";
+            public const string AlignedShort = "a";
+            public const string Console = "c";
+            public const string ENode = "e";
+            public const string WithId = "f";
+            public const string WithPublicKey = "p";
         }
     }
 }

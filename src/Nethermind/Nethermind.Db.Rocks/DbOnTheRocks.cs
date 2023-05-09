@@ -37,6 +37,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     internal WriteOptions? WriteOptions { get; private set; }
     internal WriteOptions? LowPriorityWriteOptions { get; private set; }
 
+    internal ReadOptions? _readAheadReadOptions = null;
+
     internal DbOptions? DbOptions { get; private set; }
 
     public string Name { get; }
@@ -60,6 +62,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
 
     private List<DbMetricsUpdater> _metricsUpdaters = new();
+
+    private ManagedIterators _readaheadIterators = new();
 
     public DbOnTheRocks(
         string basePath,
@@ -350,10 +354,10 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
         }
 
-        if (dbConfig.MaxWriteBytesPerSec.HasValue)
+        if (dbConfig.MaxBytesPerSec.HasValue)
         {
             _rateLimiter =
-                _rocksDbNative.rocksdb_ratelimiter_create(dbConfig.MaxWriteBytesPerSec.Value, 1000, 10);
+                _rocksDbNative.rocksdb_ratelimiter_create(dbConfig.MaxBytesPerSec.Value, 1000, 10);
             _rocksDbNative.rocksdb_options_set_ratelimiter(options.Handle, _rateLimiter.Value);
         }
 
@@ -381,6 +385,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         options.SetRecycleLogFileNum(dbConfig
             .RecycleLogFileNum); // potential optimization for reusing allocated log files
 
+        options.SetUseDirectReads(dbConfig.UseDirectReads);
+        options.SetUseDirectIoForFlushAndCompaction(dbConfig.UseDirectIoForFlushAndCompactions);
+
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
 
@@ -391,7 +398,19 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         LowPriorityWriteOptions = new WriteOptions();
         LowPriorityWriteOptions.SetSync(dbConfig.WriteAheadLogSync);
-        RocksDbSharp.Native.Instance.rocksdb_writeoptions_set_low_pri(LowPriorityWriteOptions.Handle, true);
+        Native.Instance.rocksdb_writeoptions_set_low_pri(LowPriorityWriteOptions.Handle, true);
+
+        // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
+        // will increase the chances that the next keys will be in the cache, which reduces iops and latency. This
+        // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
+        // bandwidth requirement, since each read must be at least this size. This value is tuned for a batched trie
+        // visitor on mainnet with 4GB memory budget and 4Gbps read bandwidth.
+        if (dbConfig.ReadAheadSize != 0)
+        {
+            _readAheadReadOptions = new ReadOptions();
+            _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
+            _readAheadReadOptions.SetTailing(true);
+        }
 
         if (dbConfig.EnableDbStatistics)
         {
@@ -408,6 +427,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
+        return GetWithColumnFamily(key, null, _readaheadIterators, flags);
+    }
+
+    internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ManagedIterators readaheadIterators, ReadFlags flags = ReadFlags.None)
+    {
         if (_isDisposing)
         {
             throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
@@ -417,7 +441,22 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         try
         {
-            return _db.Get(key);
+            if (_readAheadReadOptions != null && (flags & ReadFlags.HintReadAhead) != 0)
+            {
+                if (!readaheadIterators.IsValueCreated)
+                {
+                    readaheadIterators.Value = _db.NewIterator(cf, _readAheadReadOptions);
+                }
+
+                Iterator iterator = readaheadIterators.Value!;
+                iterator.Seek(key);
+                if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
+                {
+                    return iterator.Value();
+                }
+            }
+
+            return _db.Get(key, cf);
         }
         catch (RocksDbSharpException e)
         {
@@ -590,79 +629,89 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     {
         try
         {
-            iterator.SeekToFirst();
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
-        }
-
-        while (iterator.Valid())
-        {
-            yield return iterator.Value();
             try
             {
-                iterator.Next();
+                iterator.SeekToFirst();
             }
             catch (RocksDbSharpException e)
             {
                 CreateMarkerIfCorrupt(e);
                 throw;
             }
-        }
 
-        try
-        {
-            iterator.Dispose();
+            while (iterator.Valid())
+            {
+                yield return iterator.Value();
+                try
+                {
+                    iterator.Next();
+                }
+                catch (RocksDbSharpException e)
+                {
+                    CreateMarkerIfCorrupt(e);
+                    throw;
+                }
+            }
         }
-        catch (RocksDbSharpException e)
+        finally
         {
-            CreateMarkerIfCorrupt(e);
-            throw;
+            try
+            {
+                iterator.Dispose();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
         }
     }
 
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
-        }
-
         try
         {
-            iterator.SeekToFirst();
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
-        }
-
-        while (iterator.Valid())
-        {
-            yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
+            if (_isDisposing)
+            {
+                throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+            }
 
             try
             {
-                iterator.Next();
+                iterator.SeekToFirst();
             }
             catch (RocksDbSharpException e)
             {
                 CreateMarkerIfCorrupt(e);
                 throw;
             }
-        }
 
-        try
-        {
-            iterator.Dispose();
+            while (iterator.Valid())
+            {
+                yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
+
+                try
+                {
+                    iterator.Next();
+                }
+                catch (RocksDbSharpException e)
+                {
+                    CreateMarkerIfCorrupt(e);
+                    throw;
+                }
+            }
         }
-        catch (RocksDbSharpException e)
+        finally
         {
-            CreateMarkerIfCorrupt(e);
-            throw;
+            try
+            {
+                iterator.Dispose();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
         }
     }
 
@@ -850,6 +899,8 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             batch.Dispose();
         }
 
+        _readaheadIterators.DisposeAll();
+
         _db.Dispose();
 
         if (_cache.HasValue)
@@ -1032,5 +1083,31 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "soft_pending_compaction_bytes_limit", 100000.GiB().ToString() },
             { "hard_pending_compaction_bytes_limit", 100000.GiB().ToString() },
         };
+    }
+
+    // Note: use of threadlocal is very important as the seek forward is fast, but the seek backward is not fast.
+    internal sealed class ManagedIterators : ThreadLocal<Iterator>
+    {
+        public ManagedIterators() : base(trackAllValues: true)
+        {
+        }
+
+        public void DisposeAll()
+        {
+            foreach (Iterator iterator in Values)
+            {
+                iterator.Dispose();
+            }
+
+            Dispose();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            // Note: This is called from finalizer thread, so we can't use foreach to dispose all values
+            Value?.Dispose();
+            Value = null!;
+            base.Dispose(disposing);
+        }
     }
 }

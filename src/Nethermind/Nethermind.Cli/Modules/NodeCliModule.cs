@@ -49,7 +49,7 @@ namespace Nethermind.Cli.Modules
         private static string? GetVariable(string name, string defaultValue)
         {
             string? value = Environment.GetEnvironmentVariable(name.ToUpperInvariant());
-            return string.IsNullOrWhiteSpace(value) ? value : defaultValue;
+            return string.IsNullOrWhiteSpace(value) ? defaultValue : value;
         }
 
         [CliProperty("node", "address")]

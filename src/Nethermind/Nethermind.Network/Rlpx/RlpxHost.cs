@@ -35,6 +35,7 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
+        public string? LocalIp { get; set; }
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
@@ -47,6 +48,7 @@ namespace Nethermind.Network.Rlpx
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
             int localPort,
+            string? localIp,
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
@@ -78,6 +80,7 @@ namespace Nethermind.Network.Rlpx
             _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             LocalPort = localPort;
+            LocalIp = localIp;
             _sendLatency = sendLatency;
         }
 
@@ -109,7 +112,11 @@ namespace Nethermind.Network.Rlpx
                         InitializeChannel(ch, session);
                     }));
 
-                _bootstrapChannel = await bootstrap.BindAsync(LocalPort).ContinueWith(t =>
+                Task<IChannel> openTask = LocalIp is null
+                    ? bootstrap.BindAsync(LocalPort)
+                    : bootstrap.BindAsync(IPAddress.Parse(LocalIp), LocalPort);
+
+                _bootstrapChannel = await openTask.ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
