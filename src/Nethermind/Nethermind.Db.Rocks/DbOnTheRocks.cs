@@ -1083,7 +1083,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     /// <summary>
     /// A wrapper around Iterator that cleanup on finalized
     /// </summary>
-    internal class ManagedIterator: IDisposable
+    internal class ManagedIterator : IDisposable
     {
         internal Iterator? Inner = null;
 
