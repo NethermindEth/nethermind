@@ -67,15 +67,12 @@ public class PivotUpdator
     {
         try
         {
-            if (_metadataDb.KeyExists(MetadataDbKeys.UpdatedPivotNumber) && _metadataDb.KeyExists(MetadataDbKeys.UpdatedPivotHash))
+            if (_metadataDb.KeyExists(MetadataDbKeys.UpdatedPivotData))
             {
-                byte[]? numberFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotNumber);
-                RlpStream numberStream = new(numberFromDb!);
-                long updatedPivotBlockNumber = numberStream.DecodeLong();
-
-                byte[]? hashFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotHash);
-                RlpStream hashStream = new(hashFromDb!);
-                Keccak updatedPivotBlockHash = hashStream.DecodeKeccak()!;
+                byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
+                RlpStream pivotStream = new(pivotFromDb!);
+                long updatedPivotBlockNumber = pivotStream.DecodeLong();
+                Keccak updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
 
                 _syncConfig.PivotNumber = updatedPivotBlockNumber.ToString();
                 _syncConfig.PivotHash = updatedPivotBlockHash.ToString();
@@ -235,8 +232,12 @@ public class PivotUpdator
             _syncConfig.PivotHash = finalizedBlockHash.ToString();
             _syncConfig.PivotNumber = finalizedBlockNumber.ToString();
             _syncConfig.MaxAttemptsToUpdatePivot = 0;
-            _metadataDb.Set(MetadataDbKeys.UpdatedPivotNumber, Rlp.Encode(finalizedBlockNumber).Bytes);
-            _metadataDb.Set(MetadataDbKeys.UpdatedPivotHash, Rlp.Encode(finalizedBlockHash).Bytes);
+
+            RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
+            pivotData.Encode(finalizedBlockNumber);
+            pivotData.Encode(finalizedBlockHash);
+            _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data!);
+
             if (_logger.IsWarn) _logger.Warn($"New pivot block has been set based on FCU from CL. Pivot block number: {finalizedBlockNumber}, hash: {finalizedBlockHash}");
             return true;
         }
