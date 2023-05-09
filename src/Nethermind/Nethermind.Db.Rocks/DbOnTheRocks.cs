@@ -64,8 +64,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     private List<DbMetricsUpdater> _metricsUpdaters = new();
 
-    // Note: use of threadlocal is very important as the seek forward is fast, but the seek backward is not fast.
-    private ThreadLocal<ManagedIterator> _readaheadIterators = new(true);
+    private ManagedIterators _readaheadIterators = new();
 
     public DbOnTheRocks(
         string basePath,
@@ -432,7 +431,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         return GetWithColumnFamily(key, null, _readaheadIterators, flags);
     }
 
-    internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ThreadLocal<ManagedIterator> readaheadIterators, ReadFlags flags = ReadFlags.None)
+    internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ManagedIterators readaheadIterators, ReadFlags flags = ReadFlags.None)
     {
         if (_isDisposing)
         {
@@ -447,14 +446,14 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             {
                 if (!readaheadIterators.IsValueCreated)
                 {
-                    readaheadIterators.Value = new(_db.NewIterator(cf, _readAheadReadOptions));
+                    readaheadIterators.Value = _db.NewIterator(cf, _readAheadReadOptions);
                 }
 
-                ManagedIterator iterator = readaheadIterators.Value!;
-                iterator.Inner!.Seek(key);
-                if (iterator.Inner.Valid() && Bytes.AreEqual(iterator.Inner.GetKeySpan(), key))
+                Iterator iterator = readaheadIterators.Value!;
+                iterator.Seek(key);
+                if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
                 {
-                    return iterator.Inner.Value();
+                    return iterator.Value();
                 }
             }
 
@@ -901,10 +900,11 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             batch.Dispose();
         }
 
-        foreach (ManagedIterator iterator in _readaheadIterators.Values)
+        foreach (Iterator iterator in _readaheadIterators.Values)
         {
             iterator.Dispose();
         }
+        _readaheadIterators.Dispose();
 
         _db.Dispose();
 
@@ -1090,32 +1090,18 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         };
     }
 
-    /// <summary>
-    /// A wrapper around Iterator that cleanup on finalized
-    /// </summary>
-    internal class ManagedIterator : IDisposable
+    // Note: use of threadlocal is very important as the seek forward is fast, but the seek backward is not fast.
+    internal sealed class ManagedIterators : ThreadLocal<Iterator>
     {
-        internal Iterator? Inner = null;
-
-        internal ManagedIterator(Iterator iterator)
+        public ManagedIterators() : base(trackAllValues: true)
         {
-            Inner = iterator;
         }
 
-        ~ManagedIterator()
+        protected override void Dispose(bool disposing)
         {
-            ReleaseUnmanagedResources();
-        }
-
-        public void Dispose()
-        {
-            ReleaseUnmanagedResources();
-            GC.SuppressFinalize(this);
-        }
-
-        private void ReleaseUnmanagedResources()
-        {
-            Interlocked.Exchange(ref Inner, null)?.Dispose();
+            Value?.Dispose();
+            Value = null!;
+            base.Dispose(disposing);
         }
     }
 }
