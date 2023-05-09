@@ -198,7 +198,7 @@ namespace Nethermind.Stats.Model
             }
         }
 
-        public struct Format
+        public static class Format
         {
             public const string Short = "s";
             public const string AlignedShort = "a";
