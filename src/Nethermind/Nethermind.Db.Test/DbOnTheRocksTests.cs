@@ -25,7 +25,7 @@ namespace Nethermind.Db.Test
     [Parallelizable(ParallelScope.None)]
     public class DbOnTheRocksTests
     {
-        private const string DbPath = "blocks";
+        string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
 
         [SetUp]
         public void Setup()
