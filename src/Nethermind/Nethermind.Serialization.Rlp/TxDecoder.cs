@@ -60,9 +60,7 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            bool isRlpTransaction = transaction.Type is not TxType.Blob;
-
-            if (isRlpTransaction)
+            if (transaction.IsRlpEncoded)
             {
                 int transactionLength = rlpStream.PeekNextRlpLength();
                 int lastCheck = rlpStream.Position + transactionLength;
@@ -258,9 +256,8 @@ namespace Nethermind.Serialization.Rlp
                     transaction.Type = (TxType)decoderContext.ReadByte();
                 }
             }
-            bool isRlpTransaction = transaction.Type is not TxType.Blob;
 
-            if (isRlpTransaction)
+            if (transaction.IsRlpEncoded)
             {
                 int transactionLength = decoderContext.PeekNextRlpLength();
                 int lastCheck = decoderContext.Position + transactionLength;
@@ -423,43 +420,9 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            bool isSszTransaction = item.Type is TxType.Blob;
-            if (isSszTransaction)
+            if (item.IsSszEncoded)
             {
-                byte[]? encodedTx;
-                int length;
-                if (forSigning)
-                {
-                    length = Ssz.Ssz.TransactionLength(item) + sizeof(TxType);
-                    encodedTx = ArrayPool<byte>.Shared.Rent(length);
-                    int offset = 1;
-                    Ssz.Ssz.Encode(encodedTx, item, ref offset);
-                }
-                else if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm)
-                {
-                    length = Ssz.Ssz.BlobTransactionNetworkWrapperLength(item) + sizeof(TxType);
-                    encodedTx = ArrayPool<byte>.Shared.Rent(length);
-                    Ssz.Ssz.EncodeSignedWrapper(encodedTx.AsSpan(1), item);
-                }
-                else
-                {
-                    length = Ssz.Ssz.SignedBlobTransactionLength(item) + sizeof(TxType);
-                    encodedTx = ArrayPool<byte>.Shared.Rent(length);
-                    Ssz.Ssz.EncodeSigned(encodedTx.AsSpan(1), item);
-                }
-
-                encodedTx[0] = (byte)item.Type;
-
-                if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
-                {
-                    stream.Write(encodedTx.AsSpan(0, length));
-                }
-                else
-                {
-                    stream.Encode(encodedTx.AsSpan(0, length));
-                }
-
-                ArrayPool<byte>.Shared.Return(encodedTx);
+                EncodeSszTx(stream, item, rlpBehaviors, forSigning);
                 return;
             }
 
@@ -518,6 +481,44 @@ namespace Nethermind.Serialization.Rlp
                     stream.Encode(item.Signature.SAsSpan.WithoutLeadingZeros());
                 }
             }
+        }
+
+        private static void EncodeSszTx(RlpStream stream, T item, RlpBehaviors rlpBehaviors, bool forSigning)
+        {
+            byte[]? encodedTx;
+            int length;
+            if (forSigning)
+            {
+                length = Ssz.Ssz.TransactionLength(item) + sizeof(TxType);
+                encodedTx = ArrayPool<byte>.Shared.Rent(length);
+                int offset = 1;
+                Ssz.Ssz.Encode(encodedTx, item, ref offset);
+            }
+            else if ((rlpBehaviors & RlpBehaviors.InNetworkForm) == RlpBehaviors.InNetworkForm)
+            {
+                length = Ssz.Ssz.BlobTransactionNetworkWrapperLength(item) + sizeof(TxType);
+                encodedTx = ArrayPool<byte>.Shared.Rent(length);
+                Ssz.Ssz.EncodeSignedWrapper(encodedTx.AsSpan(1), item);
+            }
+            else
+            {
+                length = Ssz.Ssz.SignedBlobTransactionLength(item) + sizeof(TxType);
+                encodedTx = ArrayPool<byte>.Shared.Rent(length);
+                Ssz.Ssz.EncodeSigned(encodedTx.AsSpan(1), item);
+            }
+
+            encodedTx[0] = (byte)item.Type;
+
+            if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
+            {
+                stream.Write(encodedTx.AsSpan(0, length));
+            }
+            else
+            {
+                stream.Encode(encodedTx.AsSpan(0, length));
+            }
+
+            ArrayPool<byte>.Shared.Return(encodedTx);
         }
 
         private int GetLegacyContentLength(T item)

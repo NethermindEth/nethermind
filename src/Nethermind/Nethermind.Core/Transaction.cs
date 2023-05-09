@@ -181,6 +181,11 @@ namespace Nethermind.Core
         }
 
         public override string ToString() => ToString(string.Empty);
+
+
+        public bool IsRlpEncoded => Type is TxType.Legacy or TxType.EIP1559 or TxType.AccessList;
+
+        public bool IsSszEncoded => Type is TxType.Blob;
     }
 
     /// <summary>
