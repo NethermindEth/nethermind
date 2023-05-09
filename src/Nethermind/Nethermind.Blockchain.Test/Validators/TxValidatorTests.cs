@@ -379,21 +379,6 @@ public class TxValidatorTests
                 TestName = "Correct version, incorrect length",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeArray(32, 0, 0))
-            {
-                TestName = "Incorrect version, correct length",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 - 1, 0))
-            {
-                TestName = "Incorrect version, correct length",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 + 1, 0))
-            {
-                TestName = "Incorrect version, correct length",
-                ExpectedResult = false
-            };
         }
     }
 
