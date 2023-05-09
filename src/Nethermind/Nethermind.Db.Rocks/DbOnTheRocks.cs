@@ -9,7 +9,6 @@ using System.IO.Abstractions;
 using System.Reflection;
 using System.Threading;
 using ConcurrentCollections;
-using MathNet.Numerics.LinearAlgebra.Solvers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
