@@ -33,20 +33,20 @@ namespace Nethermind.State
             return GetState(stateRoot, address);
         }
 
-        public byte[] GetStorage(Keccak storageRoot, in UInt256 index)
+        public UInt256 GetStorage(Keccak storageRoot, in UInt256 index)
         {
             if (storageRoot == Keccak.EmptyTreeHash)
             {
-                return new byte[] { 0 };
+                return default;
             }
 
             Metrics.StorageTreeReads++;
-            return _storage.Get(index, storageRoot);
+            return _storage.Get(in index, storageRoot);
         }
 
         public UInt256 GetBalance(Keccak stateRoot, Address address)
         {
-            return GetState(stateRoot, address)?.Balance ?? UInt256.Zero;
+            return GetState(stateRoot, address)?.Balance ?? default;
         }
 
         public byte[]? GetCode(Keccak codeHash)

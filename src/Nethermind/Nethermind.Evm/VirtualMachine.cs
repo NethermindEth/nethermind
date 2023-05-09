@@ -1498,12 +1498,12 @@ public class VirtualMachine : IVirtualMachine
                             StorageAccessType.SLOAD,
                             spec)) goto OutOfGas;
 
-                        byte[] value = _storage.Get(storageCell);
-                        stack.PushBytes(value);
+                        UInt256 value = _storage.Get(storageCell);
+                        stack.PushUInt256(in value);
 
                         if (_txTracer.IsTracingOpLevelStorage)
                         {
-                            _txTracer.LoadOperationStorage(storageCell.Address, storageIndex, value);
+                            _txTracer.LoadOperationStorage(storageCell.Address, storageIndex, in value);
                         }
 
                         break;
@@ -1524,16 +1524,8 @@ public class VirtualMachine : IVirtualMachine
                         }
 
                         stack.PopUInt256(out UInt256 storageIndex);
-                        Span<byte> newValue = stack.PopBytes();
-                        bool newIsZero = newValue.IsZero();
-                        if (!newIsZero)
-                        {
-                            newValue = newValue.WithoutLeadingZeros().ToArray();
-                        }
-                        else
-                        {
-                            newValue = new byte[] { 0 };
-                        }
+                        stack.PopUInt256(out UInt256 newValue);
+                        bool newIsZero = newValue.IsZero;
 
                         StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
 
@@ -1544,11 +1536,11 @@ public class VirtualMachine : IVirtualMachine
                             StorageAccessType.SSTORE,
                             spec)) goto OutOfGas;
 
-                        Span<byte> currentValue = _storage.Get(storageCell);
+                        UInt256 currentValue = _storage.Get(storageCell);
                         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
-                        bool currentIsZero = currentValue.IsZero();
+                        bool currentIsZero = currentValue.IsZero;
 
-                        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
+                        bool newSameAsCurrent = (newIsZero && currentIsZero) || currentValue.Equals(newValue);
                         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
                         if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
@@ -1574,10 +1566,10 @@ public class VirtualMachine : IVirtualMachine
                             }
                             else // net metered, C != N
                             {
-                                Span<byte> originalValue = _storage.GetOriginal(storageCell);
-                                bool originalIsZero = originalValue.IsZero();
+                                UInt256 originalValue = _storage.GetOriginal(in storageCell);
+                                bool originalIsZero = originalValue.IsZero;
 
-                                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+                                bool currentSameAsOriginal = originalValue.Equals(currentValue);
                                 if (currentSameAsOriginal)
                                 {
                                     if (currentIsZero)
@@ -1615,7 +1607,7 @@ public class VirtualMachine : IVirtualMachine
                                         }
                                     }
 
-                                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, newValue);
+                                    bool newSameAsOriginal = originalValue.Equals(newValue);
                                     if (newSameAsOriginal)
                                     {
                                         long refundFromReversal;
@@ -1637,16 +1629,12 @@ public class VirtualMachine : IVirtualMachine
 
                         if (!newSameAsCurrent)
                         {
-                            Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
-                            _storage.Set(storageCell, valueToStore.ToArray());
+                            _storage.Set(in storageCell, in newValue);
                         }
 
                         if (_txTracer.IsTracingInstructions)
                         {
-                            Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
-                            Span<byte> span = new byte[32]; // do not stackalloc here
-                            storageCell.Index.ToBigEndian(span);
-                            _txTracer.ReportStorageChange(span, valueToStore);
+                            _txTracer.ReportStorageChange(in storageCell.Index, in newValue);
                         }
 
                         if (_txTracer.IsTracingOpLevelStorage)
@@ -1667,12 +1655,12 @@ public class VirtualMachine : IVirtualMachine
                         stack.PopUInt256(out UInt256 storageIndex);
                         StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
 
-                        byte[] value = _storage.GetTransientState(storageCell);
-                        stack.PushBytes(value);
+                        UInt256 value = _storage.GetTransientState(in storageCell);
+                        stack.PushUInt256(in value);
 
                         if (_txTracer.IsTracingOpLevelStorage)
                         {
-                            _txTracer.LoadOperationTransientStorage(storageCell.Address, storageIndex, value);
+                            _txTracer.LoadOperationTransientStorage(storageCell.Address, in storageIndex, in value);
                         }
 
                         break;
@@ -1688,25 +1676,17 @@ public class VirtualMachine : IVirtualMachine
                         if (!UpdateGas(gasCost, ref gasAvailable)) goto OutOfGas;
 
                         stack.PopUInt256(out UInt256 storageIndex);
-                        Span<byte> newValue = stack.PopBytes();
-                        bool newIsZero = newValue.IsZero();
-                        if (!newIsZero)
-                        {
-                            newValue = newValue.WithoutLeadingZeros().ToArray();
-                        }
-                        else
-                        {
-                            newValue = BytesZero;
-                        }
+                        stack.PopUInt256(out UInt256 newValue);
 
                         StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-                        byte[] currentValue = newValue.ToArray();
-                        _storage.SetTransientState(storageCell, currentValue);
 
                         if (_txTracer.IsTracingOpLevelStorage)
                         {
+                            UInt256 currentValue = _storage.GetTransientState(in storageCell);
                             _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
                         }
+
+                        _storage.SetTransientState(storageCell, newValue);
 
                         break;
                     }

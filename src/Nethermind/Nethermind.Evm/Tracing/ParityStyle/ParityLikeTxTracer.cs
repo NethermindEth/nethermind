@@ -322,14 +322,14 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        public void ReportStorageChange(in UInt256 key, in UInt256 value)
         {
-            _currentOperation.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
+            _currentOperation.Store = new ParityStorageChangeTrace { Key = key, Value = value };
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) => throw new NotSupportedException();
+        public void SetOperationStorage(Address address, in UInt256 storageIndex, in UInt256 newValue, in UInt256 currentValue) => throw new NotSupportedException();
 
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) => throw new NotSupportedException();
+        public void LoadOperationStorage(Address address, in UInt256 storageIndex, in UInt256 value) => throw new NotSupportedException();
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
@@ -387,29 +387,30 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
         }
 
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, in UInt256 before, in UInt256 after)
         {
-            Dictionary<UInt256, ParityStateChange<byte[]>> storage;
+            Dictionary<UInt256, ParityStateChange<UInt256>> storage;
             if (!_trace.StateChanges.ContainsKey(storageCell.Address))
             {
                 _trace.StateChanges[storageCell.Address] = new ParityAccountStateChange();
             }
 
-            storage = _trace.StateChanges[storageCell.Address].Storage ?? (_trace.StateChanges[storageCell.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
+            storage = _trace.StateChanges[storageCell.Address].Storage ?? (_trace.StateChanges[storageCell.Address].Storage = new Dictionary<UInt256, ParityStateChange<UInt256>>());
 
-            if (storage.TryGetValue(storageCell.Index, out ParityStateChange<byte[]> value))
+            UInt256 actualBefore = before;
+            if (storage.TryGetValue(storageCell.Index, out ParityStateChange<UInt256> value))
             {
-                before = value.Before ?? before;
+                actualBefore = value.Before;
             }
 
-            storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
+            storage[storageCell.Index] = new ParityStateChange<UInt256>(actualBefore, after);
         }
 
         public void ReportStorageRead(in StorageCell storageCell)
         {
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, in UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             ParityTraceAction action = new ParityTraceAction
             {
@@ -448,7 +449,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        public void ReportSelfDestruct(Address address, in UInt256 balance, Address refundAddress)
         {
             ParityTraceAction action = new();
             action.From = address;

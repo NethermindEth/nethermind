@@ -12,6 +12,8 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.State;
 using Nethermind.Trie;
 using NUnit.Framework;
+using Nethermind.Int256;
+using System.Globalization;
 
 namespace Nethermind.Evm.Test
 {
@@ -108,7 +110,7 @@ namespace Nethermind.Evm.Test
             Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
 
             TestState.CreateAccount(expectedAddress, 1.Ether());
-            Storage.Set(new StorageCell(expectedAddress, 1), new byte[] { 1, 2, 3, 4, 5 });
+            Storage.Set(new StorageCell(expectedAddress, 1), UInt256.Parse("0102030405", NumberStyles.HexNumber));
             Storage.Commit();
             Storage.CommitTrees(0);
             TestState.Commit(Spec);

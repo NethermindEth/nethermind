@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public async Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter)
             => ResultWrapper<UInt256?>.From(await _proxy.eth_getBalance(address, MapBlockParameter(blockParameter)));
 
-        public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
+        public ResultWrapper<UInt256> eth_getStorageAt(Address address, UInt256 positionIndex,
             BlockParameter blockParameter)
         {
             throw new NotSupportedException();

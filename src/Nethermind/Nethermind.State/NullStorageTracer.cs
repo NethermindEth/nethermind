@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.State
 {
@@ -15,10 +16,10 @@ namespace Nethermind.State
         private const string ErrorMessage = "Null tracer should never receive any calls.";
 
         public bool IsTracingStorage => false;
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        public void ReportStorageChange(in UInt256 key, in UInt256 value)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, in UInt256 before, in UInt256 after)
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportStorageRead(in StorageCell storageCell)

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
+
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
     //    "store": {
@@ -9,7 +11,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
     //},
     public class ParityStorageChangeTrace
     {
-        public byte[] Key { get; set; }
-        public byte[] Value { get; set; }
+        public UInt256 Key { get; set; }
+        public UInt256 Value { get; set; }
     }
 }

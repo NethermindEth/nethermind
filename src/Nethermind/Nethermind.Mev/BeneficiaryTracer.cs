@@ -50,7 +50,7 @@ namespace Nethermind.Mev
         public void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
         public void ReportAccountRead(Address address) { }
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
+        public void ReportStorageChange(in StorageCell storageCell, in UInt256 before, in UInt256 after) { }
         public void ReportStorageRead(in StorageCell storageCell) { }
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null) { }
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null) { }
@@ -62,11 +62,11 @@ namespace Nethermind.Mev
         public void SetOperationMemory(List<string> memoryTrace) { }
         public void SetOperationMemorySize(ulong newSize) { }
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
-        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) { }
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
+        public void ReportStorageChange(in UInt256 key, in UInt256 value) { }
+        public void SetOperationStorage(Address address, in UInt256 storageIndex, in UInt256 newValue, in UInt256 currentValue) { }
+        public void LoadOperationStorage(Address address, in UInt256 storageIndex, in UInt256 value) { }
+        public void ReportSelfDestruct(Address address, in UInt256 balance, Address refundAddress) { }
+        public void ReportAction(long gas, in UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
         public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) { }
         public void ReportActionError(EvmExceptionType evmExceptionType) { }
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }

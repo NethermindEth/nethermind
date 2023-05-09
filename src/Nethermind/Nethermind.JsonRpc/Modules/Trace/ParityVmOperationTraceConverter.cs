@@ -64,9 +64,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("key");
-                writer.WriteValue(value.Store.Key.ToHexString(true, true));
+                writer.WriteValue(value.Store.Key.ToHexString(true));
                 writer.WritePropertyName("val");
-                writer.WriteValue(value.Store.Value.ToHexString(true, true));
+                writer.WriteValue(value.Store.Value.ToHexString(true));
                 writer.WriteEndObject();
             }
             else

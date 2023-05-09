@@ -74,10 +74,9 @@ namespace Nethermind.Blockchain
 
                 if (allocation.Storage is not null)
                 {
-                    foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
+                    foreach (KeyValuePair<UInt256, UInt256> storage in allocation.Storage)
                     {
-                        _storageProvider.Set(new StorageCell(address, storage.Key),
-                            storage.Value.WithoutLeadingZeros().ToArray());
+                        _storageProvider.Set(new StorageCell(address, storage.Key), storage.Value);
                     }
                 }
 

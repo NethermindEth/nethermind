@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -41,17 +42,17 @@ namespace Nethermind.State
             _persistentStorageProvider.CommitTrees(blockNumber);
         }
 
-        public byte[] Get(in StorageCell storageCell)
+        public UInt256 Get(in StorageCell storageCell)
         {
             return _persistentStorageProvider.Get(storageCell);
         }
 
-        public byte[] GetOriginal(in StorageCell storageCell)
+        public UInt256 GetOriginal(in StorageCell storageCell)
         {
             return _persistentStorageProvider.GetOriginal(storageCell);
         }
 
-        public byte[] GetTransientState(in StorageCell storageCell)
+        public UInt256 GetTransientState(in StorageCell storageCell)
         {
             return _transientStorageProvider.Get(storageCell);
         }
@@ -77,14 +78,14 @@ namespace Nethermind.State
             _transientStorageProvider.Restore(snapshot.TransientStorageSnapshot);
         }
 
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, in UInt256 newValue)
         {
-            _persistentStorageProvider.Set(storageCell, newValue);
+            _persistentStorageProvider.Set(storageCell, in newValue);
         }
 
-        public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+        public void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         {
-            _transientStorageProvider.Set(storageCell, newValue);
+            _transientStorageProvider.Set(storageCell, in newValue);
         }
 
         Snapshot.Storage IStorageProvider.TakeSnapshot(bool newTransactionStart)

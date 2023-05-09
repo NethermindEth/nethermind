@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotImplementedException();
         }
 
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, in UInt256 before, in UInt256 after)
         {
             throw new NotImplementedException();
         }
@@ -117,27 +117,27 @@ namespace Nethermind.Evm.Tracing
             throw new NotImplementedException();
         }
 
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        public void ReportStorageChange(in UInt256 key, in UInt256 value)
         {
             throw new NotImplementedException();
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        public void SetOperationStorage(Address address, in UInt256 storageIndex, in UInt256 newValue, in UInt256 currentValue)
         {
             throw new NotImplementedException();
         }
 
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        public void LoadOperationStorage(Address address, in UInt256 storageIndex, in UInt256 value)
         {
             throw new NotImplementedException();
         }
 
-        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        public void ReportSelfDestruct(Address address, in UInt256 balance, Address refundAddress)
         {
             throw new NotImplementedException();
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, in UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             throw new NotImplementedException();
         }

@@ -350,6 +350,13 @@ namespace Nethermind.Serialization.Rlp
             return Encode(bytes);
         }
 
+        public static Rlp Encode(UInt256 value)
+        {
+            Span<byte> bytes = stackalloc byte[32];
+            value.ToBigEndian(bytes);
+            return Encode(bytes);
+        }
+
         public static Rlp Encode(byte[]? input)
         {
             return input is null ? OfEmptyByteArray : Encode(input.AsSpan());

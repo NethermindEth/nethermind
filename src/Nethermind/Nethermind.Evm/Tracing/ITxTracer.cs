@@ -292,7 +292,7 @@ namespace Nethermind.Evm.Tracing
         /// <param name="newValue"></param>
         /// <param name="currentValue"></param>
         /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-        void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue);
+        void SetOperationStorage(Address address, in UInt256 storageIndex, in UInt256 newValue, in UInt256 currentValue);
 
         /// <summary>
         ///
@@ -302,7 +302,7 @@ namespace Nethermind.Evm.Tracing
         /// <param name="newValue"></param>
         /// <param name="currentValue"></param>
         /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-        void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, Span<byte> newValue, byte[] currentValue) { }
+        void SetOperationTransientStorage(Address storageCellAddress, in UInt256 storageIndex, in UInt256 newValue, in UInt256 currentValue) { }
 
         /// <summary>
         ///
@@ -311,7 +311,7 @@ namespace Nethermind.Evm.Tracing
         /// <param name="storageIndex"></param>
         /// <param name="value"></param>
         /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-        void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value);
+        void LoadOperationStorage(Address address, in UInt256 storageIndex, in UInt256 value);
 
         /// <summary>
         ///
@@ -320,7 +320,7 @@ namespace Nethermind.Evm.Tracing
         /// <param name="storageIndex"></param>
         /// <param name="value"></param>
         /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-        void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, byte[] value) { }
+        void LoadOperationTransientStorage(Address storageCellAddress, in UInt256 storageIndex, in UInt256 value) { }
 
         /// <summary>
         ///
@@ -329,7 +329,7 @@ namespace Nethermind.Evm.Tracing
         /// <param name="balance"></param>
         /// <param name="refundAddress"></param>
         /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-        void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress);
+        void ReportSelfDestruct(Address address, in UInt256 balance, Address refundAddress);
 
         /// <summary>
         ///
@@ -342,7 +342,7 @@ namespace Nethermind.Evm.Tracing
         /// <param name="callType"></param>
         /// <param name="isPrecompileCall"></param>
         /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-        void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
+        void ReportAction(long gas, in UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
 
         /// <summary>
         ///

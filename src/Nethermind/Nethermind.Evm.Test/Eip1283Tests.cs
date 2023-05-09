@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.State;
 using NUnit.Framework;
@@ -38,7 +39,7 @@ namespace Nethermind.Evm.Test
         public void Test(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            Storage.Set(new StorageCell(Recipient, 0), (UInt256)originalValue);
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
 

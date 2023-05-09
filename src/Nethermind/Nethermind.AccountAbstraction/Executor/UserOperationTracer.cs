@@ -107,7 +107,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
         }
 
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, in UInt256 before, in UInt256 after)
         {
             throw new NotImplementedException();
         }
@@ -216,22 +216,22 @@ namespace Nethermind.AccountAbstraction.Executor
         {
         }
 
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        public void ReportStorageChange(in UInt256 key, in UInt256 value)
         {
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue,
-            ReadOnlySpan<byte> currentValue)
-        {
-            HandleStorageAccess(address, storageIndex);
-        }
-
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        public void SetOperationStorage(Address address, in UInt256 storageIndex, in UInt256 newValue,
+            in UInt256 currentValue)
         {
             HandleStorageAccess(address, storageIndex);
         }
 
-        private void HandleStorageAccess(Address address, UInt256 storageIndex)
+        public void LoadOperationStorage(Address address, in UInt256 storageIndex, in UInt256 value)
+        {
+            HandleStorageAccess(address, storageIndex);
+        }
+
+        private void HandleStorageAccess(Address address, in UInt256 storageIndex)
         {
             AddToAccessedStorage(address, storageIndex);
 
@@ -255,12 +255,12 @@ namespace Nethermind.AccountAbstraction.Executor
             }
         }
 
-        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        public void ReportSelfDestruct(Address address, in UInt256 balance, Address refundAddress)
         {
             //TODO: would this ever be allowed?
         }
 
-        public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+        public void ReportAction(long gas, in UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
             ExecutionType callType,
             bool isPrecompileCall = false)
         {

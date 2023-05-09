@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.State
 {
@@ -24,7 +25,7 @@ namespace Nethermind.State
         /// <param name="key"></param>
         /// <param name="value"></param>
         /// <remarks>Depends on <see cref="IsTracingStorage"/></remarks>
-        void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
+        void ReportStorageChange(in UInt256 key, in UInt256 value);
 
         /// <summary>
         /// Reports change of storage slot for key
@@ -33,7 +34,7 @@ namespace Nethermind.State
         /// <param name="before"></param>
         /// <param name="after"></param>
         /// <remarks>Depends on <see cref="IsTracingStorage"/></remarks>
-        void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after);
+        void ReportStorageChange(in StorageCell storageCell, in UInt256 before, in UInt256 after);
 
         /// <summary>
         /// Reports storage access

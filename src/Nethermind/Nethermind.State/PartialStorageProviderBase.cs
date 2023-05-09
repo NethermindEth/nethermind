@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.State
@@ -28,8 +29,6 @@ namespace Nethermind.State
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
-        protected static readonly byte[] _zeroValue = { 0 };
-
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -40,9 +39,9 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public byte[] Get(in StorageCell storageCell)
+        public UInt256 Get(in StorageCell storageCell)
         {
-            return GetCurrentValue(storageCell);
+            return GetCurrentValue(in storageCell);
         }
 
         /// <summary>
@@ -50,9 +49,9 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, in UInt256 newValue)
         {
-            PushUpdate(storageCell, newValue);
+            PushUpdate(in storageCell, in newValue);
         }
 
         /// <summary>
@@ -150,20 +149,20 @@ namespace Nethermind.State
 
         protected readonly struct ChangeTrace
         {
-            public ChangeTrace(byte[]? before, byte[]? after)
+            public ChangeTrace(in UInt256 before, in UInt256 after)
             {
-                After = after ?? _zeroValue;
-                Before = before ?? _zeroValue;
+                After = after;
+                Before = before;
             }
 
-            public ChangeTrace(byte[]? after)
+            public ChangeTrace(in UInt256 after)
             {
-                After = after ?? _zeroValue;
-                Before = _zeroValue;
+                After = after;
+                Before = default;
             }
 
-            public byte[] Before { get; }
-            public byte[] After { get; }
+            public UInt256 Before { get; }
+            public UInt256 After { get; }
         }
 
         /// <summary>
@@ -213,7 +212,7 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <param name="bytes">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
+        protected bool TryGetCachedValue(in StorageCell storageCell, out UInt256 bytes)
         {
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
@@ -224,7 +223,7 @@ namespace Nethermind.State
                 }
             }
 
-            bytes = null;
+            bytes = default;
             return false;
         }
 
@@ -233,19 +232,19 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract byte[] GetCurrentValue(in StorageCell storageCell);
+        protected abstract UInt256 GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, byte[] value)
+        private void PushUpdate(in StorageCell cell, in UInt256 value)
         {
             SetupRegistry(cell);
             IncrementChangePosition();
             _intraBlockCache[cell].Push(_currentPosition);
-            _changes[_currentPosition] = new Change(ChangeType.Update, cell, value);
+            _changes[_currentPosition] = new Change(ChangeType.Update, cell, in value);
         }
 
         /// <summary>
@@ -280,7 +279,7 @@ namespace Nethermind.State
             {
                 if (cellByAddress.Key.Address == address)
                 {
-                    Set(cellByAddress.Key, _zeroValue);
+                    Set(cellByAddress.Key, default);
                 }
             }
         }
@@ -290,7 +289,7 @@ namespace Nethermind.State
         /// </summary>
         protected class Change
         {
-            public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
+            public Change(ChangeType changeType, in StorageCell storageCell, in UInt256 value)
             {
                 StorageCell = storageCell;
                 Value = value;
@@ -299,7 +298,7 @@ namespace Nethermind.State
 
             public ChangeType ChangeType { get; }
             public StorageCell StorageCell { get; }
-            public byte[] Value { get; }
+            public UInt256 Value { get; }
         }
 
         /// <summary>

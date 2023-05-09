@@ -40,7 +40,7 @@ namespace Nethermind.Store.Test
             for (int i = 0; i < 1000; i++)
             {
                 StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
-                storageProvider.Set(storageCell, new byte[] { (byte)i });
+                storageProvider.Set(storageCell, (UInt256)i);
             }
 
             storageProvider.Commit();

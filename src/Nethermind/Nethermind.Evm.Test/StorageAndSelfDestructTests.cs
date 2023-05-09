@@ -360,7 +360,7 @@ namespace Nethermind.Evm.Test
             Keccak codeHash = TestState.UpdateCode(contractCode);
             TestState.UpdateCodeHash(deploymentAddress, codeHash, MuirGlacier.Instance);
 
-            Storage.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
+            Storage.Set(new StorageCell(deploymentAddress, 7), (UInt256)7);
             Storage.Commit();
             Storage.CommitTrees(0);
             TestState.Commit(MuirGlacier.Instance);
