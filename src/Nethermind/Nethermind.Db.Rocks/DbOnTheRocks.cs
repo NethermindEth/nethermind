@@ -458,7 +458,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 }
             }
 
-            return _db.Get(key);
+            return _db.Get(key, cf);
         }
         catch (RocksDbSharpException e)
         {
