@@ -127,6 +127,10 @@ namespace Nethermind.Core.Extensions
 
             return bytes;
         }
+        public static void WriteBigEndian(this long value, Span<byte> output)
+        {
+            BinaryPrimitives.WriteInt64BigEndian(output, value);
+        }
 
         [SkipLocalsInit]
         public static string ToHexString(this long value, bool skipLeadingZeros)
