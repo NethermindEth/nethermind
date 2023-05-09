@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -109,7 +110,7 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            string clientId = _session?.Node?.ToString("c") ?? $"unknown {_session?.RemoteHost}";
+            string clientId = _session?.Node?.ToString(Node.Format.Console) ?? $"unknown {_session?.RemoteHost}";
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
