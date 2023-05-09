@@ -149,19 +149,19 @@ namespace Nethermind.Synchronization.ParallelSync
             else
             {
                 bool inBeaconControl = _beaconSyncStrategy.ShouldBeInBeaconModeControl();
-                bool inUpdatingPivot = ShouldBeInUpdatingPivot();
+                bool shouldBeInUpdatingPivot = ShouldBeInUpdatingPivot();
                 (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
                 // if there are no peers that we could use then we cannot sync
                 if (peerDifficulty is null || peerBlock is null || peerBlock == 0)
                 {
-                    newModes = inUpdatingPivot ? SyncMode.UpdatingPivot : inBeaconControl ? SyncMode.WaitingForBlock : SyncMode.Disconnected;
+                    newModes = shouldBeInUpdatingPivot ? SyncMode.UpdatingPivot : inBeaconControl ? SyncMode.WaitingForBlock : SyncMode.Disconnected;
                     reason = "No Useful Peers";
                 }
                 // to avoid expensive checks we make this simple check at the beginning
                 else
                 {
                     Snapshot best = EnsureSnapshot(peerDifficulty.Value, peerBlock.Value, inBeaconControl);
-                    best.IsInBeaconHeaders = _beaconSyncStrategy.ShouldBeInBeaconHeaders();
+                    best.IsInBeaconHeaders = ShouldBeInBeaconHeaders(shouldBeInUpdatingPivot);
 
                     if (!FastSyncEnabled)
                     {
@@ -192,7 +192,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         try
                         {
-                            best.IsInUpdatingPivot = ShouldBeInUpdatingPivot();
+                            best.IsInUpdatingPivot = shouldBeInUpdatingPivot;
                             best.IsInFastSync = ShouldBeInFastSyncMode(best);
                             best.IsInStateSync = ShouldBeInStateSyncMode(best);
                             best.IsInStateNodes = ShouldBeInStateNodesMode(best);
@@ -336,10 +336,10 @@ namespace Nethermind.Synchronization.ParallelSync
             return result;
         }
 
-        private bool ShouldBeInBeaconHeaders()
+        private bool ShouldBeInBeaconHeaders(bool shouldBeInUpdatingPivot)
         {
             return _beaconSyncStrategy.ShouldBeInBeaconHeaders() &&
-                   !ShouldBeInUpdatingPivot();
+                   !shouldBeInUpdatingPivot;
         }
 
         private bool ShouldBeInUpdatingPivot()
