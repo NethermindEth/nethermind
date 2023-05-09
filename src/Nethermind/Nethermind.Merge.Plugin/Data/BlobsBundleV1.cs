@@ -28,9 +28,14 @@ public class BlobsBundleV1
 
         foreach (Transaction? tx in block.Transactions)
         {
-            if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper wrapper })
+            if (!tx.SupportsBlobs)
             {
                 continue;
+            }
+
+            if (tx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
+            {
+                throw new ApplicationException("Blob transaction is not in the network form");
             }
 
             for (int cc = 0, bc = 0, pc = 0;
