@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -21,8 +22,8 @@ namespace Nethermind.Network.Test.Rlpx
         [SetUp]
         public void Setup()
         {
-            _input = PooledByteBufferAllocator.Default.Buffer(16 * 1024);
-            _output = PooledByteBufferAllocator.Default.Buffer(16 * 1024);
+            _input = ReferenceCountUtil.ReleaseLater(PooledByteBufferAllocator.Default.Buffer(16 * 1024));
+            _output = ReferenceCountUtil.ReleaseLater(PooledByteBufferAllocator.Default.Buffer(16 * 1024));
         }
 
         [TearDown]

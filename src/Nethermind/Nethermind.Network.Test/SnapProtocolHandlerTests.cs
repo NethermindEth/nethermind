@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -92,6 +93,7 @@ public class SnapProtocolHandlerTests
 
                         packet.PacketType = SnapMessageCode.AccountRange;
                         SnapProtocolHandler.HandleMessage(packet);
+                        ReferenceCountUtil.Release(packet);
                     });
                 return this;
             }
