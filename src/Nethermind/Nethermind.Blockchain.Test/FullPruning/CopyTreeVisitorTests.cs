@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             };
 
             IPruningContext ctx = StartPruning(trieDb, clonedDb);
-            CopyDb(ctx, trieDb, clonedDb, visitingOptions);
+            CopyDb(ctx, trieDb, clonedDb, visitingOptions, writeFlags: WriteFlags.LowPriority);
 
             List<byte[]> keys = trieDb.Keys.ToList();
             List<byte[]> values = trieDb.Values.ToList();
@@ -70,13 +70,13 @@ namespace Nethermind.Blockchain.Test.FullPruning
             clonedDb.Count.Should().BeLessThan(trieDb.Count);
         }
 
-        private static IPruningContext CopyDb(IPruningContext pruningContext, MemDb trieDb, MemDb clonedDb, VisitingOptions visitingOptions = null)
+        private static IPruningContext CopyDb(IPruningContext pruningContext, MemDb trieDb, MemDb clonedDb, VisitingOptions visitingOptions = null, WriteFlags writeFlags = WriteFlags.None)
         {
             LimboLogs logManager = LimboLogs.Instance;
             PatriciaTree trie = Build.A.Trie(trieDb).WithAccountsByIndex(0, 100).TestObject;
             IStateReader stateReader = new StateReader(new TrieStore(trieDb, logManager), new MemDb(), logManager);
 
-            using CopyTreeVisitor copyTreeVisitor = new(pruningContext, logManager);
+            using CopyTreeVisitor copyTreeVisitor = new(pruningContext, writeFlags, logManager);
             stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
             return pruningContext;
         }

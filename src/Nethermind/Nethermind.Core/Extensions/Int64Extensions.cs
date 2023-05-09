@@ -126,6 +126,11 @@ namespace Nethermind.Core.Extensions
             return bytes;
         }
 
+        public static void WriteBigEndian(this long value, Span<byte> output)
+        {
+            BinaryPrimitives.WriteInt64BigEndian(output, value);
+        }
+
         [ThreadStatic]
         private static byte[]? t_byteBuffer64;
         private static byte[] GetByteBuffer64() => t_byteBuffer64 ??= new byte[8];

@@ -59,7 +59,7 @@ public class ColumnDb : IDbWithSpan
 
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
-        using Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
+        Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
         return _mainDb.GetAllCore(iterator);
     }
 

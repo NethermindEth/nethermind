@@ -134,7 +134,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             TestContext test = CreateTest();
             test.WaitForPruningStart();
-            byte[] key = { 0, 1, 2 };
+            byte[] key = { 1, 2, 3 };
             test.FullPruningDb[key] = key;
             test.FullPruningDb.Context.WaitForFinish.Set();
             await test.FullPruningDb.Context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
