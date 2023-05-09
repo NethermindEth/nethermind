@@ -77,6 +77,17 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Smoke_test_column_db()
+        {
+            IDbConfig config = new DbConfig();
+            using ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
+            IDbWithSpan? db = columnsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+            Assert.That(db[new byte[] { 1, 2, 3 }], Is.EqualTo(new byte[] { 4, 5, 6 }));
+        }
+
+        [Test]
         public void Can_get_all_on_empty()
         {
             IDbConfig config = new DbConfig();
