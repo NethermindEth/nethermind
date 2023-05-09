@@ -78,7 +78,7 @@ public class PivotUpdator
                 _syncConfig.PivotHash = updatedPivotBlockHash.ToString();
                 _syncConfig.MaxAttemptsToUpdatePivot = 0;
 
-                if (_logger.IsWarn) _logger.Warn($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
+                if (_logger.IsInfo) _logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
                 return true;
             }
         }
@@ -106,7 +106,7 @@ public class PivotUpdator
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
                 _syncConfig.MaxAttemptsToUpdatePivot = 0;
-                if (_logger.IsWarn) _logger.Warn("Failed to update pivot block, skipping it.");
+                if (_logger.IsInfo) _logger.Info("Failed to update pivot block, skipping it and using pivot from config file.");
             }
         }
 
@@ -115,7 +115,7 @@ public class PivotUpdator
         {
             _syncModeSelector.Changed -= OnSyncModeChanged;
             _syncConfig.MaxAttemptsToUpdatePivot = 0;
-            if (_logger.IsWarn) _logger.Warn("Skipping pivot update");
+            if (_logger.IsInfo) _logger.Info("Skipping pivot update");
         }
     }
 
@@ -238,7 +238,7 @@ public class PivotUpdator
             pivotData.Encode(finalizedBlockHash);
             _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data!);
 
-            if (_logger.IsWarn) _logger.Warn($"New pivot block has been set based on FCU from CL. Pivot block number: {finalizedBlockNumber}, hash: {finalizedBlockHash}");
+            if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on FCU from CL. Pivot block number: {finalizedBlockNumber}, hash: {finalizedBlockHash}");
             return true;
         }
 
