@@ -89,7 +89,7 @@ namespace Nethermind.Init.Steps
                 bloomStorage,
                 _get.LogManager,
                 new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider),
-                1024);
+                receiptConfig.MaxBlockDepth);
 
             _set.LogFinder = logFinder;
 

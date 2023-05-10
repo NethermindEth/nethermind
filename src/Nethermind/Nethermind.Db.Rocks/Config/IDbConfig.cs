@@ -21,8 +21,10 @@ public interface IDbConfig : IConfig
     bool WriteAheadLogSync { get; set; }
     long? MaxBytesPerSec { get; set; }
     int? BlockSize { get; set; }
+    ulong? ReadAheadSize { get; set; }
     bool? UseDirectReads { get; set; }
     bool? UseDirectIoForFlushAndCompactions { get; set; }
+    bool? DisableCompression { get; set; }
     IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
@@ -141,6 +143,7 @@ public interface IDbConfig : IConfig
     int? StateDbBlockSize { get; set; }
     bool? StateDbUseDirectReads { get; set; }
     bool? StateDbUseDirectIoForFlushAndCompactions { get; set; }
+    bool? StateDbDisableCompression { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>
