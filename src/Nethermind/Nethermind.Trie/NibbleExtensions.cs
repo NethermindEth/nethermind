@@ -11,6 +11,11 @@ namespace Nethermind.Trie
     {
         public static Nibble[] FromBytes(params byte[] bytes)
         {
+            return FromBytes(bytes.AsSpan());
+        }
+
+        public static Nibble[] FromBytes(ReadOnlySpan<byte> bytes)
+        {
             Nibble[] nibbles = new Nibble[2 * bytes.Length];
             for (int i = 0; i < bytes.Length; i++)
             {

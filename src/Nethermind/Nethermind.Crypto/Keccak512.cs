@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Crypto
 {
@@ -62,9 +63,9 @@ namespace Nethermind.Crypto
             return InternalCompute(input);
         }
 
-        public static uint[] ComputeToUInts(byte[] input)
+        public static uint[] ComputeToUInts(ReadOnlySpan<byte> input)
         {
-            if (input is null || input.Length == 0)
+            if (input.IsNull() || input.Length == 0)
             {
                 throw new NotSupportedException();
             }

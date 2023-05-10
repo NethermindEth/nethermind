@@ -39,12 +39,12 @@ namespace Nethermind.Core
 
         public byte[] Bytes { get; }
 
-        public void Set(byte[] sequence)
+        public void Set(ReadOnlySpan<byte> sequence)
         {
             Set(sequence, null);
         }
 
-        private void Set(byte[] sequence, Bloom? masterBloom)
+        private void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom)
         {
             if (ReferenceEquals(this, Empty))
             {
@@ -63,7 +63,7 @@ namespace Nethermind.Core
             }
         }
 
-        public bool Matches(byte[] sequence)
+        public bool Matches(ReadOnlySpan<byte> sequence)
         {
             BloomExtract indexes = GetExtract(sequence);
             return Matches(in indexes);
@@ -172,9 +172,9 @@ namespace Nethermind.Core
 
         public static BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
 
-        private static BloomExtract GetExtract(byte[] sequence)
+        private static BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {
-            int GetIndex(Span<byte> bytes, int index1, int index2)
+            int GetIndex(ReadOnlySpan<byte> bytes, int index1, int index2)
             {
                 return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
             }
@@ -228,12 +228,12 @@ namespace Nethermind.Core
 
         public Span<byte> Bytes { get; }
 
-        public void Set(byte[] sequence)
+        public void Set(ReadOnlySpan<byte> sequence)
         {
             Set(sequence, null);
         }
 
-        private void Set(Span<byte> sequence, Bloom? masterBloom = null)
+        private void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
         {
             Bloom.BloomExtract indexes = GetExtract(sequence);
             Set(indexes.Index1);
@@ -247,7 +247,7 @@ namespace Nethermind.Core
             }
         }
 
-        public bool Matches(byte[] sequence)
+        public bool Matches(ReadOnlySpan<byte> sequence)
         {
             Bloom.BloomExtract indexes = GetExtract(sequence);
             return Matches(in indexes);
@@ -354,7 +354,7 @@ namespace Nethermind.Core
 
         public static Bloom.BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
 
-        private static Bloom.BloomExtract GetExtract(Span<byte> sequence)
+        private static Bloom.BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {
             int GetIndex(Span<byte> bytes, int index1, int index2)
             {
