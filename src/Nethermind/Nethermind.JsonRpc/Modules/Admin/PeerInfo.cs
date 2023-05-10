@@ -5,6 +5,7 @@ using System;
 using System.Globalization;
 using System.Net;
 using Nethermind.Network;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
@@ -41,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
             Address = peer.Node.Address.ToString();
             IsBootnode = peer.Node.IsBootnode;
             IsStatic = peer.Node.IsStatic;
-            Enode = peer.Node.ToString("e");
+            Enode = peer.Node.ToString(Node.Format.ENode);
 
             if (includeDetails)
             {

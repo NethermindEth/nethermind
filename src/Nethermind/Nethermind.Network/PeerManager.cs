@@ -54,7 +54,7 @@ namespace Nethermind.Network
         private Task _peerUpdateLoopTask;
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
-        private static readonly int _parallelism = Environment.ProcessorCount;
+        private readonly int _parallelism;
 
         public PeerManager(
             IRlpxHost rlpxHost,
@@ -67,6 +67,12 @@ namespace Nethermind.Network
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _parallelism = networkConfig.NumConcurrentOutgoingConnects;
+            if (_parallelism == 0)
+            {
+                _parallelism = Environment.ProcessorCount;
+            }
+
             _peerPool = peerPool;
             _candidates = new List<PeerStats>(networkConfig.MaxActivePeers * 2);
         }
