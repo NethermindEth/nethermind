@@ -1,9 +1,7 @@
 name: Sync Testnets
 
 on:
-  pull_request:
-  push:
-    branches: ["master", "kch/add_sync_testnets_PR_check"]
+  pull_request_target:
 
 jobs:
   create_docker_image:
@@ -51,16 +49,12 @@ jobs:
       
   chiado:
     name: "Run sync of chiado testnet"
+    needs: create_docker_image
     runs-on: ubuntu-latest
     steps:
       - name: Use DOCKER_TAG
         run: |
           echo "DOCKER_TAG=${{ needs.create_docker_image.outputs.docker_tag }}" >> $GITHUB_ENV
-
-      - name: Install dependencies
-        run: |
-          npm ci
-          curl https://github.com/grafana/k6/releases/download/v0.43.1/k6-v0.43.1-linux-amd64.tar.gz -L | tar xvz --strip-components 1
 
       - name: Setup Go environment
         uses: actions/setup-go@v4.0.0
