@@ -1,7 +1,8 @@
 name: Sync Testnets
 
 on:
-  pull_request:
+  push:
+    branches: ["master"]
 
 jobs:
   create_docker_image:
