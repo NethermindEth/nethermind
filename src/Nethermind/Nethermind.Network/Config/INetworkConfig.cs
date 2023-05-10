@@ -82,5 +82,11 @@ namespace Nethermind.Network.Config
 
         [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = "[TECHNICAL] Introduce a fixed latency for all p2p message send. Useful for testing higher latency network or simulate slower network for testing purpose.")]
         long SimulateSendLatencyMs { get; set; }
+
+        [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = "[TECHNICAL] Number of concurrent outgoing connection. Reduce this if your ISP is the kind that hangs up on you if you open too many connections. Default is 0 which means same as processor count.")]
+        int NumConcurrentOutgoingConnects { get; set; }
+
+        [ConfigItem(DefaultValue = "2000", HiddenFromDocs = true, Description = "[TECHNICAL] Outgoing connection timeout in ms. Default is 2 seconds.")]
+        int ConnectTimeoutMs { get; set; }
     }
 }
