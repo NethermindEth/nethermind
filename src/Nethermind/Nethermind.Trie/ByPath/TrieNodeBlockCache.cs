@@ -101,7 +101,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             {
                 return null;
             }
-            long blockNo = blocks.Min();
+            long blockNo = blocks.Max();
             long minBlockNumberStored = _nodesByBlock.Keys.Min();
 
             while (blockNo >= minBlockNumberStored)
