@@ -801,7 +801,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             for (int i = 0; i < 10000; i++)
             {
-                storageProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
+                storageProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), (UInt256)i);
             }
 
             storageProvider.Commit();

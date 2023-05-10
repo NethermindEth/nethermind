@@ -19,8 +19,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             ParityAccountStateChange result = new();
             result.Balance = new ParityStateChange<UInt256?>(1, 2);
             result.Nonce = new ParityStateChange<UInt256?>(0, 1);
-            result.Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>();
-            result.Storage[1] = new ParityStateChange<byte[]>(new byte[] { 1 }, new byte[] { 2 });
+            result.Storage = new Dictionary<UInt256, ParityStateChange<UInt256>>();
+            result.Storage[1] = new ParityStateChange<UInt256>((UInt256)1, (UInt256)2);
 
             TestToJson(result, "{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":\"0x2\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x0\",\"to\":\"0x1\"}},\"storage\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":{\"*\":{\"from\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"to\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}}}");
         }

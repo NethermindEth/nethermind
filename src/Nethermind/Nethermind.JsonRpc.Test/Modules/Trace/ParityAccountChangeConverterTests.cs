@@ -58,9 +58,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             ParityAccountStateChange change = new()
             {
-                Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>
+                Storage = new Dictionary<UInt256, ParityStateChange<UInt256>>
                 {
-                    {1, new ParityStateChange<byte[]>(new byte[] {1}, new byte[] {0})}
+                    {1, new ParityStateChange<UInt256>(UInt256.One, UInt256.Zero)}
                 }
             };
 

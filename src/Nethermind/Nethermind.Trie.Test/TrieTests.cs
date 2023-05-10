@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
+
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -1031,16 +1033,16 @@ namespace Nethermind.Trie.Test
                                 stateProvider.IncrementNonce(address);
                             }
 
-                            byte[] storage = new byte[1];
-                            _random.NextBytes(storage);
+                            UInt256 storage = UInt256.One;
+                            _random.NextBytes(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref storage, 1)));
                             storageProvider.Set(new StorageCell(address, 1), storage);
                         }
                         else if (!account.IsTotallyEmpty)
                         {
                             stateProvider.CreateAccount(address, account.Balance);
 
-                            byte[] storage = new byte[1];
-                            _random.NextBytes(storage);
+                            UInt256 storage = UInt256.One;
+                            _random.NextBytes(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref storage, 1)));
                             storageProvider.Set(new StorageCell(address, 1), storage);
                         }
                     }

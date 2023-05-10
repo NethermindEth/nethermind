@@ -161,8 +161,8 @@ namespace Nethermind.State
                 Before = default;
             }
 
-            public UInt256 Before { get; }
-            public UInt256 After { get; }
+            public readonly UInt256 Before;
+            public readonly UInt256 After;
         }
 
         /// <summary>
