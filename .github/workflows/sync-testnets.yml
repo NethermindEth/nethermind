@@ -98,7 +98,7 @@ jobs:
       - name: Display Docker logs        
         working-directory: sedge
         run: docker compose logs
-    sepolia:
+  sepolia:
     name: "Run sync of sepolia testnet"
     needs: create_docker_image
     runs-on: ubuntu-latest
