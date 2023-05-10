@@ -23,13 +23,17 @@ namespace Nethermind.Core
         byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
     }
 
+    [Flags]
     public enum ReadFlags
     {
-        None,
+        None = 0,
 
         // Hint that the workload is likely to not going to benefit from caching and should skip any cache handling
         // to reduce CPU usage
-        HintCacheMiss,
+        HintCacheMiss = 1,
+
+        // Hint that the workload is likely to need the next value in the sequence and should prefetch it.
+        HintReadAhead = 2,
     }
 
     public enum WriteFlags

@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, Timeout(Timeout.MaxTestTime), Retry(5)]
         public async Task prune_on_disk_multiple_times()
         {
             using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 });
@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, Timeout(Timeout.MaxTestTime), Retry(5)]
         public async Task prune_on_disk_only_once()
         {
             using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 10 });

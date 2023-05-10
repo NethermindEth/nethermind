@@ -22,7 +22,7 @@ namespace Ethereum.Trie.Test
             tree.Set(1, new byte[] { });
             tree.UpdateRootHash();
             Keccak rootAfter = tree.RootHash;
-            Assert.AreEqual(rootBefore, rootAfter);
+            Assert.That(rootAfter, Is.EqualTo(rootBefore));
         }
 
         [Test]
@@ -34,7 +34,7 @@ namespace Ethereum.Trie.Test
             tree.Set(1, new byte[] { 0, 0, 0, 0, 0 });
             tree.UpdateRootHash();
             Keccak rootAfter = tree.RootHash;
-            Assert.AreEqual(rootBefore, rootAfter);
+            Assert.That(rootAfter, Is.EqualTo(rootBefore));
         }
 
         [Test]
@@ -46,7 +46,7 @@ namespace Ethereum.Trie.Test
             tree.Set(1, new byte[] { 0 });
             tree.UpdateRootHash();
             Keccak rootAfter = tree.RootHash;
-            Assert.AreEqual(rootBefore, rootAfter);
+            Assert.That(rootAfter, Is.EqualTo(rootBefore));
         }
     }
 }

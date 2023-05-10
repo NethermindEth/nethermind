@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
@@ -27,8 +29,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public void GetInfosForBatch(BlockInfo?[] blockInfos)
         {
-            int collected = 0;
+            using ArrayPoolList<(int collected, long currentNumber)> toSent = new(blockInfos.Length);
 
+            int collected = 0;
             long currentNumber = LowestInsertWithoutGaps;
             lock (_statuses)
             {
@@ -43,7 +46,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     switch (_statuses[currentNumber])
                     {
                         case FastBlockStatus.Unknown:
-                            blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(currentNumber);
+                            toSent.Add((collected, currentNumber));
                             _statuses[currentNumber] = FastBlockStatus.Sent;
                             collected++;
                             break;
@@ -51,9 +54,8 @@ namespace Nethermind.Synchronization.FastBlocks
                             if (currentNumber == LowestInsertWithoutGaps)
                             {
                                 LowestInsertWithoutGaps--;
-                                Interlocked.Decrement(ref _queueSize);
+                                _queueSize--;
                             }
-
                             break;
                         case FastBlockStatus.Sent:
                             break;
@@ -64,13 +66,27 @@ namespace Nethermind.Synchronization.FastBlocks
                     currentNumber--;
                 }
             }
+
+            for (int index = 0; index < toSent.Count; index++)
+            {
+                (int collected, long currentNumber) sent = toSent[index];
+                try
+                {
+                    blockInfos[sent.collected] = _blockTree.FindCanonicalBlockInfo(sent.currentNumber);
+                }
+                catch
+                {
+                    _statuses[sent.currentNumber] = FastBlockStatus.Unknown;
+                    throw;
+                }
+            }
         }
 
         public void MarkInserted(in long blockNumber)
         {
-            Interlocked.Increment(ref _queueSize);
             lock (_statuses)
             {
+                _queueSize++;
                 _statuses[blockNumber] = FastBlockStatus.Inserted;
             }
         }

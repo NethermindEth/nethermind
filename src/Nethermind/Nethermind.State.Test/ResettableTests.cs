@@ -17,7 +17,7 @@ namespace Nethermind.Store.Test
             int[] array = new int[Resettable.StartCapacity];
             Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
 
-            Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
+            Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity * Resettable.ResetRatio));
         }
 
         [Test]
@@ -30,8 +30,8 @@ namespace Nethermind.Store.Test
 
             Resettable<int>.Reset(ref array, ref capacity, ref currentPosition);
 
-            Assert.AreEqual(Resettable.StartCapacity, array.Length);
-            Assert.AreEqual(0, array[0]);
+            Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity));
+            Assert.That(array[0], Is.EqualTo(0));
         }
 
         [Test]
@@ -42,12 +42,12 @@ namespace Nethermind.Store.Test
             int[] array = new int[Resettable.StartCapacity];
             Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
 
-            Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
+            Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity * Resettable.ResetRatio));
 
             currentPosition -= 2;
             Resettable<int>.Reset(ref array, ref capacity, ref currentPosition, Resettable.StartCapacity);
 
-            Assert.AreEqual(Resettable.StartCapacity, array.Length);
+            Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity));
         }
 
         [Test]
@@ -58,11 +58,11 @@ namespace Nethermind.Store.Test
             int[] array = new int[Resettable.StartCapacity];
             Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
 
-            Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
+            Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity * Resettable.ResetRatio));
 
             Resettable<int>.Reset(ref array, ref capacity, ref currentPosition, Resettable.StartCapacity);
 
-            Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
+            Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity * Resettable.ResetRatio));
         }
 
         [Test]
@@ -73,13 +73,13 @@ namespace Nethermind.Store.Test
             int[] array = new int[Resettable.StartCapacity];
 
             Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
-            Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio * Resettable.ResetRatio, array.Length);
+            Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity * Resettable.ResetRatio * Resettable.ResetRatio));
 
             Resettable<int>.Reset(ref array, ref capacity, ref currentPosition);
-            Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio * Resettable.ResetRatio, array.Length);
+            Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity * Resettable.ResetRatio * Resettable.ResetRatio));
 
             Resettable<int>.Reset(ref array, ref capacity, ref currentPosition);
-            Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
+            Assert.That(array.Length, Is.EqualTo(Resettable.StartCapacity * Resettable.ResetRatio));
         }
 
         [Test]
@@ -91,7 +91,7 @@ namespace Nethermind.Store.Test
             array[0] = 30;
             Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
 
-            Assert.AreEqual(30, array[0]);
+            Assert.That(array[0], Is.EqualTo(30));
         }
     }
 }

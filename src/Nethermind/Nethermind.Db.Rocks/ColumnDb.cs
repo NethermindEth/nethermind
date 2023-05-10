@@ -15,6 +15,8 @@ public class ColumnDb : IDbWithSpan
     private readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
 
+    private DbOnTheRocks.ManagedIterators _readaheadIterators = new();
+
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {
         _rocksDb = rocksDb;
@@ -23,14 +25,16 @@ public class ColumnDb : IDbWithSpan
         Name = name;
     }
 
-    public void Dispose() { }
+    public void Dispose()
+    {
+        _readaheadIterators.DisposeAll();
+    }
 
     public string Name { get; }
 
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        UpdateReadMetrics();
-        return _rocksDb.Get(key, _columnFamily);
+        return _mainDb.GetWithColumnFamily(key, _columnFamily, _readaheadIterators, flags);
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -51,7 +55,7 @@ public class ColumnDb : IDbWithSpan
 
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
-        using Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
+        Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
         return _mainDb.GetAllCore(iterator);
     }
 
@@ -124,6 +128,9 @@ public class ColumnDb : IDbWithSpan
     private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
 
     public long GetSize() => _mainDb.GetSize();
+    public long GetCacheSize() => _mainDb.GetCacheSize();
+    public long GetIndexSize() => _mainDb.GetIndexSize();
+    public long GetMemtableSize() => _mainDb.GetMemtableSize();
 
     public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _rocksDb.GetSpan(key, _columnFamily);
 

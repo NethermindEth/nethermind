@@ -59,11 +59,11 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
-            Assert.AreEqual(new byte[] { 0 }, result, "storage reverted");
-            Assert.AreEqual(98777, receipt.GasSpent, "no refund");
+            Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
+            Assert.That(receipt.GasSpent, Is.EqualTo(98777), "no refund");
 
             byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
-            Assert.AreEqual(new byte[1], returnData, "address returned");
+            Assert.That(returnData, Is.EqualTo(new byte[1]), "address returned");
         }
 
         [Test(Description = "Deposit OutOfGas before EIP-2")]
@@ -100,11 +100,11 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
-            Assert.AreEqual(new byte[] { 0 }, result, "storage reverted");
-            Assert.AreEqual(83199, receipt.GasSpent, "with refund");
+            Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
+            Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
 
             byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
-            Assert.AreEqual(deployed.Bytes, returnData, "address returned");
+            Assert.That(returnData, Is.EqualTo(deployed.Bytes), "address returned");
         }
     }
 }

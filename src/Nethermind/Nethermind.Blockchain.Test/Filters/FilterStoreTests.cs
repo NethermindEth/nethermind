@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Test.Filters
             BlockFilter filter = store.CreateBlockFilter(1);
             store.SaveFilter(filter);
             Assert.True(store.FilterExists(0), "exists");
-            Assert.AreEqual(FilterType.BlockFilter, store.GetFilterType(filter.Id), "type");
+            Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.BlockFilter), "type");
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Test.Filters
             LogFilter filter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
             store.SaveFilter(filter);
             Assert.True(store.FilterExists(0), "exists");
-            Assert.AreEqual(FilterType.LogFilter, store.GetFilterType(filter.Id), "type");
+            Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.LogFilter), "type");
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Filters
 
             Assert.True(store.FilterExists(100), "exists 100");
             Assert.True(store.FilterExists(101), "exists 101");
-            Assert.AreEqual(FilterType.LogFilter, store.GetFilterType(filter.Id), "type");
+            Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.LogFilter), "type");
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -89,10 +89,10 @@ namespace Nethermind.Blockchain.Test.Filters
             LogFilter[] logFilters = store.GetFilters<LogFilter>().ToArray();
             BlockFilter[] blockFilters = store.GetFilters<BlockFilter>().ToArray();
 
-            Assert.AreEqual(1, logFilters.Length, "log filters length");
-            Assert.AreEqual(1, logFilters[0].Id, "log filters ids");
-            Assert.AreEqual(1, blockFilters.Length, "block Filters length");
-            Assert.AreEqual(0, blockFilters[0].Id, "block filters ids");
+            Assert.That(logFilters.Length, Is.EqualTo(1), "log filters length");
+            Assert.That(logFilters[0].Id, Is.EqualTo(1), "log filters ids");
+            Assert.That(blockFilters.Length, Is.EqualTo(1), "block Filters length");
+            Assert.That(blockFilters[0].Id, Is.EqualTo(0), "block filters ids");
         }
 
         public static IEnumerable CorrectlyCreatesAddressFilterTestCases

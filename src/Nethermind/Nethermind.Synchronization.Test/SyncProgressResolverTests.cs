@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.Test
 
             SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, LimboLogs.Instance);
             blockTree.BestSuggestedHeader.Returns((BlockHeader)null);
-            Assert.AreEqual(0, syncProgressResolver.FindBestHeader());
+            Assert.That(syncProgressResolver.FindBestHeader(), Is.EqualTo(0));
         }
 
         [Test]
@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.Test
 
             SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, LimboLogs.Instance);
             blockTree.BestSuggestedBody.Returns((Block)null);
-            Assert.AreEqual(0, syncProgressResolver.FindBestFullBlock());
+            Assert.That(syncProgressResolver.FindBestFullBlock(), Is.EqualTo(0));
         }
 
         [Test]
@@ -66,7 +66,7 @@ namespace Nethermind.Synchronization.Test
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(head.Header);
             stateDb[head.StateRoot.Bytes] = new byte[] { 1 };
-            Assert.AreEqual(head.Number, syncProgressResolver.FindBestFullState());
+            Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(head.Number));
         }
 
         [Test]
@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization.Test
 
             stateDb[head.StateRoot.Bytes] = new byte[] { 1 };
             stateDb[suggested.StateRoot.Bytes] = new byte[] { 1 };
-            Assert.AreEqual(suggested.Number, syncProgressResolver.FindBestFullState());
+            Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(suggested.Number));
         }
 
         [Test]
@@ -109,7 +109,7 @@ namespace Nethermind.Synchronization.Test
             blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head?.Header);
             stateDb[head.StateRoot.Bytes] = new byte[] { 1 };
             stateDb[suggested.StateRoot.Bytes] = null;
-            Assert.AreEqual(head.Number, syncProgressResolver.FindBestFullState());
+            Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(head.Number));
         }
 
         [Test]

@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Test
                 .Done;
             TestAllTracerWithOutput result = Execute(code);
             long setCost = expectedChainId == 0 ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SSet;
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + setCost);
             AssertStorage(0, ((UInt256)expectedChainId).ToBigEndian());
         }

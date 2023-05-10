@@ -189,7 +189,7 @@ namespace Nethermind.Clique.Test
 
             Address expectedBlockSealer = new("0xb279182d99e65703f0076e4812653aab85fca0f0");
             Address blockSealer = _snapshotManager.GetBlockSealer(header);
-            Assert.AreEqual(expectedBlockSealer, blockSealer);
+            Assert.That(blockSealer, Is.EqualTo(expectedBlockSealer));
         }
 
         private static BlockHeader BuildCliqueBlock()

@@ -25,12 +25,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             var bytes = serializer.Serialize(msg);
             var deserializedMsg = serializer.Deserialize(bytes);
 
-            Assert.AreEqual(msg.RequestId, deserializedMsg.RequestId);
-            Assert.AreEqual(msg.PacketType, deserializedMsg.PacketType);
-            Assert.AreEqual(msg.AccountRange.RootHash, deserializedMsg.AccountRange.RootHash);
-            Assert.AreEqual(msg.AccountRange.StartingHash, deserializedMsg.AccountRange.StartingHash);
-            Assert.AreEqual(msg.AccountRange.LimitHash, deserializedMsg.AccountRange.LimitHash);
-            Assert.AreEqual(msg.ResponseBytes, deserializedMsg.ResponseBytes);
+            Assert.That(deserializedMsg.RequestId, Is.EqualTo(msg.RequestId));
+            Assert.That(deserializedMsg.PacketType, Is.EqualTo(msg.PacketType));
+            Assert.That(deserializedMsg.AccountRange.RootHash, Is.EqualTo(msg.AccountRange.RootHash));
+            Assert.That(deserializedMsg.AccountRange.StartingHash, Is.EqualTo(msg.AccountRange.StartingHash));
+            Assert.That(deserializedMsg.AccountRange.LimitHash, Is.EqualTo(msg.AccountRange.LimitHash));
+            Assert.That(deserializedMsg.ResponseBytes, Is.EqualTo(msg.ResponseBytes));
 
             SerializerTester.TestZero(serializer, msg);
         }

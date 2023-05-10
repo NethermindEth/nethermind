@@ -517,7 +517,7 @@ public partial class EngineModuleTests
         actualFinalizedHash.Should().NotBeNull();
         actualFinalizedHash.Should().Be(startingHead);
 
-        Assert.AreEqual(actualFinalizedHash, chain.BlockFinalizationManager.LastFinalizedHash);
+        Assert.That(chain.BlockFinalizationManager.LastFinalizedHash, Is.EqualTo(actualFinalizedHash));
         AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, startingHead, startingHead);
     }
 
@@ -761,7 +761,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = await SendNewBlockV1(rpc, chain);
         await rpc.engine_forkchoiceUpdatedV1(
             new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash));
-        Assert.AreEqual(2, chain.BlockTree.Head!.Number);
+        Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(2));
     }
 
     [TestCase(null)]
@@ -1205,9 +1205,9 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = (UInt256)clTtd
         }).Data;
 
-        Assert.AreEqual((UInt256)1000001, result.TerminalTotalDifficulty);
-        Assert.AreEqual(1, result.TerminalBlockNumber);
-        Assert.AreEqual("0x191dc9697d77129ee5b6f6d57074d2c854a38129913e3fdd3d9f0ebc930503a6", result.TerminalBlockHash.ToString());
+        Assert.That(result.TerminalTotalDifficulty, Is.EqualTo((UInt256)1000001));
+        Assert.That(result.TerminalBlockNumber, Is.EqualTo(1));
+        Assert.That(result.TerminalBlockHash.ToString(), Is.EqualTo("0x191dc9697d77129ee5b6f6d57074d2c854a38129913e3fdd3d9f0ebc930503a6"));
     }
 
     [TestCase(0, "0x0000000000000000000000000000000000000000000000000000000000000000")]
@@ -1225,9 +1225,9 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = (UInt256)clTtd
         }).Data;
 
-        Assert.AreEqual(UInt256.Parse("115792089237316195423570985008687907853269984665640564039457584007913129638912"), result.TerminalTotalDifficulty);
-        Assert.AreEqual(0, result.TerminalBlockNumber);
-        Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000", result.TerminalBlockHash.ToString());
+        Assert.That(result.TerminalTotalDifficulty, Is.EqualTo(UInt256.Parse("115792089237316195423570985008687907853269984665640564039457584007913129638912")));
+        Assert.That(result.TerminalBlockNumber, Is.EqualTo(0));
+        Assert.That(result.TerminalBlockHash.ToString(), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
     }
 
     private async Task<ExecutionPayload> SendNewBlockV1(IEngineRpcModule rpc, MergeTestBlockchain chain)
@@ -1630,16 +1630,16 @@ public partial class EngineModuleTests
         Keccak finalizedBlockHash,
         Keccak confirmedBlockHash)
     {
-        Assert.AreEqual(headBlockHash, blockFinder.HeadHash);
-        Assert.AreEqual(finalizedBlockHash, blockFinder.FinalizedHash);
-        Assert.AreEqual(confirmedBlockHash, blockFinder.SafeHash);
+        Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
+        Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
+        Assert.That(blockFinder.SafeHash, Is.EqualTo(confirmedBlockHash));
     }
 
     private void AssertExecutionStatusNotChangedV1(IBlockFinder blockFinder, Keccak headBlockHash,
         Keccak finalizedBlockHash, Keccak confirmedBlockHash)
     {
-        Assert.AreNotEqual(headBlockHash, blockFinder.HeadHash);
-        Assert.AreNotEqual(finalizedBlockHash, blockFinder.FinalizedHash);
-        Assert.AreNotEqual(confirmedBlockHash, blockFinder.SafeHash);
+        Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
+        Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
+        Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(confirmedBlockHash));
     }
 }
