@@ -65,7 +65,7 @@ namespace Nethermind.Crypto
 
         public static uint[] ComputeToUInts(ReadOnlySpan<byte> input)
         {
-            if (input.IsNull() || input.Length == 0)
+            if (input.Length == 0)
             {
                 throw new NotSupportedException();
             }
