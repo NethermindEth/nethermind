@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public bool HasBlock(Keccak hash)
+        public bool HasBlock(long blockNumber, Keccak hash)
         {
             return _receipts.ContainsKey(hash);
         }

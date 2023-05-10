@@ -43,6 +43,7 @@ public class PerTableDbConfig
     public bool UseDirectReads => ReadConfig<bool>(nameof(UseDirectReads));
     public bool UseDirectIoForFlushAndCompactions => ReadConfig<bool>(nameof(UseDirectIoForFlushAndCompactions));
     public int? BlockSize => ReadConfig<int?>(nameof(BlockSize));
+    public ulong? ReadAheadSize => ReadConfig<ulong?>(nameof(ReadAheadSize));
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
 

@@ -21,6 +21,7 @@ public interface IDbConfig : IConfig
     bool WriteAheadLogSync { get; set; }
     long? MaxBytesPerSec { get; set; }
     int? BlockSize { get; set; }
+    ulong? ReadAheadSize { get; set; }
     bool? UseDirectReads { get; set; }
     bool? UseDirectIoForFlushAndCompactions { get; set; }
     IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }

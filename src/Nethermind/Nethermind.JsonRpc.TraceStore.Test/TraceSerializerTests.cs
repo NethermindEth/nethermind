@@ -31,7 +31,7 @@ public class TraceSerializerTests
     private List<ParityLikeTxTrace>? Deserialize(ITraceSerializer<ParityLikeTxTrace> serializer)
     {
         Type type = GetType();
-        using Stream stream = type.Assembly.GetManifestResourceStream(type.Namespace + ".xdai-17600039.json")!;
+        using Stream stream = type.Assembly.GetManifestResourceStream($"{type.Assembly.GetName().Name}.xdai-17600039.json")!;
         List<ParityLikeTxTrace>? traces = serializer.Deserialize(stream);
         return traces;
     }
