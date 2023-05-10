@@ -1,7 +1,7 @@
 name: Sync Testnets
 
 on:
-  pull_request_target:
+  pull_request:
 
 jobs:
   create_docker_image:
@@ -11,6 +11,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
