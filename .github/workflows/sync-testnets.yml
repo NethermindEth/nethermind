@@ -92,8 +92,9 @@ jobs:
             sleep 10
             RESULT=$(curl --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545 | jq .result)
           done
-
+          sleep 60
           echo "Sedge is synced."
+          
       - name: Display Docker logs        
         working-directory: sedge
-        run: docker compose logs -f
+        run: docker compose logs
