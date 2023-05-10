@@ -98,3 +98,52 @@ jobs:
       - name: Display Docker logs        
         working-directory: sedge
         run: docker compose logs
+    sepolia:
+    name: "Run sync of sepolia testnet"
+    needs: create_docker_image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Use DOCKER_TAG
+        run: |
+          echo "DOCKER_TAG=${{ needs.create_docker_image.outputs.docker_tag }}" >> $GITHUB_ENV
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v4.0.0
+
+      - name: Install Sedge environment
+        run: |
+          echo "Downloading sedge sources..."
+          git clone https://github.com/NethermindEth/sedge.git sedge --branch main --single-branch
+          echo "Sources downloaded."
+          cd sedge
+          echo "Building sedge..."
+          make compile
+
+      - name: Run Sedge
+        working-directory: sedge
+        run: |
+          echo 'Generating sedge docker...'
+          ./build/sedge deps install >> $GITHUB_WORKSPACE/sedge.logs
+          ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
+          full-node --map-all --no-mev-boost --no-validator --network sepolia \
+          -c lighthouse:sigp/lighthouse:latest -e nethermind:nethermindeth/nethermind:${{ env.DOCKER_TAG }} \
+          --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+          --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+          --cl-extra-flag checkpoint-sync-url=https://beaconstate-sepolia.chainsafe.io >> $GITHUB_WORKSPACE/sedge.logs
+          echo 'Running sedge...'
+          ./build/sedge run -p . >> $GITHUB_WORKSPACE/sedge.logs
+
+      - name: Wait for Sepolia to sync
+        run: |
+          RESULT=""
+          while [ "$RESULT" != "false" ]; do
+            echo "Waiting for Sedge to sync..."
+            sleep 10
+            RESULT=$(curl --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545 | jq .result)
+          done
+          sleep 60
+          echo "Sedge is synced."
+          
+      - name: Display Docker logs        
+        working-directory: sedge
+        run: docker compose logs
