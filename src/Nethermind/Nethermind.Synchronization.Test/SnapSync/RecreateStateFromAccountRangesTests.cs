@@ -3,6 +3,7 @@
 
 #nullable disable
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
@@ -32,7 +33,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             _inputTree = TestItem.Tree.GetStateTree(null);
         }
 
-        private byte[][] CreateProofForPath(byte[] path, StateTree tree = null)
+        private byte[][] CreateProofForPath(ReadOnlySpan<byte> path, StateTree tree = null)
         {
             AccountProofCollector accountProofCollector = new(path);
             if (tree == null)
