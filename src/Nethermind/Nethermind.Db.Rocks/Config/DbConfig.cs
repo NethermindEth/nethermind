@@ -24,6 +24,7 @@ public class DbConfig : IDbConfig
     public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB();
     public bool? UseDirectReads { get; set; } = false;
     public bool? UseDirectIoForFlushAndCompactions { get; set; } = false;
+    public bool? DisableCompression { get; set; } = false;
     public IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -154,6 +155,7 @@ public class DbConfig : IDbConfig
     public int? StateDbBlockSize { get; set; } = 4 * 1024;
     public bool? StateDbUseDirectReads { get; set; } = false;
     public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public bool? StateDbDisableCompression { get; set; } = true;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;
