@@ -9,6 +9,11 @@ jobs:
     outputs:
       docker_tag: ${{ steps.prepare_ref.outputs.docker_tag }}
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.ref }}
+        
     - name: Prepare docker tag
       id: prepare_ref
       run: |
