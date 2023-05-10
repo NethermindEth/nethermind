@@ -40,7 +40,7 @@ jobs:
         WORKFLOW_ID: 'build-nethermind-docker-images.yml'
         MAX_WAIT_MINUTES: '5'
         INTERVAL: '5'
-        TIMEOUT: '10'
+        TIMEOUT: '20'
         ORG_NAME: 'NethermindEth'
         REPO_NAME: 'nethermind'
         REF: ${{ github.event.pull_request.head.ref }}
