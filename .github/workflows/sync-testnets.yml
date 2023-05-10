@@ -1,0 +1,100 @@
+name: Sync Testnets
+
+on:
+  pull_request:
+  push:
+    branches: ["master", "kch/add_sync_testnets_PR_check"]
+
+jobs:
+  create_docker_image:
+    runs-on: ubuntu-latest
+    outputs:
+      docker_tag: ${{ steps.prepare_ref.outputs.docker_tag }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Prepare docker tag
+      id: prepare_ref
+      run: |
+        REF_NAME=${{ github.ref }}
+        CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+        echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
+        echo "::set-output name=docker_tag::$CLEAN_REF"
+
+    - name: Trigger Docker Build Action with Cleaned Ref
+      uses: benc-uk/workflow-dispatch@v1
+      with:
+          workflow: build-nethermind-docker-images.yml
+          ref: "${{ github.ref }}"
+          token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          inputs: '{
+              "repo": "nethermindeth/nethermind",
+              "tag": "${{ env.CLEAN_REF }}",
+              "dockerfile": "Dockerfile"
+           }'
+
+    - name: Wait for Docker Build Action to complete
+      env:
+        GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        WORKFLOW_ID: 'build-nethermind-docker-images.yml'
+        MAX_WAIT_MINUTES: '5'
+        INTERVAL: '5'
+        TIMEOUT: '10'
+        ORG_NAME: 'NethermindEth'
+        REPO_NAME: 'nethermind'
+        REF: ${{ github.ref }}
+      run: |
+        chmod +x scripts/wait-for-workflow-completed.sh
+        ./scripts/wait-for-workflow-completed.sh
+      working-directory: ${{ github.workspace }}
+      
+  chiado:
+    name: "Run sync of chiado testnet"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Use DOCKER_TAG
+        run: |
+          echo "DOCKER_TAG=${{ needs.create_docker_image.outputs.docker_tag }}" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          curl https://github.com/grafana/k6/releases/download/v0.43.1/k6-v0.43.1-linux-amd64.tar.gz -L | tar xvz --strip-components 1
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v4.0.0
+
+      - name: Install Sedge environment
+        run: |
+          echo "Downloading sedge sources..."
+          git clone https://github.com/NethermindEth/sedge.git sedge --branch main --single-branch
+          echo "Sources downloaded."
+          cd sedge
+          echo "Building sedge..."
+          make compile
+
+      - name: Run Sedge
+        working-directory: sedge
+        run: |
+          echo 'Generating sedge docker...'
+          ./build/sedge deps install >> $GITHUB_WORKSPACE/sedge.logs
+          ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
+          full-node --map-all --no-mev-boost --no-validator --network chiado \
+          -c lighthouse:sigp/lighthouse:latest -e nethermind:nethermindeth/nethermind:${{ env.DOCKER_TAG }} \
+          --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+          --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+          --cl-extra-flag checkpoint-sync-url=http://139.144.26.89:4000/ >> $GITHUB_WORKSPACE/sedge.logs
+          echo 'Running sedge...'
+          ./build/sedge run -p . >> $GITHUB_WORKSPACE/sedge.logs
+
+      - name: Wait for Chiado to sync
+        run: |
+          RESULT=""
+          while [ "$RESULT" != "false" ]; do
+            echo "Waiting for Sedge to sync..."
+            sleep 10
+            RESULT=$(curl --data '{"method":"eth_syncing","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" localhost:8545 | jq .result)
+          done
+
+          echo "Sedge is synced."
