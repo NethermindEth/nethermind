@@ -388,6 +388,20 @@ namespace Nethermind.Trie.Test.Pruning
                 set => _db[key.ToArray()] = value;
             }
 
+            public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+            {
+                List<byte[]> keys = new List<byte[]>();
+                foreach (KeyValuePair<byte[], byte[]?> kvp in _db)
+                {
+                    if (kvp.Key.AsSpan()[0..keyPrefix.Length] == keyPrefix)
+                        keys.Add(kvp.Key);
+                }
+                foreach (byte[] key in keys)
+                {
+                    _db.Remove(key, out _);
+                }
+            }
+
             public IBatch StartBatch()
             {
                 return new BadBatch();

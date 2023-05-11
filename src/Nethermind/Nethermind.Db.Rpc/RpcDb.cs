@@ -86,5 +86,10 @@ namespace Nethermind.Db.Rpc
 
             return value;
         }
+
+        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

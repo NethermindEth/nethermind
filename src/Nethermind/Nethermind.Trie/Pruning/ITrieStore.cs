@@ -22,5 +22,8 @@ namespace Nethermind.Trie.Pruning
         void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? batch = null);
 
         public void ClearCache();
+
+        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix);
+        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix);
     }
 }

@@ -6,22 +6,18 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
-using static Nethermind.Trie.ByPath.TrieNodeBlockCache;
 
 namespace Nethermind.Trie.ByPath;
 public class TrieNodeBlockCache : IPathTrieNodeCache
 {
     public class NodesByBlock : ConcurrentDictionary<long, ConcurrentDictionary<byte[], TrieNode>>
     {
-        public NodesByBlock() : base()
-        {
-        }
+        public NodesByBlock() : base() { }
 
         private int _nodesCount;
         public int NodesCount { get => _nodesCount; }
@@ -48,12 +44,10 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
                 return trieNode;
             }
 
-
             nodeDictionary.AddOrUpdate(trieNode.FullPath, AddFunc, UpdateFunc);
             // TODO: this causes issues when writing to db - this causes double writes
             if (trieNode.IsLeaf)
                 nodeDictionary.AddOrUpdate(trieNode.StoreNibblePathPrefix.Concat(trieNode.PathToNode).ToArray(), AddFunc, UpdateFunc);
-
         }
     }
 
@@ -65,6 +59,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
     private int _maxNumberOfBlocks;
     private int _count;
     private readonly ILogger _logger;
+    private readonly ConcurrentDictionary<long, List<byte[]>> _removedPrefixes;
 
     public int MaxNumberOfBlocks { get => _maxNumberOfBlocks; }
     public int Count { get => _count; }
@@ -73,6 +68,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
     {
         _trieStore = trieStore;
         _maxNumberOfBlocks = maxNumberOfBlocks;
+        _removedPrefixes = new ConcurrentDictionary<long, List<byte[]>> { };
         _logger = logManager?.GetClassLogger<TrieNodeBlockCache>() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
@@ -80,6 +76,18 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
     {
         foreach (long blockNumber in _nodesByBlock.Keys.OrderByDescending(b => b))
         {
+            if (_removedPrefixes.TryGetValue(blockNumber, out List<byte[]> prefixes))
+            {
+                foreach (byte[] prefix in prefixes)
+                {
+                    if (path.Length >= prefix.Length &&
+                        Bytes.AreEqual(path.AsSpan()[0..prefix.Length], prefix))
+                    {
+                        return null;
+                    }
+                }
+            }
+
             ConcurrentDictionary<byte[], TrieNode> nodeDictionary = _nodesByBlock[blockNumber];
             if (nodeDictionary.TryGetValue(path, out TrieNode node))
             {
@@ -106,6 +114,18 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
             while (blockNo >= minBlockNumberStored)
             {
+                if (_removedPrefixes.TryGetValue(blockNo, out List<byte[]> prefixes))
+                {
+                    foreach (byte[] prefix in prefixes)
+                    {
+                        if (path.Length >= prefix.Length &&
+                            Bytes.AreEqual(path.AsSpan()[0..prefix.Length], prefix))
+                        {
+                            return null;
+                        }
+                    }
+                }
+
                 if (_nodesByBlock.TryGetValue(blockNo, out ConcurrentDictionary<byte[], TrieNode> nodeDictionary))
                 {
                     if (nodeDictionary.TryGetValue(path, out TrieNode node))
@@ -148,6 +168,13 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         long currentBlockNumber = _nodesByBlock.Keys.Min();
         while (currentBlockNumber <= blockNumber)
         {
+            if (_removedPrefixes.TryRemove(blockNumber, out List<byte[]> prefixes))
+            {
+                foreach (byte[] keyPrefix in prefixes)
+                {
+                    _trieStore.DeleteByPrefix(keyPrefix);
+                }
+            }
             if (_nodesByBlock.TryRemove(blockNumber, out ConcurrentDictionary<byte[], TrieNode> nodesByPath))
             {
                 foreach (TrieNode? node in nodesByPath.Values)
@@ -176,5 +203,30 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             }
             if (_logger.IsInfo) _logger.Info($"Block {blockToRemove} removed from cache");
         }
+    }
+
+    public void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix)
+    {
+        if (_maxNumberOfBlocks == 0)
+            return;
+
+        if (!_removedPrefixes.TryGetValue(blockNumber, out List<byte[]> prefixes))
+        {
+            prefixes = new List<byte[]>();
+            _removedPrefixes[blockNumber] = prefixes;
+        }
+
+        prefixes.Add(keyPrefix.ToArray());
+    }
+
+    public bool IsPathCached(ReadOnlySpan<byte> path)
+    {
+        byte[] p = path.ToArray();
+        foreach (KeyValuePair<long, ConcurrentDictionary<byte[], TrieNode>> nodes in _nodesByBlock)
+        {
+            if (nodes.Value.ContainsKey(p))
+                return true;
+        }
+        return false;
     }
 }

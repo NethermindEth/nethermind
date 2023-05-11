@@ -6,5 +6,6 @@ namespace Nethermind.Core
     public interface IKeyValueStoreWithBatching : IKeyValueStore
     {
         IBatch StartBatch();
+        void DeleteByPrefix(System.ReadOnlySpan<byte> keyPrefix);
     }
 }

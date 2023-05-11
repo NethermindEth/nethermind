@@ -863,5 +863,15 @@ namespace Nethermind.Trie.Pruning
                 ? trieNode.FullRlp
                 : _currentBatch?[key] ?? _keyValueStore[key];
         }
+
+        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        {
+            _keyValueStore.DeleteByPrefix(keyPrefix);
+        }
+
+        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

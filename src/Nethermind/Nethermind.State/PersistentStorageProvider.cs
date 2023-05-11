@@ -9,7 +9,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.State
 {
@@ -136,6 +138,15 @@ namespace Nethermind.State
 
                 if (change.ChangeType == ChangeType.Destroy)
                 {
+                    //Span<byte> storagePrefix = new byte[34];
+                    //Keccak.Compute(change.StorageCell.Address.Bytes).Bytes.AsSpan().CopyTo(storagePrefix[1..]);
+                    //storagePrefix[33] = 128;
+                    //Span<byte> storagePrefix = new byte[33];
+                    //Keccak.Compute(change.StorageCell.Address.Bytes).Bytes.CopyTo(storagePrefix);
+                    //storagePrefix[^1] = 128;
+                    //Span<byte> storagePrefixNibbles = new byte[66];
+                    //Nibbles.BytesToNibbleBytes(storagePrefix, storagePrefixNibbles);
+                    //_trieStore.MarkPrefixDeleted(storagePrefixNibbles);
                     continue;
                 }
 
@@ -273,6 +284,26 @@ namespace Nethermind.State
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager, address);
+
+            //StorageCell cell = new(address, 0);
+            //SetupRegistry(cell);
+            //IncrementChangePosition();
+            //_intraBlockCache[cell].Push(_currentPosition);
+            //_changes[_currentPosition] = new Change(ChangeType.Destroy, new StorageCell(address, 0), null);
+
+            //Span<byte> storagePrefix = stackalloc byte[34];
+            //Keccak.Compute(address.Bytes).Bytes.AsSpan().CopyTo(storagePrefix[1..]);
+            //storagePrefix[33] = 128;
+
+            //_trieStore.DeleteByPrefix(storagePrefix);
+
+            Span<byte> storagePrefix = new byte[33];
+            Keccak.Compute(address.Bytes).Bytes.CopyTo(storagePrefix);
+            storagePrefix[^1] = 128;
+            Span<byte> storagePrefixNibbles = new byte[66];
+            Nibbles.BytesToNibbleBytes(storagePrefix, storagePrefixNibbles);
+
+            _trieStore.MarkPrefixDeleted(storagePrefixNibbles);
         }
     }
 }

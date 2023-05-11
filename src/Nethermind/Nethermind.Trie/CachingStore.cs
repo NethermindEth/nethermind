@@ -69,5 +69,10 @@ namespace Nethermind.Trie
                 }
             });
         }
+
+        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        {
+            _wrappedStore.DeleteByPrefix(keyPrefix);
+        }
     }
 }

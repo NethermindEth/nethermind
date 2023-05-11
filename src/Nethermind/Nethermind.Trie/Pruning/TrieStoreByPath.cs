@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,6 +30,7 @@ namespace Nethermind.Trie.Pruning
         private IBatch? _currentBatch = null;
 
         private readonly IPathTrieNodeCache _committedNodes;
+        private readonly ConcurrentQueue<byte[]> _destroyPrefixes;
 
         private bool _lastPersistedReachedReorgBoundary;
         private readonly Task _pruningTask = Task.CompletedTask;
@@ -55,6 +57,7 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _committedNodes = new TrieNodeBlockCache(this, historyBlockDepth, logManager);
+            _destroyPrefixes = new ConcurrentQueue<byte[]>();
         }
 
         public long LastPersistedBlockNumber
@@ -170,6 +173,13 @@ namespace Nethermind.Trie.Pruning
                             Persist(persistTarget);
                             AnnounceReorgBoundaries();
                         }
+                    }
+                }
+                if (trieType == TrieType.Storage)
+                {
+                    while (_destroyPrefixes.TryDequeue(out var prefix))
+                    {
+                        _committedNodes.AddRemovedPrefix(blockNumber, prefix);
                     }
                 }
                 // set rootHash here to account for root hashes for the storage trees also in every block
@@ -544,5 +554,24 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         public void ClearCache()
         {}
+
+        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        {
+            _keyValueStore.DeleteByPrefix(keyPrefix);
+        }
+
+        public void MarkPrefixDeleted(ReadOnlySpan<byte> keyPrefix)
+        {
+            bool addPrefixAsDeleted = _committedNodes.IsPathCached(keyPrefix);
+            if (!addPrefixAsDeleted)
+            {
+                byte[] keyPath = Nibbles.NibblesToByteStorage(keyPrefix.ToArray());
+                byte[]? rlp = _currentBatch?[keyPath] ?? _keyValueStore[keyPath];
+                addPrefixAsDeleted &= rlp != null;
+            }
+
+            if (addPrefixAsDeleted)
+                _destroyPrefixes.Enqueue(keyPrefix.ToArray());
+        }
     }
 }

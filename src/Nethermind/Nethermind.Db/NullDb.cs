@@ -55,5 +55,9 @@ namespace Nethermind.Db
         public void Dispose()
         {
         }
+
+        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        {
+        }
     }
 }

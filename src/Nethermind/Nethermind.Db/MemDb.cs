@@ -138,5 +138,19 @@ namespace Nethermind.Db
         public void DangerousReleaseMemory(in Span<byte> span)
         {
         }
+
+        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        {
+            List<byte[]> keys = new List<byte[]>();
+            foreach (KeyValuePair<byte[], byte[]?> kvp in _db)
+            {
+                if (kvp.Key.Length >= keyPrefix.Length && Bytes.AreEqual(kvp.Key.AsSpan()[0..keyPrefix.Length], keyPrefix))
+                    keys.Add(kvp.Key);
+            }
+            foreach (byte[] key in keys)
+            {
+                _db.Remove(key, out _);
+            }
+        }
     }
 }

@@ -278,5 +278,10 @@ namespace Nethermind.Db.FullPruning
                 tunableDb.Tune(type);
             }
         }
+
+        public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

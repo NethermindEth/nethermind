@@ -132,4 +132,9 @@ public class ColumnDb : IDbWithSpan
     }
 
     public void DangerousReleaseMemory(in Span<byte> span) => _rocksDb.DangerousReleaseMemory(span);
+
+    public void DeleteByPrefix(ReadOnlySpan<byte> keyPrefix)
+    {
+        throw new NotImplementedException();
+    }
 }

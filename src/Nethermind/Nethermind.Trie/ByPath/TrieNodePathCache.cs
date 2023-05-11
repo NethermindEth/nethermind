@@ -167,4 +167,14 @@ public class TrieNodePathCache : IPathTrieNodeCache
             }
         }
     }
+
+    public void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix)
+    {
+        throw new NotImplementedException();
+    }
+
+    public bool IsPathCached(ReadOnlySpan<byte> path)
+    {
+        throw new NotImplementedException();
+    }
 }
