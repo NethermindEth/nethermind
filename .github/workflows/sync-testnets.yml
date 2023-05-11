@@ -2,7 +2,7 @@ name: Sync Testnets
 
 on:
   push:
-    branches: ["master"]
+    branches: ["master", "kch/add_sync_testnets_PR_check"]
 
 jobs:
   create_docker_image:
