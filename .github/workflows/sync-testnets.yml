@@ -2,7 +2,7 @@ name: Sync Testnets
 
 on:
   push:
-    branches: ["master", "kch/add_sync_testnet_PR_check"]
+    branches: ["master", "kch/add_sync_testnets_PR_check"]
   workflow_dispatch:
 
 jobs:
