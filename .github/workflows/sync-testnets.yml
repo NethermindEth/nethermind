@@ -2,62 +2,25 @@ name: Sync Testnets
 
 on:
   push:
-    branches: ["master", "kch/add_sync_testnets_PR_check"]
+    branches: ["master"]
+  workflow_dispatch:
 
 jobs:
-  create_docker_image:
-    runs-on: ubuntu-latest
-    outputs:
-      docker_tag: ${{ steps.prepare_ref.outputs.docker_tag }}
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-      with:
-        ref: ${{ github.ref }}
-        
-    - name: Prepare docker tag
-      id: prepare_ref
-      run: |
-        REF_NAME=${{ github.ref }}
-        CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-        echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
-        echo "docker_tag=$CLEAN_REF" >> $GITHUB_OUTPUT
-
-    - name: Trigger Docker Build Action with Cleaned Ref
-      uses: benc-uk/workflow-dispatch@v1
-      with:
-          workflow: build-nethermind-docker-images.yml
-          ref: "${{ github.ref }}"
-          token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          inputs: '{
-              "repo": "nethermindeth/nethermind",
-              "tag": "${{ env.CLEAN_REF }}",
-              "dockerfile": "Dockerfile"
-           }'
-
-    - name: Wait for Docker Build Action to complete
-      env:
-        GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-        WORKFLOW_ID: 'build-nethermind-docker-images.yml'
-        MAX_WAIT_MINUTES: '5'
-        INTERVAL: '5'
-        TIMEOUT: '20'
-        ORG_NAME: 'NethermindEth'
-        REPO_NAME: 'nethermind'
-        REF: ${{ github.ref }}
-      run: |
-        chmod +x scripts/wait-for-workflow-completed.sh
-        ./scripts/wait-for-workflow-completed.sh
-      working-directory: ${{ github.workspace }}
-      
   chiado:
     name: "Run sync of chiado testnet"
     needs: create_docker_image
     runs-on: ubuntu-latest
     steps:
-      - name: Use DOCKER_TAG
-        run: |
-          echo "DOCKER_TAG=${{ needs.create_docker_image.outputs.docker_tag }}" >> $GITHUB_ENV
+      - name: Checkout repository
+        uses: actions/checkout@v3
+          with:
+          ref: ${{ github.ref }}
+          
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build docker image
+        run: docker build -t test_image -f Dockerfile .
 
       - name: Setup Go environment
         uses: actions/setup-go@v4.0.0
@@ -78,7 +41,7 @@ jobs:
           ./build/sedge deps install >> $GITHUB_WORKSPACE/sedge.logs
           ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
           full-node --map-all --no-mev-boost --no-validator --network chiado \
-          -c lighthouse:sigp/lighthouse:latest -e nethermind:nethermindeth/nethermind:${{ env.DOCKER_TAG }} \
+          -c lighthouse:sigp/lighthouse:latest -e nethermind:test_image \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --cl-extra-flag checkpoint-sync-url=http://139.144.26.89:4000/ >> $GITHUB_WORKSPACE/sedge.logs
@@ -104,9 +67,19 @@ jobs:
     needs: create_docker_image
     runs-on: ubuntu-latest
     steps:
-      - name: Use DOCKER_TAG
-        run: |
-          echo "DOCKER_TAG=${{ needs.create_docker_image.outputs.docker_tag }}" >> $GITHUB_ENV
+      - name: Checkout repository
+        uses: actions/checkout@v3
+          with:
+          ref: ${{ github.ref }}
+          
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build docker image
+        run: docker build -t test_image -f Dockerfile .
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v4.0.0
 
       - name: Setup Go environment
         uses: actions/setup-go@v4.0.0
@@ -127,7 +100,7 @@ jobs:
           ./build/sedge deps install >> $GITHUB_WORKSPACE/sedge.logs
           ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
           full-node --map-all --no-mev-boost --no-validator --network sepolia \
-          -c lighthouse:sigp/lighthouse:latest -e nethermind:nethermindeth/nethermind:${{ env.DOCKER_TAG }} \
+          -c lighthouse:sigp/lighthouse:latest -e nethermind:test_image \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --cl-extra-flag checkpoint-sync-url=https://beaconstate-sepolia.chainsafe.io >> $GITHUB_WORKSPACE/sedge.logs
