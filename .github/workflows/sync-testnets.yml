@@ -2,7 +2,7 @@ name: Sync Testnets
 
 on:
   push:
-    branches: ["master", "kch/add_sync_testnets_PR_check"]
+    branches: ["master"]
   workflow_dispatch:
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Build docker image
-        run: docker buildx build --platform=linux/amd64 -t test_image -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
+        run: docker buildx build --platform=linux/amd64 -t current_branch_image -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} .
 
       - name: Setup Go environment
         uses: actions/setup-go@v4.0.0
@@ -46,7 +46,7 @@ jobs:
           ./build/sedge deps install
           ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
           full-node --map-all --no-mev-boost --no-validator --network chiado \
-          -c lighthouse:sigp/lighthouse:latest -e nethermind:test_image \
+          -c lighthouse:sigp/lighthouse:latest -e nethermind:current_branch_image \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --cl-extra-flag checkpoint-sync-url=http://139.144.26.89:4000/
@@ -86,7 +86,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Build docker image
-        run: docker buildx build --platform=linux/amd64 -t test_image -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
+        run: docker buildx build --platform=linux/amd64 -t current_branch_image -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} .
 
       - name: Setup Go environment
         uses: actions/setup-go@v4.0.0
@@ -107,7 +107,7 @@ jobs:
           ./build/sedge deps install
           ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
           full-node --map-all --no-mev-boost --no-validator --network sepolia \
-          -c lighthouse:sigp/lighthouse:latest -e nethermind:test_image \
+          -c lighthouse:sigp/lighthouse:latest -e nethermind:current_branch_image \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --cl-extra-flag checkpoint-sync-url=https://beaconstate-sepolia.chainsafe.io
