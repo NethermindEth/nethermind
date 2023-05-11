@@ -2,18 +2,17 @@ name: Sync Testnets
 
 on:
   push:
-    branches: ["master"]
+    branches: ["master", "kch/add_sync_testnet_PR_check"]
   workflow_dispatch:
 
 jobs:
   chiado:
     name: "Run sync of chiado testnet"
-    needs: create_docker_image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-          with:
+        with:
           ref: ${{ github.ref }}
           
       - name: Set up Docker Buildx
@@ -64,12 +63,11 @@ jobs:
         run: docker compose logs
   sepolia:
     name: "Run sync of sepolia testnet"
-    needs: create_docker_image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-          with:
+        with:
           ref: ${{ github.ref }}
           
       - name: Set up Docker Buildx
