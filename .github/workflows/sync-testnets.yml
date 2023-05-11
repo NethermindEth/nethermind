@@ -62,7 +62,11 @@ jobs:
           done
           sleep 60
           echo "Sedge is synced."
-      
+                
+      - name: Display Docker logs        
+        working-directory: sedge
+        run: docker compose logs
+        
       - name: Verify health of a node
         working-directory: sedge
         run: |
@@ -77,15 +81,12 @@ jobs:
             exit 1
           fi
           
-          count=$(docker-compose logs --no-color | grep -c -E "Invalid|Exception")
+          count=$(docker compose logs | grep -c -E "Invalid|Exception")
           if [ $count -gt 0 ]; then
+            docker compose logs | grep "Invalid|Exception"
             echo "Error: Lines found for 'Invalid' or 'Exception'"
             exit 1
           fi
-          
-      - name: Display Docker logs        
-        working-directory: sedge
-        run: docker compose logs
   sepolia:
     name: "Run sync of sepolia testnet"
     runs-on: ubuntu-latest
@@ -142,6 +143,10 @@ jobs:
           done
           sleep 60
           echo "Sedge is synced."
+      
+      - name: Display Docker logs        
+        working-directory: sedge
+        run: docker compose logs
           
       - name: Verify health of a node
         working-directory: sedge
@@ -157,12 +162,9 @@ jobs:
             exit 1
           fi
           
-          count=$(docker-compose logs --no-color | grep -c -E "Invalid|Exception")
+          count=$(docker compose logs | grep -c -E "Invalid|Exception")
           if [ $count -gt 0 ]; then
+            docker compose logs | grep "Invalid|Exception"
             echo "Error: Lines found for 'Invalid' or 'Exception'"
             exit 1
-          fi
-          
-      - name: Display Docker logs        
-        working-directory: sedge
-        run: docker compose logs
+          fi        
