@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -113,6 +114,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 return _beaconPivot.ProcessDestination?.Number ?? _beaconPivot.PivotNumber;
             }
             return null;
+        }
+
+        public Keccak GetFinalizedHash()
+        {
+            return _blockCacheService.FinalizedHash;
         }
     }
 
