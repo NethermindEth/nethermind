@@ -13,12 +13,12 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
-        ref: ${{ github.event.pull_request.head.ref }}
+        ref: ${{ github.ref }}
         
     - name: Prepare docker tag
       id: prepare_ref
       run: |
-        REF_NAME=${{ github.event.pull_request.head.ref }}
+        REF_NAME=${{ github.ref }}
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
         echo "docker_tag=$CLEAN_REF" >> $GITHUB_OUTPUT
@@ -27,7 +27,7 @@ jobs:
       uses: benc-uk/workflow-dispatch@v1
       with:
           workflow: build-nethermind-docker-images.yml
-          ref: "${{ github.event.pull_request.head.ref }}"
+          ref: "${{ github.ref }}"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
               "repo": "nethermindeth/nethermind",
@@ -44,7 +44,7 @@ jobs:
         TIMEOUT: '20'
         ORG_NAME: 'NethermindEth'
         REPO_NAME: 'nethermind'
-        REF: ${{ github.event.pull_request.head.ref }}
+        REF: ${{ github.ref }}
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
         ./scripts/wait-for-workflow-completed.sh
