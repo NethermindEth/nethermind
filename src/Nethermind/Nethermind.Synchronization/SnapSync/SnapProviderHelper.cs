@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.SnapSync
             StateTree tree,
             long blockNumber,
             Keccak expectedRootHash,
-            Keccak startingHash,
+            ValueKeccak startingHash,
             Keccak limitHash,
             PathWithAccount[] accounts,
             byte[][] proofs = null
@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             // TODO: Check the accounts boundaries and sorting
 
-            Keccak lastHash = accounts[^1].Path;
+            ValueKeccak lastHash = accounts[^1].Path;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) =
                 FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, proofs);
@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.SnapSync
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
             StorageTree tree,
             long blockNumber,
-            Keccak? startingHash,
+            ValueKeccak? startingHash,
             PathWithStorageSlot[] slots,
             Keccak expectedRootHash,
             byte[][]? proofs = null
@@ -89,7 +89,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             // TODO: Check the slots boundaries and sorting
 
-            Keccak lastHash = slots.Last().Path;
+            ValueKeccak lastHash = slots.Last().Path;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
                 tree, startingHash, lastHash, Keccak.MaxValue, expectedRootHash, proofs);
@@ -122,8 +122,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(
             PatriciaTree tree,
-            Keccak? startingHash,
-            Keccak endHash,
+            ValueKeccak? startingHash,
+            ValueKeccak endHash,
             Keccak limitHash,
             Keccak expectedRootHash,
             byte[][]? proofs = null
@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             Span<byte> leftBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(startingHash.Bytes, leftBoundary);
+            Nibbles.BytesToNibbleBytes(startingHash.Value.Bytes, leftBoundary);
             Span<byte> rightBoundary = stackalloc byte[64];
             Nibbles.BytesToNibbleBytes(endHash.Bytes, rightBoundary);
             Span<byte> rightLimit = stackalloc byte[64];
@@ -165,7 +165,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             tree.RootRef = root;
             proofNodesToProcess.Push((null, root, -1, new List<byte>()));
-            sortedBoundaryList.Add(root); ;
+            sortedBoundaryList.Add(root);
 
             bool moreChildrenToRight = false;
 

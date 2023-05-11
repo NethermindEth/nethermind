@@ -283,9 +283,9 @@ namespace Nethermind.Synchronization.SnapSync
             StoragesToRetrieve.Enqueue(pwa);
         }
 
-        public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, Keccak startingHash)
+        public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, ValueKeccak? startingHash)
         {
-            AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash });
+            AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault().ToKeccak() });
         }
 
         public void ReportFullStorageRequestFinished(PathWithAccount[] storages = null)

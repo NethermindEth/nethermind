@@ -89,7 +89,12 @@ namespace Nethermind.State
             SetInternal(key.Bytes, value, rlpEncode);
         }
 
-        private void SetInternal(Span<byte> rawKey, byte[] value, bool rlpEncode = true)
+        public void Set(ValueKeccak key, byte[] value, bool rlpEncode = true)
+        {
+            SetInternal(key.Bytes, value, rlpEncode);
+        }
+
+        private void SetInternal(ReadOnlySpan<byte> rawKey, byte[] value, bool rlpEncode = true)
         {
             if (value.IsZero())
             {
