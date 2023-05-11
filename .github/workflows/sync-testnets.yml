@@ -2,13 +2,14 @@ name: Sync Testnets
 
 on:
   push:
-    branches: ["master"]
+    branches: ["master", "kch/add_sync_testnets"]
   workflow_dispatch:
 
 jobs:
   chiado:
     name: "Run sync of chiado testnet"
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -70,6 +71,7 @@ jobs:
   sepolia:
     name: "Run sync of sepolia testnet"
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -124,6 +126,25 @@ jobs:
           done
           sleep 60
           echo "Sedge is synced."
+          
+      - name: Verify health of a node
+        run: |
+          countValid=$(docker compose logs | grep -c -E "Valid.")
+          countWaitingForBlock=$(docker compose logs | grep -c -E "WaitingForBlock")
+          if [ $countValid -lt 1 ]; then
+            echo "Error: No lines found for 'Valid.' - probably node is not progressing well."
+            exit 1
+          fi
+          if [ $countWaitingForBlock -lt 1 ]; then
+            echo "Error: No lines found for 'WaitingForBlock' - probably node is not progressing well."
+            exit 1
+          fi
+          
+          count=$(docker-compose logs --no-color | grep -c -E "Invalid|Exception")
+          if [ $count -gt 0 ]; then
+            echo "Error: Lines found for 'Invalid' or 'Exception'"
+            exit 1
+          fi
           
       - name: Display Docker logs        
         working-directory: sedge
