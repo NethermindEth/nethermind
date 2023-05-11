@@ -19,6 +19,7 @@ on:
 env:
   COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
   DOTNET_VERSION: 7
+  RETENTION: 1
 
 jobs:
   nethermind-tests:
@@ -91,33 +92,33 @@ jobs:
           ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover' || '' }}
     - name: Save test outcome
       if: success() || failure()
-      uses: cloudposse/github-action-matrix-outputs-write@main
+      run: echo "${{ steps.test.outcome == 'success' }}," >> nethermind.outcome
+    - name: Upload test outcome
+      if: success() || failure()
+      uses: actions/upload-artifact@v3
       with:
-        matrix-step-name: ${{ github.job }}
-        matrix-key: ${{ matrix.project }}
-        outputs: |-
-          passed: ${{ steps.test.outcome == 'success' }}
+        name: ${{ matrix.project }}-outcome
+        path: nethermind.outcome
+        retention-days: ${{ env.RETENTION }}
     - name: Upload coverage report
       if: env.COLLECT_COVERAGE == 'true'
       uses: actions/upload-artifact@v3
       with:
         name: ${{ matrix.project }}-coverage
         path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
-    
+        retention-days: ${{ env.RETENTION }}
 
   nethermind-tests-status:
     name: Nethermind tests
     needs: nethermind-tests
     runs-on: ubuntu-latest
     steps:
-    - name: Fetch tests outcomes
-      uses: cloudposse/github-action-matrix-outputs-read@main
-      id: outcomes
-      with:
-        matrix-step-name: nethermind-tests
+    - name: Download test outcomes
+      uses: actions/download-artifact@v3
     - name: Ensure tests passed
       run: |
-        passed=$(echo '${{ steps.outcomes.outputs.result }}' | jq -r '.passed | values | all' -r)
+        data=$(cat **/nethermind.outcome) && data=${data%?}
+        passed=$(echo "[$data]" | jq -r 'all')
         [ $passed = 'true' ] && exit 0 || exit 1
 
   ethereum-tests:
@@ -161,35 +162,34 @@ jobs:
         dotnet test src/Nethermind/${{ matrix.project }} -c release \
           ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover -p:Exclude="[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Ethereum.Test.Base]*"' || '' }}
     - name: Save test outcome
-      id: test-outcome
       if: success() || failure()
-      uses: cloudposse/github-action-matrix-outputs-write@main
+      run: echo "${{ steps.test.outcome == 'success' }}," >> ethereum.outcome
+    - name: Upload test outcome
+      if: success() || failure()
+      uses: actions/upload-artifact@v3
       with:
-        matrix-step-name: ${{ github.job }}
-        matrix-key: ${{ matrix.project }}
-        outputs: |-
-          passed: ${{ steps.test.outcome == 'success' }}
+        name: ${{ matrix.project }}-outcome
+        path: ethereum.outcome
+        retention-days: ${{ env.RETENTION }}
     - name: Upload coverage report
       if: env.COLLECT_COVERAGE == 'true'
       uses: actions/upload-artifact@v3
       with:
         name: ${{ matrix.project }}-coverage
         path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
-        retention-days: 1
+        retention-days: ${{ env.RETENTION }}
 
   ethereum-tests-status:
     name: Ethereum tests
     needs: ethereum-tests
     runs-on: ubuntu-latest
     steps:
-    - name: Fetch tests outcomes
-      uses: cloudposse/github-action-matrix-outputs-read@main
-      id: outcomes
-      with:
-        matrix-step-name: ethereum-tests
+    - name: Download test outcomes
+      uses: actions/download-artifact@v3
     - name: Ensure tests passed
       run: |
-        passed=$(echo '${{ steps.outcomes.outputs.result }}' | jq -r '.passed | values | all' -r)
+        data=$(cat **/ethereum.outcome) && data=${data%?}
+        passed=$(echo "[$data]" | jq -r 'all')
         [ $passed = 'true' ] && exit 0 || exit 1
 
   codecov-upload:
