@@ -364,20 +364,33 @@ public class TxValidatorTests
         {
             yield return new TestCaseData(null) { TestName = "Null hash", ExpectedResult = false };
             yield return new TestCaseData(MakeArray(0)) { TestName = "Empty hash", ExpectedResult = false };
-            yield return new TestCaseData(MakeArray(1, 1, 0))
+            yield return new TestCaseData(MakeArray(1, 1))
             {
-                TestName = "Correct version, incorrect length",
-                ExpectedResult = false
+                TestName = "Correct version, incorrect length", ExpectedResult = false
             };
-            yield return new TestCaseData(MakeArray(31, 1, 0))
+            yield return new TestCaseData(MakeArray(31, 1))
             {
-                TestName = "Correct version, incorrect length",
-                ExpectedResult = false
+                TestName = "Correct version, incorrect length", ExpectedResult = false
             };
-            yield return new TestCaseData(MakeArray(33, 1, 0))
+            yield return new TestCaseData(MakeArray(33, 1))
             {
-                TestName = "Correct version, incorrect length",
-                ExpectedResult = false
+                TestName = "Correct version, incorrect length", ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeArray(32, 0))
+            {
+                TestName = "Incorrect version, correct length", ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 - 1))
+            {
+                TestName = "Incorrect version, correct length", ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 + 1))
+            {
+                TestName = "Incorrect version, correct length", ExpectedResult = false
+            };
+            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1))
+            {
+                TestName = "Correct version, correct length", ExpectedResult = true
             };
         }
     }

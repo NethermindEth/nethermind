@@ -121,7 +121,8 @@ namespace Nethermind.Consensus.Validators
             {
                 if (transaction.BlobVersionedHashes[i] is null ||
                     transaction.BlobVersionedHashes![i].Length !=
-                    KzgPolynomialCommitments.BytesPerBlobVersionedHash)
+                    KzgPolynomialCommitments.BytesPerBlobVersionedHash ||
+                    transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
                 {
                     return false;
                 }
@@ -139,14 +140,13 @@ namespace Nethermind.Consensus.Validators
                 }
 
                 Span<byte> hash = stackalloc byte[32];
-                Span<byte> commitements = wrapper.Commitments;
+                Span<byte> commitments = wrapper.Commitments;
                 for (int i = 0, n = 0;
                      i < transaction.BlobVersionedHashes.Length;
                      i++, n += Ckzg.Ckzg.BytesPerCommitment)
                 {
-                    if (transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1 ||
-                        !KzgPolynomialCommitments.TryComputeCommitmentHashV1(
-                            commitements[n..(n + Ckzg.Ckzg.BytesPerCommitment)], hash) ||
+                    if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(
+                            commitments[n..(n + Ckzg.Ckzg.BytesPerCommitment)], hash) ||
                         !hash.SequenceEqual(transaction.BlobVersionedHashes[i]))
                     {
                         return false;
