@@ -25,7 +25,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Build docker image
-        run: docker buildx build --platform=linux/amd64,linux/arm64 -t test_image -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} .
+        run: docker buildx build --platform=linux/amd64 -t test_image -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
 
       - name: Setup Go environment
         uses: actions/setup-go@v4.0.0
@@ -86,7 +86,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Build docker image
-        run: docker buildx build --platform=linux/amd64,linux/arm64 -t test_image -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} .
+        run: docker buildx build --platform=linux/amd64 -t test_image -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
 
       - name: Setup Go environment
         uses: actions/setup-go@v4.0.0
