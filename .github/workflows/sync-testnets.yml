@@ -43,15 +43,15 @@ jobs:
         working-directory: sedge
         run: |
           echo 'Generating sedge docker...'
-          ./build/sedge deps install >> $GITHUB_WORKSPACE/sedge.logs
+          ./build/sedge deps install
           ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
           full-node --map-all --no-mev-boost --no-validator --network chiado \
           -c lighthouse:sigp/lighthouse:latest -e nethermind:test_image \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
-          --cl-extra-flag checkpoint-sync-url=http://139.144.26.89:4000/ >> $GITHUB_WORKSPACE/sedge.logs
+          --cl-extra-flag checkpoint-sync-url=http://139.144.26.89:4000/
           echo 'Running sedge...'
-          ./build/sedge run -p . >> $GITHUB_WORKSPACE/sedge.logs
+          docker compose up -d
 
       - name: Wait for Chiado to sync
         run: |
@@ -104,15 +104,15 @@ jobs:
         working-directory: sedge
         run: |
           echo 'Generating sedge docker...'
-          ./build/sedge deps install >> $GITHUB_WORKSPACE/sedge.logs
+          ./build/sedge deps install
           ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
           full-node --map-all --no-mev-boost --no-validator --network sepolia \
           -c lighthouse:sigp/lighthouse:latest -e nethermind:test_image \
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
-          --cl-extra-flag checkpoint-sync-url=https://beaconstate-sepolia.chainsafe.io >> $GITHUB_WORKSPACE/sedge.logs
+          --cl-extra-flag checkpoint-sync-url=https://beaconstate-sepolia.chainsafe.io
           echo 'Running sedge...'
-          ./build/sedge run -p . >> $GITHUB_WORKSPACE/sedge.logs
+          docker compose up -d
 
       - name: Wait for Sepolia to sync
         run: |
