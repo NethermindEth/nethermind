@@ -64,6 +64,7 @@ jobs:
           echo "Sedge is synced."
       
       - name: Verify health of a node
+        working-directory: sedge
         run: |
           countValid=$(docker compose logs | grep -c -E "Valid.")
           countWaitingForBlock=$(docker compose logs | grep -c -E "WaitingForBlock")
@@ -143,6 +144,7 @@ jobs:
           echo "Sedge is synced."
           
       - name: Verify health of a node
+        working-directory: sedge
         run: |
           countValid=$(docker compose logs | grep -c -E "Valid.")
           countWaitingForBlock=$(docker compose logs | grep -c -E "WaitingForBlock")
