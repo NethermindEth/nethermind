@@ -57,12 +57,11 @@ namespace Nethermind.JsonRpc.Benchmark
             IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
             var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
 
-            StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
 
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
 
             ChainLevelInfoRepository chainLevelInfoRepository = new(blockInfoDb);
@@ -77,11 +76,11 @@ namespace Nethermind.JsonRpc.Benchmark
             blockTree.SuggestBlock(block1);
 
             TransactionProcessor transactionProcessor
-                 = new(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
+                 = new(MainnetSpecProvider.Instance, stateProvider, _virtualMachine, LimboLogs.Instance);
 
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
             BlockProcessor blockProcessor = new(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor,
-                stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
+                stateProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(

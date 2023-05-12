@@ -42,7 +42,7 @@ namespace Nethermind.TxPool.Test
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
         private TxPool _txPool;
-        private IStateProvider _stateProvider;
+        private IWorldState _stateProvider;
         private IBlockTree _blockTree;
 
         private int _txGasLimit = 1_000_000;
@@ -55,7 +55,7 @@ namespace Nethermind.TxPool.Test
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
             var trieStore = new TrieStore(new MemDb(), _logManager);
             var codeDb = new MemDb();
-            _stateProvider = new StateProvider(trieStore, codeDb, _logManager);
+            _stateProvider = new WorldState(trieStore, codeDb, _logManager);
             _blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(0).TestObject;
             _blockTree.Head.Returns(block);
@@ -169,7 +169,7 @@ namespace Nethermind.TxPool.Test
                 .WithGasLimit(_txGasLimit)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            _stateProvider.UpdateCodeHash(TestItem.AddressA, TestItem.KeccakA, _specProvider.GetSpec((ForkActivation)1));
+            _stateProvider.InsertCode(TestItem.AddressA, "A"u8.ToArray(), _specProvider.GetSpec((ForkActivation)1));
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.SenderIsContract);
         }
@@ -237,7 +237,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            _stateProvider.UpdateCodeHash(TestItem.AddressA, hasCode ? TestItem.KeccakH : Keccak.OfAnEmptyString, London.Instance);
+            _stateProvider.InsertCode(TestItem.AddressA, hasCode ? "H"u8.ToArray() : System.Text.Encoding.UTF8.GetBytes(""), London.Instance);
 
             return txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast).ToString();
         }
