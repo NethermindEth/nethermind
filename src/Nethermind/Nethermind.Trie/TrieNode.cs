@@ -386,6 +386,18 @@ namespace Nethermind.Trie
             return length == 32 ? _rlpStream.DecodeKeccak() : null;
         }
 
+        public ValueKeccak? GetChildHashAsValueKeccak(int i)
+        {
+            if (_rlpStream is null)
+            {
+                return null;
+            }
+
+            SeekChild(i);
+            (int _, int length) = _rlpStream!.PeekPrefixAndContentLength();
+            return length == 32 ? _rlpStream.DecodeValueKeccak() : null;
+        }
+
         public bool IsChildNull(int i)
         {
             if (!IsBranch)

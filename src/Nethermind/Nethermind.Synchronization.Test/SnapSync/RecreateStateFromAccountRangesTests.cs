@@ -335,7 +335,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             bool HasMoreChildren(ValueKeccak limitHash)
             {
-                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<Keccak> _) =
+                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueKeccak> _) =
                     SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash.ToKeccak(), receiptAccounts, proofs);
                 return moreChildrenToRight;
             }
@@ -389,7 +389,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             bool HasMoreChildren(ValueKeccak limitHash)
             {
-                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<Keccak> _) =
+                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueKeccak> _) =
                     SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash.ToKeccak(), receiptAccounts, proofs);
                 return moreChildrenToRight;
             }

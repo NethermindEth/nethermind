@@ -19,12 +19,12 @@ namespace Nethermind.Synchronization.SnapSync
     public static class SnapProviderHelper
     {
 
-        public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes) AddAccountRange(
+        public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<ValueKeccak> codeHashes) AddAccountRange(
             StateTree tree,
             long blockNumber,
-            Keccak expectedRootHash,
+            ValueKeccak expectedRootHash,
             ValueKeccak startingHash,
-            Keccak limitHash,
+            ValueKeccak limitHash,
             PathWithAccount[] accounts,
             byte[][] proofs = null
         )
@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             IList<PathWithAccount> accountsWithStorage = new List<PathWithAccount>();
-            IList<Keccak> codeHashes = new List<Keccak>();
+            IList<ValueKeccak> codeHashes = new List<ValueKeccak>();
 
             for (var index = 0; index < accounts.Length; index++)
             {
@@ -83,7 +83,7 @@ namespace Nethermind.Synchronization.SnapSync
             long blockNumber,
             ValueKeccak? startingHash,
             PathWithStorageSlot[] slots,
-            Keccak expectedRootHash,
+            ValueKeccak expectedRootHash,
             byte[][]? proofs = null
         )
         {
@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization.SnapSync
             ValueKeccak lastHash = slots.Last().Path;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
-                tree, startingHash, lastHash, Keccak.MaxValue, expectedRootHash, proofs);
+                tree, startingHash, lastHash, ValueKeccak.MaxValue, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
             {
@@ -124,8 +124,8 @@ namespace Nethermind.Synchronization.SnapSync
             PatriciaTree tree,
             ValueKeccak? startingHash,
             ValueKeccak endHash,
-            Keccak limitHash,
-            Keccak expectedRootHash,
+            ValueKeccak limitHash,
+            ValueKeccak expectedRootHash,
             byte[][]? proofs = null
         )
         {
@@ -139,10 +139,10 @@ namespace Nethermind.Synchronization.SnapSync
                 throw new ArgumentNullException(nameof(tree));
             }
 
-            startingHash ??= Keccak.Zero;
+            startingHash ??= ValueKeccak.Zero;
             List<TrieNode> sortedBoundaryList = new();
 
-            Dictionary<Keccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
+            Dictionary<ValueKeccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
 
             if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
             {
@@ -159,7 +159,7 @@ namespace Nethermind.Synchronization.SnapSync
             // For when in very-very unlikely case where the last remaining address is Keccak.MaxValue, (who knows why,
             // the chain have special handling for it maybe) and it is not included the returned account range, (again,
             // very-very unlikely), we want `moreChildrenToRight` to return true.
-            bool noLimit = limitHash == Keccak.MaxValue;
+            bool noLimit = limitHash == ValueKeccak.MaxValue;
 
             Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
 
@@ -175,11 +175,11 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (node.IsExtension)
                 {
-                    Keccak? childKeccak = node.GetChildHash(0);
+                    ValueKeccak? childKeccak = node.GetChildHashAsValueKeccak(0);
 
-                    if (childKeccak is not null)
+                    if (childKeccak.HasValue)
                     {
-                        if (dict.TryGetValue(childKeccak, out TrieNode child))
+                        if (dict.TryGetValue(childKeccak.Value, out TrieNode child))
                         {
                             node.SetChild(0, child);
 
@@ -197,7 +197,7 @@ namespace Nethermind.Synchronization.SnapSync
                             {
                                 for (int i = 0; i < 15; i++)
                                 {
-                                    Keccak? kec = parent.GetChildHash(i);
+                                    ValueKeccak? kec = parent.GetChildHashAsValueKeccak(i);
                                     if (kec == node.Keccak)
                                     {
                                         parent.SetChild(i, null);
@@ -222,7 +222,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                     for (int ci = left; ci <= maxIndex; ci++)
                     {
-                        Keccak? childKeccak = node.GetChildHash(ci);
+                        ValueKeccak? childKeccak = node.GetChildHashAsValueKeccak(ci);
 
                         moreChildrenToRight |= (ci > right && (ci < limit || noLimit)) && childKeccak is not null;
 
@@ -231,7 +231,7 @@ namespace Nethermind.Synchronization.SnapSync
                             node.SetChild(ci, null);
                         }
 
-                        if (childKeccak is not null && (ci == left || ci == right) && dict.TryGetValue(childKeccak, out TrieNode child))
+                        if (childKeccak.HasValue && (ci == left || ci == right) && dict.TryGetValue(childKeccak.Value, out TrieNode child))
                         {
                             if (!child.IsLeaf)
                             {
@@ -254,9 +254,9 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight);
         }
 
-        private static Dictionary<Keccak, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store)
+        private static Dictionary<ValueKeccak, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store)
         {
-            Dictionary<Keccak, TrieNode> dict = new();
+            Dictionary<ValueKeccak, TrieNode> dict = new();
 
             for (int i = 0; i < proofs.Length; i++)
             {
@@ -320,13 +320,13 @@ namespace Nethermind.Synchronization.SnapSync
                 return data.IsBoundaryProofNode == false;
             }
 
-            Keccak childKeccak = node.GetChildHash(childIndex);
+            ValueKeccak? childKeccak = node.GetChildHashAsValueKeccak(childIndex);
             if (childKeccak is null)
             {
                 return true;
             }
 
-            return store.IsPersisted(childKeccak);
+            return store.IsPersisted(childKeccak.Value);
         }
     }
 }

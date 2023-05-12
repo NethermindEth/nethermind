@@ -272,6 +272,25 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+
+        public void Encode(IReadOnlyList<ValueKeccak> keccaks)
+        {
+            if (keccaks is null)
+            {
+                EncodeNullObject();
+            }
+            else
+            {
+                var length = Rlp.LengthOf(keccaks);
+                StartSequence(length);
+                var count = keccaks.Count;
+                for (int i = 0; i < count; i++)
+                {
+                    Encode(keccaks[i]);
+                }
+            }
+        }
+
         public void Encode(Address? address)
         {
             if (address is null)
@@ -842,6 +861,24 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return new Keccak(keccakSpan.ToArray());
+        }
+
+        public ValueKeccak? DecodeValueKeccak()
+        {
+            int prefix = ReadByte();
+            if (prefix == 128)
+            {
+                return null;
+            }
+
+            if (prefix != 128 + 32)
+            {
+                throw new RlpException(
+                    $"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Length} starting with {Description}");
+            }
+
+            Span<byte> keccakSpan = Read(32);
+            return new ValueKeccak(keccakSpan);
         }
 
         public Keccak? DecodeZeroPrefixKeccak()
