@@ -48,7 +48,7 @@ namespace Nethermind.Db
             }
         }
 
-        public static void Set(this IDb db, ValueKeccak key, Span<byte> value)
+        public static void Set(this IDb db, in ValueKeccak key, Span<byte> value)
         {
             if (db is IDbWithSpan dbWithSpan)
             {

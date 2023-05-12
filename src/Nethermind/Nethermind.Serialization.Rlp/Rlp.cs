@@ -1358,7 +1358,7 @@ namespace Nethermind.Serialization.Rlp
             return item is null ? 1 : 33;
         }
 
-        public static int LengthOf(ValueKeccak? item)
+        public static int LengthOf(in ValueKeccak? item)
         {
             return item is null ? 1 : 33;
         }

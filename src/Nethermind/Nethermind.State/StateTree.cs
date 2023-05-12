@@ -71,7 +71,7 @@ namespace Nethermind.State
             return rlp;
         }
 
-        public Rlp? Set(ValueKeccak keccak, Account? account)
+        public Rlp? Set(in ValueKeccak keccak, Account? account)
         {
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 

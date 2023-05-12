@@ -84,12 +84,7 @@ namespace Nethermind.State
             SetInternal(key, value);
         }
 
-        public void Set(Keccak key, byte[] value, bool rlpEncode = true)
-        {
-            SetInternal(key.Bytes, value, rlpEncode);
-        }
-
-        public void Set(ValueKeccak key, byte[] value, bool rlpEncode = true)
+        public void Set(in ValueKeccak key, byte[] value, bool rlpEncode = true)
         {
             SetInternal(key.Bytes, value, rlpEncode);
         }

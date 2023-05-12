@@ -207,7 +207,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(ValueKeccak? keccak)
+        public void Encode(in ValueKeccak? keccak)
         {
             if (keccak is null)
             {
