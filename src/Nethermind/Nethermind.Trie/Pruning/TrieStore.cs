@@ -346,6 +346,20 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
+        public bool IsPersisted(in ValueKeccak keccak)
+        {
+            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
+
+            if (rlp is null)
+            {
+                return false;
+            }
+
+            Metrics.LoadedFromDbNodesCount++;
+
+            return true;
+        }
+
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore)
         {
             return new ReadOnlyTrieStore(this, keyValueStore);
