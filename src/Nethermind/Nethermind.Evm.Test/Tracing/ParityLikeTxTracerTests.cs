@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing.ParityStyle;
 using NUnit.Framework;
+using System.Globalization;
 
 namespace Nethermind.Evm.Test.Tracing
 {
@@ -484,8 +485,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
             ParityStorageChangeTrace sstore = trace.VmTrace.Operations[2].Store;
-            Assert.That(sstore.Key.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
-            Assert.That(sstore.Value.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+            Assert.That(sstore.Key.ToHexString(true), Is.EqualTo(push2Hex));
+            Assert.That(sstore.Value.ToHexString(true), Is.EqualTo(push1Hex));
         }
 
         [Test]
@@ -727,10 +728,10 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
             Assert.True(trace.StateChanges.ContainsKey(TestItem.AddressC), "address c");
             Assert.That(trace.StateChanges[Recipient].Storage.Count, Is.EqualTo(2), "recipient storage count");
-            Assert.That(trace.StateChanges[Recipient].Storage[2].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[2]");
-            Assert.That(trace.StateChanges[Recipient].Storage[2].After, Is.EqualTo(Bytes.FromHexString(SampleHexData1)), "recipient storage[2] after");
-            Assert.That(trace.StateChanges[Recipient].Storage[3].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[3]");
-            Assert.That(trace.StateChanges[Recipient].Storage[3].After, Is.EqualTo(Bytes.FromHexString(SampleHexData2)), "recipient storage[3] after");
+            Assert.That(trace.StateChanges[Recipient].Storage[2].Before, Is.EqualTo(UInt256.Zero), "recipient storage[2]");
+            Assert.That(trace.StateChanges[Recipient].Storage[2].After, Is.EqualTo(UInt256.Parse(SampleHexData1, NumberStyles.HexNumber)), "recipient storage[2] after");
+            Assert.That(trace.StateChanges[Recipient].Storage[3].Before, Is.EqualTo(UInt256.Zero), "recipient storage[3]");
+            Assert.That(trace.StateChanges[Recipient].Storage[3].After, Is.EqualTo(UInt256.Parse(SampleHexData2, NumberStyles.HexNumber)), "recipient storage[3] after");
         }
 
         [Test]

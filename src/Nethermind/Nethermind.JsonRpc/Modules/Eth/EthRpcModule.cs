@@ -177,24 +177,24 @@ public partial class EthRpcModule : IEthRpcModule
         return Task.FromResult(ResultWrapper<UInt256?>.Success(account?.Balance ?? UInt256.Zero));
     }
 
-    public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
+    public ResultWrapper<UInt256> eth_getStorageAt(Address address, UInt256 positionIndex,
         BlockParameter? blockParameter = null)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<byte[]>.Fail(searchResult);
+            return ResultWrapper<UInt256>.Fail(searchResult);
         }
 
         BlockHeader? header = searchResult.Object;
         Account account = _stateReader.GetAccount(header.StateRoot, address);
         if (account is null)
         {
-            return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
+            return ResultWrapper<UInt256>.Success(default);
         }
 
-        byte[] storage = _stateReader.GetStorage(account.StorageRoot, positionIndex);
-        return ResultWrapper<byte[]>.Success(storage.PadLeft(32));
+        UInt256 storage = _stateReader.GetStorage(account.StorageRoot, positionIndex);
+        return ResultWrapper<UInt256>.Success(storage);
     }
 
     public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)

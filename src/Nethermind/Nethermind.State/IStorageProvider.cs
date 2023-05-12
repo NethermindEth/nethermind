@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.State
 {
@@ -16,35 +17,35 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell"></param>
         /// <returns></returns>
-        byte[] GetOriginal(in StorageCell storageCell);
+        UInt256 GetOriginal(in StorageCell storageCell);
 
         /// <summary>
         /// Get the persistent storage value at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        byte[] Get(in StorageCell storageCell);
+        UInt256 Get(in StorageCell storageCell);
 
         /// <summary>
         /// Set the provided value to persistent storage at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        void Set(in StorageCell storageCell, byte[] newValue);
+        void Set(in StorageCell storageCell, in UInt256 newValue);
 
         /// <summary>
         /// Get the transient storage value at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        byte[] GetTransientState(in StorageCell storageCell);
+        UInt256 GetTransientState(in StorageCell storageCell);
 
         /// <summary>
         /// Set the provided value to transient storage at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        void SetTransientState(in StorageCell storageCell, byte[] newValue);
+        void SetTransientState(in StorageCell storageCell, in UInt256 newValue);
 
         /// <summary>
         /// Reset all storage

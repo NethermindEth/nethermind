@@ -135,7 +135,7 @@ namespace Nethermind.Trie.Test
             {
                 _storageProvider.Set(
                     new StorageCell(Address.FromNumber((UInt256)accountIndex), (UInt256)storageKey),
-                    ((UInt256)storageValue).ToBigEndian());
+                    (UInt256)storageValue);
                 return this;
             }
 

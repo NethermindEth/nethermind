@@ -13,10 +13,14 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+
+using Newtonsoft.Json.Linq;
+
 using NSubstitute;
 using NUnit.Framework;
 
@@ -73,7 +77,7 @@ namespace Nethermind.Evm.Test
         private void Test(string codeHex, long gasUsed, long refund, byte originalValue, bool eip3529Enabled)
         {
             TestState.CreateAccount(Recipient, 0);
-            Storage.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            Storage.Set(new StorageCell(Recipient, 0), (UInt256)originalValue);
             Storage.Commit();
             TestState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, LimboLogs.Instance);

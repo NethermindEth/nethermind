@@ -11,7 +11,7 @@ namespace Nethermind.Core
     public readonly struct StorageCell : IEquatable<StorageCell>
     {
         public Address Address { get; }
-        public UInt256 Index { get; }
+        public readonly UInt256 Index;
 
         public StorageCell(Address address, in UInt256 index)
         {

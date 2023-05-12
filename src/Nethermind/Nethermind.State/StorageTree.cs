@@ -61,7 +61,7 @@ namespace Nethermind.State
 
 
         [SkipLocalsInit]
-        public byte[] Get(in UInt256 index, Keccak? storageRoot = null)
+        public UInt256 Get(in UInt256 index, Keccak? storageRoot = null)
         {
             Span<byte> key = stackalloc byte[32];
             GetKey(index, key);
@@ -69,35 +69,41 @@ namespace Nethermind.State
             byte[]? value = Get(key, storageRoot);
             if (value is null)
             {
-                return new byte[] { 0 };
+                return default;
             }
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
-            return rlp.DecodeByteArray();
+            return rlp.DecodeUInt256();
         }
 
         [SkipLocalsInit]
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, in UInt256 value)
         {
             Span<byte> key = stackalloc byte[32];
             GetKey(index, key);
             SetInternal(key, value);
         }
 
-        public void Set(Keccak key, byte[] value, bool rlpEncode = true)
+        public void Set(Keccak key, in UInt256 value, bool rlpEncode = true)
         {
             SetInternal(key.Bytes, value, rlpEncode);
         }
 
-        private void SetInternal(Span<byte> rawKey, byte[] value, bool rlpEncode = true)
+        public void Set(Keccak key, byte[] value, bool rlpEncode)
         {
-            if (value.IsZero())
+            Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
+            Set(key.Bytes, rlpEncoded);
+        }
+
+        private void SetInternal(ReadOnlySpan<byte> rawKey, in UInt256 value, bool rlpEncode = true)
+        {
+            if (value.IsZero)
             {
                 Set(rawKey, Array.Empty<byte>());
             }
             else
             {
-                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
+                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value.ToBigEndian());
                 Set(rawKey, rlpEncoded);
             }
         }

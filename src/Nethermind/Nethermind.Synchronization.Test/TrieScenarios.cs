@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization.Test
                     var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
                     Keccak codeHash = Keccak.Compute(code);
                     StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
-                    remoteStorageTree.Set((UInt256) 1, new byte[] {1});
+                    remoteStorageTree.Set((UInt256) 1, (UInt256) 1);
                     remoteStorageTree.Commit(0);
                     remoteStorageTree.UpdateRootHash();
                     codeDb[codeHash.Bytes] = code;
@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.Test
                     var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
                     Keccak codeHash = Keccak.Compute(code);
                     StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
-                    remoteStorageTree.Set((UInt256) 1, new byte[] {1});
+                    remoteStorageTree.Set((UInt256) 1, (UInt256) 1);
                     remoteStorageTree.Commit(0);
                     remoteStorageTree.UpdateRootHash();
                     codeDb[codeHash.Bytes] = code;
@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization.Test
                     var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
                     Keccak codeHash = Keccak.Compute(code);
                     StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
-                    remoteStorageTree.Set((UInt256) 1, new byte[] {1});
+                    remoteStorageTree.Set((UInt256) 1, (UInt256)1);
                     remoteStorageTree.Commit(0);
                     remoteStorageTree.UpdateRootHash();
                     codeDb[codeHash.Bytes] = code;
@@ -344,14 +344,14 @@ namespace Nethermind.Synchronization.Test
         {
             StorageTree remoteStorageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
 
-            remoteStorageTree.Set((UInt256)1, new byte[] { 1 });
-            remoteStorageTree.Set((UInt256)2, new byte[] { 2 });
-            remoteStorageTree.Set((UInt256)3, new byte[] { 3 });
-            remoteStorageTree.Set((UInt256)4, new byte[] { 4 });
-            remoteStorageTree.Set((UInt256)1005, new byte[] { 5 });
-            remoteStorageTree.Set((UInt256)1006, new byte[] { 6 });
-            remoteStorageTree.Set((UInt256)1007, new byte[] { 7 });
-            remoteStorageTree.Set((UInt256)1008, new byte[] { 8 });
+            remoteStorageTree.Set((UInt256)1, (UInt256)1);
+            remoteStorageTree.Set((UInt256)2, (UInt256)2);
+            remoteStorageTree.Set((UInt256)3, (UInt256)3);
+            remoteStorageTree.Set((UInt256)4, (UInt256)4);
+            remoteStorageTree.Set((UInt256)1005, (UInt256)5);
+            remoteStorageTree.Set((UInt256)1006, (UInt256)6);
+            remoteStorageTree.Set((UInt256)1007, (UInt256)7);
+            remoteStorageTree.Set((UInt256)1008, (UInt256)8);
 
             remoteStorageTree.Commit(0);
             return remoteStorageTree;

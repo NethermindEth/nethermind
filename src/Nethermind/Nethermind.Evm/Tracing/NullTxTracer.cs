@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
             => throw new InvalidOperationException(ErrorMessage);
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        public void ReportStorageChange(in UInt256 key, in UInt256 value)
             => throw new InvalidOperationException(ErrorMessage);
 
         public void SetOperationStack(List<string> stackTrace)
@@ -62,13 +62,13 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationMemory(List<string> memoryTrace)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        public void SetOperationStorage(Address address, in UInt256 storageIndex, in UInt256 newValue, in UInt256 currentValue)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        public void LoadOperationStorage(Address address, in UInt256 storageIndex, in UInt256 value)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        public void ReportSelfDestruct(Address address, in UInt256 balance, Address refundAddress)
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -83,12 +83,12 @@ namespace Nethermind.Evm.Tracing
         public void ReportAccountRead(Address address)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        public void ReportStorageChange(in StorageCell storageCell, in UInt256 before, in UInt256 after)
             => throw new InvalidOperationException(ErrorMessage);
         public void ReportStorageRead(in StorageCell storageCell)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, in UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)

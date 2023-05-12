@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             {
                 Balance = new ParityStateChange<UInt256?>(1, 2),
                 Nonce = new ParityStateChange<UInt256?>(0, 1),
-                Storage = new Dictionary<UInt256, ParityStateChange<byte[]>> { [1] = new(new byte[] { 1 }, new byte[] { 2 }) }
+                Storage = new Dictionary<UInt256, ParityStateChange<UInt256>> { [1] = new((UInt256)1, (UInt256)2) }
             };
 
             result.StateChanges = new Dictionary<Address, ParityAccountStateChange> { { TestItem.AddressC, stateChange } };
@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             {
                 Balance = new ParityStateChange<UInt256?>(1, 2),
                 Nonce = new ParityStateChange<UInt256?>(0, 1),
-                Storage = new Dictionary<UInt256, ParityStateChange<byte[]>> { [1] = new(new byte[] { 1 }, new byte[] { 2 }) }
+                Storage = new Dictionary<UInt256, ParityStateChange<UInt256>> { [1] = new((UInt256)1, (UInt256)2) }
             };
 
             result.StateChanges = new Dictionary<Address, ParityAccountStateChange> { { TestItem.AddressC, stateChange } };

@@ -154,7 +154,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SReset), "gas");
-            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(new byte[] { 0 }), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(UInt256.Zero), "storage");
         }
 
         [Test]
@@ -170,7 +170,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet), "gas");
-            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(new byte[] { 1 }), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(UInt256.One), "storage");
         }
 
         [Test]
@@ -186,7 +186,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet), "gas");
-            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(new byte[] { 1 }), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(UInt256.One), "storage");
         }
 
         [Test]
@@ -302,7 +302,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet + GasCostOf.Exp + GasCostOf.ExpByteEip160), "gas");
-            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(BigInteger.Pow(2, 160).ToBigEndianByteArray()), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo((UInt256)BigInteger.Pow(2, 160)), "storage");
         }
 
         [Test]
@@ -318,7 +318,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.SSet), "gas");
-            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(BigInteger.One.ToBigEndianByteArray()), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(UInt256.One), "storage");
         }
 
         [Test]
@@ -334,7 +334,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SReset), "gas");
-            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(UInt256.Zero), "storage");
         }
 
         [Test]
@@ -350,7 +350,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SSet), "gas");
-            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(BigInteger.One.ToBigEndianByteArray()), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(UInt256.One), "storage");
         }
 
         [Test]
@@ -366,7 +366,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset), "gas");
-            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(new byte[] { 0 }), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(UInt256.Zero), "storage");
         }
 
         [Test]
@@ -380,7 +380,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet), "gas");
-            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo((BigInteger.Pow(2, 256) - 1).ToBigEndianByteArray()), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo((UInt256)(BigInteger.Pow(2, 256) - 1)), "storage");
         }
 
         [Test]
@@ -396,7 +396,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset), "gas");
-            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(UInt256.Zero), "storage");
         }
 
         [Test]
@@ -409,7 +409,7 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SReset), "gas");
-            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+            Assert.That(Storage.Get(new StorageCell(Recipient, 0)), Is.EqualTo(UInt256.Zero), "storage");
         }
 
         /// <summary>

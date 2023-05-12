@@ -11,6 +11,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public ParityStateChange<byte[]> Code { get; set; }
         public ParityStateChange<UInt256?> Balance { get; set; }
         public ParityStateChange<UInt256?> Nonce { get; set; }
-        public Dictionary<UInt256, ParityStateChange<byte[]>> Storage { get; set; }
+        public Dictionary<UInt256, ParityStateChange<UInt256>> Storage { get; set; }
     }
 }

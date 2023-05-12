@@ -8,6 +8,8 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State;
 using NUnit.Framework;
+using Nethermind.Int256;
+using System.Globalization;
 
 namespace Nethermind.Evm.Test
 {
@@ -58,12 +60,12 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = Storage.Get(storageCell);
-            Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
+            UInt256 result = Storage.Get(storageCell);
+            Assert.That(result, Is.EqualTo(UInt256.Zero), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(98777), "no refund");
 
-            byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
-            Assert.That(returnData, Is.EqualTo(new byte[1]), "address returned");
+            UInt256 returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
+            Assert.That(returnData, Is.EqualTo(UInt256.One), "address returned");
         }
 
         [Test(Description = "Deposit OutOfGas before EIP-2")]
@@ -99,12 +101,12 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = Storage.Get(storageCell);
-            Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
+            UInt256 result = Storage.Get(storageCell);
+            Assert.That(result, Is.EqualTo(UInt256.Zero), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
 
-            byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
-            Assert.That(returnData, Is.EqualTo(deployed.Bytes), "address returned");
+            UInt256 returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
+            Assert.That(returnData, Is.EqualTo(UInt256.Parse(deployed.Bytes.ToHexString(), NumberStyles.HexNumber)), "address returned");
         }
     }
 }

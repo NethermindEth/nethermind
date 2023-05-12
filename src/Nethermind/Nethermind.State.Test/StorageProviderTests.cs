@@ -14,6 +14,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Int256;
 
 namespace Nethermind.Store.Test
 {
@@ -22,21 +23,21 @@ namespace Nethermind.Store.Test
     {
         private static readonly ILogManager LogManager = LimboLogs.Instance;
 
-        private readonly byte[][] _values =
+        private readonly UInt256[] _values =
         {
-            new byte[] {0},
-            new byte[] {1},
-            new byte[] {2},
-            new byte[] {3},
-            new byte[] {4},
-            new byte[] {5},
-            new byte[] {6},
-            new byte[] {7},
-            new byte[] {8},
-            new byte[] {9},
-            new byte[] {10},
-            new byte[] {11},
-            new byte[] {12},
+            (UInt256)0,
+            (UInt256)1,
+            (UInt256)2,
+            (UInt256)3,
+            (UInt256)4,
+            (UInt256)5,
+            (UInt256)6,
+            (UInt256)7,
+            (UInt256)8,
+            (UInt256)9,
+            (UInt256)10,
+            (UInt256)11,
+            (UInt256)12,
         };
 
         [Test]
@@ -145,7 +146,7 @@ namespace Nethermind.Store.Test
             provider.Restore(-1);
             provider.Commit();
 
-            Assert.IsTrue(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero());
+            Assert.IsTrue(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero);
         }
 
         [Test]
@@ -174,7 +175,7 @@ namespace Nethermind.Store.Test
             provider.Get(new StorageCell(ctx.Address1, 1));
             provider.Commit();
 
-            Assert.True(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero());
+            Assert.True(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero);
         }
 
         [Test]
@@ -201,7 +202,7 @@ namespace Nethermind.Store.Test
             storageProvider.Reset();
             ctx.StateProvider.StateRoot = stateRoot;
 
-            byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1));
+            UInt256 valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1));
 
             Assert.That(valueAfter, Is.EqualTo(_values[1]));
         }
@@ -220,7 +221,7 @@ namespace Nethermind.Store.Test
             storageProvider.Commit();
             ctx.StateProvider.Commit(Frontier.Instance);
 
-            byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1));
+            UInt256 valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1));
             Assert.That(valueAfter, Is.EqualTo(_values[(Resettable.StartCapacity + 1) % 2]));
         }
 
@@ -233,14 +234,14 @@ namespace Nethermind.Store.Test
             Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
             // Should be 0 if not set
-            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero());
+            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero);
 
             // Should be 0 if loading from the same contract but different index
             provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero());
+            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero);
 
             // Should be 0 if loading from the same index but different contract
-            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address2, 1)).IsZero());
+            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address2, 1)).IsZero);
         }
 
         /// <summary>
@@ -298,7 +299,7 @@ namespace Nethermind.Store.Test
             Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)), Is.EqualTo(_values[1]));
 
             provider.Commit();
-            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());
+            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero);
         }
 
         /// <summary>
@@ -314,7 +315,7 @@ namespace Nethermind.Store.Test
             Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)), Is.EqualTo(_values[1]));
 
             provider.Reset();
-            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());
+            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero);
         }
 
         /// <summary>

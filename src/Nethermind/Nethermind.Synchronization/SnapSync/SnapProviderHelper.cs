@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
-                tree.Set(slot.Path, slot.SlotRlpValue, false);
+                tree.Set(slot.Path, slot.SlotRlpValue, rlpEncode: false);
             }
 
             tree.UpdateRootHash();

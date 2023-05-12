@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -127,7 +128,7 @@ public class TestBlockchain : IDisposable
         State.UpdateCodeHash(TestItem.AddressA, codeHash, SpecProvider.GenesisSpec);
 
         Storage = new StorageProvider(TrieStore, State, LogManager);
-        Storage.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+        Storage.Set(new StorageCell(TestItem.AddressA, UInt256.One), UInt256.Parse("abcdef", NumberStyles.HexNumber));
         Storage.Commit();
 
         State.Commit(SpecProvider.GenesisSpec);

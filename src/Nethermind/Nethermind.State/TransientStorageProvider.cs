@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.State
@@ -20,7 +21,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        protected override byte[] GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : _zeroValue;
+        protected override UInt256 GetCurrentValue(in StorageCell storageCell) =>
+            TryGetCachedValue(storageCell, out UInt256 bytes) ? bytes : default;
     }
 }
