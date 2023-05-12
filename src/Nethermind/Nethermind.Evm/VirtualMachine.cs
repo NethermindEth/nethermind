@@ -1253,11 +1253,13 @@ public class VirtualMachine : IVirtualMachine
                         {
                             bool optimizeAccess = false;
                             Instruction nextInstruction = (Instruction)code[programCounter];
+                            // code.length is zero
                             if (nextInstruction == Instruction.ISZERO)
                             {
                                 optimizeAccess = true;
                                 Metrics.ExtCodeSizeOptimizedIsZero++;
                             }
+                            // code.length > 0 || code.length == 0
                             else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
                                     stack.PeekUInt256IsZero())
                             {
@@ -1287,17 +1289,18 @@ public class VirtualMachine : IVirtualMachine
                                 }
 
                                 programCounter++;
+                                // Add gas cost for ISZERO, GT, or EQ
                                 if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) goto OutOfGas;
 
                                 // IsContract
-                                bool testValue = _state.IsContract(address);
+                                bool isCodeLengthNotZero = _state.IsContract(address);
                                 if (nextInstruction == Instruction.GT)
                                 {
                                     // Invert, to IsNotContract
-                                    testValue = !testValue;
+                                    isCodeLengthNotZero = !isCodeLengthNotZero;
                                 }
 
-                                if (!testValue)
+                                if (!isCodeLengthNotZero)
                                 {
                                     stack.PushOne();
                                 }
